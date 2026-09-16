@@ -1,7 +1,10 @@
 import { writeStructuredLog } from "@/logger";
 import { providerProxyService } from "@/services/provider-proxy.service/index";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
-import { streamTaskStructuredOutputText } from "@/services/provider-proxy.service/task-structured-output";
+import {
+  resolveTaskStructuredOutputCapability,
+  streamTaskStructuredOutputText,
+} from "@/services/provider-proxy.service/task-structured-output";
 import type { AgentToolExposureState } from "../types";
 import {
   bindPlannerNativeToolExposure,
@@ -80,10 +83,9 @@ const isPlannerStructuredRequest = (messages: NormalizedChatMessage[]) =>
 
 /**
  * Planner keeps the existing streamTaskChatText call site for compatibility.
- * Planner-marked requests use native schema-constrained generation, but the
- * provider text deltas are forwarded immediately so `reason` can drive the
- * existing plannerThought/plannerThoughtStreaming UI before the complete JSON
- * decision is validated and executed.
+ * Planner-marked requests use native schema-constrained generation only when
+ * the resolved provider template explicitly declares that capability. A
+ * declared-native provider never downgrades to text JSON after setup starts.
  */
 export const installPlannerStructuredOutputHook = () => {
   const installState = providerProxyService as unknown as Record<PropertyKey, unknown>;
@@ -101,18 +103,30 @@ export const installPlannerStructuredOutputHook = () => {
     let outputKind: PlannerProviderOutputKind = "text";
     let structuredOutput: unknown;
     const stream = (async function* () {
+      const capability = resolveTaskStructuredOutputCapability();
+      if (capability.adapter === "none") {
+        writeStructuredLog("info", {
+          msg: "Planner native structured output capability absent; using text JSON compatibility",
+          event: "agent-next-action-planner-structured-fallback",
+          providerCode: capability.resolved.providerCode,
+        });
+        yield* originalStreamTaskChatText(messages);
+        return;
+      }
+
       let emittedNativeDelta = false;
-      let nativeStreamCreated = false;
       try {
         const toolExposure = extractPlannerToolExposure(messages);
-        const nativeStream = streamTaskStructuredOutputText({
-          messages,
-          schema: buildPlannerStructuredOutputJsonSchema(toolExposure),
-          name: "planner_decision",
-          description:
-            "Exactly one next-action Planner decision plus a lightweight runtime todo patch.",
-        });
-        nativeStreamCreated = true;
+        const nativeStream = streamTaskStructuredOutputText(
+          {
+            messages,
+            schema: buildPlannerStructuredOutputJsonSchema(toolExposure),
+            name: "planner_decision",
+            description:
+              "Exactly one next-action Planner decision plus a lightweight runtime todo patch.",
+          },
+          capability,
+        );
         for await (const delta of nativeStream) {
           emittedNativeDelta = true;
           outputKind = "native";
@@ -124,28 +138,19 @@ export const installPlannerStructuredOutputHook = () => {
         );
         outputKind = "native";
       } catch (error) {
-        const canFallback = !nativeStreamCreated && !emittedNativeDelta;
         writeStructuredLog("warn", {
-          msg: canFallback
-            ? "Planner native structured output capability unavailable; falling back to text JSON"
-            : emittedNativeDelta
-              ? "Planner native structured output stream failed after partial output"
-              : "Planner native structured output protocol failed before output",
-          event: canFallback
-            ? "agent-next-action-planner-structured-fallback"
-            : "agent-next-action-planner-structured-failure",
+          msg: emittedNativeDelta
+            ? "Planner native structured output stream failed after partial output"
+            : "Planner native structured output protocol failed before output",
+          event: "agent-next-action-planner-structured-failure",
           partialNativeOutput: emittedNativeDelta,
           reason: error instanceof Error ? error.message : String(error),
         });
 
-        // Never concatenate a second JSON generation after native JSON has already
-        // started streaming; that would manufacture an invalid multi-object Planner
-        // response. Compatibility fallback is only safe when no native stream was
-        // created, which means the catalog declared no native Planner capability.
-        if (!canFallback) {
-          throw error;
-        }
-        yield* originalStreamTaskChatText(messages);
+        // Once the catalog declares native capability, every setup/request/stream
+        // failure remains a native failure. Compatibility is selected only by the
+        // explicit `adapter === "none"` branch above.
+        throw error;
       }
     })();
 

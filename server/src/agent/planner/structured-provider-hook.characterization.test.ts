@@ -2,6 +2,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { adaptPlannerProviderOutput } from "./decision-adapter";
 
+const nativeCapability = {
+  adapter: "ark-json-schema" as const,
+  resolved: {
+    providerCode: "test-native",
+    providerConnectionId: "test-connection",
+    providerTemplateCode: "volcengine-agent-plan",
+    baseUrl: "https://example.test",
+    apiKey: "test-key",
+    model: "test-model",
+    modelConfigId: "test-model-config",
+    params: {},
+  },
+};
+
+const compatibilityCapability = {
+  adapter: "none" as const,
+  resolved: {
+    ...nativeCapability.resolved,
+    providerCode: "test-text",
+    providerTemplateCode: "openai",
+  },
+};
+
 const mocks = vi.hoisted(() => {
   const originalStreamTaskChatText = vi.fn();
   return {
@@ -9,6 +32,7 @@ const mocks = vi.hoisted(() => {
     providerProxyService: {
       streamTaskChatText: originalStreamTaskChatText,
     },
+    resolveTaskStructuredOutputCapability: vi.fn(),
     streamTaskStructuredOutputText: vi.fn(),
     writeStructuredLog: vi.fn(),
   };
@@ -23,6 +47,7 @@ vi.mock("@/services/provider-proxy.service/index", () => ({
 }));
 
 vi.mock("@/services/provider-proxy.service/task-structured-output", () => ({
+  resolveTaskStructuredOutputCapability: mocks.resolveTaskStructuredOutputCapability,
   streamTaskStructuredOutputText: mocks.streamTaskStructuredOutputText,
 }));
 
@@ -70,6 +95,8 @@ const collect = async (stream: AsyncIterable<string>) => {
 describe("Planner provider boundary characterization", () => {
   beforeEach(() => {
     mocks.originalStreamTaskChatText.mockReset();
+    mocks.resolveTaskStructuredOutputCapability.mockReset();
+    mocks.resolveTaskStructuredOutputCapability.mockReturnValue(nativeCapability);
     mocks.streamTaskStructuredOutputText.mockReset();
     mocks.writeStructuredLog.mockReset();
   });
@@ -87,15 +114,16 @@ describe("Planner provider boundary characterization", () => {
 
     expect(output).toBe("ordinary task-model text");
     expect(mocks.originalStreamTaskChatText).toHaveBeenCalledOnce();
+    expect(mocks.resolveTaskStructuredOutputCapability).not.toHaveBeenCalled();
     expect(mocks.streamTaskStructuredOutputText).not.toHaveBeenCalled();
   });
 
-  it("falls back to the current text-JSON compatibility stream when native structured output fails before emitting", async () => {
+  it("falls back to text-JSON only when native capability is explicitly absent", async () => {
     const compatibilityDecision =
       '{"type":"retrieve","query":"README","reason":"Need repository evidence."}';
-    mocks.streamTaskStructuredOutputText.mockImplementation(() => {
-      throw new Error("structured output unavailable");
-    });
+    mocks.resolveTaskStructuredOutputCapability.mockReturnValue(
+      compatibilityCapability,
+    );
     mocks.originalStreamTaskChatText.mockImplementation(async function* () {
       yield compatibilityDecision.slice(0, 35);
       yield compatibilityDecision.slice(35);
@@ -106,8 +134,38 @@ describe("Planner provider boundary characterization", () => {
     );
 
     expect(output).toBe(compatibilityDecision);
-    expect(mocks.streamTaskStructuredOutputText).toHaveBeenCalledOnce();
+    expect(mocks.resolveTaskStructuredOutputCapability).toHaveBeenCalledOnce();
+    expect(mocks.streamTaskStructuredOutputText).not.toHaveBeenCalled();
     expect(mocks.originalStreamTaskChatText).toHaveBeenCalledOnce();
+  });
+
+  it("surfaces provider capability resolution errors without compatibility fallback", async () => {
+    mocks.resolveTaskStructuredOutputCapability.mockImplementation(() => {
+      throw new Error("task provider configuration is invalid");
+    });
+    mocks.originalStreamTaskChatText.mockImplementation(async function* () {
+      yield '{"type":"error","reason":"compatibility fallback"}';
+    });
+
+    await expect(
+      collect(mocks.providerProxyService.streamTaskChatText(plannerMessages)),
+    ).rejects.toThrow("task provider configuration is invalid");
+    expect(mocks.streamTaskStructuredOutputText).not.toHaveBeenCalled();
+    expect(mocks.originalStreamTaskChatText).not.toHaveBeenCalled();
+  });
+
+  it("surfaces declared-native setup failures before stream creation", async () => {
+    mocks.streamTaskStructuredOutputText.mockImplementation(() => {
+      throw new Error("native structured setup failed");
+    });
+    mocks.originalStreamTaskChatText.mockImplementation(async function* () {
+      yield '{"type":"error","reason":"compatibility fallback"}';
+    });
+
+    await expect(
+      collect(mocks.providerProxyService.streamTaskChatText(plannerMessages)),
+    ).rejects.toThrow("native structured setup failed");
+    expect(mocks.originalStreamTaskChatText).not.toHaveBeenCalled();
   });
 
   it("marks a successful native provider stream for the typed native adapter", async () => {
