@@ -57,6 +57,19 @@ pnpm clean:artifacts
 
 `smoke:electron:chat:mac` 使用隔离数据库、Workspace、附件目录和动态端口启动真实 Electron，验证登录、Chat Composer、普通附件选择、鉴权上传、落盘与退出清理。`smoke:terminal:mac` 验证带中文和空格的 Workspace、临时 POSIX 命令、持久 PTY 续跑及进程清理。
 
+## Branch Flow
+
+`.github/workflows/branch-policy.yml` enforces the repository promotion path:
+
+```text
+feat/* | feature/* | fix/* | hotfix/* | refactor/* | perf/* | docs/* | test/* | chore/* -> dev
+dev -> test
+test -> prod
+hotfix/* -> test or prod
+```
+
+`prod` is the GitHub default branch, but normal development still enters through `dev` and promotes through `test` before `prod`.
+
 ## Packaging
 
 - `docs/build/README.md`
