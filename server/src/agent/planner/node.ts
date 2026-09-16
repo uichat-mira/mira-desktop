@@ -25,6 +25,8 @@ import {
 } from "./action-types";
 import {
   adaptPlannerProviderOutput,
+  getPlannerProviderStructuredOutput,
+  getPlannerProviderOutputKind,
 } from "./decision-adapter";
 import { buildNextActionPlannerMessages, normalizeToolExposure } from "./prompt";
 import {
@@ -339,7 +341,10 @@ export const nextActionPlannerNode = async (
     ) => {
       let resolvedRawOutput = "";
       let lastEmittedThought = "";
-      for await (const delta of providerProxyService.streamTaskChatText(plannerMessages)) {
+      const providerStream = providerProxyService.streamTaskChatText(
+        plannerMessages,
+      );
+      for await (const delta of providerStream) {
         resolvedRawOutput += delta;
         const visibleThought = extractPlannerVisibleThought(resolvedRawOutput);
         if (
@@ -364,10 +369,25 @@ export const nextActionPlannerNode = async (
         }
       }
 
-      const adaptedPlannerDecision = adaptPlannerProviderOutput({
-        kind: "text",
-        text: resolvedRawOutput,
-      });
+      const nativeOutput = getPlannerProviderOutputKind(providerStream) === "native";
+      let providerOutput:
+        | { kind: "native"; value: unknown }
+        | { kind: "text"; text: string };
+      if (nativeOutput) {
+        const structuredOutput = getPlannerProviderStructuredOutput(providerStream);
+        if (structuredOutput !== undefined) {
+          providerOutput = { kind: "native", value: structuredOutput };
+        } else {
+          try {
+            providerOutput = { kind: "native", value: JSON.parse(resolvedRawOutput) };
+          } catch {
+            providerOutput = { kind: "native", value: resolvedRawOutput };
+          }
+        }
+      } else {
+        providerOutput = { kind: "text", text: resolvedRawOutput };
+      }
+      const adaptedPlannerDecision = adaptPlannerProviderOutput(providerOutput);
       const validationResult = validateNextAction(
         adaptedPlannerDecision,
         toolExposure.exposedTools,

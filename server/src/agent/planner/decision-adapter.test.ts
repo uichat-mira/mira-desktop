@@ -65,6 +65,47 @@ describe("Planner decision adapter", () => {
     assert.equal(adapted.source, "text-json-compatibility");
   });
 
+  test("normalizes a native structured envelope through the same typed boundary", () => {
+    const adapted = adaptPlannerProviderOutput({
+      kind: "native",
+      value: {
+        type: "retrieve",
+        reason: "Repository evidence is required.",
+        query: "README",
+        toolId: null,
+        args: null,
+        question: null,
+        completionProof: [],
+        unresolvedGaps: [],
+        planPatch: { addItems: [], completeIds: [] },
+      },
+    });
+
+    assert.equal(adapted.source, "native-structured");
+    assert.equal(adapted.codec, "native-json-schema");
+    assert.deepEqual(adapted.decision, {
+      type: "retrieve",
+      query: "README",
+      reason: "Repository evidence is required.",
+    });
+    assert.equal(adapted.diagnostics.parseErrorReason, null);
+  });
+
+  test("keeps invalid native output on the native codec path", () => {
+    const adapted = adaptPlannerProviderOutput({
+      kind: "native",
+      value: "not-json",
+    });
+
+    assert.equal(adapted.source, "native-structured");
+    assert.equal(adapted.codec, "native-json-schema");
+    assert.equal(adapted.decision, null);
+    assert.match(
+      adapted.diagnostics.parseErrorReason ?? "",
+      /native Planner structured output must be one JSON object/i,
+    );
+  });
+
   test("passes the typed adapter result directly into existing validation", () => {
     const adapted = adaptPlannerProviderOutput(
       JSON.stringify({

@@ -1,16 +1,17 @@
 import { Ollama } from "ollama";
 
-import { getProviderDefinition } from "@/providers/catalog.js";
+import {
+  getPlannerStructuredOutputAdapter,
+  type PlannerStructuredOutputAdapter,
+} from "@/providers/catalog.js";
 import {
   generateArkPlanStructuredOutput,
-  isArkPlanStructuredOutputProvider,
   streamArkPlanStructuredOutputText,
 } from "@/services/ark-plan-structured-output.js";
-import { resolveArkPlanBaseUrl } from "@/services/ark-plan-adapter.js";
-import { createOpenAICompatibleClient } from "@/services/openai-compatible-provider.js";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol.js";
 import { assertOllamaModelAvailable, resolveAgentTaskProvider } from "./resolution.js";
-import { toOllamaChatOptions, toOpenAICompatibleChatOptions } from "./params.js";
+import { toOllamaChatOptions } from "./params.js";
+import type { ProviderResolution } from "./types.js";
 
 export type TaskStructuredOutputInput = {
   messages: NormalizedChatMessage[];
@@ -37,83 +38,7 @@ const toTextOnlyMessages = (messages: NormalizedChatMessage[]) =>
     content: message.content,
   }));
 
-const resolveStructuredOutputBaseUrl = (resolved: ReturnType<typeof resolveAgentTaskProvider>) => {
-  if (resolved.providerTemplateCode === "volcengine-code-plan") {
-    return resolveArkPlanBaseUrl("code-plan", resolved.baseUrl);
-  }
-
-  if (resolved.providerTemplateCode === "volcengine-agent-plan") {
-    return resolveArkPlanBaseUrl("agent-plan", resolved.baseUrl);
-  }
-
-  return resolved.baseUrl;
-};
-
-const buildOpenAICompatibleStructuredRequest = (
-  input: TaskStructuredOutputInput,
-  stream: boolean,
-) => {
-  const resolved = resolveAgentTaskProvider("default");
-  return {
-    resolved,
-    request: {
-      ...toOpenAICompatibleChatOptions(resolved.params),
-      model: resolved.model,
-      messages: toTextOnlyMessages(input.messages),
-      stream,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: input.name,
-          ...(input.description ? { description: input.description } : {}),
-          strict: true,
-          schema: input.schema,
-        },
-      },
-    },
-  };
-};
-
-const generateOpenAICompatibleStructuredOutput = async <T>(
-  input: TaskStructuredOutputInput,
-) => {
-  const { resolved, request } = buildOpenAICompatibleStructuredRequest(input, false);
-  const client = createOpenAICompatibleClient(
-    resolveStructuredOutputBaseUrl(resolved),
-    resolved.apiKey,
-  );
-  const response = (await client.chat.completions.create(request as any)) as any;
-  const content = response.choices?.[0]?.message?.content ?? "";
-  return parseStructuredJson<T>(content);
-};
-
-const streamOpenAICompatibleStructuredOutputText = async function* (
-  input: TaskStructuredOutputInput,
-): AsyncGenerator<string> {
-  const { resolved, request } = buildOpenAICompatibleStructuredRequest(input, true);
-  const client = createOpenAICompatibleClient(
-    resolveStructuredOutputBaseUrl(resolved),
-    resolved.apiKey,
-  );
-  const response = (await client.chat.completions.create(request as any)) as any;
-  let sawText = false;
-
-  for await (const chunk of response) {
-    const delta = chunk?.choices?.[0]?.delta?.content;
-    if (typeof delta !== "string" || !delta) {
-      continue;
-    }
-    sawText = true;
-    yield delta;
-  }
-
-  if (!sawText) {
-    throw new Error("Structured task model returned an empty streamed response.");
-  }
-};
-
-const createOllamaClient = async () => {
-  const resolved = resolveAgentTaskProvider("default");
+const createOllamaClient = async (resolved: ProviderResolution) => {
   await assertOllamaModelAvailable({
     baseUrl: resolved.baseUrl,
     apiKey: resolved.apiKey,
@@ -138,8 +63,9 @@ const createOllamaClient = async () => {
 
 const generateOllamaStructuredOutput = async <T>(
   input: TaskStructuredOutputInput,
+  resolved: ProviderResolution,
 ) => {
-  const { resolved, client } = await createOllamaClient();
+  const { client } = await createOllamaClient(resolved);
   const response = (await client.chat({
     model: resolved.model,
     messages: toTextOnlyMessages(input.messages),
@@ -156,8 +82,9 @@ const generateOllamaStructuredOutput = async <T>(
 
 const streamOllamaStructuredOutputText = async function* (
   input: TaskStructuredOutputInput,
+  resolved: ProviderResolution,
 ): AsyncGenerator<string> {
-  const { resolved, client } = await createOllamaClient();
+  const { client } = await createOllamaClient(resolved);
   const response = (await client.chat({
     model: resolved.model,
     messages: toTextOnlyMessages(input.messages),
@@ -168,19 +95,13 @@ const streamOllamaStructuredOutputText = async function* (
       ? { think: resolved.params.think }
       : {}),
   } as any)) as any;
-  let sawText = false;
 
   for await (const chunk of response) {
     const delta = chunk?.message?.content;
     if (typeof delta !== "string" || !delta) {
       continue;
     }
-    sawText = true;
     yield delta;
-  }
-
-  if (!sawText) {
-    throw new Error("Structured task model returned an empty streamed response.");
   }
 };
 
@@ -192,26 +113,71 @@ const streamOllamaStructuredOutputText = async function* (
  */
 export const streamTaskStructuredOutputText = (
   input: TaskStructuredOutputInput,
-): AsyncGenerator<string> => {
-  const resolved = resolveAgentTaskProvider("default");
-
-  if (isArkPlanStructuredOutputProvider(resolved)) {
-    return streamArkPlanStructuredOutputText(resolved, input);
-  }
-
-  const adapter = getProviderDefinition(resolved.providerCode).chatAdapter;
+  capability = resolveTaskStructuredOutputCapability(),
+): TaskStructuredOutputTextStream => {
+  const { adapter, resolved } = capability;
 
   switch (adapter) {
-    case "openai-compatible":
-      return streamOpenAICompatibleStructuredOutputText(input);
-    case "ollama":
-      return streamOllamaStructuredOutputText(input);
+    case "ark-json-schema":
+      return captureStructuredOutputStream(
+        streamArkPlanStructuredOutputText(resolved, input),
+      );
+    case "ollama-json-schema":
+      return captureStructuredOutputStream(
+        streamOllamaStructuredOutputText(input, resolved),
+      );
+    case "none":
+      throw new Error(
+        `Task provider ${resolved.providerCode} does not expose native Planner structured output through its declared capability.`,
+      );
     default:
       throw new Error(
-        `Task provider ${resolved.providerCode} does not expose native structured output streaming through Mira's current adapter.`,
+        `Task provider ${resolved.providerCode} has an unknown Planner structured output adapter.`,
       );
   }
 };
+
+const captureStructuredOutputStream = (
+  source: AsyncGenerator<string>,
+): TaskStructuredOutputTextStream => {
+  let structuredOutput: unknown;
+  const stream = (async function* () {
+    let output = "";
+    for await (const delta of source) {
+      output += delta;
+      yield delta;
+    }
+    try {
+      structuredOutput = parseStructuredJson<Record<string, unknown>>(output);
+    } catch {
+      // Keep a protocol-invalid native response on the native adapter path.
+      // The Planner decision adapter owns the deterministic failure result.
+      structuredOutput = output;
+    }
+  })();
+
+  return Object.assign(stream, {
+    getStructuredOutput: () => structuredOutput,
+  });
+};
+
+export const resolveTaskStructuredOutputCapability =
+  (): ResolvedTaskStructuredOutputCapability => {
+    const resolved = resolveAgentTaskProvider("default");
+    return {
+      resolved,
+      adapter: getPlannerStructuredOutputAdapter(resolved.providerTemplateCode),
+    };
+  };
+
+export type ResolvedTaskStructuredOutputCapability = {
+  adapter: PlannerStructuredOutputAdapter;
+  resolved: ProviderResolution;
+};
+
+export interface TaskStructuredOutputTextStream extends AsyncGenerator<string> {
+  getStructuredOutput: () => unknown;
+}
 
 /**
  * Non-streaming native structured output remains available for callers that
@@ -219,23 +185,22 @@ export const streamTaskStructuredOutputText = (
  */
 export const generateTaskStructuredOutput = async <T>(
   input: TaskStructuredOutputInput,
+  capability = resolveTaskStructuredOutputCapability(),
 ): Promise<T> => {
-  const resolved = resolveAgentTaskProvider("default");
-
-  if (isArkPlanStructuredOutputProvider(resolved)) {
-    return await generateArkPlanStructuredOutput<T>(resolved, input);
-  }
-
-  const adapter = getProviderDefinition(resolved.providerCode).chatAdapter;
+  const { adapter, resolved } = capability;
 
   switch (adapter) {
-    case "openai-compatible":
-      return await generateOpenAICompatibleStructuredOutput<T>(input);
-    case "ollama":
-      return await generateOllamaStructuredOutput<T>(input);
+    case "ark-json-schema":
+      return await generateArkPlanStructuredOutput<T>(resolved, input);
+    case "ollama-json-schema":
+      return await generateOllamaStructuredOutput<T>(input, resolved);
+    case "none":
+      throw new Error(
+        `Task provider ${resolved.providerCode} does not expose native Planner structured output through its declared capability.`,
+      );
     default:
       throw new Error(
-        `Task provider ${resolved.providerCode} does not expose native structured output through Mira's current adapter.`,
+        `Task provider ${resolved.providerCode} has an unknown Planner structured output adapter.`,
       );
   }
 };

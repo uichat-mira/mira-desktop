@@ -1,4 +1,8 @@
-import type { ModelType, ProviderCode } from "@/db/schema.js";
+import type {
+  ModelType,
+  ProviderCode,
+  ProviderTemplateCode,
+} from "@/db/schema.js";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol.js";
 
 export type ProxyProviderParam = ProviderCode | "default";
@@ -6,7 +10,7 @@ export type ProxyProviderParam = ProviderCode | "default";
 export interface ProviderResolution {
   providerCode: ProviderCode;
   providerConnectionId: string;
-  providerTemplateCode: string;
+  providerTemplateCode: ProviderTemplateCode;
   baseUrl: string;
   apiKey: string;
   model: string;

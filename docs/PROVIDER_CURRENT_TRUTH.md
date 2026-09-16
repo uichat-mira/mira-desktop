@@ -1,7 +1,7 @@
 ---
 status: current
 owner: runtime
-last_verified: 2026-07-31
+last_verified: 2026-09-16
 layer: wiki
 module: ModelSetting
 feature: ProviderRuntimeTruth
@@ -70,6 +70,7 @@ Provider Template 是协议和能力族模板。它声明：
 - 默认显示名与 Base URL；
 - 模型目录同步 adapter；
 - Chat adapter；
+- Planner structured-output adapter（若已实现）；
 - Embedding adapter；
 - Rerank adapter；
 - Image adapter；
@@ -171,19 +172,21 @@ params
 
 ## 5. 当前 Provider Template
 
-| Template | 目录同步 | Chat | Embedding | Rerank | Image | 关键说明 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `ollama` | Ollama `/api/tags` | Ollama `/api/chat` | Ollama `/api/embed` | 无 | 无 | 本地服务；执行前会检查模型是否已下载 |
-| `lmstudio` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | 无 | 默认 `127.0.0.1:1234/v1` |
-| `openai` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | OpenAI Images | API Key 必填 |
-| `google` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | 无 | 使用 Gemini OpenAI-compatible endpoint |
-| `cloudflare` | Cloudflare | OpenAI-compatible | Cloudflare | 无 | 无 | Base URL 必须包含真实 Account ID；可调用模型 ID 需以 `@cf/` 开头 |
-| `volcengine` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI Images | 默认地址是本地 `9997` 协议适配入口 |
-| `volcengine-code-plan` | Ark Plan adapter | OpenAI-compatible | 无 | 无 | 无 | 只允许文本角色 |
-| `volcengine-agent-plan` | Ark Plan adapter | OpenAI-compatible | 无 | 无 | 无 | 只允许文本角色 |
-| `openai-compatible-custom` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI Images | 可创建多个连接；当前有 runtime code 兼容映射漂移 |
+| Template | 目录同步 | Chat | Embedding | Rerank | Image | Planner structured | 关键说明 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ollama` | Ollama `/api/tags` | Ollama `/api/chat` | Ollama `/api/embed` | 无 | 无 | Ollama JSON Schema | 本地服务；执行前会检查模型是否已下载 |
+| `lmstudio` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | 无 | 无，保留 text-JSON compatibility | 默认 `127.0.0.1:1234/v1` |
+| `openai` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | OpenAI Images | 无，保留 text-JSON compatibility | API Key 必填 |
+| `google` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | 无 | 无，保留 text-JSON compatibility | 使用 Gemini OpenAI-compatible endpoint |
+| `cloudflare` | Cloudflare | OpenAI-compatible | Cloudflare | 无 | 无 | 无，保留 text-JSON compatibility | Base URL 必须包含真实 Account ID；可调用模型 ID 需以 `@cf/` 开头 |
+| `volcengine` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI Images | 无，保留 text-JSON compatibility | 默认地址是本地 `9997` 协议适配入口 |
+| `volcengine-code-plan` | Ark Plan adapter | OpenAI-compatible | 无 | 无 | 无 | Ark JSON Schema | 只允许文本角色 |
+| `volcengine-agent-plan` | Ark Plan adapter | OpenAI-compatible | 无 | 无 | 无 | Ark JSON Schema | 只允许文本角色 |
+| `openai-compatible-custom` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI Images | 无，保留 text-JSON compatibility | 可创建多个连接；当前有 runtime code 兼容映射漂移 |
 
 Template capability 是协议级和角色级声明，不是某个具体远端模型的视觉、工具调用、上下文长度或结构化输出验证结果。
+
+Planner structured-output 列只表示 Mira 当前 adapter 已实现并声明的请求协议：Ollama 使用 `format` JSON Schema，Ark Plan 使用 `response_format.json_schema`。共享的 OpenAI-compatible Chat adapter 本身不自动获得 Planner structured 能力。
 
 ## 6. 模型目录同步的真实含义
 
@@ -381,7 +384,7 @@ Provider Proxy 当前没有为所有 Provider 统一归一化 Token 与成本字
 
 ### 13.6 Template capability 不是 per-model capability profile
 
-当前 catalog 能说明 adapter 和 role eligibility，但不能自动证明某个模型支持 Vision、Tool Calling、JSON Schema、上下文长度或全部参数。
+当前 catalog 能说明 adapter、Planner structured transport 和 role eligibility，但不能自动证明某个具体模型支持 Vision、Tool Calling、JSON Schema 的全部约束、上下文长度或全部参数。native 请求失败时，Planner 对未声明 native 能力的 Provider 保留 text-JSON compatibility；已声明 native 的 Provider 按 adapter 错误合同报告失败。
 
 ### 13.7 Token / Cost 尚未统一
 

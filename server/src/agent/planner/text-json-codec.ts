@@ -155,7 +155,7 @@ const extractJsonObjectCandidates = (value: string) => {
   return candidates;
 };
 
-const parseNextActionPlannerObject = (
+export const parseNextActionPlannerObject = (
   parsed: Record<string, unknown>,
 ): PlannerOutputParseResult => {
   if (typeof parsed.type !== "string") {
