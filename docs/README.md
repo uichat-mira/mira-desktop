@@ -1,7 +1,7 @@
 ---
 status: current
 owner: docs
-last_verified: 2026-07-31
+last_verified: 2026-09-16
 layer: schema
 module: Docs
 feature: DocsSystem
@@ -34,6 +34,8 @@ related:
 - 什么尚未核验；
 - 当前代码是否偏离 settled contract。
 
+> 工程工作项的合同与结果由 GitHub Issue 持有；GitHub Project `Status` 只表达粗粒度生命周期位置；Organization Issue Fields 持有 Priority、Effort、日期等结构化规划元数据。`docs/project-control/` 中保留的旧 task / review / ledger / workboard 主要是工程历史、实现与验证证据，不再是 Mira Organization 的当前 master ledger。
+
 ## 先读这九页
 
 1. [[CURRENT_PRODUCT_TRUTH]]：产品能力、边界与稳定迭代阶段；
@@ -61,11 +63,13 @@ related:
 - 有代码或验证依据；
 - 区分 settled contract 与已知实现偏差。
 
-### 施工与验证
+`last_verified` 只代表正文事实/合同被真实核验过的时间，不能因为文件被编辑就自动刷新。只做 metadata / authority 检查时，可以记录 `freshness_audited`，但不能把它冒充完整技术核验。
 
-正在推进的 checklist、workboard、ledger、implementation notes 和验收记录。
+### 施工与验证资料
 
-它们说明“正在做什么”，不自动等于产品已经具备什么。
+仓库里仍可以存在 implementation notes、checklist、acceptance / regression evidence 等服务当前实现与验证的材料。
+
+它们说明“施工或验证发生了什么”，不自动等于产品已经具备什么，也不拥有当前工程工作项的合同、结果或生命周期。新的 Mira Organization 工程工作项使用 GitHub Issue；Project `Status` 管理 `Todo / In Progress / Done` 投影。
 
 ### 方案与实验
 
@@ -114,6 +118,8 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[chat/README]]：Chat 与 Agent UI 入口；
 - [[platform/tauri]]：Tauri 平台路径；
 - [[platform/macos-implementation-phases]]：macOS 支持缺口、改造进度与验收门槛（Proposed，不代表当前已支持）。
+
+下面各模块中的 `project-control evidence` 均指旧 task / review / test / decision 等**历史或实现证据**。它可以帮助追溯某个结论怎样形成，但不拥有当前 GitHub work-item contract、Project lifecycle 或 Organization management metadata。
 
 ## Provider 文档引用规则
 
@@ -238,7 +244,8 @@ current code + repeatable tests
   -> AGENT_CURRENT_TRUTH
   -> agentgraph-harness current contract
   -> Skill / observability current reference
-  -> workboard / checklist / review
+  -> GitHub Issue contract / PR-review-CI evidence（当前工作）
+  -> project-control historical task / checklist / review evidence
   -> design / plan / historical
 ```
 
@@ -290,7 +297,7 @@ Agent Tool / Skill access
 
 [[VAULT_HOME]] 是 Obsidian / 工程资料工作区入口。
 
-它包含地图、概念、施工记录和项目控制资料，因此不等于产品真相首页。进入工作区后仍要遵守生命周期标记。
+它包含地图、概念、实现与验证资料、决策和历史项目控制材料，因此不等于产品真相首页。进入工作区后仍要遵守生命周期标记和当前 Organization source-of-truth 边界。
 
 ## 文档站规则
 
@@ -298,7 +305,9 @@ Agent Tool / Skill access
 - 状态冲突时 Historical / Superseded 优先于 current doc type；
 - 缺状态不会自动进入“先读这里”；
 - 当前文档超过 90 天未核验会被标记；
-- `project-control/` 是施工与决策记录区，不是产品说明书；
+- `freshness_audited` 只表示 freshness / authority / identity 被审计，不等于正文技术事实重新核验；
+- `project-control/` 在 Organization 迁移后主要是历史 task、review、decision、phase conclusion、验证证据和旧路径兼容区，不是当前工程 master ledger；
+- GitHub Issue / Project Status / Organization Issue Fields / PR-review-CI 各自拥有工作合同、生命周期、规划元数据和实现验证证据，不复制成第二套 prose 管理系统；
 - 文档路径不代表可信度，生命周期与验证证据才代表可信度；
 - Current 文档发现实现漂移时，必须显式记录，而不是静默改写合同。
 
