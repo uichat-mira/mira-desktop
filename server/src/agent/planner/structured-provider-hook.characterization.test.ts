@@ -88,12 +88,9 @@ describe("Planner provider boundary characterization", () => {
   it("falls back to the current text-JSON compatibility stream when native structured output fails before emitting", async () => {
     const compatibilityDecision =
       '{"type":"retrieve","query":"README","reason":"Need repository evidence."}';
-    mocks.streamTaskStructuredOutputText.mockImplementation(
-      () =>
-        (async function* () {
-          throw new Error("structured output unavailable");
-        })(),
-    );
+    mocks.streamTaskStructuredOutputText.mockImplementation(() => {
+      throw new Error("structured output unavailable");
+    });
     mocks.originalStreamTaskChatText.mockImplementation(async function* () {
       yield compatibilityDecision.slice(0, 35);
       yield compatibilityDecision.slice(35);
@@ -106,6 +103,24 @@ describe("Planner provider boundary characterization", () => {
     expect(output).toBe(compatibilityDecision);
     expect(mocks.streamTaskStructuredOutputText).toHaveBeenCalledOnce();
     expect(mocks.originalStreamTaskChatText).toHaveBeenCalledOnce();
+  });
+
+  it("marks a successful native provider stream for the typed native adapter", async () => {
+    const nativeDecision =
+      '{"type":"retrieve","query":"README","reason":"Need repository evidence."}';
+    mocks.streamTaskStructuredOutputText.mockImplementation(
+      () =>
+        (async function* () {
+          yield nativeDecision;
+        })(),
+    );
+
+    const stream = mocks.providerProxyService.streamTaskChatText(plannerMessages);
+    expect(await collect(stream)).toBe(nativeDecision);
+    expect(
+      (stream as { getOutputKind?: () => string }).getOutputKind?.(),
+    ).toBe("native");
+    expect(mocks.originalStreamTaskChatText).not.toHaveBeenCalled();
   });
 
   it("does not append a text-JSON fallback after partial native output", async () => {
@@ -123,6 +138,23 @@ describe("Planner provider boundary characterization", () => {
     await expect(
       collect(mocks.providerProxyService.streamTaskChatText(plannerMessages)),
     ).rejects.toThrow("native stream interrupted");
+    expect(mocks.originalStreamTaskChatText).not.toHaveBeenCalled();
+  });
+
+  it("does not downgrade a declared native provider after its stream is created", async () => {
+    mocks.streamTaskStructuredOutputText.mockImplementation(
+      () =>
+        (async function* () {
+          throw new Error("native protocol rejected the schema");
+        })(),
+    );
+    mocks.originalStreamTaskChatText.mockImplementation(async function* () {
+      yield '{"type":"error","reason":"compatibility fallback"}';
+    });
+
+    await expect(
+      collect(mocks.providerProxyService.streamTaskChatText(plannerMessages)),
+    ).rejects.toThrow("native protocol rejected the schema");
     expect(mocks.originalStreamTaskChatText).not.toHaveBeenCalled();
   });
 });

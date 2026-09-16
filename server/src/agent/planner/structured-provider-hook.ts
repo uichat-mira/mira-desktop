@@ -2,6 +2,10 @@ import { writeStructuredLog } from "@/logger";
 import { providerProxyService } from "@/services/provider-proxy.service/index";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
 import { streamTaskStructuredOutputText } from "@/services/provider-proxy.service/task-structured-output";
+import type {
+  PlannerProviderOutputKind,
+  PlannerProviderStream,
+} from "./decision-adapter";
 import type { AgentToolExposureState } from "../types";
 import {
   buildPlannerStructuredOutputJsonSchema,
@@ -95,39 +99,58 @@ export const installPlannerStructuredOutputHook = () => {
       return originalStreamTaskChatText(messages);
     }
 
-    return (async function* () {
+    let outputKind: PlannerProviderOutputKind = "text";
+    let structuredOutput: unknown;
+    const stream = (async function* () {
       let emittedNativeDelta = false;
+      let nativeStreamCreated = false;
       try {
         const toolExposure = extractPlannerToolExposure(messages);
-        for await (const delta of streamTaskStructuredOutputText({
+        const nativeStream = streamTaskStructuredOutputText({
           messages,
           schema: buildPlannerStructuredOutputJsonSchema(toolExposure),
           name: "planner_decision",
           description:
             "Exactly one next-action Planner decision plus a lightweight runtime todo patch.",
-        })) {
+        });
+        nativeStreamCreated = true;
+        for await (const delta of nativeStream) {
           emittedNativeDelta = true;
+          outputKind = "native";
           yield delta;
         }
+        structuredOutput = nativeStream.getStructuredOutput?.();
+        outputKind = "native";
       } catch (error) {
+        const canFallback = !nativeStreamCreated && !emittedNativeDelta;
         writeStructuredLog("warn", {
-          msg: emittedNativeDelta
-            ? "Planner native structured output stream failed after partial output"
-            : "Planner native structured output streaming unavailable; falling back to text JSON",
-          event: "agent-next-action-planner-structured-fallback",
+          msg: canFallback
+            ? "Planner native structured output capability unavailable; falling back to text JSON"
+            : emittedNativeDelta
+              ? "Planner native structured output stream failed after partial output"
+              : "Planner native structured output protocol failed before output",
+          event: canFallback
+            ? "agent-next-action-planner-structured-fallback"
+            : "agent-next-action-planner-structured-failure",
           partialNativeOutput: emittedNativeDelta,
           reason: error instanceof Error ? error.message : String(error),
         });
 
         // Never concatenate a second JSON generation after native JSON has already
         // started streaming; that would manufacture an invalid multi-object Planner
-        // response. Text fallback is safe only before the first native delta.
-        if (emittedNativeDelta) {
+        // response. Compatibility fallback is only safe when no native stream was
+        // created, which means the catalog declared no native Planner capability.
+        if (!canFallback) {
           throw error;
         }
         yield* originalStreamTaskChatText(messages);
       }
     })();
+
+    return Object.assign(stream, {
+      getOutputKind: () => outputKind,
+      getStructuredOutput: () => structuredOutput,
+    }) as PlannerProviderStream;
   }) as typeof providerProxyService.streamTaskChatText;
 
   installState[INSTALL_KEY] = true;
