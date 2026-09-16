@@ -2,6 +2,7 @@
 status: current
 owner: forge / architecture
 last_verified: 2026-09-05
+freshness_audited: 2026-09-16
 layer: runtime
 module: Forge
 feature: IntegrationContract
@@ -14,17 +15,30 @@ canonical: true
 Normative scope: Mira integration
 Source baseline: `dangjingtao/mira-forge@6557b9ff552c4be3d3d1be2da0b24bb6d1344ed0`
 
+> 2026-09-16 freshness / authority audit 只核对 Organization 迁移后的 source-of-truth 边界，并未对本页每一项 Forge Runtime 事实重新做技术验收。因此 `last_verified` 保留 2026-09-05；本次 audit 不把编辑日期冒充 Runtime revalidation。
+
 ## 1. Authority Order
 
-迁移中的 Forge 事实按以下顺序判断：
+必须先区分 **Mira Organization 工程治理真相** 与 **Forge domain Task Source**，两者不是同一个概念。
 
-1. 固定源基线中的真实代码；
-2. T015-T018 当前 Task Card；
-3. `docs/workbench/00-work-ledger.md`；
-4. `docs/task-source-contract.md` 与当前架构文档；
+Mira Organization 中：
+
+1. 当前技术现实由实际代码、配置、测试和 Runtime 证据决定；
+2. GitHub Issue 持有一个工程 work item 的合同与结果；
+3. GitHub Project `Status` 只持有 `Todo / In Progress / Done` 管理位置；
+4. Organization Issue Fields 持有 Priority、Effort、日期等结构化规划元数据；
+5. Organization policy / SOP 由 `uichat-mira/.github` 持有；
+6. PR / Review / CI 是实现与验证证据，不自动成为 Issue acceptance。
+
+Forge integration 的技术事实按以下顺序阅读：
+
+1. 当前 Mira `server/src/forge/**`、相关配置、测试与可观察 Runtime；
+2. 本页已核验的 Forge integration contract；
+3. `docs/task-source-contract.md`、当前 Forge 架构文档与注册项目实际使用的 Task Source adapter；
+4. 固定源基线、T015-T018 Task Card、旧 `docs/workbench/00-work-ledger.md` 等迁移证据；
 5. 其他历史说明。
 
-`docs/v2-plan.md` 不是当前施工合同。若历史 V2 计划与上述事实冲突，以当前代码、T015-T018 和 work ledger 为准。
+T015-T018 与旧 work ledger 可以继续证明迁移时期的设计输入、实现状态和验收证据，但**不再拥有 `uichat-mira/mira-desktop` 当前工程 work-item contract / outcome**。`docs/v2-plan.md` 也不是当前施工合同。
 
 ## 2. Single Repository / Single Dependency System
 
@@ -55,13 +69,15 @@ Mira Server 负责：
 
 不得保留 `127.0.0.1:47831` 的第二独立 control-plane 作为产品依赖，也不得用 sidecar/child server 继续承载 Forge Core。
 
-## 4. Two Truths Must Stay Separate
+## 4. Forge Project Task Source And Runtime Truth Must Stay Separate
 
-### Repository Task Truth
+### Forge Project Task Source
 
-Repository Ledger / Task Card 是项目任务真相。
+Forge 可以为一个已注册 project 读取 repository-native Task Source，例如 Ledger / Task Card。它们是 **Forge domain 的项目输入协议**：用来提供 task identity、依赖、可执行范围与显式写回目标。
 
-Forge 只通过 Task Source contract 读取或显式写回，不从任意 prose 猜状态、依赖或 Task ID。
+当目标项目是 `uichat-mira/mira-desktop` 时，这些 repository-native Ledger / Card **不替代** Mira Organization 的 GitHub work-item governance：GitHub Issue 仍持有当前工程 work-item contract / outcome，Project `Status` 仍只是管理位置。
+
+Forge 只通过 Task Source contract 读取或显式写回其被授权管理的 domain task source，不从任意 prose 猜状态、依赖或 Task ID。
 
 ### Forge Runtime Truth
 
@@ -81,7 +97,7 @@ Forge runtime 只保存执行引用和运行证据。
 
 不得把完整 Task Card 正文复制到 Forge durable state 形成第二 Requirements DB。
 
-Builder process success 不得直接更新 Repository Task 为 REVIEW / PASS。
+Builder process success 不得直接更新 GitHub Issue outcome，也不得把 repository-native Task Source 自动推成 REVIEW / PASS。任何外部 work-item / task-source 写回都必须遵守其 owning contract 和显式 authority。
 
 ## 5. Main Thread Is Not Builder
 
@@ -199,7 +215,7 @@ Handoff 必须：
 
 ## 11. Task Source Contract
 
-Repository-native Task Source 至少包含：
+当某个已注册 project 选择 repository-native Task Source adapter 时，该 domain contract 至少包含：
 
 - 一个 Work Ledger；
 - 每个 Task 恰好一张 Task Card；
@@ -213,6 +229,8 @@ create/update 必须显式。
 Ledger/Card drift 只允许 warning；不得静默修复。
 
 旧项目的有限语法兼容可以保留，但不能降低 Task identity 唯一性要求。
+
+这段描述的是 **Forge 对被注册 project 的 Task Source 输入协议**，不是要求 Mira Organization 用 repository-local Ledger/Card 管理工程工作项。Mira 自身的工程 work-item contract / outcome 继续属于 GitHub Issue。
 
 ## 12. Desktop Product Boundary
 
@@ -246,9 +264,9 @@ Ledger/Card drift 只允许 warning；不得静默修复。
 - MCP marketplace expansion；
 - 第二套持久化真相源。
 
-## 14. Current Source Acceptance State
+## 14. Fixed-Source Migration Evidence
 
-固定源基线 work ledger：
+旧 Forge 固定源基线 work ledger 曾记录：
 
 | Task | State |
 | --- | --- |
@@ -257,7 +275,9 @@ Ledger/Card drift 只允许 warning；不得静默修复。
 | T017 Compact Mira Web UI | PASS |
 | T018 Live Runtime Surface | REVIEW |
 
-T018 的代码与自动验证已存在，但最终 real Builder observational smoke 未完成。Mira 迁移必须重新验收真实产品链，不能继承一个不存在的 PASS。
+这些状态保留为**迁移时期的 source evidence**，用于解释固定源基线在当时已经验证到哪里；它们不拥有 Mira Organization 当前 GitHub work-item 状态或结果。
+
+T018 的代码与自动验证在固定源基线中已经存在，但当时最终 real Builder observational smoke 未完成。Mira 集成的真实产品链仍应根据当前代码、当前 work-item contract 和当前证据独立判断，不能把旧 ledger 的 PASS / REVIEW 当作新的 acceptance。
 
 ## 15. Stop Conditions
 
