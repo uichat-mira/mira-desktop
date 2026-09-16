@@ -13,6 +13,7 @@ related:
   - ../agent-workboard.md
   - ../model-settings-workboard.md
   - ../governance-principles.md
+  - pre-organization-governance/README.md
 ---
 
 # Pre-Organization Governance Archive
@@ -29,19 +30,29 @@ The last untouched `dev` snapshot before this archival cleanup is:
 uichat-mira/mira-desktop@0e313cf4f2f1ffc791c47334f90439e1e25b077e
 ```
 
-Use that commit, or earlier Git history, when the full legacy ledger/workboard text is needed for forensic or historical review.
+The exact pre-archive blobs are also preserved as directly readable snapshots under:
 
-The old master ledger was still being edited as late as 2026-09-09. Its latest pre-archive content can therefore be reconstructed from repository history; it must not be copied forward as a second active management database.
+```text
+docs/project-control/archive/pre-organization-governance/
+```
+
+Those copies are byte-identical to the legacy files at the archive boundary, so readers do not need to inspect Git history just to recover the original text.
+
+The old master ledger was still being edited as late as 2026-09-09. Those records remain historical evidence; they must not be copied forward as a second active management database.
 
 ## Archived control surfaces
 
-- `project-control-ledger.md` — former repository-wide master ledger.
-- `agent-workboard.md` — early Agent Phase-1 remediation workboard.
-- `model-settings-workboard.md` — model-settings roadmap workboard.
-- `agent-nodes-workboard.md` — already archived before this cleanup; retained as historical evidence.
-- `governance-principles.md` — former repository-wide delivery governance contract, now superseded by Organization policy plus repository-local `AGENTS.md`.
+Direct snapshots:
 
-Historical task cards, reviews, phase conclusions, decisions, and test evidence remain in place. They are not bulk-moved because their paths are useful evidence references and Git already preserves their chronology.
+- [`pre-organization-governance/README.md`](pre-organization-governance/README.md) — former active Project Control index.
+- [`pre-organization-governance/project-control-ledger.md`](pre-organization-governance/project-control-ledger.md) — former repository-wide master ledger.
+- [`pre-organization-governance/agent-workboard.md`](pre-organization-governance/agent-workboard.md) — early Agent Phase-1 remediation workboard.
+- [`pre-organization-governance/model-settings-workboard.md`](pre-organization-governance/model-settings-workboard.md) — model-settings roadmap workboard.
+- [`pre-organization-governance/governance-principles.md`](pre-organization-governance/governance-principles.md) — former repository-wide delivery governance contract.
+
+`agent-nodes-workboard.md` had already been explicitly archived before this cleanup and remains in its existing historical compatibility location.
+
+Historical task cards, reviews, phase conclusions, decisions, and test evidence remain in place. They are not bulk-moved because their existing paths are useful evidence references and Git already preserves their chronology.
 
 ## Current authority after Organization governance
 
