@@ -1,7 +1,7 @@
 ---
 status: current
 owner: docs
-last_verified: 2026-07-30
+last_verified: 2026-09-16
 layer: wiki
 module: Docs
 feature: EngineeringVault
@@ -45,13 +45,14 @@ related:
 - [[microapp/README]]
 - [[platform/tauri]]
 
-## 施工与项目控制
+## 工程工作项与历史证据
 
-- [[project-control/README]]
-- [[project-control/project-control-ledger]]
-- [[developments/defect-log]]
+当前 Mira Organization 工程工作项的合同与结果由 GitHub Issue 持有，GitHub Project `Status` 只表达 `Todo / In Progress / Done` 管理位置。Vault 不维护第二套 master ledger / workboard。
 
-这些页面用于任务、证据、评审和阶段记录，不应覆盖 current-contract。
+- [[project-control/README]]：组织化之前的 task、review、decision、phase conclusion 与验证证据索引，以及旧路径兼容入口；
+- [[developments/defect-log]]：缺陷与排障资料；是否仍代表当前行为必须回到代码、current contract 或对应 GitHub Issue 核验。
+
+`project-control/` 中保留下来的旧 ledger / task-card / workboard 可以继续作为工程历史和实现证据被引用，但不能覆盖当前 GitHub work-item contract、Project lifecycle 或 current-contract。
 
 ## 知识系统
 
