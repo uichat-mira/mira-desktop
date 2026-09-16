@@ -2,6 +2,7 @@
 status: current
 owner: project-owner
 last_verified: 2026-07-31
+freshness_audited: 2026-09-16
 layer: wiki
 module: Project
 feature: ProductTruth
@@ -25,6 +26,8 @@ related:
 # UIChat Mira 当前产品真相
 
 > 这页只记录当前已经成立的产品事实、能力边界和阶段重点。愿景、POC、路线图和施工过程不能覆盖这里。
+>
+> 2026-09-16 freshness / authority audit 只核对本页的 freshness metadata、Organization source-of-truth 边界，以及迁移后仍残留的 ledger / task-card authority 表述，并未对本文全部跨域 Runtime 事实重新验收。因此 `last_verified` 保留 2026-07-31；正文中更晚的 section-local 日期和证据不等于整页已重新技术核验。
 
 ## 当前阶段
 
@@ -226,14 +229,14 @@ MCP 市场目录以 SQLite 为读取真相，官方 Registry 只作为 backend �
 
 - Mira Server 在 `server/src/forge/**` 拥有 Forge runtime lifecycle、persistence、startup reconcile、Main Thread、Builder dispatch、Review 和 API routes；
 - Desktop 产品入口为 **淬行**（`/forge`），标准 UI 与 Terminal View 共用同一份 `ForgeWorkspaceSnapshot`、typed API 和 orchestration；
-- Repository Task Truth 与 Forge Runtime Truth 分离；Task Card 仍是 repository-native 真相，runtime 只保存执行引用与证据；
+- Forge Project Task Source 与 Forge Runtime Truth 分离：registered project 若使用 repository-native Ledger / Task Card，它们是 Forge domain 的 task-source 输入；对 `uichat-mira/mira-desktop` 的工程工作，GitHub Issue 仍持有 work-item contract / outcome，Forge runtime 只保存 execution identity、state 与 evidence；
 - Dispatch 是显式动作，当前保持全局单 active Builder；绑定 source Main Thread 时必须属于同一 project；
-- Builder 正常完成只把 runtime task 推进到 `reviewing`，不等于 Repository PASS；
+- Builder 正常完成只把 runtime task 推进到 `reviewing`，不等于 Review PASS，也不自动接受/关闭 GitHub Issue；
 - Review 继续按 concrete SHA 绑定，只有当前 SHA 与 reviewed SHA 一致时才能执行 integration；
 - terminal Builder result 会以 dispatch identity 幂等写入显式相关 Main Thread；下一次用户 turn 可消费新到达的 bounded handoff，Builder prose 不覆盖 authoritative runtime state；
 - 当前 Mira runtime 不依赖旧 `:47831` standalone Forge server，也不需要 Forge 独立 package / lockfile / Vite build。
 
-T010 正在执行最终 cutover acceptance。旧源仓 T018 的自动验证不能替代 Mira 当前产品验收；在一条真实本机 Builder → `reviewing` → `builder_result` → next Main Thread turn 链、cancel/restart 观察和当前 Windows package build 都留下证据前，**不得宣传“Forge 迁移已最终验收完成”**。
+旧 T010、T015-T018 与固定源 work ledger 继续作为迁移时期的实现/验收证据被追溯；它们不拥有当前 Mira Organization GitHub work-item 状态或结果。Forge 的当前 authority 与 Task Source 边界见 [[forge/FORGE_CURRENT_CONTRACT]]。
 
 ### MicroApps Hub 与 MicroAPP Runtime
 
@@ -354,21 +357,36 @@ MicroApp 还必须额外说明：
 - 是否支持 Integration invoke；
 - 是否通过 Tool 或 Skill 进入 Agent。
 
-## 真相优先级
+## 技术与产品真相优先级
 
-1. 当前代码与可重复验证；
-2. current-contract / current-snapshot；
-3. 工程共同记忆；
-4. 正在施工的 checklist / workboard / ledger；
+1. 当前代码、配置、Runtime 与可重复验证；
+2. owning current-contract / current-snapshot；
+3. 工程共同记忆与聚合型 current projection；
+4. project-control 中的历史 task、review、decision、test / acceptance evidence；
 5. design / plan / research / POC；
 6. historical / superseded / archive。
+
+第 4 层只能帮助追溯“这个结论怎样形成、当时验证过什么”，不能重新拥有当前工程 work-item 状态或结果。
+
+工程工作项与管理真相不由这张技术排序表代替：
+
+```text
+GitHub Issue        = work-item contract + outcome
+Project Status      = Todo / In Progress / Done 管理位置
+Org Issue Fields    = Priority / Effort / dates 等结构化规划元数据
+PR / Review / CI    = implementation + verification evidence
+feat/dev/test/prod  = environment position
+.github docs        = Organization policy / SOP
+```
 
 代码和 settled contract 冲突时，必须同时公开当前行为与目标合同，不能用其中一个偷偷抹掉另一个。
 
 ## 维护规则
 
 - 产品能力变化时先更新对应 current-contract，再更新这页；
-- 新功能验证前只能进入施工与验证或方案与实验；
+- 新功能验证前只能进入施工与验证资料或方案与实验；
 - 当前文档超过 90 天未核验应显示过期；
+- 只做 freshness / authority audit 时记录 `freshness_audited`，不能自动刷新 `last_verified`；
 - 无状态、无核验信息的文档进入待核验；
-- 已知实现偏差必须写明影响与修复状态。
+- 已知实现偏差必须写明影响与修复状态；
+- 新工程 work item 进入 GitHub Issue，不恢复 repository-local master ledger / workboard。
