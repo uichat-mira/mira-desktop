@@ -2,6 +2,7 @@
 status: current
 owner: project-owner
 last_verified: 2026-07-30
+freshness_audited: 2026-09-16
 layer: wiki
 module: Project
 feature: EngineeringMemory
@@ -15,12 +16,15 @@ related:
   - harness/README.md
   - skill/README.md
   - tooling-runtime/tools-protocol.md
-  - project-control/project-control-ledger.md
+  - forge/FORGE_CURRENT_CONTRACT.md
+  - project-control/README.md
 ---
 
 # UIChat Mira 工程共同记忆
 
 > 这页记录当前工程必须共同遵守的主线、合同和阶段边界。具体实现细节以代码、真实验证和链接到的 current-contract 为准。
+>
+> 2026-09-16 只完成了 freshness / authority audit：清理 Organization 迁移后仍把 repository-local ledger / task card 当当前工程治理权威的表述，并未对本文全部 Runtime 技术事实重新验收。因此 `last_verified` 保留 2026-07-30。
 
 ## 1. 当前阶段
 
@@ -353,7 +357,7 @@ Forge 已并入 Mira 主仓和 Mira Server 生命周期。后续工程必须继�
 
 1. `server/src/forge/**` 是 Forge runtime domain，不恢复第二 HTTP server、sidecar 或 `:47831` control plane；
 2. 不建立 Forge 独立 package / lockfile / pnpm workspace / Vite app；
-3. Repository Ledger / Task Card 是任务真相，Forge runtime 只保存 execution identity / state / evidence；
+3. Forge Project Task Source 与 Forge Runtime Truth 分离：当注册 project 使用 repository-native Ledger / Task Card adapter 时，它们只是 Forge domain 的 task-source 输入；对 `uichat-mira/mira-desktop` 的工程工作，GitHub Issue 仍持有 work-item contract / outcome。Forge runtime 只保存 execution identity / state / evidence；
 4. Main Thread 负责 discussion / inspection / planning，不是 Builder；
 5. Dispatch 必须显式，source Main Thread 只能绑定同 project，当前仍是全局单 active Builder；
 6. Builder terminal success = runtime `reviewing`，不是 Review PASS；
@@ -362,17 +366,28 @@ Forge 已并入 Mira 主仓和 Mira Server 生命周期。后续工程必须继�
 9. restart 不伪造 process resume；丢失 supervision 的 active dispatch / thread 必须 reconcile 为 interrupted / error；
 10. Desktop 标准 UI 与 Terminal View 只是同一 Forge product surface 的两种呈现，必须共用同一 typed API 和 orchestration。
 
-T010 是当前 cutover 验收卡。自动 repository/staged-runtime gate 与真实 provider smoke 分开记证据；没有真实观察到 Builder → Main Thread 二次 turn 的链路时，不得把 T010 标记 DONE。
+旧 T010 cutover card、T015-T018 与固定源 work ledger 继续作为迁移时期的实现/验收证据被追溯；它们不再拥有 Mira Organization 当前 GitHub work-item 状态或结果。Forge 当前 authority 边界以 [[forge/FORGE_CURRENT_CONTRACT]] 为准。
 
-## 16. 文档真相合同
+## 16. 文档与工程治理真相合同
 
 文档站必须区分：
 
 - 当前真相；
-- 施工与验证；
+- 施工与验证资料；
 - 方案与实验；
 - 历史归档；
 - 待核验。
+
+工程治理还必须区分：
+
+```text
+GitHub Issue        = work-item contract + outcome
+Project Status      = Todo / In Progress / Done 管理位置
+Org Issue Fields    = Priority / Effort / dates 等结构化规划元数据
+PR / Review / CI    = implementation + verification evidence
+feat/dev/test/prod  = environment position
+project-control     = 组织化之前的 task/review/decision/test 等历史与实现证据
+```
 
 当代码与 settled contract 冲突时，必须同时记录：
 
@@ -381,4 +396,4 @@ T010 是当前 cutover 验收卡。自动 repository/staged-runtime gate 与真�
 - 影响；
 - 修复状态。
 
-不能只选一边，让另一边消失。
+不能只选一边，让另一边消失；也不能让历史 ledger / workboard 重新成为第二套当前工程管理系统。
