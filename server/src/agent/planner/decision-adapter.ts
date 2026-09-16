@@ -1,4 +1,4 @@
-import type { AgentNextAction } from "../types";
+import type { AgentNextAction, AgentToolExposureState } from "../types";
 import {
   parseNextActionPlannerObject,
   parseNextActionPlannerOutputWithDiagnostics,
@@ -34,6 +34,26 @@ export type PlannerDecisionAdapterResult = {
   diagnostics: Omit<PlannerOutputParseResult, "action">;
   codec: "text-json" | "native-json-schema";
   source: "text-json-compatibility" | "native-structured";
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const nativeToolExposureByDecision = new WeakMap<object, AgentToolExposureState>();
+
+/**
+ * Bind the exact tool exposure used to build the native Planner schema to the
+ * returned structured decision object without mutating or serializing model
+ * output. This keeps optional/null cleanup tied to the schema that generated it.
+ */
+export const bindPlannerNativeToolExposure = (
+  value: unknown,
+  toolExposure: AgentToolExposureState,
+): unknown => {
+  if (isRecord(value)) {
+    nativeToolExposureByDecision.set(value, toolExposure);
+  }
+  return value;
 };
 
 const getProviderText = (output: PlannerProviderOutput) => {
@@ -75,12 +95,15 @@ export const adaptPlannerProviderOutput = (
   output: PlannerProviderOutput,
 ): PlannerDecisionAdapterResult => {
   if (typeof output !== "string" && output.kind === "native") {
-    const rawDecision =
-      output.value && typeof output.value === "object" && !Array.isArray(output.value)
-        ? normalizePlannerStructuredDecision(
-            output.value as PlannerStructuredDecisionEnvelope,
-          )
-        : output.value;
+    const nativeToolExposure = isRecord(output.value)
+      ? nativeToolExposureByDecision.get(output.value)
+      : undefined;
+    const rawDecision = isRecord(output.value)
+      ? normalizePlannerStructuredDecision(
+          output.value as PlannerStructuredDecisionEnvelope,
+          nativeToolExposure,
+        )
+      : output.value;
     const parseResult =
       rawDecision && typeof rawDecision === "object" && !Array.isArray(rawDecision)
         ? parseNextActionPlannerObject(rawDecision as Record<string, unknown>)

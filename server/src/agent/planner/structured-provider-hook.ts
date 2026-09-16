@@ -2,14 +2,13 @@ import { writeStructuredLog } from "@/logger";
 import { providerProxyService } from "@/services/provider-proxy.service/index";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
 import { streamTaskStructuredOutputText } from "@/services/provider-proxy.service/task-structured-output";
-import type {
-  PlannerProviderOutputKind,
-  PlannerProviderStream,
-} from "./decision-adapter";
 import type { AgentToolExposureState } from "../types";
 import {
-  buildPlannerStructuredOutputJsonSchema,
-} from "./structured-output";
+  bindPlannerNativeToolExposure,
+  type PlannerProviderOutputKind,
+  type PlannerProviderStream,
+} from "./decision-adapter";
+import { buildPlannerStructuredOutputJsonSchema } from "./structured-output";
 
 const INSTALL_KEY = Symbol.for("uichat-mira.planner-structured-output-installed");
 
@@ -119,7 +118,10 @@ export const installPlannerStructuredOutputHook = () => {
           outputKind = "native";
           yield delta;
         }
-        structuredOutput = nativeStream.getStructuredOutput?.();
+        structuredOutput = bindPlannerNativeToolExposure(
+          nativeStream.getStructuredOutput?.(),
+          toolExposure,
+        );
         outputKind = "native";
       } catch (error) {
         const canFallback = !nativeStreamCreated && !emittedNativeDelta;

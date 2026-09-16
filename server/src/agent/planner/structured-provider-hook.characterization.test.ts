@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { adaptPlannerProviderOutput } from "./decision-adapter";
+
 const mocks = vi.hoisted(() => {
   const originalStreamTaskChatText = vi.fn();
   return {
@@ -43,7 +45,10 @@ const plannerMessages = [
             description: "Open a workspace file.",
             inputSchema: {
               type: "object",
-              properties: { path: { type: "string" } },
+              properties: {
+                path: { type: "string" },
+                startLine: { type: "number" },
+              },
               required: ["path"],
               additionalProperties: false,
             },
@@ -121,6 +126,53 @@ describe("Planner provider boundary characterization", () => {
       (stream as { getOutputKind?: () => string }).getOutputKind?.(),
     ).toBe("native");
     expect(mocks.originalStreamTaskChatText).not.toHaveBeenCalled();
+  });
+
+  it("carries the native generation tool schema into optional-null cleanup", async () => {
+    const nativeEnvelope = {
+      type: "use_tool" as const,
+      reason: "Open the known target.",
+      query: null,
+      toolId: "read_open",
+      args: {
+        path: "README.md",
+        startLine: null,
+      },
+      question: null,
+      completionProof: [],
+      unresolvedGaps: [],
+      planPatch: { addItems: [], completeIds: [] },
+    };
+    const nativeText = JSON.stringify(nativeEnvelope);
+    mocks.streamTaskStructuredOutputText.mockImplementation(() =>
+      Object.assign(
+        (async function* () {
+          yield nativeText;
+        })(),
+        {
+          getStructuredOutput: () => nativeEnvelope,
+        },
+      ),
+    );
+
+    const stream = mocks.providerProxyService.streamTaskChatText(plannerMessages);
+    expect(await collect(stream)).toBe(nativeText);
+    const structuredOutput = (
+      stream as { getStructuredOutput?: () => unknown }
+    ).getStructuredOutput?.();
+    const adapted = adaptPlannerProviderOutput({
+      kind: "native",
+      value: structuredOutput,
+    });
+
+    expect(adapted.decision).toEqual({
+      type: "use_tool",
+      reason: "Open the known target.",
+      toolId: "read_open",
+      args: {
+        path: "README.md",
+      },
+    });
   });
 
   it("does not append a text-JSON fallback after partial native output", async () => {
