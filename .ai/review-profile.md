@@ -11,7 +11,7 @@ Repository: `uichat-mira/mira-desktop`
 Primary branch flow is governed by `.github/workflows/branch-policy.yml`:
 
 ```text
-work/* -> dev
+feat/* | feature/* | fix/* | hotfix/* | refactor/* | perf/* | docs/* | test/* | chore/* -> dev
 
 dev -> test -> prod
 hotfix/* -> test or prod
