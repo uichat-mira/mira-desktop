@@ -24,8 +24,8 @@ import {
   toPreview,
 } from "./action-types";
 import {
-  parseNextActionPlannerOutputWithDiagnostics,
-} from "./parse";
+  adaptPlannerProviderOutput,
+} from "./decision-adapter";
 import { buildNextActionPlannerMessages, normalizeToolExposure } from "./prompt";
 import {
   buildPlannerAccumulatedActionLedger,
@@ -364,16 +364,20 @@ export const nextActionPlannerNode = async (
         }
       }
 
-      const parsedPlannerOutput =
-        parseNextActionPlannerOutputWithDiagnostics(resolvedRawOutput);
+      const adaptedPlannerDecision = adaptPlannerProviderOutput({
+        kind: "text",
+        text: resolvedRawOutput,
+      });
       const validationResult = validateNextAction(
-        parsedPlannerOutput,
+        adaptedPlannerDecision,
         toolExposure.exposedTools,
       );
 
       return {
         action: validationResult.action,
-        taskPlanUpdate: parsePlannerTaskPlanUpdate(parsedPlannerOutput.rawDecision),
+        taskPlanUpdate: parsePlannerTaskPlanUpdate(
+          adaptedPlannerDecision.diagnostics.rawDecision,
+        ),
         rawOutput: resolvedRawOutput,
         sanitizedOutput: validationResult.sanitizedOutput ?? "",
         parseErrorReason: validationResult.parseErrorReason,
