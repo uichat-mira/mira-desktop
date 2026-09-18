@@ -234,7 +234,7 @@ MCP 市场目录以 SQLite 为读取真相，官方 Registry 只作为 backend �
 - terminal Builder result 会以 dispatch identity 幂等写入显式相关 Main Thread；下一次用户 turn 可消费新到达的 bounded handoff，Builder prose 不覆盖 authoritative runtime state；
 - 当前 Mira runtime 不依赖旧 `:47831` standalone Forge server，也不需要 Forge 独立 package / lockfile / Vite build。
 
-T010 正在执行最终 cutover acceptance。旧源仓 T018 的自动验证不能替代 Mira 当前产品验收；在一条真实本机 Builder → `reviewing` → `builder_result` → next Main Thread turn 链、cancel/restart 观察和当前 Windows package build 都留下证据前，**不得宣传“Forge 迁移已最终验收完成”**。
+旧 T010、T015-T018 与固定源 work ledger 只作为 Forge 迁移时期的实现/验收证据追溯；它们不拥有当前 Mira Organization 的 work-item 状态或结果。Forge 当前 authority 与 Task Source 边界以 `forge/FORGE_CURRENT_CONTRACT.md` 和 Organization governance 为准。
 
 ### MicroApps Hub 与 MicroAPP Runtime
 
