@@ -240,26 +240,31 @@ GitHub remote operations
 
 本地模式使用用户明确的 `target.localPath`，不强制迁入 `.mira/staging`。
 
-## 8. Conversation Workdir foundation
+## 8. Conversation Workdir E03-1 当前合同
 
-截至 E03-1 / #155，Conversation Workdir 只建立 ownership / identity / deterministic path foundation：
+截至 E03-1 / #147，Conversation Workdir 的 ownership / identity / lifecycle foundation 已完成验收：
 
 - 一个 Thread 最多拥有一个 `conversation_workdirs` 记录；
 - 记录持有稳定 `id / threadId / userId / rootPath`；
 - 首次 AgentRun 会在 Mira app-data 下创建该 Thread 的 Workdir，并把 Workdir reference 记录进 `AgentRun.runtimeInput`；
 - 同一 Thread 后续 AgentRun 复用同一持久化 identity / rootPath；
+- restart / reload 时按持久化 identity 重新打开并校验同一个 Workdir，不静默改绑到其他目录；
+- path lookup 必须重新经过 deterministic path、realpath containment、symlink / junction 与 Windows 大小写语义校验；
+- 缺失、损坏、不可访问、identity conflict、path escape 或 quota exhausted 都 fail closed，不回退到 `ChatWorkspace`、Default Workspace 或任意 host path；
+- approval resume 必须先成功 reopen Workdir，再进入恢复执行；reopen 失败时保持 `waiting_approval` 与待审批状态；
+- Thread hard delete / history cleanup 会先清理 Conversation Workdir；cleanup 失败时保留对应 Thread 以便重试，archive / restore 不清理 Workdir；
+- Conversation Workdir 使用 per-user aggregate hard quota，默认 1 GiB，可通过 `UI_CHAT_CONVERSATION_WORKDIR_QUOTA_BYTES` 调整；
 - Workdir 不替代当前 `workspaceRoot`，也不改变现有 Tool cwd、Terminal/Edit、approval 或 host filesystem authority；
-- Workdir 不通过 Chat/Remote API 暴露 host-local absolute path。
+- Workdir 不通过 Chat / Remote AgentRun projection 暴露 host-local absolute path；
+- Conversation Workdir cleanup 不删除、重解释或隐式创建用户 `ChatWorkspace`。
 
-当前仍故意不在 #155 决定的内容：
+E03-1 仍故意不决定：
 
-- restart/reload 后缺失、损坏或不可用 Workdir 的完整恢复策略；
-- cleanup / quota / bounded temporary storage；
-- Thread 删除后的物理目录清理；
-- Workdir final output 到稳定 Artifact reference；
-- Remote/Mobile Artifact handoff。
+- Workdir temporary / final output 如何转成稳定 Artifact reference；
+- Artifact 生命周期、可见性与交付语义；
+- Remote / Mobile Artifact handoff。
 
-这些分别属于 #156、#148 与后续 M01。当前如果持久化 Workdir 记录指向的目录已不可用，foundation 不会静默改绑到 ChatWorkspace 或其他 host 路径。
+这些属于 #148 与后续 Remote/Mobile 工作。#148 可以依赖上述 ownership / identity / lifecycle 合同，但不得重新定义 Workdir owner、deterministic path、cleanup、quota 或现有 filesystem authority。
 
 ## 9. 当前实现缺陷与本次整改边界
 
