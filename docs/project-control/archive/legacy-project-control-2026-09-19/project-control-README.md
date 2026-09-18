@@ -7,8 +7,7 @@ module: ProjectControl
 feature: Workboard
 doc_type: index
 canonical: false
-related:
-  - AGENTS.md
+archived_from_path: docs/project-control/README.md
 ---
 
 > Archived on 2026-09-19 from `dev@b2403eda97665868844b05ccda1d6e75851e30fc`. Historical evidence only; not a current work-item, policy, or acceptance source.
