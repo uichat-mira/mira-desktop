@@ -356,7 +356,8 @@ export default function General() {
             message.success(t("settings.general.cleanup.empty"));
             return;
           }
-          message.success(
+          const notify = failedCleanups > 0 ? message.warning : message.success;
+          notify(
             t(
               failedCleanups > 0
                 ? "settings.general.cleanup.partial"

@@ -285,6 +285,7 @@ test("DELETE /threads/history returns workdir cleanup failures and still clears 
     rmSpy.mockRestore();
     logSpy.mockRestore();
     mediaSpy.mockRestore();
+    conversationWorkdirService.cleanup({ threadId: thread.id, userId: user.id });
     await app.close();
   }
 });
