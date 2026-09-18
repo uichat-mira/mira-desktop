@@ -161,6 +161,7 @@ describe("General settings page", () => {
       deletedThreads: 2,
       deletedMessages: 4,
       failedThreads: 0,
+      failedWorkdirs: 0,
       clearedLogBytes: 2048,
       deletedWorkspaces: 1,
       media: { images: { files: 3 } },

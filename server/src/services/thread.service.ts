@@ -11,6 +11,7 @@ import { threadContextSummaryNode } from "@/services/shared-nodes/thread-context
 import { isValidWorkspaceRootPath } from "@/services/workspace-path-validation.js";
 import { THREAD_ACCESS_ERROR_MESSAGE } from "@/utils/errors.js";
 import { chatMediaService } from "@/services/chat-media.service.js";
+import { conversationWorkdirService } from "@/services/conversation-workdir.service.js";
 import { getHarnessEnvironmentSnapshot } from "@/harness/environment.js";
 import {
   removeFileAttachmentsFromParts,
@@ -725,6 +726,7 @@ export const threadService = {
     for (const message of messageRepository.listByThread(id)) {
       removeFileAttachmentsFromParts(parsePartsJson(message.partsJson));
     }
+    conversationWorkdirService.cleanup({ threadId: id, userId });
     return threadRepository.deleteById(id);
   },
 
@@ -732,6 +734,7 @@ export const threadService = {
     deletedThreads: number;
     deletedMessages: number;
     failedThreads: number;
+    failedWorkdirs: number;
     deletedWorkspaces: number;
   } {
     const threadsToDelete = [
@@ -741,7 +744,8 @@ export const threadService = {
     let deletedThreads = 0;
     let deletedMessages = 0;
     let failedThreads = 0;
-    let deletedWorkspaces = 0;
+    let failedWorkdirs = 0;
+    const deletedWorkspaces = 0;
 
     for (const thread of threadsToDelete) {
       try {
@@ -749,6 +753,13 @@ export const threadService = {
         const mediaCleanup = chatMediaService.removeForMessages(messages.map((message) => message.id));
         if (mediaCleanup.failed > 0) {
           throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s)`);
+        }
+        try {
+          conversationWorkdirService.cleanup({ threadId: thread.id, userId });
+        } catch {
+          failedWorkdirs += 1;
+          failedThreads += 1;
+          continue;
         }
         if (!threadRepository.deleteById(thread.id)) {
           failedThreads += 1;
@@ -761,21 +772,7 @@ export const threadService = {
       }
     }
 
-    const workspacesToDelete = [
-      ...chatWorkspaceRepository.list({ userId, status: "active", sortOrder: "asc" }),
-      ...chatWorkspaceRepository.list({ userId, status: "archived", sortOrder: "asc" }),
-    ];
-    for (const workspace of workspacesToDelete) {
-      const defaultRootPath = getHarnessEnvironmentSnapshot().workspace.rootPath?.trim();
-      if (defaultRootPath && workspace.rootPath === defaultRootPath) {
-        continue;
-      }
-      if (chatWorkspaceRepository.deleteById(workspace.id)) {
-        deletedWorkspaces += 1;
-      }
-    }
-
-    return { deletedThreads, deletedMessages, failedThreads, deletedWorkspaces };
+    return { deletedThreads, deletedMessages, failedThreads, failedWorkdirs, deletedWorkspaces };
   },
 
   createMessage(

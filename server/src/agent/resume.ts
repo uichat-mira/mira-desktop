@@ -10,6 +10,7 @@ import type {
 } from "./types";
 import { persistAssistantMessage } from "@/routes/proxy-provider/message-persistence";
 import { threadService } from "@/services/thread.service";
+import { conversationWorkdirService } from "@/services/conversation-workdir.service.js";
 import type { AssistantExecutionNodeEvent } from "@/services/chat-stream-events";
 import {
   finishAgentRunControl,
@@ -247,6 +248,7 @@ export const persistAgentAssistantState = (input: {
 type PreparedApprovedAgentRunResume = {
   run: AgentRun;
   runtimeInput: NonNullable<AgentRun["runtimeInput"]>;
+  conversationWorkdir: NonNullable<AgentRun["runtimeInput"]>["conversationWorkdir"];
   pendingApproval: AgentApprovalRequest;
   pendingToolCall: AgentToolCallRequest;
   approvedInvocations: AgentApprovedInvocation[];
@@ -315,6 +317,13 @@ const prepareApprovedAgentRunResume = (
     pendingApproval,
     pendingToolCall,
   });
+  const conversationWorkdir = runtimeInput.conversationWorkdir
+    ? conversationWorkdirService.reopen({
+        threadId: run.threadId,
+        userId: run.userId,
+        reference: runtimeInput.conversationWorkdir,
+      })
+    : undefined;
   const approvedInvocations = [
     ...(run.approvedInvocations ?? []),
     approvedInvocation,
@@ -347,6 +356,7 @@ const prepareApprovedAgentRunResume = (
   return {
     run: runningRun,
     runtimeInput,
+    conversationWorkdir,
     pendingApproval,
     pendingToolCall,
     approvedInvocations,
@@ -395,6 +405,7 @@ const executePreparedApprovedAgentRunResume = async (
     knowledgeBaseId: runtimeInput.knowledgeBaseId,
     intentConfig: runtimeInput.intentConfig,
     workspaceRoot: runtimeInput.workspaceRoot,
+    conversationWorkdir: prepared.conversationWorkdir,
     approvedInvocations,
     // Compatibility input only; createInitialAgentGraphState does not store or read it.
     selectedToolId: pendingToolCall.toolId,

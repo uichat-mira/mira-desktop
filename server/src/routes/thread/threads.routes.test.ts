@@ -200,6 +200,7 @@ test("DELETE /threads/history removes all user threads and keeps workspaces", as
       deletedThreads: number;
       deletedMessages: number;
       failedThreads: number;
+      failedWorkdirs: number;
       deletedWorkspaces: number;
       clearedLogBytes: number;
       media: unknown;
@@ -210,9 +211,10 @@ test("DELETE /threads/history removes all user threads and keeps workspaces", as
       deletedThreads: cleanupData.data.deletedThreads,
       deletedMessages: cleanupData.data.deletedMessages,
       failedThreads: cleanupData.data.failedThreads,
+      failedWorkdirs: cleanupData.data.failedWorkdirs,
       deletedWorkspaces: cleanupData.data.deletedWorkspaces,
     },
-    { deletedThreads: 2, deletedMessages: 1, failedThreads: 0, deletedWorkspaces: 1 },
+    { deletedThreads: 2, deletedMessages: 1, failedThreads: 0, failedWorkdirs: 0, deletedWorkspaces: 0 },
   );
   assert.equal(typeof cleanupData.data.clearedLogBytes, "number");
   assert.deepEqual(cleanupData.data.media, {
@@ -224,7 +226,7 @@ test("DELETE /threads/history removes all user threads and keeps workspaces", as
   assert.equal(threadService.getThreadById(archived.id, user.id), null);
   assert.equal(threadService.getThreadById(active.id, user.id), null);
   assert.ok(threadService.getThreadById(otherArchived.id, otherUser.id));
-  assert.deepEqual(threadService.listChatWorkspaces(user.id), []);
+  assert.equal(threadService.listChatWorkspaces(user.id).length, 1);
 
   mediaCleanupSpy.mockRestore();
   await app.close();

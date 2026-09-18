@@ -195,6 +195,11 @@ export const registerThreadRoutes = async (app: FastifyInstance) => {
     { schema: threadRouteSchemas.cleanupThreads },
     routeHandler("Failed to clean conversation threads", async (request) => {
       const threadResult = threadService.cleanupThreads(request.authUser!.id);
+      if (threadResult.failedWorkdirs > 0) {
+        throw new Error(
+          `Failed to clean ${threadResult.failedWorkdirs} conversation workdir(s)`,
+        );
+      }
       const logResult = await logFilesService.clearLogs();
       const mediaResult = await managedMediaCleanupService.clear();
       const clearedLogBytes = logResult.clearedFiles.reduce(
@@ -207,7 +212,7 @@ export const registerThreadRoutes = async (app: FastifyInstance) => {
           clearedLogBytes,
           media: mediaResult,
         },
-        "Conversations, workspaces, server logs, and media cleaned",
+        "Conversations, conversation workdirs, server logs, and media cleaned",
       );
     }),
   );

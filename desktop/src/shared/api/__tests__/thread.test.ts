@@ -198,6 +198,7 @@ describe("thread api", () => {
       deletedThreads: 2,
       deletedMessages: 5,
       failedThreads: 0,
+      failedWorkdirs: 0,
       deletedWorkspaces: 1,
       clearedLogBytes: 1024,
       media: {
