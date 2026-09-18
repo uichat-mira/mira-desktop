@@ -7,11 +7,7 @@ module: ProjectControl
 feature: GovernancePrinciples
 doc_type: historical-contract
 canonical: false
-related:
-  - AGENTS.md
-  - docs/project-control/README.md
-  - docs/project-control/agent-workboard.md
-  - docs/project-control/agent-nodes-workboard.md
+archived_from_path: docs/project-control/governance-principles.md
 ---
 
 > Archived on 2026-09-19 from `dev@b2403eda97665868844b05ccda1d6e75851e30fc`. Historical evidence only; not a current work-item, policy, or acceptance source.
