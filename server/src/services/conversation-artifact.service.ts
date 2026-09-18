@@ -31,16 +31,31 @@ const resolveSource = (rootPath: string, relative: string) => {
 };
 
 export const conversationArtifactService = {
-  register(input: { id?: string; threadId: string; userId: number; sourceRelativePath: string; lifecycle: ConversationArtifactLifecycle; mimeType?: string | null }): ConversationArtifactReference {
+  register(input: { id?: string; threadId: string; userId: number; storageRoot?: string; sourceRelativePath: string; lifecycle: ConversationArtifactLifecycle; mimeType?: string | null }): ConversationArtifactReference {
     const thread = threadRepository.findById(input.threadId, input.userId);
     if (!thread) fail("invalid_ownership", "Artifact owner thread does not belong to user");
     const workdir = conversationWorkdirRepository.findByThreadId(input.threadId, input.userId);
     if (!workdir) fail("invalid_ownership", "Artifact owner workdir is missing");
     const relative = validateRelativeSource(input.sourceRelativePath);
     if (input.lifecycle === "temporary") fail("invalid_source", "Temporary execution files cannot be registered as final artifacts");
-    resolveSource(workdir!.rootPath, relative);
+    let activeWorkdir;
+    try {
+      activeWorkdir = conversationWorkdirService.reopen({
+        threadId: input.threadId,
+        userId: input.userId,
+        storageRoot: input.storageRoot,
+        reference: { id: workdir!.id, threadId: workdir!.threadId, rootPath: workdir!.rootPath },
+      });
+    } catch (error) {
+      if (error instanceof ConversationWorkdirError) {
+        const code = error.code === "path_escape" || error.code === "linked_path" ? "containment_failure" : "stale_reference";
+        fail(code, `Artifact workdir cannot be reopened: ${error.message}`);
+      }
+      throw error;
+    }
+    resolveSource(activeWorkdir.rootPath, relative);
     const now = nowIso();
-    return toReference(conversationArtifactRepository.create({ id: input.id ?? `artifact-${crypto.randomUUID()}`, threadId: input.threadId, userId: input.userId, workdirId: workdir!.id, sourceRelativePath: relative, lifecycle: input.lifecycle, mimeType: input.mimeType ?? null, createdAt: now, updatedAt: now }));
+    return toReference(conversationArtifactRepository.create({ id: input.id ?? `artifact-${crypto.randomUUID()}`, threadId: input.threadId, userId: input.userId, workdirId: activeWorkdir.id, sourceRelativePath: relative, lifecycle: input.lifecycle, mimeType: input.mimeType ?? null, createdAt: now, updatedAt: now }));
   },
   resolve(input: { id: string; threadId: string; userId: number; storageRoot?: string }): { reference: ConversationArtifactReference; absolutePath: string } {
     const row = conversationArtifactRepository.findById(input.id, input.userId);

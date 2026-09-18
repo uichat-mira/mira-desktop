@@ -26,7 +26,7 @@ let registeredId = "";
 afterAll(() => { resetDatabaseClients(); fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(db, { force: true }); fs.rmSync(`${db}-wal`, { force: true }); fs.rmSync(`${db}-shm`, { force: true }); });
 
 test("registers stable final identity and resolves after reload", () => {
-  const ref = conversationArtifactService.register({ threadId: thread.id, userId: user.id, sourceRelativePath: "final.txt", lifecycle: "final", mimeType: "text/plain" });
+  const ref = conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath: "final.txt", lifecycle: "final", mimeType: "text/plain" });
   registeredId = ref.id;
   assert.equal(ref.threadId, thread.id); assert.equal(ref.workdirId, workdir.id); assert.equal(ref.lifecycle, "final");
   resetDatabaseClients(); initializeAuthDatabase(); initializeModelConfigDatabase(); initializeKnowledgeBaseDatabase(); initializeRoleDatabase(); initializeThreadDatabase();
@@ -40,7 +40,19 @@ test("fails closed for temporary, traversal, absolute path, ownership and stale 
   assert.throws(() => conversationArtifactService.resolve({ id: "missing", threadId: thread.id, userId: user.id }), (e) => e instanceof ConversationArtifactError && e.code === "invalid_ownership");
   fs.rmSync(path.join(workdir.rootPath, "final.txt"));
   assert.throws(() => conversationArtifactService.resolve({ id: registeredId, threadId: thread.id, userId: user.id, storageRoot: root }), (e) => e instanceof ConversationArtifactError && e.code === "missing_source");
-  assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, sourceRelativePath: "missing.txt", lifecycle: "final" }), (e) => e instanceof ConversationArtifactError && e.code === "missing_source");
+  assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath: "missing.txt", lifecycle: "final" }), (e) => e instanceof ConversationArtifactError && e.code === "missing_source");
+});
+
+test("fails closed when the persisted workdir is rebound to another storage root", () => {
+  const relocatedRoot = getTestArtifactDir("conversation-artifact-relocated", `${process.pid}-${Date.now()}`);
+  try {
+    assert.throws(
+      () => conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: relocatedRoot, sourceRelativePath: "new.txt", lifecycle: "final" }),
+      (e) => e instanceof ConversationArtifactError && e.code === "stale_reference",
+    );
+  } finally {
+    fs.rmSync(relocatedRoot, { recursive: true, force: true });
+  }
 });
 
 test("rejects symlinked source outside the workdir", () => {
@@ -52,5 +64,5 @@ test("rejects symlinked source outside the workdir", () => {
   } catch {
     return;
   }
-  assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, sourceRelativePath: "linked.txt", lifecycle: "final" }), (e) => e instanceof ConversationArtifactError && e.code === "containment_failure");
+  assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath: "linked.txt", lifecycle: "final" }), (e) => e instanceof ConversationArtifactError && e.code === "containment_failure");
 });
