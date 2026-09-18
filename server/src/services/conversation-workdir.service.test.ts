@@ -4,6 +4,9 @@ import path from "node:path";
 import { afterAll, test } from "vitest";
 import { initializeAuthDatabase } from "@/db/auth.db";
 import { resetDatabaseClients } from "@/db/index.js";
+import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
+import { initializeModelConfigDatabase } from "@/db/model-config.db";
+import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import {
   agentRunRepository,
@@ -34,6 +37,9 @@ const originalDatabaseUrl = process.env.DATABASE_URL;
 process.env.DATABASE_URL = `file:${databasePath}`;
 resetDatabaseClients();
 initializeAuthDatabase();
+initializeModelConfigDatabase();
+initializeKnowledgeBaseDatabase();
+initializeRoleDatabase();
 initializeThreadDatabase();
 
 afterAll(() => {
