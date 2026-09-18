@@ -19,6 +19,7 @@ const modal = vi.hoisted(() => ({ confirm: vi.fn(), show: vi.fn() }));
 const messages = vi.hoisted(() => ({
   error: vi.fn(),
   success: vi.fn(),
+  warning: vi.fn(),
 }));
 const stableT = (key: string, values?: Record<string, unknown>) =>
   values ? `${key}:${JSON.stringify(values)}` : key;
@@ -161,8 +162,8 @@ describe("General settings page", () => {
       deletedThreads: 2,
       deletedMessages: 4,
       failedThreads: 0,
+      failedWorkdirs: 0,
       clearedLogBytes: 2048,
-      deletedWorkspaces: 1,
       media: { images: { files: 3 } },
     });
     render(<General />);
@@ -194,5 +195,30 @@ describe("General settings page", () => {
     expect(messages.success).toHaveBeenCalledWith(
       expect.stringContaining("settings.general.cleanup.success"),
     );
+  });
+
+  it("uses a warning notification when cleanup is partial", async () => {
+    const user = userEvent.setup();
+    api.cleanupThreads.mockResolvedValue({
+      deletedThreads: 1,
+      deletedMessages: 2,
+      failedThreads: 0,
+      failedWorkdirs: 1,
+      clearedLogBytes: 0,
+      media: { images: { files: 0 } },
+    });
+    render(<General />);
+    await waitFor(() => expect(api.getGeneralSettings).toHaveBeenCalled());
+
+    await user.click(
+      screen.getByRole("button", { name: "settings.general.cleanup.action" }),
+    );
+    const confirmation = modal.confirm.mock.calls[0]?.[0];
+    await act(async () => confirmation.onConfirm());
+
+    expect(messages.warning).toHaveBeenCalledWith(
+      expect.stringContaining("settings.general.cleanup.partial"),
+    );
+    expect(messages.success).not.toHaveBeenCalled();
   });
 });

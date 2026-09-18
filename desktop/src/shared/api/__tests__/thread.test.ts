@@ -198,7 +198,7 @@ describe("thread api", () => {
       deletedThreads: 2,
       deletedMessages: 5,
       failedThreads: 0,
-      deletedWorkspaces: 1,
+      failedWorkdirs: 0,
       clearedLogBytes: 1024,
       media: {
         attachments: { files: 1, bytes: 100 },

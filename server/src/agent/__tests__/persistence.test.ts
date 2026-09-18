@@ -22,6 +22,10 @@ import { initializeThreadDatabase } from "@/db/thread.db";
 import { getSqlite } from "@/db/index";
 import { hasSqliteColumn } from "@/db/sqlite-utils";
 import { threadService } from "@/services/thread.service";
+import {
+  ConversationWorkdirError,
+  conversationWorkdirService,
+} from "@/services/conversation-workdir.service.js";
 import { configureAgentRunPersistence, agentRunStore } from "../run-store";
 import { agentRunRepository } from "@/db/repositories/agent-run.repository";
 import { createAgentGoal } from "../nodes/index";
@@ -95,6 +99,7 @@ afterEach(() => {
 
 const createPersistedWaitingApprovalRun = (options?: {
   withRuntimeInput?: boolean;
+  withWorkdir?: boolean;
   pendingToolCall?: Record<string, unknown>;
   pendingApproval?: Record<string, unknown>;
 }) => {
@@ -103,6 +108,13 @@ const createPersistedWaitingApprovalRun = (options?: {
     userId: 1,
     title: "agent persistence",
   });
+  const conversationWorkdir = options?.withWorkdir
+    ? conversationWorkdirService.ensure({
+        threadId: thread.id,
+        userId: 1,
+        storageRoot: path.dirname(dbPath),
+      })
+    : undefined;
   const goal = createAgentGoal("answer the user");
   const run = agentRunStore.create({
     threadId: thread.id,
@@ -122,6 +134,7 @@ const createPersistedWaitingApprovalRun = (options?: {
               },
             ],
             params: {},
+            ...(conversationWorkdir ? { conversationWorkdir } : {}),
           },
         }),
   });
@@ -246,6 +259,62 @@ test("resumeApprovedAgentRun can continue from repository after in-memory state 
   } finally {
     runSpy.mockRestore();
   }
+});
+
+test("resumeApprovedAgentRun reopens the persisted conversation workdir after reload", async () => {
+  const run = createPersistedWaitingApprovalRun({ withWorkdir: true });
+  threadService.createMessage(run.threadId, 1, {
+    id: "user-persisted-1",
+    role: "user",
+    content: "hello",
+    parts: [{ type: "text", text: "hello" }],
+  });
+  threadService.createMessage(run.threadId, 1, {
+    id: "assistant-persisted-1",
+    parentId: "user-persisted-1",
+    role: "assistant",
+    content: "等待审批",
+    parts: [{ type: "text", text: "等待审批" }],
+    metadata: { agent: { status: "waiting_approval", runId: run.id } },
+  });
+
+  const runSpy = vi.spyOn(agentGraph, "run").mockResolvedValue({
+    answer: "done",
+    observations: [],
+    evidence: { observations: [], toolExecutions: [], retrievals: [] },
+    retrievedChunks: [],
+    status: "completed",
+  } as never);
+  try {
+    await resumeApprovedAgentRun(run.id);
+    const resumedInput = runSpy.mock.calls[0]?.[0];
+    assert.equal(resumedInput?.conversationWorkdir?.threadId, run.threadId);
+    assert.equal(
+      resumedInput?.conversationWorkdir?.rootPath,
+      getAgentRunById(run.id)?.runtimeInput?.conversationWorkdir?.rootPath,
+    );
+  } finally {
+    runSpy.mockRestore();
+  }
+});
+
+test("resumeApprovedAgentRun fails closed when the persisted workdir is missing", async () => {
+  const run = createPersistedWaitingApprovalRun({ withWorkdir: true });
+  const persisted = getAgentRunById(run.id);
+  const rootPath = persisted?.runtimeInput?.conversationWorkdir?.rootPath;
+  assert.ok(rootPath);
+  fs.rmSync(rootPath, { recursive: true, force: true });
+
+  await assert.rejects(
+    () => resumeApprovedAgentRun(run.id),
+    (error) => error instanceof ConversationWorkdirError && error.code === "missing",
+  );
+
+  agentRunStore.clear();
+  const reloaded = getAgentRunById(run.id);
+  assert.equal(reloaded?.status, "waiting_approval");
+  assert.equal(reloaded?.pendingApproval?.id, "approval-1");
+  assert.equal(reloaded?.pendingToolCall?.id, "pending-1");
 });
 
 test("resumeApprovedAgentRun fails hard when persisted run misses runtime input", async () => {
