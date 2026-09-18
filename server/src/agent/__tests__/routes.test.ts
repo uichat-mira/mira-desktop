@@ -63,6 +63,14 @@ describe("agent routes", () => {
     const run = createRun();
     agentRunStore.update(run.id, {
       status: "waiting_approval",
+      runtimeInput: {
+        messages: [],
+        conversationWorkdir: {
+          id: "workdir-1",
+          threadId: "thread-1",
+          rootPath: "/host-private/conversation-workdirs/thread-1",
+        },
+      },
       pendingApproval: {
         id: "approval-1",
         runId: run.id,
@@ -78,9 +86,16 @@ describe("agent routes", () => {
       url: `/agent/runs/${run.id}`,
     });
     expect(getResponse.statusCode).toBe(200);
-    const getBody = getResponse.json() as { data: { id: string; selectedCapabilityId?: string } };
+    const getBody = getResponse.json() as {
+      data: {
+        id: string;
+        selectedCapabilityId?: string;
+        runtimeInput?: unknown;
+      };
+    };
     expect(getBody.data.id).toBe(run.id);
     expect(getBody.data.selectedCapabilityId).toBeUndefined();
+    expect(getBody.data.runtimeInput).toBeUndefined();
 
     const approveResponse = await app.inject({
       method: "POST",

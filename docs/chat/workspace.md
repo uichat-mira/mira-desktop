@@ -1,7 +1,7 @@
 ---
 status: current
 owner: chat / runtime / harness
-last_verified: 2026-08-01
+last_verified: 2026-09-18
 layer: wiki
 module: Chat / Tool
 feature: ChatWorkspace
@@ -18,9 +18,9 @@ related:
 
 # Chat Workspace 与默认执行空间当前合同
 
-> 本页统一 `ChatWorkspace`、`Mira BASE`、物理目录、Harness workspace root 和受管施工目录的语义。数据库对象、文件系统目录和一次任务的施工现场不是同一个东西。
+> 本页统一 `ChatWorkspace`、`Mira BASE`、Conversation Workdir、物理目录、Harness workspace root 和受管施工目录的语义。数据库对象、文件系统目录和一次任务的施工现场不是同一个东西。
 
-## 1. 四个必须分开的对象
+## 1. 五个必须分开的对象
 
 ```text
 ChatWorkspace
@@ -34,6 +34,9 @@ Harness workspace root
 
 Task staging workspace
   某次建站、构建或其他施工任务使用的受管子目录
+
+Conversation Workdir
+  Thread 唯一拥有、位于 Mira app-data 下的 Conversation 执行空间
 ```
 
 它们的关系是：
@@ -56,7 +59,22 @@ workspaceId
 
 Harness workspace root
 != 某次任务可直接污染的施工目录
+
+Conversation Workdir
+!= ChatWorkspace
+!= Harness workspace root
 ```
+
+Conversation Workdir 的当前 E03-1 foundation 关系是：
+
+```text
+Thread (owner)
+  -> conversation_workdirs row
+  -> <app-data>/conversation-workdirs/user-<userId>/<threadId>
+  -> AgentRun.runtimeInput.conversationWorkdir snapshot
+```
+
+这里的 `app-data` 使用 backend 已有的数据库数据目录边界。Workdir 路径不从 `ChatWorkspace.rootPath` 派生，因此创建 Workdir 本身不要求创建、选择或重新解释用户 Workspace。
 
 ## 2. 内置默认空间
 
@@ -222,7 +240,28 @@ GitHub remote operations
 
 本地模式使用用户明确的 `target.localPath`，不强制迁入 `.mira/staging`。
 
-## 8. 当前实现缺陷与本次整改边界
+## 8. Conversation Workdir foundation
+
+截至 E03-1 / #155，Conversation Workdir 只建立 ownership / identity / deterministic path foundation：
+
+- 一个 Thread 最多拥有一个 `conversation_workdirs` 记录；
+- 记录持有稳定 `id / threadId / userId / rootPath`；
+- 首次 AgentRun 会在 Mira app-data 下创建该 Thread 的 Workdir，并把 Workdir reference 记录进 `AgentRun.runtimeInput`；
+- 同一 Thread 后续 AgentRun 复用同一持久化 identity / rootPath；
+- Workdir 不替代当前 `workspaceRoot`，也不改变现有 Tool cwd、Terminal/Edit、approval 或 host filesystem authority；
+- Workdir 不通过 Chat/Remote API 暴露 host-local absolute path。
+
+当前仍故意不在 #155 决定的内容：
+
+- restart/reload 后缺失、损坏或不可用 Workdir 的完整恢复策略；
+- cleanup / quota / bounded temporary storage；
+- Thread 删除后的物理目录清理；
+- Workdir final output 到稳定 Artifact reference；
+- Remote/Mobile Artifact handoff。
+
+这些分别属于 #156、#148 与后续 M01。当前如果持久化 Workdir 记录指向的目录已不可用，foundation 不会静默改绑到 ChatWorkspace 或其他 host 路径。
+
+## 9. 当前实现缺陷与本次整改边界
 
 截至 `dev` 的已确认缺陷：
 
@@ -239,7 +278,7 @@ GitHub remote operations
 - 为 MiraDocs GitHub 模式建立受管 staging 合同；
 - 不改变 Agent Graph、Policy、审批指纹或 Terminal 的 host runtime 能力。
 
-## 9. 验收标准
+## 10. 验收标准
 
 - 全新安装首次启动后，默认物理目录在 backend 启动前存在；
 - `Mira BASE.rootPath` 与宿主传入路径一致；

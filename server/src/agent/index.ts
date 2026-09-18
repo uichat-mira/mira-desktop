@@ -10,6 +10,7 @@ import {
   materializeAgentTaskFileAttachments,
 } from "@/services/chat-file-context.service.js";
 import { persistAgentAssistantState } from "./resume";
+import { conversationWorkdirService } from "@/services/conversation-workdir.service.js";
 import {
   finishAgentRunControl,
   startAgentRunControlLease,
@@ -59,6 +60,11 @@ export const createAndRunAgent = async (
     assistantParentId?: string | null;
   },
 ) => {
+  const conversationWorkdir = conversationWorkdirService.ensure({
+    threadId: input.threadId,
+    userId: input.userId,
+  });
+
   const materializedAttachments = await materializeAgentTaskFileAttachments({
     messages: input.messages,
     workspaceRoot: input.workspaceRoot,
@@ -109,6 +115,7 @@ export const createAndRunAgent = async (
       knowledgeBaseId: input.knowledgeBaseId,
       intentConfig: input.intentConfig,
       workspaceRoot: input.workspaceRoot,
+      conversationWorkdir,
       requestedToolGroupIds: input.requestedToolGroupIds,
     },
   });
@@ -123,6 +130,7 @@ export const createAndRunAgent = async (
 
     const output = await runAgentRuntime({
       ...input,
+      conversationWorkdir,
       requestContextMessages,
       runId: run.id,
       runControlLeaseId: runControl.leaseId,

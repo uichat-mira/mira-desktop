@@ -501,6 +501,12 @@ export interface PlannerObservationContext {
   };
 }
 
+export interface ConversationWorkdirReference {
+  id: string;
+  threadId: string;
+  rootPath: string;
+}
+
 export interface AgentRun {
   id: string;
   threadId: string;
@@ -536,6 +542,7 @@ export interface AgentRun {
     | "knowledgeBaseId"
     | "intentConfig"
     | "workspaceRoot"
+    | "conversationWorkdir"
     | "requestedToolGroupIds"
   >;
   createdAt: string;
@@ -557,6 +564,7 @@ export interface AgentRunStore {
       | "knowledgeBaseId"
       | "intentConfig"
       | "workspaceRoot"
+      | "conversationWorkdir"
       | "requestedToolGroupIds"
     >;
   }): AgentRun;
@@ -594,6 +602,7 @@ export interface AgentGraphInput {
   knowledgeBaseId?: string | null;
   intentConfig?: AgentIntentEmbeddingConfig;
   workspaceRoot?: string | null;
+  conversationWorkdir?: ConversationWorkdirReference;
   requestedToolGroupIds?: string[];
   approvedInvocations?: AgentApprovedInvocation[];
   policyDecision?: AgentPolicyDecision;
