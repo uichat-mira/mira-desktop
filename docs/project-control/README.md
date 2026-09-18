@@ -1,12 +1,12 @@
 ---
-status: current
+status: historical
 owner: docs
 last_verified: 2026-09-19
 layer: project-control-history
 module: ProjectControl
 feature: HistoricalProjectControlIndex
-doc_type: index
-canonical: true
+doc_type: historical-index
+canonical: false
 related:
   - ../../AGENTS.md
   - archive/legacy-project-control-2026-09-19/README.md
