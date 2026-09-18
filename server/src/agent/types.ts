@@ -564,7 +564,7 @@ export interface AgentRunStore {
       | "knowledgeBaseId"
       | "intentConfig"
       | "workspaceRoot"
-    | "conversationWorkdir"
+      | "conversationWorkdir"
       | "requestedToolGroupIds"
     >;
   }): AgentRun;

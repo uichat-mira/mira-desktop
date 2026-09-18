@@ -6,6 +6,7 @@ import { initializeAuthDatabase } from "@/db/auth.db";
 import { resetDatabaseClients } from "@/db/index.js";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import {
+  agentRunRepository,
   chatWorkspaceRepository,
   conversationWorkdirRepository,
   userRepository,
@@ -38,6 +39,8 @@ afterAll(() => {
   resetDatabaseClients();
   fs.rmSync(testRoot, { recursive: true, force: true });
   fs.rmSync(databasePath, { force: true });
+  fs.rmSync(`${databasePath}-wal`, { force: true });
+  fs.rmSync(`${databasePath}-shm`, { force: true });
 });
 
 test("conversation workdir path is deterministic on POSIX and Windows semantics", () => {
@@ -206,4 +209,44 @@ test("existing workdir identity never silently rebinds to a new storage root", (
 
   assert.equal(reopened.id, created.id);
   assert.equal(reopened.rootPath, created.rootPath);
+});
+
+
+test("AgentRun persistence snapshots the conversation workdir reference", () => {
+  const user = userRepository.create({
+    username: `workdir-run-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({
+    userId: user.id,
+  });
+  const conversationWorkdir = conversationWorkdirService.ensure({
+    threadId: thread.id,
+    userId: user.id,
+    storageRoot: path.join(testRoot, "agent-run"),
+  });
+
+  const run = agentRunRepository.create({
+    threadId: thread.id,
+    userId: user.id,
+    goal: {
+      id: crypto.randomUUID(),
+      text: "verify conversation workdir persistence",
+      successCriteria: [],
+      constraints: [],
+      riskLevel: "low",
+    },
+    runtimeInput: {
+      messages: [],
+      conversationWorkdir,
+    },
+  });
+
+  const reloaded = agentRunRepository.get(run.id);
+  assert.deepEqual(
+    reloaded?.runtimeInput?.conversationWorkdir,
+    conversationWorkdir,
+  );
 });
