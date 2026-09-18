@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, test } from "vitest";
+import { afterAll, test, vi } from "vitest";
 import { initializeAuthDatabase } from "@/db/auth.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import { initializeRoleDatabase } from "@/db/role.db";
@@ -9,7 +9,7 @@ import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
 import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { resetDatabaseClients } from "@/db";
 import { threadRepository, userRepository } from "@/db/repositories";
-import { conversationWorkdirService } from "./conversation-workdir.service.js";
+import { conversationWorkdirService, ConversationWorkdirError } from "./conversation-workdir.service.js";
 import { conversationArtifactService, ConversationArtifactError } from "./conversation-artifact.service.js";
 import { createTimestampedTestArtifactPath, getTestArtifactDir } from "@/test-support/artifacts.js";
 
@@ -41,6 +41,26 @@ test("fails closed for temporary, traversal, absolute path, ownership and stale 
   fs.rmSync(path.join(workdir.rootPath, "final.txt"));
   assert.throws(() => conversationArtifactService.resolve({ id: registeredId, threadId: thread.id, userId: user.id, storageRoot: root }), (e) => e instanceof ConversationArtifactError && e.code === "missing_source");
   assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath: "missing.txt", lifecycle: "final" }), (e) => e instanceof ConversationArtifactError && e.code === "missing_source");
+});
+
+test("allows legal filenames beginning with two dots", () => {
+  const sourceRelativePath = "..report.txt";
+  fs.writeFileSync(path.join(workdir.rootPath, sourceRelativePath), "report");
+  const ref = conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath, lifecycle: "final" });
+  assert.equal(ref.sourceRelativePath, sourceRelativePath);
+});
+
+test("preserves non-reference workdir failures during registration", () => {
+  for (const code of ["quota_exhausted", "unavailable"] as const) {
+    const reopen = vi.spyOn(conversationWorkdirService, "reopen").mockImplementationOnce(() => {
+      throw new ConversationWorkdirError(code, `simulated ${code}`);
+    });
+    assert.throws(
+      () => conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath: "..report.txt", lifecycle: "final" }),
+      (error) => error instanceof ConversationWorkdirError && error.code === code,
+    );
+    reopen.mockRestore();
+  }
 });
 
 test("fails closed when the persisted workdir is rebound to another storage root", () => {

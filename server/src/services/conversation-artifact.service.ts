@@ -19,14 +19,27 @@ const validateRelativeSource = (sourceRelativePath: string) => {
   return normalized;
 };
 
+const isParentPath = (relative: string) => relative === ".." || relative.startsWith(`..${path.sep}`);
+
+const mapWorkdirReferenceFailure = (error: unknown): never | undefined => {
+  if (!(error instanceof ConversationWorkdirError)) return undefined;
+  if (error.code === "path_escape" || error.code === "linked_path") {
+    fail("containment_failure", `Artifact workdir cannot be reopened: ${error.message}`);
+  }
+  if (error.code === "missing" || error.code === "identity_conflict") {
+    fail("stale_reference", `Artifact workdir cannot be reopened: ${error.message}`);
+  }
+  return undefined;
+};
+
 const resolveSource = (rootPath: string, relative: string) => {
   const candidate = path.resolve(rootPath, relative);
   const contained = path.relative(rootPath, candidate);
-  if (!contained || contained.startsWith("..") || path.isAbsolute(contained)) fail("path_escape", "Artifact source escapes the conversation workdir");
+  if (!contained || isParentPath(contained) || path.isAbsolute(contained)) fail("path_escape", "Artifact source escapes the conversation workdir");
   let real = "";
   try { real = fs.realpathSync(candidate); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") fail("missing_source", "Artifact source is missing"); fail("containment_failure", "Artifact source cannot be resolved"); }
   const realRelative = path.relative(rootPath, real);
-  if (!realRelative || realRelative.startsWith("..") || path.isAbsolute(realRelative)) fail("containment_failure", "Artifact source is outside the conversation workdir");
+  if (!realRelative || isParentPath(realRelative) || path.isAbsolute(realRelative)) fail("containment_failure", "Artifact source is outside the conversation workdir");
   return real;
 };
 
@@ -34,46 +47,39 @@ export const conversationArtifactService = {
   register(input: { id?: string; threadId: string; userId: number; storageRoot?: string; sourceRelativePath: string; lifecycle: ConversationArtifactLifecycle; mimeType?: string | null }): ConversationArtifactReference {
     const thread = threadRepository.findById(input.threadId, input.userId);
     if (!thread) fail("invalid_ownership", "Artifact owner thread does not belong to user");
-    const workdir = conversationWorkdirRepository.findByThreadId(input.threadId, input.userId);
-    if (!workdir) fail("invalid_ownership", "Artifact owner workdir is missing");
+    const workdir = conversationWorkdirRepository.findByThreadId(input.threadId, input.userId) ?? fail("invalid_ownership", "Artifact owner workdir is missing");
     const relative = validateRelativeSource(input.sourceRelativePath);
     if (input.lifecycle === "temporary") fail("invalid_source", "Temporary execution files cannot be registered as final artifacts");
-    let activeWorkdir;
-    try {
-      activeWorkdir = conversationWorkdirService.reopen({
-        threadId: input.threadId,
-        userId: input.userId,
-        storageRoot: input.storageRoot,
-        reference: { id: workdir!.id, threadId: workdir!.threadId, rootPath: workdir!.rootPath },
-      });
-    } catch (error) {
-      if (error instanceof ConversationWorkdirError) {
-        const code = error.code === "path_escape" || error.code === "linked_path" ? "containment_failure" : "stale_reference";
-        fail(code, `Artifact workdir cannot be reopened: ${error.message}`);
+    const activeWorkdir = (() => {
+      try {
+        return conversationWorkdirService.reopen({
+          threadId: input.threadId,
+          userId: input.userId,
+          storageRoot: input.storageRoot,
+          reference: { id: workdir.id, threadId: workdir.threadId, rootPath: workdir.rootPath },
+        });
+      } catch (error) {
+        mapWorkdirReferenceFailure(error);
+        throw error;
       }
-      throw error;
-    }
+    })();
     resolveSource(activeWorkdir.rootPath, relative);
     const now = nowIso();
     return toReference(conversationArtifactRepository.create({ id: input.id ?? `artifact-${crypto.randomUUID()}`, threadId: input.threadId, userId: input.userId, workdirId: activeWorkdir.id, sourceRelativePath: relative, lifecycle: input.lifecycle, mimeType: input.mimeType ?? null, createdAt: now, updatedAt: now }));
   },
   resolve(input: { id: string; threadId: string; userId: number; storageRoot?: string }): { reference: ConversationArtifactReference; absolutePath: string } {
-    const row = conversationArtifactRepository.findById(input.id, input.userId);
-    if (!row || row.threadId !== input.threadId) fail("invalid_ownership", "Artifact ownership does not match the requested thread");
-    if (!row) fail("invalid_ownership", "Artifact ownership does not match the requested thread");
-    const persistedWorkdir = conversationWorkdirRepository.findByThreadId(input.threadId, input.userId);
-    if (!persistedWorkdir) fail("stale_reference", "Artifact workdir reference is stale");
-    let workdir;
-    try {
-      workdir = conversationWorkdirService.reopen({ threadId: input.threadId, userId: input.userId, storageRoot: input.storageRoot, reference: { id: row!.workdirId, threadId: row!.threadId, rootPath: persistedWorkdir!.rootPath } });
-    } catch (error) {
-      if (error instanceof ConversationWorkdirError) {
-        const code = error.code === "path_escape" || error.code === "linked_path" ? "containment_failure" : "stale_reference";
-        fail(code, `Artifact workdir cannot be reopened: ${error.message}`);
+    const row = conversationArtifactRepository.findById(input.id, input.userId) ?? fail("invalid_ownership", "Artifact ownership does not match the requested thread");
+    if (row.threadId !== input.threadId) fail("invalid_ownership", "Artifact ownership does not match the requested thread");
+    const persistedWorkdir = conversationWorkdirRepository.findByThreadId(input.threadId, input.userId) ?? fail("stale_reference", "Artifact workdir reference is stale");
+    const workdir = (() => {
+      try {
+        return conversationWorkdirService.reopen({ threadId: input.threadId, userId: input.userId, storageRoot: input.storageRoot, reference: { id: row.workdirId, threadId: row.threadId, rootPath: persistedWorkdir.rootPath } });
+      } catch (error) {
+        mapWorkdirReferenceFailure(error);
+        throw error;
       }
-      throw error;
-    }
-    if (workdir.id !== row!.workdirId) fail("stale_reference", "Artifact workdir reference is stale");
-    return { reference: toReference(row!), absolutePath: resolveSource(workdir.rootPath, row!.sourceRelativePath) };
+    })();
+    if (workdir.id !== row.workdirId) fail("stale_reference", "Artifact workdir reference is stale");
+    return { reference: toReference(row), absolutePath: resolveSource(workdir.rootPath, row.sourceRelativePath) };
   },
 };
