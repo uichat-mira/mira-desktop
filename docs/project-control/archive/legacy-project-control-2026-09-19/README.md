@@ -69,3 +69,14 @@ Those links are intentionally allowed to land on the short retirement stubs at t
 Current/canonical documentation must not use those stubs as a current authority source. The docs index, Vault, Engineering Memory, Current Product Truth, Documentation Standards, and Forge current contract were updated in this cleanup to remove that authority relationship.
 
 Historical task cards, reviews, decisions, and phase conclusions are not bulk-rewritten merely to make old links look modern; their links remain part of the historical evidence chain.
+
+
+## Archived link behavior
+
+The archived copies were relocated from `docs/project-control/`. Their Markdown relative links are rewritten for the archive location so historical navigation remains usable:
+
+- links to the other retired control surfaces stay inside this archive;
+- links to historical `tasks/`, `reviews/`, `decisions/`, phase conclusions, and current domain docs resolve back to their existing repository paths;
+- archive frontmatter does not keep the old live `related` / `superseded_by` graph edges.
+
+This rewriting is archive metadata/navigation only. Exact original bytes remain recoverable from Git history at the archive boundary.
