@@ -196,7 +196,7 @@ test("conversation workdir lookup is scoped to the owning user", () => {
   );
 });
 
-test("existing workdir identity never silently rebinds to a new storage root", () => {
+test("existing workdir identity refuses to rebind when the storage root changes", () => {
   const user = userRepository.create({
     username: `workdir-rebind-${crypto.randomUUID()}`,
     passwordHash: "hash",
@@ -213,14 +213,57 @@ test("existing workdir identity never silently rebinds to a new storage root", (
     userId: user.id,
     storageRoot: firstRoot,
   });
-  const reopened = conversationWorkdirService.ensure({
-    threadId: thread.id,
-    userId: user.id,
-    storageRoot: path.join(testRoot, "different-root"),
-  });
+  assert.throws(
+    () =>
+      conversationWorkdirService.ensure({
+        threadId: thread.id,
+        userId: user.id,
+        storageRoot: path.join(testRoot, "different-root"),
+      }),
+    /conflicts with current app-data root/,
+  );
 
-  assert.equal(reopened.id, created.id);
-  assert.equal(reopened.rootPath, created.rootPath);
+  const persisted = conversationWorkdirRepository.findByThreadId(
+    thread.id,
+    user.id,
+  );
+  assert.equal(persisted?.id, created.id);
+  assert.equal(persisted?.rootPath, created.rootPath);
+});
+
+test("conversation workdir rejects a symlinked directory component", () => {
+  const user = userRepository.create({
+    username: `workdir-symlink-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({
+    userId: user.id,
+  });
+  const storageRoot = path.join(testRoot, "symlink-root");
+  const outsideRoot = path.join(testRoot, "symlink-outside");
+  fs.mkdirSync(storageRoot, { recursive: true });
+  fs.mkdirSync(outsideRoot, { recursive: true });
+  fs.symlinkSync(
+    outsideRoot,
+    path.join(storageRoot, "conversation-workdirs"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+
+  assert.throws(
+    () =>
+      conversationWorkdirService.ensure({
+        threadId: thread.id,
+        userId: user.id,
+        storageRoot,
+      }),
+    /contains a symbolic link/,
+  );
+  assert.equal(
+    conversationWorkdirRepository.findByThreadId(thread.id, user.id),
+    undefined,
+  );
 });
 
 test("AgentRun persistence snapshots the conversation workdir reference", () => {

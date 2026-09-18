@@ -20,6 +20,7 @@ export interface EnsureConversationWorkdirInput {
 }
 
 const SAFE_SEGMENT = /^[A-Za-z0-9_-]+$/;
+const WORKDIR_ROOT_SEGMENT = "conversation-workdirs";
 
 const assertSafeThreadId = (threadId: string) => {
   if (!threadId || !SAFE_SEGMENT.test(threadId)) {
@@ -30,6 +31,17 @@ const assertSafeThreadId = (threadId: string) => {
 const assertValidUserId = (userId: number) => {
   if (!Number.isSafeInteger(userId) || userId <= 0) {
     throw new Error("Conversation workdir user id is invalid");
+  }
+};
+
+const assertContainedPath = (storageRoot: string, candidatePath: string) => {
+  const relativePath = path.relative(storageRoot, candidatePath);
+  if (
+    !relativePath ||
+    relativePath.startsWith("..") ||
+    path.isAbsolute(relativePath)
+  ) {
+    throw new Error("Conversation workdir path escapes app-data root");
   }
 };
 
@@ -77,7 +89,7 @@ export const buildConversationWorkdirPath = (
   const storageRoot = pathOps.resolve(input.storageRoot);
   const workdirPath = pathOps.join(
     storageRoot,
-    "conversation-workdirs",
+    WORKDIR_ROOT_SEGMENT,
     `user-${input.userId}`,
     input.threadId,
   );
@@ -94,17 +106,86 @@ export const buildConversationWorkdirPath = (
   return workdirPath;
 };
 
-const assertExistingDirectory = (rootPath: string) => {
+const resolveTrustedStorageRoot = (storageRoot: string) => {
+  fs.mkdirSync(storageRoot, { recursive: true });
+
   let stat: fs.Stats;
   try {
-    stat = fs.statSync(rootPath);
+    stat = fs.statSync(storageRoot);
   } catch {
-    throw new Error("Conversation workdir path is unavailable");
+    throw new Error("Conversation workdir app-data root is unavailable");
+  }
+  if (!stat.isDirectory()) {
+    throw new Error("Conversation workdir app-data root is not a directory");
   }
 
+  return fs.realpathSync(storageRoot);
+};
+
+const inspectDirectoryComponent = (
+  directoryPath: string,
+  createMissing: boolean,
+) => {
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(directoryPath);
+  } catch (error) {
+    if (
+      !createMissing ||
+      (error as NodeJS.ErrnoException).code !== "ENOENT"
+    ) {
+      throw new Error("Conversation workdir path is unavailable");
+    }
+
+    fs.mkdirSync(directoryPath);
+    stat = fs.lstatSync(directoryPath);
+  }
+
+  if (stat.isSymbolicLink()) {
+    throw new Error("Conversation workdir path contains a symbolic link");
+  }
   if (!stat.isDirectory()) {
     throw new Error("Conversation workdir path is not a directory");
   }
+};
+
+const validateWorkdirDirectory = (input: {
+  storageRoot: string;
+  userId: number;
+  threadId: string;
+  storedRootPath?: string;
+  createMissing: boolean;
+}) => {
+  const trustedStorageRoot = resolveTrustedStorageRoot(input.storageRoot);
+  const expectedRootPath = buildConversationWorkdirPath({
+    storageRoot: trustedStorageRoot,
+    userId: input.userId,
+    threadId: input.threadId,
+  });
+
+  if (
+    input.storedRootPath !== undefined &&
+    path.resolve(input.storedRootPath) !== path.resolve(expectedRootPath)
+  ) {
+    throw new Error(
+      "Conversation workdir identity conflicts with current app-data root",
+    );
+  }
+
+  let currentPath = trustedStorageRoot;
+  for (const segment of [
+    WORKDIR_ROOT_SEGMENT,
+    `user-${input.userId}`,
+    input.threadId,
+  ]) {
+    currentPath = path.join(currentPath, segment);
+    inspectDirectoryComponent(currentPath, input.createMissing);
+  }
+
+  const realWorkdirPath = fs.realpathSync(currentPath);
+  assertContainedPath(trustedStorageRoot, realWorkdirPath);
+
+  return realWorkdirPath;
 };
 
 export const conversationWorkdirService = {
@@ -124,25 +205,33 @@ export const conversationWorkdirService = {
       throw new Error("Thread not found for conversation workdir");
     }
 
+    const storageRoot =
+      input.storageRoot ?? resolveConversationWorkdirStorageRoot();
     const existing = conversationWorkdirRepository.findByThreadId(
       input.threadId,
       input.userId,
     );
+
     if (existing) {
-      assertExistingDirectory(existing.rootPath);
+      const validatedRootPath = validateWorkdirDirectory({
+        storageRoot,
+        userId: input.userId,
+        threadId: input.threadId,
+        storedRootPath: existing.rootPath,
+        createMissing: false,
+      });
+      if (validatedRootPath !== existing.rootPath) {
+        throw new Error("Conversation workdir stored path is not canonical");
+      }
       return toReference(existing);
     }
 
-    const storageRoot =
-      input.storageRoot ?? resolveConversationWorkdirStorageRoot();
-    const rootPath = buildConversationWorkdirPath({
+    const rootPath = validateWorkdirDirectory({
       storageRoot,
       userId: input.userId,
       threadId: input.threadId,
+      createMissing: true,
     });
-
-    fs.mkdirSync(rootPath, { recursive: true });
-    assertExistingDirectory(rootPath);
 
     const persisted = conversationWorkdirRepository.createForThread({
       threadId: input.threadId,
