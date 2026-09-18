@@ -163,7 +163,6 @@ describe("General settings page", () => {
       failedThreads: 0,
       failedWorkdirs: 0,
       clearedLogBytes: 2048,
-      deletedWorkspaces: 1,
       media: { images: { files: 3 } },
     });
     render(<General />);

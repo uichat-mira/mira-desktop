@@ -19,6 +19,7 @@ import {
   buildConversationWorkdirPath,
   ConversationWorkdirError,
   conversationWorkdirService,
+  isConversationWorkdirPathContained,
   resolveConversationWorkdirQuotaBytes,
   resolveConversationWorkdirStorageRoot,
 } from "./conversation-workdir.service.js";
@@ -82,6 +83,27 @@ test("conversation workdir path is deterministic on POSIX and Windows semantics"
       path.win32,
     ),
     "C:\\Users\\Mira\\AppData\\data\\conversation-workdirs\\user-7\\abc123-thread",
+  );
+});
+
+test("conversation workdir containment treats Windows paths case-insensitively", () => {
+  assert.equal(
+    isConversationWorkdirPathContained(
+      "C:\\Users\\Mira\\Data",
+      "c:\\users\\mira\\data\\conversation-workdirs\\user-7\\thread",
+      path.win32,
+      true,
+    ),
+    true,
+  );
+  assert.equal(
+    isConversationWorkdirPathContained(
+      "C:\\Users\\Mira\\Data",
+      "D:\\Users\\Mira\\Data\\conversation-workdirs\\user-7\\thread",
+      path.win32,
+      true,
+    ),
+    false,
   );
 });
 
@@ -162,6 +184,56 @@ test("ensure creates one thread-owned workdir without creating a ChatWorkspace",
   );
   assert.equal(persisted?.id, first.id);
   assert.equal(persisted?.rootPath, first.rootPath);
+});
+
+test("ensure reuses persisted identity when the configured storage root is linked", ({ skip }) => {
+  const user = userRepository.create({
+    username: `workdir-linked-root-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({
+    userId: user.id,
+  });
+  const realRoot = path.join(testRoot, "linked-root-target");
+  const configuredRoot = path.join(testRoot, "linked-root-configured");
+  fs.mkdirSync(realRoot, { recursive: true });
+  try {
+    fs.symlinkSync(
+      realRoot,
+      configuredRoot,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  } catch (error) {
+    if (["EACCES", "EPERM", "ENOSYS"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+      skip("This platform does not permit creating a directory link");
+    }
+    throw error;
+  }
+
+  const first = conversationWorkdirService.ensure({
+    threadId: thread.id,
+    userId: user.id,
+    storageRoot: configuredRoot,
+  });
+  const second = conversationWorkdirService.ensure({
+    threadId: thread.id,
+    userId: user.id,
+    storageRoot: configuredRoot,
+  });
+
+  assert.equal(first.id, second.id);
+  assert.equal(first.rootPath, second.rootPath);
+  assert.equal(first.rootPath, fs.realpathSync(first.rootPath));
+  assert.equal(
+    first.rootPath,
+    buildConversationWorkdirPath({
+      storageRoot: fs.realpathSync(configuredRoot),
+      userId: user.id,
+      threadId: thread.id,
+    }),
+  );
 });
 
 test("conversation workdir lookup is scoped to the owning user", () => {
@@ -475,6 +547,10 @@ test("cleanup reports filesystem failures instead of pretending success", () => 
       (error) => error instanceof ConversationWorkdirError && error.code === "cleanup_failed",
     );
     assert.ok(conversationWorkdirRepository.findByThreadId(thread.id, user.id));
+    const result = threadService.cleanupThreads(user.id);
+    assert.equal(result.failedWorkdirs, 1);
+    assert.equal(result.failedThreads, 0);
+    assert.ok(threadRepository.findById(thread.id, user.id));
   } finally {
     removeSpy.mockRestore();
   }
@@ -537,6 +613,5 @@ test("explicit history cleanup removes conversation workdirs without deleting Ch
   assert.equal(result.failedWorkdirs, 0);
   assert.equal(result.deletedThreads >= 1, true);
   assert.equal(fs.existsSync(reference.rootPath), false);
-  assert.equal(result.deletedWorkspaces, 0);
   assert.ok(chatWorkspaceRepository.findById(workspace.id, user.id));
 });

@@ -195,24 +195,23 @@ export const registerThreadRoutes = async (app: FastifyInstance) => {
     { schema: threadRouteSchemas.cleanupThreads },
     routeHandler("Failed to clean conversation threads", async (request) => {
       const threadResult = threadService.cleanupThreads(request.authUser!.id);
-      if (threadResult.failedWorkdirs > 0) {
-        throw new Error(
-          `Failed to clean ${threadResult.failedWorkdirs} conversation workdir(s)`,
-        );
-      }
       const logResult = await logFilesService.clearLogs();
       const mediaResult = await managedMediaCleanupService.clear();
       const clearedLogBytes = logResult.clearedFiles.reduce(
         (total, file) => total + file.previousSize,
         0,
       );
+      const cleanupMessage =
+        threadResult.failedThreads > 0 || threadResult.failedWorkdirs > 0
+          ? "Conversation cleanup completed with failures; workspaces were not changed"
+          : "Conversations, conversation workdirs, server logs, and media cleaned; workspaces were not changed";
       return success(
         {
           ...threadResult,
           clearedLogBytes,
           media: mediaResult,
         },
-        "Conversations, conversation workdirs, server logs, and media cleaned",
+        cleanupMessage,
       );
     }),
   );

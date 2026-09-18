@@ -111,6 +111,17 @@ export const buildConversationWorkdirPath = (
 };
 
 const fsCode = (error: unknown) => (error as NodeJS.ErrnoException | undefined)?.code;
+const comparablePath = (
+  value: string,
+  pathOps: Pick<typeof path, "resolve"> = path,
+  caseInsensitive = process.platform === "win32",
+) => {
+  const resolved = pathOps.resolve(value);
+  // Windows filesystem paths are case-insensitive; compare their canonical
+  // forms without allowing case-only differences to defeat containment checks.
+  return caseInsensitive ? resolved.toLowerCase() : resolved;
+};
+const samePath = (left: string, right: string) => comparablePath(left) === comparablePath(right);
 const mapFsFailure = (error: unknown, missing: ConversationWorkdirErrorCode = "unavailable") => {
   const code = fsCode(error);
   if (code === "ENOENT") return missing;
@@ -122,9 +133,21 @@ const readRealpath = (target: string): string => {
   catch (error) { return fail("unavailable", "Conversation workdir path is unavailable", error); }
 };
 
+export const isConversationWorkdirPathContained = (
+  root: string,
+  candidate: string,
+  pathOps: Pick<typeof path, "resolve" | "relative" | "isAbsolute"> = path,
+  caseInsensitive = process.platform === "win32",
+) => {
+  const relative = pathOps.relative(
+    comparablePath(root, pathOps, caseInsensitive),
+    comparablePath(candidate, pathOps, caseInsensitive),
+  );
+  return Boolean(relative) && !relative.startsWith("..") && !pathOps.isAbsolute(relative);
+};
+
 const contained = (root: string, candidate: string) => {
-  const relative = path.relative(root, candidate);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) fail("path_escape", "Conversation workdir path escapes app-data root");
+  if (!isConversationWorkdirPathContained(root, candidate)) fail("path_escape", "Conversation workdir path escapes app-data root");
 };
 
 const trustedRoot = (storageRoot: string, createMissing: boolean): string => {
@@ -168,7 +191,7 @@ const validateDirectory = (input: {
 }) => {
   const root = trustedRoot(input.storageRoot, input.createMissing);
   const expected = buildConversationWorkdirPath({ storageRoot: root, userId: input.userId, threadId: input.threadId });
-  if (input.storedRootPath !== undefined && path.resolve(input.storedRootPath) !== path.resolve(expected)) fail("identity_conflict", "Conversation workdir identity conflicts with current app-data root");
+  if (input.storedRootPath !== undefined && !samePath(input.storedRootPath, expected)) fail("identity_conflict", "Conversation workdir identity conflicts with current app-data root");
   let current = root;
   for (const segment of [WORKDIR_ROOT_SEGMENT, `user-${input.userId}`, input.threadId]) {
     current = path.join(current, segment);
@@ -235,7 +258,7 @@ const cleanupPhysical = (input: CleanupConversationWorkdirInput): ConversationWo
     );
   }
   const expected = buildConversationWorkdirPath({ storageRoot: root, userId: input.userId, threadId: input.threadId });
-  if (path.resolve(row.rootPath) !== path.resolve(expected)) fail("identity_conflict", "Conversation workdir cleanup identity conflicts with app-data root");
+  if (!samePath(row.rootPath, expected)) fail("identity_conflict", "Conversation workdir cleanup identity conflicts with app-data root");
   try { fs.lstatSync(expected); } catch (error) {
     if (fsCode(error) === "ENOENT") return { threadId: input.threadId, userId: input.userId, existed: true, removed: false };
     return fail(mapFsFailure(error), "Conversation workdir cleanup path is unavailable", error);
@@ -263,18 +286,25 @@ export const conversationWorkdirService = {
     const quotaBytes = normalizeQuota(input.quotaBytes ?? resolveConversationWorkdirQuotaBytes());
     const existing = conversationWorkdirRepository.findByThreadId(input.threadId, input.userId);
     if (existing) {
+      let root: string;
+      try {
+        root = trustedRoot(storageRoot, false);
+      } catch (error) {
+        if (!(error instanceof ConversationWorkdirError) || error.code !== "missing") throw error;
+        root = path.resolve(storageRoot);
+      }
       const expectedFromConfiguredRoot = buildConversationWorkdirPath({
-        storageRoot: path.resolve(storageRoot),
+        storageRoot: root,
         userId: input.userId,
         threadId: input.threadId,
       });
-      if (path.resolve(existing.rootPath) !== path.resolve(expectedFromConfiguredRoot)) {
+      if (!samePath(existing.rootPath, expectedFromConfiguredRoot)) {
         fail("identity_conflict", "Conversation workdir identity conflicts with current app-data root");
       }
       const validated = validateDirectory({ storageRoot, userId: input.userId, threadId: input.threadId, storedRootPath: existing.rootPath, createMissing: false });
-      if (validated.real !== existing.rootPath) fail("identity_conflict", "Conversation workdir stored path is not canonical");
+      if (!samePath(validated.real, existing.rootPath)) fail("identity_conflict", "Conversation workdir stored path is not canonical");
       assertQuota(this.usage({ userId: input.userId, storageRoot, quotaBytes }));
-      return toReference(existing);
+      return { ...toReference(existing), rootPath: validated.real };
     }
     const root = trustedRoot(storageRoot, true);
     const expected = buildConversationWorkdirPath({ storageRoot: root, userId: input.userId, threadId: input.threadId });
@@ -294,12 +324,12 @@ export const conversationWorkdirService = {
     const row = conversationWorkdirRepository.findByThreadId(input.threadId, input.userId);
     if (!row) return fail("missing", "Conversation workdir identity is missing");
     const persisted = toReference(row);
-    if (input.reference && (input.reference.id !== persisted.id || input.reference.threadId !== persisted.threadId || path.resolve(input.reference.rootPath) !== path.resolve(persisted.rootPath))) fail("identity_conflict", "Conversation workdir runtime reference conflicts with persisted identity");
+    if (input.reference && (input.reference.id !== persisted.id || input.reference.threadId !== persisted.threadId || !samePath(input.reference.rootPath, persisted.rootPath))) fail("identity_conflict", "Conversation workdir runtime reference conflicts with persisted identity");
     const storageRoot = input.storageRoot ?? resolveConversationWorkdirStorageRoot();
     const validated = validateDirectory({ storageRoot, userId: input.userId, threadId: input.threadId, storedRootPath: row.rootPath, createMissing: false });
-    if (validated.real !== row.rootPath) fail("identity_conflict", "Conversation workdir stored path is not canonical");
+    if (!samePath(validated.real, row.rootPath)) fail("identity_conflict", "Conversation workdir stored path is not canonical");
     assertQuota(this.usage({ userId: input.userId, storageRoot, quotaBytes: input.quotaBytes }));
-    return persisted;
+    return { ...persisted, rootPath: validated.real };
   },
 
   cleanup(input: CleanupConversationWorkdirInput): ConversationWorkdirCleanupResult {

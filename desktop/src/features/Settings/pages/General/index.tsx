@@ -351,21 +351,21 @@ export default function General() {
             (total, summary) => total + summary.files,
             0,
           );
-          if (result.deletedThreads === 0 && result.failedThreads === 0) {
+          const failedCleanups = result.failedThreads + result.failedWorkdirs;
+          if (result.deletedThreads === 0 && failedCleanups === 0) {
             message.success(t("settings.general.cleanup.empty"));
             return;
           }
           message.success(
             t(
-              result.failedThreads > 0
+              failedCleanups > 0
                 ? "settings.general.cleanup.partial"
                 : "settings.general.cleanup.success",
               {
                 threads: result.deletedThreads,
                 messages: result.deletedMessages,
-                failed: result.failedThreads,
+                failed: failedCleanups,
                 logs: (result.clearedLogBytes / 1024).toFixed(1),
-                workspaces: result.deletedWorkspaces,
                 media: mediaFiles,
               },
             ),

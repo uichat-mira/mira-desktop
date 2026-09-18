@@ -22,7 +22,10 @@ import { initializeThreadDatabase } from "@/db/thread.db";
 import { getSqlite } from "@/db/index";
 import { hasSqliteColumn } from "@/db/sqlite-utils";
 import { threadService } from "@/services/thread.service";
-import { conversationWorkdirService } from "@/services/conversation-workdir.service.js";
+import {
+  ConversationWorkdirError,
+  conversationWorkdirService,
+} from "@/services/conversation-workdir.service.js";
 import { configureAgentRunPersistence, agentRunStore } from "../run-store";
 import { agentRunRepository } from "@/db/repositories/agent-run.repository";
 import { createAgentGoal } from "../nodes/index";
@@ -286,7 +289,10 @@ test("resumeApprovedAgentRun reopens the persisted conversation workdir after re
     await resumeApprovedAgentRun(run.id);
     const resumedInput = runSpy.mock.calls[0]?.[0];
     assert.equal(resumedInput?.conversationWorkdir?.threadId, run.threadId);
-    assert.equal(typeof resumedInput?.conversationWorkdir?.rootPath, "string");
+    assert.equal(
+      resumedInput?.conversationWorkdir?.rootPath,
+      getAgentRunById(run.id)?.runtimeInput?.conversationWorkdir?.rootPath,
+    );
   } finally {
     runSpy.mockRestore();
   }
@@ -301,7 +307,7 @@ test("resumeApprovedAgentRun fails closed when the persisted workdir is missing"
 
   await assert.rejects(
     () => resumeApprovedAgentRun(run.id),
-    /Conversation workdir path is unavailable/,
+    (error) => error instanceof ConversationWorkdirError && error.code === "missing",
   );
 
   agentRunStore.clear();

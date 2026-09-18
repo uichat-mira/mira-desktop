@@ -15,6 +15,8 @@ import { llmService } from "@/services/llm.service.js";
 import { sendRouteError } from "@/utils/route-errors.js";
 import { threadService } from "@/services/thread.service.js";
 import { managedMediaCleanupService } from "@/services/managed-media-cleanup.service.js";
+import { logFilesService } from "@/services/log-files.service.js";
+import { conversationWorkdirService } from "@/services/conversation-workdir.service.js";
 import { vi } from "vitest";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 
@@ -201,7 +203,6 @@ test("DELETE /threads/history removes all user threads and keeps workspaces", as
       deletedMessages: number;
       failedThreads: number;
       failedWorkdirs: number;
-      deletedWorkspaces: number;
       clearedLogBytes: number;
       media: unknown;
     };
@@ -212,9 +213,8 @@ test("DELETE /threads/history removes all user threads and keeps workspaces", as
       deletedMessages: cleanupData.data.deletedMessages,
       failedThreads: cleanupData.data.failedThreads,
       failedWorkdirs: cleanupData.data.failedWorkdirs,
-      deletedWorkspaces: cleanupData.data.deletedWorkspaces,
     },
-    { deletedThreads: 2, deletedMessages: 1, failedThreads: 0, failedWorkdirs: 0, deletedWorkspaces: 0 },
+    { deletedThreads: 2, deletedMessages: 1, failedThreads: 0, failedWorkdirs: 0 },
   );
   assert.equal(typeof cleanupData.data.clearedLogBytes, "number");
   assert.deepEqual(cleanupData.data.media, {
@@ -230,6 +230,63 @@ test("DELETE /threads/history removes all user threads and keeps workspaces", as
 
   mediaCleanupSpy.mockRestore();
   await app.close();
+});
+
+test("DELETE /threads/history returns workdir cleanup failures and still clears logs/media", async () => {
+  const app = Fastify({ logger: getLoggerConfig(), serializerOpts: { encoding: "utf8" } });
+  app.setErrorHandler(sendRouteError);
+  await app.register(threadRoute);
+
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const token = createAccessToken({ id: user.id, username: user.username, role: user.role });
+  const thread = threadService.createThread({ userId: user.id });
+  const workdir = conversationWorkdirService.ensure({ threadId: thread.id, userId: user.id });
+  const logSpy = vi.spyOn(logFilesService, "clearLogs").mockResolvedValue({ directory: "test", clearedFiles: [] });
+  const mediaSpy = vi.spyOn(managedMediaCleanupService, "clear").mockResolvedValue({
+    attachments: { files: 0, bytes: 0 },
+    generatedImages: { files: 0, bytes: 0 },
+    generatedAudio: { files: 0, bytes: 0 },
+    generatedVideos: { files: 0, bytes: 0 },
+  });
+  const rmSpy = vi.spyOn(fs, "rmSync").mockImplementation(() => {
+    throw Object.assign(new Error("busy"), { code: "EBUSY" });
+  });
+
+  try {
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/threads/history",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(response.json().data, {
+      deletedThreads: 0,
+      deletedMessages: 0,
+      failedThreads: 0,
+      failedWorkdirs: 1,
+      clearedLogBytes: 0,
+      media: {
+        attachments: { files: 0, bytes: 0 },
+        generatedImages: { files: 0, bytes: 0 },
+        generatedAudio: { files: 0, bytes: 0 },
+        generatedVideos: { files: 0, bytes: 0 },
+      },
+    });
+    assert.ok(threadService.getThreadById(thread.id, user.id));
+    assert.equal(fs.existsSync(workdir.rootPath), true);
+    assert.equal(logSpy.mock.calls.length, 1);
+    assert.equal(mediaSpy.mock.calls.length, 1);
+  } finally {
+    rmSpy.mockRestore();
+    logSpy.mockRestore();
+    mediaSpy.mockRestore();
+    await app.close();
+  }
 });
 
 test("PATCH /threads/:id persists roleId and allows clearing it", async () => {

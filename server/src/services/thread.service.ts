@@ -719,6 +719,7 @@ export const threadService = {
     if (!existing) {
       return false;
     }
+    conversationWorkdirService.cleanup({ threadId: id, userId });
     const mediaCleanup = chatMediaService.removeForThread(id);
     if (mediaCleanup.failed > 0) {
       throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s): ${mediaCleanup.errors.map((item) => item.mediaId).join(", ")}`);
@@ -726,7 +727,6 @@ export const threadService = {
     for (const message of messageRepository.listByThread(id)) {
       removeFileAttachmentsFromParts(parsePartsJson(message.partsJson));
     }
-    conversationWorkdirService.cleanup({ threadId: id, userId });
     return threadRepository.deleteById(id);
   },
 
@@ -735,7 +735,6 @@ export const threadService = {
     deletedMessages: number;
     failedThreads: number;
     failedWorkdirs: number;
-    deletedWorkspaces: number;
   } {
     const threadsToDelete = [
       ...threadRepository.list({ userId, status: "active", sortBy: "updatedAt", sortOrder: "asc" }),
@@ -745,21 +744,19 @@ export const threadService = {
     let deletedMessages = 0;
     let failedThreads = 0;
     let failedWorkdirs = 0;
-    const deletedWorkspaces = 0;
 
     for (const thread of threadsToDelete) {
       try {
         const messages = messageRepository.listByThread(thread.id);
-        const mediaCleanup = chatMediaService.removeForMessages(messages.map((message) => message.id));
-        if (mediaCleanup.failed > 0) {
-          throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s)`);
-        }
         try {
           conversationWorkdirService.cleanup({ threadId: thread.id, userId });
         } catch {
           failedWorkdirs += 1;
-          failedThreads += 1;
           continue;
+        }
+        const mediaCleanup = chatMediaService.removeForMessages(messages.map((message) => message.id));
+        if (mediaCleanup.failed > 0) {
+          throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s)`);
         }
         if (!threadRepository.deleteById(thread.id)) {
           failedThreads += 1;
@@ -772,7 +769,7 @@ export const threadService = {
       }
     }
 
-    return { deletedThreads, deletedMessages, failedThreads, failedWorkdirs, deletedWorkspaces };
+    return { deletedThreads, deletedMessages, failedThreads, failedWorkdirs };
   },
 
   createMessage(
