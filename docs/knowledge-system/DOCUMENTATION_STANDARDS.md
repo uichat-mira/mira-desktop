@@ -1,7 +1,7 @@
 ---
 status: current
 owner: docs
-last_verified: 2026-07-30
+last_verified: 2026-09-19
 layer: schema
 module: Docs
 feature: DocsSystem
@@ -181,23 +181,18 @@ Current 文档：
 
 ## 7. 项目控制区
 
-`docs/project-control/` 只服务：
+`docs/project-control/` 现在只作为历史工程证据与决策归档：
 
-- task；
+- historical task cards；
 - evidence；
 - review；
 - decision；
-- workboard；
+- archived workboard / ledger；
 - archive snapshot。
 
-它不是产品说明书，也不能代替 current-contract。
+它不是当前项目管理系统，也不能代替 current-contract。新的工程 work item 进入 GitHub Issue / Project，不再维护 repository-local master ledger 或 workboard。
 
-任务完成后：
-
-- 状态改为 Completed / Historical；
-- 或迁入 `project-control/archive/`；
-- 稳定结论回写对应 current-contract；
-- 不把整个施工过程复制进当前真相页。
+历史任务收口后，稳定结论回写对应 current-contract；施工过程保留为证据，不复制成第二套当前真相。
 
 ## 8. 归档
 
