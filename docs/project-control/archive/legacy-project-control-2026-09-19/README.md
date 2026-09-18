@@ -44,3 +44,28 @@ code/config/runtime   = current technical reality
 ```
 
 Exact original bytes remain recoverable from Git history at the archive boundary above.
+
+
+## Successor authority rule
+
+Archived stream rows do **not** imply a live successor.
+
+Do not translate an old stream name, `TODO`, `IN_PROGRESS`, `READY_FOR_REVIEW`, `DONE`, blocker, priority, or acceptance gate into current state unless a current GitHub Issue explicitly adopts that work-item contract.
+
+If no current GitHub Issue adopts a historical stream, this archive makes **no claim that the stream is active**. This is intentional: creating a prose “stream -> successor” table here would recreate the second ledger this archive is retiring.
+
+For current work:
+1. inspect current GitHub Issues for the work-item contract/outcome;
+2. inspect Project Status / Organization fields for management metadata;
+3. inspect PR / Review / CI for implementation evidence;
+4. inspect code/config/runtime for technical reality.
+
+## Inbound-link compatibility decision
+
+Old repository documents may still link to the retired root filenames such as `project-control-ledger.md`, `agent-workboard.md`, or `governance-principles.md`.
+
+Those links are intentionally allowed to land on the short retirement stubs at the old paths. The stub is the compatibility boundary: it tells the reader that the old authority is retired and points to the full snapshot here.
+
+Current/canonical documentation must not use those stubs as a current authority source. The docs index, Vault, Engineering Memory, Current Product Truth, Documentation Standards, and Forge current contract were updated in this cleanup to remove that authority relationship.
+
+Historical task cards, reviews, decisions, and phase conclusions are not bulk-rewritten merely to make old links look modern; their links remain part of the historical evidence chain.
