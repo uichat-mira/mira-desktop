@@ -29,6 +29,7 @@ const databasePath = createTimestampedTestArtifactPath(
   "conversation-workdir-foundation",
   ".sqlite",
 );
+const originalDatabaseUrl = process.env.DATABASE_URL;
 
 process.env.DATABASE_URL = `file:${databasePath}`;
 resetDatabaseClients();
@@ -37,6 +38,11 @@ initializeThreadDatabase();
 
 afterAll(() => {
   resetDatabaseClients();
+  if (originalDatabaseUrl === undefined) {
+    delete process.env.DATABASE_URL;
+  } else {
+    process.env.DATABASE_URL = originalDatabaseUrl;
+  }
   fs.rmSync(testRoot, { recursive: true, force: true });
   fs.rmSync(databasePath, { force: true });
   fs.rmSync(`${databasePath}-wal`, { force: true });
@@ -210,7 +216,6 @@ test("existing workdir identity never silently rebinds to a new storage root", (
   assert.equal(reopened.id, created.id);
   assert.equal(reopened.rootPath, created.rootPath);
 });
-
 
 test("AgentRun persistence snapshots the conversation workdir reference", () => {
   const user = userRepository.create({
