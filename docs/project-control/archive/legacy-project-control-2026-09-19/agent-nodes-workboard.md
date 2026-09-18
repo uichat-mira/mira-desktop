@@ -7,12 +7,7 @@ module: ProjectControl
 feature: AgentNodesWorkboard
 doc_type: historical-workboard
 canonical: false
-superseded_by:
-  - ../harness/agentgraph-harness-protocol.md
-related:
-  - project-control-ledger.md
-  - tasks/agent_node_T001-next-action-planner-node.md
-  - tasks/agent_node_T043-coverage-driven-blackbox-regression-suite.md
+archived_from_path: docs/project-control/agent-nodes-workboard.md
 ---
 
 > Archived on 2026-09-19 from `dev@b2403eda97665868844b05ccda1d6e75851e30fc`. Historical evidence only; not a current work-item, policy, or acceptance source.
@@ -23,9 +18,9 @@ related:
 
 当前实现真相：
 
-- [AgentGraph 与 Harness 当前协议](../harness/agentgraph-harness-protocol.md)
-- [Agent Observability](../development/agent-observability.md)
-- [UIChat Mira 工程记忆](../ENGINEERING_MEMORY.md)
+- [AgentGraph 与 Harness 当前协议](../../../harness/agentgraph-harness-protocol.md)
+- [Agent Observability](../../../development/agent-observability.md)
+- [UIChat Mira 工程记忆](../../../ENGINEERING_MEMORY.md)
 
 ## 为什么归档
 
