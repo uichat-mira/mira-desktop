@@ -363,7 +363,7 @@ Forge 已并入 Mira 主仓和 Mira Server 生命周期。后续工程必须继�
 9. restart 不伪造 process resume；丢失 supervision 的 active dispatch / thread 必须 reconcile 为 interrupted / error；
 10. Desktop 标准 UI 与 Terminal View 只是同一 Forge product surface 的两种呈现，必须共用同一 typed API 和 orchestration。
 
-T010 是当前 cutover 验收卡。自动 repository/staged-runtime gate 与真实 provider smoke 分开记证据；没有真实观察到 Builder → Main Thread 二次 turn 的链路时，不得把 T010 标记 DONE。
+旧 T010 及相关迁移卡只保留为 Forge 历史验收证据，不再拥有当前工程 work-item 状态；当前状态应从 GitHub Issue / Project 与可观察 runtime evidence 判断。
 
 ## 16. 文档真相合同
 
