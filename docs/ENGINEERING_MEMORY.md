@@ -2,6 +2,7 @@
 status: current
 owner: project-owner
 last_verified: 2026-07-30
+freshness_audited: 2026-09-19
 layer: wiki
 module: Project
 feature: EngineeringMemory
@@ -15,7 +16,7 @@ related:
   - harness/README.md
   - skill/README.md
   - tooling-runtime/tools-protocol.md
-  - project-control/project-control-ledger.md
+  - project-control/README.md
 ---
 
 # UIChat Mira 工程共同记忆
@@ -353,7 +354,7 @@ Forge 已并入 Mira 主仓和 Mira Server 生命周期。后续工程必须继�
 
 1. `server/src/forge/**` 是 Forge runtime domain，不恢复第二 HTTP server、sidecar 或 `:47831` control plane；
 2. 不建立 Forge 独立 package / lockfile / pnpm workspace / Vite app；
-3. Repository Ledger / Task Card 是任务真相，Forge runtime 只保存 execution identity / state / evidence；
+3. GitHub Issue 持有 Mira 工程 work-item contract / outcome；Forge 注册项目若使用 repository-native task source，它只作为 Forge domain 输入，Forge runtime 只保存 execution identity / state / evidence；
 4. Main Thread 负责 discussion / inspection / planning，不是 Builder；
 5. Dispatch 必须显式，source Main Thread 只能绑定同 project，当前仍是全局单 active Builder；
 6. Builder terminal success = runtime `reviewing`，不是 Review PASS；
@@ -362,7 +363,7 @@ Forge 已并入 Mira 主仓和 Mira Server 生命周期。后续工程必须继�
 9. restart 不伪造 process resume；丢失 supervision 的 active dispatch / thread 必须 reconcile 为 interrupted / error；
 10. Desktop 标准 UI 与 Terminal View 只是同一 Forge product surface 的两种呈现，必须共用同一 typed API 和 orchestration。
 
-T010 是当前 cutover 验收卡。自动 repository/staged-runtime gate 与真实 provider smoke 分开记证据；没有真实观察到 Builder → Main Thread 二次 turn 的链路时，不得把 T010 标记 DONE。
+旧 T010 及相关迁移卡只保留为 Forge 历史验收证据，不再拥有当前工程 work-item 状态；当前状态应从 GitHub Issue / Project 与可观察 runtime evidence 判断。
 
 ## 16. 文档真相合同
 

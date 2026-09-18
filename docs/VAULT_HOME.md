@@ -1,7 +1,7 @@
 ---
 status: current
 owner: docs
-last_verified: 2026-07-30
+last_verified: 2026-09-19
 layer: wiki
 module: Docs
 feature: EngineeringVault
@@ -45,13 +45,12 @@ related:
 - [[microapp/README]]
 - [[platform/tauri]]
 
-## 施工与项目控制
+## 历史施工与项目控制证据
 
 - [[project-control/README]]
-- [[project-control/project-control-ledger]]
 - [[developments/defect-log]]
 
-这些页面用于任务、证据、评审和阶段记录，不应覆盖 current-contract。
+`project-control/` 中的旧台账、任务卡、评审和阶段记录只作为历史证据；当前 work-item 状态由 GitHub Issue / Project 管理，不应覆盖 current-contract。
 
 ## 知识系统
 

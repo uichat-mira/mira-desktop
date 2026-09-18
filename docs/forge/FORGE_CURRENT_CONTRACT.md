@@ -2,6 +2,7 @@
 status: current
 owner: forge / architecture
 last_verified: 2026-09-05
+freshness_audited: 2026-09-19
 layer: runtime
 module: Forge
 feature: IntegrationContract
@@ -16,15 +17,14 @@ Source baseline: `dangjingtao/mira-forge@6557b9ff552c4be3d3d1be2da0b24bb6d1344ed
 
 ## 1. Authority Order
 
-迁移中的 Forge 事实按以下顺序判断：
+先区分 Mira Organization 工程治理与 Forge domain Task Source：
 
-1. 固定源基线中的真实代码；
-2. T015-T018 当前 Task Card；
-3. `docs/workbench/00-work-ledger.md`；
-4. `docs/task-source-contract.md` 与当前架构文档；
-5. 其他历史说明。
+1. Mira 当前工程 work-item contract / outcome 由 GitHub Issue 持有；
+2. 固定源基线代码、T015-T018 与旧 work ledger 只作为 Forge 迁移历史和 fixed-source evidence；
+3. registered project 若显式选择 repository-native Task Source，相关 Ledger / Task Card 只作为该 Forge domain 的输入合同；
+4. Forge runtime state 只描述执行，不拥有 Mira Organization 的 Issue / Project 状态。
 
-`docs/v2-plan.md` 不是当前施工合同。若历史 V2 计划与上述事实冲突，以当前代码、T015-T018 和 work ledger 为准。
+`docs/v2-plan.md` 与旧 work ledger 都不是当前 Mira 工程治理权威。
 
 ## 2. Single Repository / Single Dependency System
 
@@ -57,11 +57,11 @@ Mira Server 负责：
 
 ## 4. Two Truths Must Stay Separate
 
-### Repository Task Truth
+### Project Task Source
 
-Repository Ledger / Task Card 是项目任务真相。
+Mira Organization 的工程任务真相由 GitHub Issue / Project 分层持有。
 
-Forge 只通过 Task Source contract 读取或显式写回，不从任意 prose 猜状态、依赖或 Task ID。
+Forge 注册项目可以通过 Task Source contract 读取 repository-native Ledger / Task Card，但它们只在该项目显式选择对应 adapter 时作为 Forge domain 输入，不得重新成为 Mira Desktop 的工程管理总台账。
 
 ### Forge Runtime Truth
 
