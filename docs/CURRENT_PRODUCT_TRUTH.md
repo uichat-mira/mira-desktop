@@ -2,6 +2,7 @@
 status: current
 owner: project-owner
 last_verified: 2026-07-31
+freshness_audited: 2026-09-19
 layer: wiki
 module: Project
 feature: ProductTruth
@@ -226,7 +227,7 @@ MCP 市场目录以 SQLite 为读取真相，官方 Registry 只作为 backend �
 
 - Mira Server 在 `server/src/forge/**` 拥有 Forge runtime lifecycle、persistence、startup reconcile、Main Thread、Builder dispatch、Review 和 API routes；
 - Desktop 产品入口为 **淬行**（`/forge`），标准 UI 与 Terminal View 共用同一份 `ForgeWorkspaceSnapshot`、typed API 和 orchestration；
-- Repository Task Truth 与 Forge Runtime Truth 分离；Task Card 仍是 repository-native 真相，runtime 只保存执行引用与证据；
+- Forge Project Task Source 与 Forge Runtime Truth 分离；Mira 工程 work-item contract / outcome 由 GitHub Issue 持有，repository-native Task Card 只在 Forge 注册项目显式选择对应 task source 时作为领域输入，runtime 只保存执行引用与证据；
 - Dispatch 是显式动作，当前保持全局单 active Builder；绑定 source Main Thread 时必须属于同一 project；
 - Builder 正常完成只把 runtime task 推进到 `reviewing`，不等于 Repository PASS；
 - Review 继续按 concrete SHA 绑定，只有当前 SHA 与 reviewed SHA 一致时才能执行 integration；
@@ -359,7 +360,7 @@ MicroApp 还必须额外说明：
 1. 当前代码与可重复验证；
 2. current-contract / current-snapshot；
 3. 工程共同记忆；
-4. 正在施工的 checklist / workboard / ledger；
+4. 历史 task / review / project-control evidence；
 5. design / plan / research / POC；
 6. historical / superseded / archive。
 
@@ -368,7 +369,7 @@ MicroApp 还必须额外说明：
 ## 维护规则
 
 - 产品能力变化时先更新对应 current-contract，再更新这页；
-- 新功能验证前只能进入施工与验证或方案与实验；
+- 新功能验证前只能进入 GitHub work-item 流程、验证证据或方案与实验；
 - 当前文档超过 90 天未核验应显示过期；
 - 无状态、无核验信息的文档进入待核验；
 - 已知实现偏差必须写明影响与修复状态。
