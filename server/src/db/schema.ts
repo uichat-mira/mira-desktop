@@ -1278,6 +1278,28 @@ export const conversationWorkdirs = sqliteTable(
 export type ConversationWorkdir = typeof conversationWorkdirs.$inferSelect;
 export type NewConversationWorkdir = typeof conversationWorkdirs.$inferInsert;
 
+export const conversationArtifacts = sqliteTable(
+  "conversation_artifacts",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    workdirId: text("workdir_id").notNull().references(() => conversationWorkdirs.id, { onDelete: "cascade" }),
+    sourceRelativePath: text("source_relative_path").notNull(),
+    lifecycle: text("lifecycle", { enum: ["temporary", "final"] as const }).notNull(),
+    mimeType: text("mime_type"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => ({
+    threadIdx: index("idx_conversation_artifacts_thread_id").on(table.threadId),
+    workdirIdx: index("idx_conversation_artifacts_workdir_id").on(table.workdirId),
+  }),
+);
+
+export type ConversationArtifact = typeof conversationArtifacts.$inferSelect;
+export type NewConversationArtifact = typeof conversationArtifacts.$inferInsert;
+
 export const chatWorkspacesRelations = relations(
   chatWorkspaces,
   ({ many, one }) => ({
