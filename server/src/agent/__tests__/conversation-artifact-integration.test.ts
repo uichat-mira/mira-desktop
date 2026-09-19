@@ -87,11 +87,16 @@ test("registers explicit final runtime output and reads it after reload", async 
       path.join(input.conversationWorkdir.rootPath, "temporary.tmp"),
       "temporary payload",
     );
+    fs.writeFileSync(
+      path.join(input.conversationWorkdir.rootPath, "summary.txt"),
+      "summary payload",
+    );
     return {
       ...output(),
       conversationWorkdirOutputs: [
         { sourceRelativePath: "temporary.tmp", lifecycle: "temporary" },
         { sourceRelativePath: "final.txt", lifecycle: "final", mimeType: "text/plain" },
+        { sourceRelativePath: "summary.txt", lifecycle: "final", mimeType: "text/plain" },
       ],
     };
   });
@@ -109,14 +114,16 @@ test("registers explicit final runtime output and reads it after reload", async 
     ],
   });
 
-  assert.equal(result.output.conversationArtifacts?.length, 1);
-  const reference = result.output.conversationArtifacts?.[0];
+  assert.equal(result.output.conversationArtifacts?.length, 2);
+  const reference = result.output.conversationArtifacts?.find(
+    (artifact) => artifact.sourceRelativePath === "final.txt",
+  );
   assert.ok(reference);
   assert.equal(reference.sourceRelativePath, "final.txt");
   assert.equal("absolutePath" in reference, false);
   assert.equal(
     getDb().select().from(conversationArtifacts).all().length,
-    1,
+    2,
   );
 
   agentRunStore.clear();
@@ -170,5 +177,37 @@ test("does not promote temporary runtime output", async () => {
   });
 
   assert.equal(result.output.conversationArtifacts, undefined);
+  assert.equal(getDb().select().from(conversationArtifacts).all().length, 0);
+});
+
+test("registers multiple final runtime outputs atomically", async () => {
+  const user = userRepository.create({
+    username: `artifact-runtime-batch-${Date.now()}`,
+    passwordHash: "x",
+    role: "user",
+  });
+  const thread = threadRepository.create({ userId: user.id, title: "runtime batch" });
+  mocks.runAgentRuntime.mockImplementation(async (input) => {
+    assert.ok(input.conversationWorkdir);
+    fs.writeFileSync(path.join(input.conversationWorkdir.rootPath, "first.txt"), "first");
+    return {
+      ...output(),
+      conversationWorkdirOutputs: [
+        { sourceRelativePath: "first.txt", lifecycle: "final" },
+        { sourceRelativePath: "missing.txt", lifecycle: "final" },
+      ],
+    };
+  });
+
+  await assert.rejects(
+    () =>
+      createAndRunAgent({
+        threadId: thread.id,
+        userId: user.id,
+        goalText: "batch output",
+        messages: [{ role: "user", content: "batch output", parts: [{ type: "text", text: "batch output" }] }],
+      }),
+    /Artifact source is missing/,
+  );
   assert.equal(getDb().select().from(conversationArtifacts).all().length, 0);
 });

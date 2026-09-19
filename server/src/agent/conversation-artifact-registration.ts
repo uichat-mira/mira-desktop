@@ -3,6 +3,7 @@ import {
   ConversationArtifactError,
   type ConversationArtifactReference,
 } from "@/services/conversation-artifact.service.js";
+import { getSqlite } from "@/db/index.js";
 import type { ConversationWorkdirOutputDeclaration } from "./types.js";
 
 /**
@@ -15,37 +16,41 @@ export const registerConversationWorkdirOutputs = (input: {
   storageRoot?: string;
   declarations?: ConversationWorkdirOutputDeclaration[];
 }): ConversationArtifactReference[] => {
-  const declarations = input.declarations ?? [];
-  const artifacts: ConversationArtifactReference[] = [];
+  const registerBatch = getSqlite().transaction(() => {
+    const declarations = input.declarations ?? [];
+    const artifacts: ConversationArtifactReference[] = [];
 
-  for (const declaration of declarations) {
-    if (
-      !declaration ||
-      typeof declaration.sourceRelativePath !== "string" ||
-      (declaration.lifecycle !== "final" &&
-        declaration.lifecycle !== "temporary")
-    ) {
-      throw new ConversationArtifactError(
-        "invalid_source",
-        "Conversation Workdir output declaration is invalid",
+    for (const declaration of declarations) {
+      if (
+        !declaration ||
+        typeof declaration.sourceRelativePath !== "string" ||
+        (declaration.lifecycle !== "final" &&
+          declaration.lifecycle !== "temporary")
+      ) {
+        throw new ConversationArtifactError(
+          "invalid_source",
+          "Conversation Workdir output declaration is invalid",
+        );
+      }
+
+      if (declaration.lifecycle === "temporary") {
+        continue;
+      }
+
+      artifacts.push(
+        conversationArtifactService.register({
+          threadId: input.threadId,
+          userId: input.userId,
+          storageRoot: input.storageRoot,
+          sourceRelativePath: declaration.sourceRelativePath,
+          lifecycle: "final",
+          mimeType: declaration.mimeType,
+        }),
       );
     }
 
-    if (declaration.lifecycle === "temporary") {
-      continue;
-    }
+    return artifacts;
+  });
 
-    artifacts.push(
-      conversationArtifactService.register({
-        threadId: input.threadId,
-        userId: input.userId,
-        storageRoot: input.storageRoot,
-        sourceRelativePath: declaration.sourceRelativePath,
-        lifecycle: "final",
-        mimeType: declaration.mimeType,
-      }),
-    );
-  }
-
-  return artifacts;
+  return registerBatch();
 };

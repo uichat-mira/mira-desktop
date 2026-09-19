@@ -569,6 +569,9 @@ export const resumeApprovedAgentRun = async (runId: string) => {
       persistIncrementally: false,
       runControlLeaseId: runControl.leaseId,
     });
+  } catch (error) {
+    failScheduledApprovedAgentRunResume(prepared, error);
+    throw error;
   } finally {
     finishAgentRunControl(runId, runControl.leaseId);
   }
