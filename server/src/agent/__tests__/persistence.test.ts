@@ -19,7 +19,8 @@ import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
 import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
-import { getSqlite } from "@/db/index";
+import { getDb, getSqlite } from "@/db/index";
+import { conversationArtifacts } from "@/db/schema.js";
 import { hasSqliteColumn } from "@/db/sqlite-utils";
 import { threadService } from "@/services/thread.service";
 import {
@@ -293,6 +294,46 @@ test("resumeApprovedAgentRun reopens the persisted conversation workdir after re
       resumedInput?.conversationWorkdir?.rootPath,
       getAgentRunById(run.id)?.runtimeInput?.conversationWorkdir?.rootPath,
     );
+  } finally {
+    runSpy.mockRestore();
+  }
+});
+
+test("synchronous approval resume finalizes failed when final artifact registration fails", async () => {
+  const run = createPersistedWaitingApprovalRun({ withWorkdir: true });
+  const persisted = getAgentRunById(run.id);
+  const rootPath = persisted?.runtimeInput?.conversationWorkdir?.rootPath;
+  assert.ok(rootPath);
+  fs.writeFileSync(path.join(rootPath, "first.txt"), "first");
+  agentRunStore.update(run.id, {
+    runtimeInput: {
+      ...persisted?.runtimeInput,
+      conversationWorkdirOutputs: [
+        { sourceRelativePath: "first.txt", lifecycle: "final" },
+        { sourceRelativePath: "missing.txt", lifecycle: "final" },
+      ],
+    },
+  });
+
+  const runSpy = vi.spyOn(agentGraph, "run").mockResolvedValue({
+    answer: "done",
+    observations: [],
+    evidence: { observations: [], toolExecutions: [], retrievals: [] },
+    retrievedChunks: [],
+    status: "completed",
+    conversationWorkdirOutputs: [
+      { sourceRelativePath: "first.txt", lifecycle: "final" },
+      { sourceRelativePath: "missing.txt", lifecycle: "final" },
+    ],
+  } as never);
+
+  try {
+    await assert.rejects(
+      () => resumeApprovedAgentRun(run.id),
+      /Artifact source is missing/,
+    );
+    assert.equal(getAgentRunById(run.id)?.status, "failed");
+    assert.equal(getDb().select().from(conversationArtifacts).all().length, 0);
   } finally {
     runSpy.mockRestore();
   }

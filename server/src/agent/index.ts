@@ -11,6 +11,7 @@ import {
 } from "@/services/chat-file-context.service.js";
 import { persistAgentAssistantState } from "./resume";
 import { conversationWorkdirService } from "@/services/conversation-workdir.service.js";
+import { registerConversationWorkdirOutputs } from "./conversation-artifact-registration";
 import {
   finishAgentRunControl,
   startAgentRunControlLease,
@@ -116,6 +117,7 @@ export const createAndRunAgent = async (
       intentConfig: input.intentConfig,
       workspaceRoot: input.workspaceRoot,
       conversationWorkdir,
+      conversationWorkdirOutputs: input.conversationWorkdirOutputs,
       requestedToolGroupIds: input.requestedToolGroupIds,
     },
   });
@@ -135,6 +137,7 @@ export const createAndRunAgent = async (
       runId: run.id,
       runControlLeaseId: runControl.leaseId,
       goal,
+      conversationWorkdirOutputs: input.conversationWorkdirOutputs,
       approvedInvocations: [],
       onExecutionNode: async (event) => {
         const current = agentRunStore.get(run.id);
@@ -156,38 +159,55 @@ export const createAndRunAgent = async (
       return { run: afterExecution, output };
     }
 
-    for (const observation of output.observations) {
+    const outputDeclarations =
+      output.conversationWorkdirOutputs ?? input.conversationWorkdirOutputs;
+    const conversationArtifacts =
+      output.status === "completed"
+        ? registerConversationWorkdirOutputs({
+            threadId: input.threadId,
+            userId: input.userId,
+            declarations: outputDeclarations,
+          })
+        : [];
+    const outputWithArtifacts = conversationArtifacts.length
+      ? { ...output, conversationArtifacts }
+      : output;
+
+    for (const observation of outputWithArtifacts.observations) {
       agentRunStore.addObservation(run.id, observation);
     }
 
     const completedRun = agentRunStore.complete(run.id, {
-      status: output.status,
-      contextBudget: output.contextBudget,
-      blockedReason: output.blockedReason,
-      terminalReason: output.terminalReason,
-      finalizationPacket: output.finalizationPacket,
-      selectedToolId: output.selectedToolId ?? output.pendingApproval?.toolId,
-      pendingToolCall: output.pendingToolCall,
-      lastToolExecution: output.lastToolExecution,
-      ...(output.pendingApproval
-        ? { pendingApproval: output.pendingApproval }
+      status: outputWithArtifacts.status,
+      contextBudget: outputWithArtifacts.contextBudget,
+      blockedReason: outputWithArtifacts.blockedReason,
+      terminalReason: outputWithArtifacts.terminalReason,
+      finalizationPacket: outputWithArtifacts.finalizationPacket,
+      selectedToolId:
+        outputWithArtifacts.selectedToolId ??
+        outputWithArtifacts.pendingApproval?.toolId,
+      pendingToolCall: outputWithArtifacts.pendingToolCall,
+      lastToolExecution: outputWithArtifacts.lastToolExecution,
+      ...(outputWithArtifacts.pendingApproval
+        ? { pendingApproval: outputWithArtifacts.pendingApproval }
         : { pendingApproval: undefined }),
     });
 
     persistAgentAssistantState({
       run: completedRun,
-      status: output.status,
-      content: getAgentAssistantContent(output),
-      pendingApproval: output.pendingApproval,
-      blockedReason: output.blockedReason,
-      terminalReason: output.terminalReason,
-      errorMessage: output.errorMessage,
-      errorSourceNodeId: output.errorSourceNodeId,
+      status: outputWithArtifacts.status,
+      content: getAgentAssistantContent(outputWithArtifacts),
+      pendingApproval: outputWithArtifacts.pendingApproval,
+      blockedReason: outputWithArtifacts.blockedReason,
+      terminalReason: outputWithArtifacts.terminalReason,
+      errorMessage: outputWithArtifacts.errorMessage,
+      errorSourceNodeId: outputWithArtifacts.errorSourceNodeId,
+      conversationArtifacts: outputWithArtifacts.conversationArtifacts,
     });
 
     return {
       run: completedRun,
-      output,
+      output: outputWithArtifacts,
     };
   } catch (error) {
     const current = agentRunStore.get(run.id);
