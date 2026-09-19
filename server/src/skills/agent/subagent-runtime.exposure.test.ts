@@ -191,6 +191,22 @@ describe("prepareSubAgent GitHub exposure", () => {
     expect(prepared.missingCapabilities).toEqual([]);
   });
 
+  it("preserves the parent AgentRun cancellation signal in subAgent execution", () => {
+    registerGitHubTools();
+    const controller = new AbortController();
+
+    const prepared = prepareSubAgent({
+      goal: "Inspect dangjingtao/uichat-mira",
+      skillContext: createGitHubSkillContext("built-in"),
+      exposedHarnessToolIds: [],
+      signal: controller.signal,
+    });
+
+    expect(prepared.execution.signal).toBe(controller.signal);
+    controller.abort();
+    expect(prepared.execution.signal?.aborted).toBe(true);
+  });
+
   it("adds the resource reader only when the active Skill actually has resources", () => {
     registerGitHubTools();
 

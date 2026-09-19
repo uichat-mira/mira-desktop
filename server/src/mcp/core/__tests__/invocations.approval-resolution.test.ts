@@ -1,6 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
-import { clearInvocations, executeInvocation, getInvocation, resolveInvocationApproval } from "../invocations.js";
+import {
+  claimInvocationApproval,
+  clearInvocations,
+  executeInvocation,
+  finalizeClaimedInvocationApproval,
+  getInvocation,
+  resolveInvocationApproval,
+} from "../invocations.js";
 import { clearRegistry, registerTool } from "../registry.js";
 import { createComputerUseBrowserTools } from "@/mcp/tools/browser-tools.tool.js";
 
@@ -16,6 +23,50 @@ describe("MCP approval resolution", () => {
     expect(resolved.status).toBe("cancelled");
     expect(getInvocation(pending.id)?.approval?.resolution?.decision).toBe("rejected");
     expect(getInvocation(pending.id)?.error?.failureCode).toBe("cancelled");
+  });
+
+  test("claims an approval exactly once before resumed execution", async () => {
+    clearRegistry(); clearInvocations();
+    registerTool(createComputerUseBrowserTools({ observe: vi.fn(), act: vi.fn(), assert: vi.fn() } as never).find((tool) => tool.definition.id === "browser_act")!);
+    const pending = await executeInvocation({ toolId: "browser_act", args, userId: 7 });
+    expect(pending.status).toBe("awaiting_approval");
+
+    const claimed = claimInvocationApproval({
+      invocationId: pending.id,
+      userId: 7,
+      reason: "Approved from Mira Mobile",
+    });
+    expect(claimed.status).toBe("running");
+    expect(claimed.approval?.resolution?.decision).toBe("approved");
+
+    expect(() =>
+      claimInvocationApproval({
+        invocationId: pending.id,
+        userId: 7,
+      }),
+    ).toThrow("approval is no longer available");
+
+    const finalized = finalizeClaimedInvocationApproval({
+      invocationId: pending.id,
+      resolutionInvocationId: "resumed-1",
+      status: "completed",
+    });
+    expect(finalized.status).toBe("completed");
+    expect(finalized.approval?.resolution?.resolutionInvocationId).toBe("resumed-1");
+  });
+
+  test("hides claimed approvals from a different user", async () => {
+    clearRegistry(); clearInvocations();
+    registerTool(createComputerUseBrowserTools({ observe: vi.fn(), act: vi.fn(), assert: vi.fn() } as never).find((tool) => tool.definition.id === "browser_act")!);
+    const pending = await executeInvocation({ toolId: "browser_act", args, userId: 7 });
+
+    expect(() =>
+      claimInvocationApproval({
+        invocationId: pending.id,
+        userId: 99,
+      }),
+    ).toThrow("Invocation was not found");
+    expect(getInvocation(pending.id)?.status).toBe("awaiting_approval");
   });
 
   test("links an approved original invocation to its resumed invocation", async () => {

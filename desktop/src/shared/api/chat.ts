@@ -94,9 +94,13 @@ export const generateTitle = async (
       }
     }
 
-    // 清理标题
+    // 清理标题：移除 <think> 标签、去引号、截断
     const finalTitle =
-      titleGenerated.trim().slice(0, 50) || i18n.t("chat.title.default");
+      titleGenerated
+        .replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/gi, "")
+        .trim()
+        .replace(/^["'""''"]+|["'""''"]+$/g, "")
+        .slice(0, 50) || i18n.t("chat.title.default");
     return finalTitle;
   } catch (error) {
     console.error("[Chat API] Failed to generate title:", error);

@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { getBuiltInSkillPackage, listBuiltInSkillPackages } from "./registry.js";
 
 describe("WenShu built-in Skill packages", () => {
-  it("publishes the four WenShu Office Skill packages", () => {
+  it("publishes the built-in Skill packages", () => {
     expect(listBuiltInSkillPackages().map((skill) => skill.id).sort()).toEqual([
       "docx",
+      "github-collaboration",
       "pdf",
       "pptx",
+      "wechat-article-layout",
       "xlsx",
     ]);
   });

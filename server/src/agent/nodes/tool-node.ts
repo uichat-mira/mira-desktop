@@ -7,6 +7,7 @@ import { createHarnessEnvironmentSnapshot } from "@/harness/environment";
 import { runWithWorkspaceRootOverride } from "@/mcp/workspace";
 import type { McpInvocationFailureCode } from "@/mcp/core/definitions";
 import { createInvocationInputHash } from "../approval-fingerprint";
+import { getAgentRunSignal } from "../run-control";
 import {
   emitStepNode,
   getToolTraceTargetPreview,
@@ -330,6 +331,14 @@ export const toolNode = async (
         threadId: state.threadId,
         ...(invocationEnvironment ? { environment: invocationEnvironment } : {}),
         approvedInvocations: toHarnessApprovedInvocations(state.approvedInvocations),
+        ...(getAgentRunSignal(state.runId, state.runControlLeaseId)
+          ? {
+              signal: getAgentRunSignal(
+                state.runId,
+                state.runControlLeaseId,
+              ),
+            }
+          : {}),
       }),
   );
 

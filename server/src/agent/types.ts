@@ -4,6 +4,7 @@ import type { RetrievedChunk } from "@/services/rag-nodes";
 import type { ContextBudgetAudit } from "@/services/context-budget/index";
 import type { SandboxOutputEncoding } from "@/harness/sandbox/contract";
 import type { McpInvocationFailureCode, McpToolDefinition, McpToolEvidence } from "@/mcp/core/definitions";
+import type { ConversationArtifactReference } from "@/services/conversation-artifact.service";
 import type {
   AgentIntentEmbeddingConfig,
   ToolIntentResult,
@@ -501,6 +502,18 @@ export interface PlannerObservationContext {
   };
 }
 
+export interface ConversationWorkdirReference {
+  id: string;
+  threadId: string;
+  rootPath: string;
+}
+
+export interface ConversationWorkdirOutputDeclaration {
+  sourceRelativePath: string;
+  lifecycle: "temporary" | "final";
+  mimeType?: string | null;
+}
+
 export interface AgentRun {
   id: string;
   threadId: string;
@@ -536,6 +549,8 @@ export interface AgentRun {
     | "knowledgeBaseId"
     | "intentConfig"
     | "workspaceRoot"
+    | "conversationWorkdir"
+    | "conversationWorkdirOutputs"
     | "requestedToolGroupIds"
   >;
   createdAt: string;
@@ -557,6 +572,8 @@ export interface AgentRunStore {
       | "knowledgeBaseId"
       | "intentConfig"
       | "workspaceRoot"
+      | "conversationWorkdir"
+      | "conversationWorkdirOutputs"
       | "requestedToolGroupIds"
     >;
   }): AgentRun;
@@ -584,6 +601,7 @@ export interface AgentRunStore {
 
 export interface AgentGraphInput {
   runId: string;
+  runControlLeaseId?: string;
   threadId: string;
   userId: number;
   goal: AgentGoal;
@@ -593,6 +611,8 @@ export interface AgentGraphInput {
   knowledgeBaseId?: string | null;
   intentConfig?: AgentIntentEmbeddingConfig;
   workspaceRoot?: string | null;
+  conversationWorkdir?: ConversationWorkdirReference;
+  conversationWorkdirOutputs?: ConversationWorkdirOutputDeclaration[];
   requestedToolGroupIds?: string[];
   approvedInvocations?: AgentApprovedInvocation[];
   policyDecision?: AgentPolicyDecision;
@@ -627,6 +647,8 @@ export interface AgentGraphOutput {
   selectedToolId?: string;
   pendingToolCall?: AgentToolCallRequest;
   approvedInvocations?: AgentApprovedInvocation[];
+  conversationWorkdirOutputs?: ConversationWorkdirOutputDeclaration[];
+  conversationArtifacts?: ConversationArtifactReference[];
   lastToolExecution?: AgentToolExecutionResult;
   currentTaskFrame?: CurrentTaskFrame;
   finalizationPacket?: AgentFinalizationPacket;

@@ -7,6 +7,10 @@ export type RemoteDeviceScope =
   | "agent:read"
   | "agent:approve"
   | "agent:control"
+  | "tools:read"
+  | "tools:invoke"
+  | "tools:approve"
+  | "tools:control"
   | "artifacts:read";
 
 export type PairingChallengeStatus =

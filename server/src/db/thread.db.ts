@@ -33,6 +33,15 @@ const createThreadTables = () => {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS conversation_workdirs (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      root_path TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
@@ -50,6 +59,22 @@ const createThreadTables = () => {
     CREATE INDEX IF NOT EXISTS idx_threads_workspace_id ON threads(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_threads_status ON threads(status);
     CREATE INDEX IF NOT EXISTS idx_threads_updated_at ON threads(updated_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_workdirs_thread_id ON conversation_workdirs(thread_id);
+    CREATE INDEX IF NOT EXISTS idx_conversation_workdirs_user_id ON conversation_workdirs(user_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_workdirs_root_path ON conversation_workdirs(root_path);
+    CREATE TABLE IF NOT EXISTS conversation_artifacts (
+      id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      workdir_id TEXT NOT NULL REFERENCES conversation_workdirs(id) ON DELETE CASCADE,
+      source_relative_path TEXT NOT NULL,
+      lifecycle TEXT NOT NULL CHECK (lifecycle IN ('temporary', 'final')),
+      mime_type TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_thread_id ON conversation_artifacts(thread_id);
+    CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_workdir_id ON conversation_artifacts(workdir_id);
     CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
   `);
@@ -548,6 +573,10 @@ export const initializeThreadDatabase = () => {
 export const getThreadDatabaseHealth = () => ({
   hasChatWorkspacesTable: hasSqliteTable(getSqlite(), "chat_workspaces"),
   hasThreadsTable: hasSqliteTable(getSqlite(), "threads"),
+  hasConversationWorkdirsTable: hasSqliteTable(
+    getSqlite(),
+    "conversation_workdirs",
+  ),
   hasMessagesTable: hasSqliteTable(getSqlite(), "messages"),
   hasAgentRunsTable: hasSqliteTable(getSqlite(), "agent_runs"),
   hasThreadUserIdColumn: hasSqliteColumn(getSqlite(), "threads", "user_id"),

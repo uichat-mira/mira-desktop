@@ -300,6 +300,13 @@ const sendPersistedDefaultChatStream = ({
             },
           };
 
+          if (run.status === "cancelled") {
+            return {
+              answer: "Agent 运行已取消。",
+              isFinal: true,
+            };
+          }
+
           if (output.pendingApproval) {
             return {
               answer: "等待审批",
@@ -307,8 +314,18 @@ const sendPersistedDefaultChatStream = ({
             };
           }
 
+          const durableAnswer =
+            output.answer.trim() ||
+            (output.status === "waiting_user"
+              ? "Agent 正在等待你的输入。"
+              : output.status === "failed"
+                ? "Agent 运行失败。"
+                : output.status === "blocked"
+                  ? "Agent 已阻断，请检查运行状态。"
+                  : "Agent 已完成。");
+
           return {
-            answer: output.answer,
+            answer: durableAnswer,
             isFinal: true,
           };
         }
@@ -335,14 +352,16 @@ const sendPersistedDefaultChatStream = ({
           return;
         }
 
-        persistAssistantMessage({
-          threadId,
-          userId: authUserId,
-          assistantMessageId,
-          parentId: latestUserMessageId,
-          content: answer,
-          ...(agentAssistantMetadata ? { metadata: agentAssistantMetadata } : {}),
-        });
+        if (!agentEnabled) {
+          persistAssistantMessage({
+            threadId,
+            userId: authUserId,
+            assistantMessageId,
+            parentId: latestUserMessageId,
+            content: answer,
+            ...(agentAssistantMetadata ? { metadata: agentAssistantMetadata } : {}),
+          });
+        }
 
         void (async () => {
           try {

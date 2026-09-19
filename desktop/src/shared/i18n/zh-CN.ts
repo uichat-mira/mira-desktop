@@ -568,14 +568,14 @@ const zhCN = {
       },
       cleanup: {
         label: "清理历史对话",
-        description: "删除当前账号的全部对话并清空服务端日志，不会修改工作空间。",
+        description: "删除当前账号的全部对话及其会话工作目录、附件和生成的媒体文件，并清空服务端日志，不会修改工作空间。",
         action: "一键清理",
         title: "确认清理历史对话",
         confirmDescription:
-          "这会永久删除当前账号的全部对话及其消息，并清空服务端日志；工作空间不会被修改。",
+          "这会永久删除当前账号的全部对话及其消息、附件和生成的媒体文件，清理对应的会话工作目录，并清空服务端日志；工作空间不会被修改。",
         confirm: "确认清理",
-        success: "已清理 {{threads}} 个对话、{{workspaces}} 个工作空间和 {{media}} 个媒体文件，共删除 {{messages}} 条消息，清空日志 {{logs}} KB。",
-        partial: "已清理 {{threads}} 个对话、{{workspaces}} 个工作空间和 {{media}} 个媒体文件，删除 {{messages}} 条消息，清空日志 {{logs}} KB；{{failed}} 个对话未能清理。",
+        success: "已清理 {{threads}} 个对话和 {{media}} 个媒体文件，共删除 {{messages}} 条消息，清空日志 {{logs}} KB。",
+        partial: "已清理 {{threads}} 个对话和 {{media}} 个媒体文件，删除 {{messages}} 条消息，清空日志 {{logs}} KB；{{failed}} 项清理未能完成。",
         empty: "当前没有可清理的对话或媒体文件，服务端日志已清空。",
         failed: "清理对话失败，请稍后重试。",
       },

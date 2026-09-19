@@ -283,7 +283,7 @@ const attachWebBridgeClient = (socket: WebBridgeSocket) => {
 
     if (!client.authenticated || !client.accessToken) return;
 
-    // WebBridge connections can outlive the 8-hour JWT. Revalidate before
+    // WebBridge connections can outlive the 24-hour JWT. Revalidate before
     // every post-handshake message so an expired session cannot keep invoking
     // browser operations until the socket happens to reconnect.
     const currentUser = authenticate(client.accessToken);

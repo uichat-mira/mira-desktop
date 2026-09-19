@@ -14,6 +14,7 @@ const mockedApis = vi.hoisted(() => ({
   runtimeDeleteThreadMock: vi.fn(),
   runtimeSetActiveThreadIdMock: vi.fn(),
   resetDraftMock: vi.fn(),
+  navigateMock: vi.fn(),
   desktopPlatform: "win32",
 }));
 
@@ -34,6 +35,10 @@ const mockSidebarState = {
     deleteThread: true,
   },
 } as const;
+
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => mockedApis.navigateMock,
+}));
 
 vi.mock("@/features/chat/core/runtime", () => ({
   useChatRuntime: () => ({
@@ -173,6 +178,7 @@ void i18n.use(initReactI18next).init({
 describe("UChatThreadListSidebar", () => {
   beforeEach(() => {
     mockedApis.createChatWorkspaceMock.mockReset();
+    mockedApis.navigateMock.mockReset();
     mockedApis.desktopPlatform = "win32";
   });
 
@@ -271,6 +277,20 @@ describe("UChatThreadListSidebar", () => {
     await user.click(screen.getByRole("button", { name: "Chat Search" }));
 
     expect(screen.getByTestId("sidebar-tools-modal")).toHaveTextContent("search");
+  });
+
+  it("opens Cuixing through the app integration sidebar entry", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <UChatThreadListSidebar />
+      </I18nextProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "淬行" }));
+
+    expect(mockedApis.navigateMock).toHaveBeenCalledWith("/forge");
   });
 
   it("shows inline validation for invalid workspace root paths", async () => {

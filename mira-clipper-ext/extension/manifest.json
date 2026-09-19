@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "触界",
-  "version": "0.99.9",
+  "version": "0.101.0",
   "description": "连接 Mira，操作网页并支持用户主动剪藏",
   "permissions": [
     "activeTab",

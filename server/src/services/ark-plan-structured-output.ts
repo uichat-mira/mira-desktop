@@ -99,8 +99,7 @@ const requestArkPlanStructuredOutputText = async (
       content: message.content,
     })),
     // Ark Plan structured streaming is not documented as a stable contract.
-    // Buffering one complete response ensures fallback happens before Planner
-    // receives a partial JSON object.
+    // Buffer one complete response so Planner never receives a partial object.
     stream: false,
     // Ark Plan requires the Thinking object shape instead of a boolean. Planner
     // agentTask decisions must stay non-thinking so reasoning text cannot leak
@@ -139,7 +138,6 @@ const requestArkPlanStructuredOutputText = async (
     throw new Error("Ark Plan structured output response did not contain message content.");
   }
 
-  parseStructuredJsonObject(content);
   return content;
 };
 

@@ -193,7 +193,8 @@ Integration API 当前也只公开 `knowledge_query` 的列表、启停、Access
 
 当前已经成立：
 
-- managed browser runtime 解析与安装；
+- managed browser runtime 解析与安装（配置按平台分发：win32 → win64 包、darwin/arm64 → mac-arm64 包；其余平台显式无托管配置，不得伪装支持）；
+- darwin 系统浏览器探测（`/Applications` 下的 Chrome / Edge）；
 - Browser session 与结构化 browser tools；
 - 持久任务、计划、Evidence 和 Artifact；
 - `ComputerUseModelExecutor`；
@@ -204,7 +205,8 @@ Integration API 当前也只公开 `knowledge_query` 的列表、启停、Access
 当前边界：
 
 - 核心执行面是受控浏览器，不是宿主桌面任意遥控；
-- 浏览器 Runtime 未安装时不能伪装 ready；
+- 浏览器 Runtime 未安装时不能伪装 ready；托管记录与本平台布局不一致时判无效（不得返回 ready-managed）；
+- darwin x64 / linux 没有托管包配置，只能依赖系统浏览器，`installManagedRuntime` 会明确报错；
 - Studio task 与 Main Agent tool execution 是相邻但不同的执行入口；
 - `computer_use` definition 的统一 external invoke 仍未实现。
 

@@ -1,6 +1,6 @@
 {
   "name": "@ui-chat-mira/server",
-  "version": "0.99.9",
+  "version": "0.101.0",
   "private": true,
   "type": "module",
   "author": "Tomz Dang <dangjing@gmail.com>",

@@ -1,0 +1,99 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "zh-CN"
+early_access: false
+tone_instructions: >-
+  使用简洁中文，优先指出真实缺陷、回归风险和可执行修复。不要复述 diff，不要做无依据猜测，不要为了代码风格或个人偏好推动超出当前 PR 范围的大重构。全仓优先检查 correctness、regression、security、error handling、tests、contracts 和 maintainability；涉及前端界面时，再叠加 UI/UX、设计系统和可访问性审查。
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  review_details: false
+  in_progress_fortune: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 10
+    base_branches:
+      - "dev"
+    ignore_title_keywords:
+      - "WIP"
+      - "[skip review]"
+    ignore_usernames:
+      - "dependabot[bot]"
+      - "renovate[bot]"
+      - "github-actions[bot]"
+
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/coverage/**"
+    - "!**/.test-artifact/**"
+    - "!**/pnpm-lock.yaml"
+    - "!**/package-lock.json"
+    - "!**/yarn.lock"
+    - "!**/*.min.js"
+    - "!**/*.map"
+
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        先做工程质量评审，再做风格评审。重点按严重性检查：
+        - correctness：逻辑错误、边界条件、空值/异常路径、竞态、状态不同步、错误的异步生命周期、资源泄漏。
+        - regression：是否改变已有协议、数据语义、持久化行为、调用顺序、默认行为或兼容性；对核心链路的隐性副作用优先指出。
+        - security / safety：权限绕过、路径/输入校验缺失、敏感数据暴露、注入风险、不安全外呼、审批或策略边界弱化。
+        - error handling：失败是否被吞掉、错误状态是否被伪装成成功、重试/超时/取消/清理是否正确。
+        - tests：行为变更是否有与风险匹配的测试；优先要求能证明关键行为的单测/集成测试，不为覆盖率数字堆低价值测试。
+        - contracts：类型、schema、API、IPC、Agent 状态机、工具协议等合同是否被破坏；不要仅因实现方式不同就提出问题。
+        - maintainability：只指出会导致明显重复、漂移、难以验证或高维护成本的问题；不要为了“更优雅”推动无必要重构。
+        - performance：只在存在明显 N+1、无界循环/重试、重复 IO、大对象复制、阻塞主线程等真实风险时提出。
+        评审必须基于当前 PR 的实际改动和仓库既有规则；没有证据的问题不要报。
+
+    - path: "desktop/src/**"
+      instructions: |
+        在全仓工程质量标准之上，再重点审 UI/UX。
+        以 AGENTS.md、desktop/src/shared/ui/COMPONENTS.md、desktop/src/shared/ui/ui-design-guidelines-tailwind.md 为设计与组件约束。
+        - 检查信息层级、交互路径、状态反馈、可发现性、误触风险、空态/错误态/加载态，以及响应式和主题切换下的回归。
+        - 优先复用 desktop/src/shared/ui 已有纯 UI 组件；重复手写已有模式时指出一致性和维护风险，但不要为了抽象而抽象。
+        - 检查语义 token（surface/text/icon/border/primary/status）使用，避免硬编码颜色或把 gray/slate/blue 等作为独立主视觉体系。
+        - 检查圆角、阴影、卡片密度是否克制；避免无理由的 rounded-2xl/rounded-3xl、厚阴影、卡片套卡片。
+        - 检查 focus-visible、键盘操作、aria/可访问名称、禁用态、hover/focus/selected 状态和点击目标。
+        - 不要对纯视觉偏好吹毛求疵；只有违反既有规范、造成可用性问题或产生回归风险时才评论。
+
+    - path: "desktop/src/shared/ui/**"
+      instructions: |
+        共享 UI 基础层需要同时关注代码合同和视觉合同。
+        - 检查公共 props、默认行为、className 组合、ref/事件传递等是否保持向后兼容。
+        - 新增或修改共享组件时，检查 COMPONENTS.md 与 ui-design-guidelines-tailwind.md 是否需要同步更新。
+        - 检查语义 token、浅/深色兼容、focus-visible、状态反馈与可访问性。
+        - 避免业务逻辑进入共享 UI，也避免为单一页面制造过度抽象。
+
+    - path: "electron/**"
+      instructions: |
+        重点检查 Electron 主进程、preload、IPC、进程生命周期、资源清理与 renderer/native 边界。
+        - renderer 不应直接获得 Node 能力。
+        - preload 暴露应最小化、类型和错误处理应一致。
+        - 对窗口/进程/子进程/事件监听器检查泄漏、重复注册、退出清理和异常恢复。
+        - 任何弱化审批、权限、外呼或执行边界的变更都按高风险问题处理。
+
+    - path: "server/**"
+      instructions: |
+        重点检查后端 correctness、数据一致性、状态语义、并发、错误处理、协议和测试。
+        - API/服务层不得静默吞错或伪装成功。
+        - 对 SQLite/持久化变更检查事务、迁移、并发访问和旧数据行为。
+        - 网络/外呼检查超时、取消、重试边界与资源释放。
+        - 涉及 Agent 主链时，保护 Planner → Normalize → Policy → ToolNode → Evidence → Planner；selectedToolId / capabilityIntent 不得绕过 pendingToolCall、Policy 或 ToolNode 合同。
+        - recoverable / terminal / waiting_approval / max-iteration 等状态不得被混淆，也不得在停止态继续执行工具。
+
+    - path: "scripts/**"
+      instructions: |
+        重点检查跨平台行为、路径处理、退出码、错误传播、幂等性和清理逻辑。不要引入硬编码本机路径或静默 fallback；涉及打包/发布时注意不要破坏既有 retention 与产物合同。
+
+chat:
+  auto_reply: true

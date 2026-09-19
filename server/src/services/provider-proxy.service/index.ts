@@ -38,7 +38,7 @@ import {
   resolveExplicitProviderSelection,
   resolveProviderForRole,
 } from "./resolution.js";
-import { createUiMessageStream } from "./stream-normalizer.js";
+import { createUiMessageStream, filterThinkTagStream } from "./stream-normalizer.js";
 import type {
   ProviderInvocationMetadata,
   ProviderResolution,
@@ -302,11 +302,11 @@ export const providerProxyService = {
               return;
             }
           } else {
-            for await (const delta of service.streamChatText(
+            for await (const delta of filterThinkTagStream(service.streamChatText(
               input.requestedProvider,
               input.messages,
               input.params,
-            )) {
+            ))) {
               if (!delta) {
                 continue;
               }

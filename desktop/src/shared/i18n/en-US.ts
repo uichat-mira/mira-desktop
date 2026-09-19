@@ -598,15 +598,15 @@ const enUS = {
       cleanup: {
         label: "Clear Conversation History",
         description:
-          "Delete all of this account's conversations and messages, and clear server logs. Workspaces are not changed.",
+          "Delete all of this account's conversations and messages, remove their conversation workdirs, attachments, and generated media, and clear server logs. Workspaces are not changed.",
         action: "Clear Now",
         title: "Confirm Conversation Cleanup",
         confirmDescription:
-          "This permanently deletes all of this account's conversations and messages and clears server logs. Workspaces are not changed.",
+          "This permanently deletes all of this account's conversations, messages, conversation workdirs, attachments, generated media, and server logs. Workspaces are not changed.",
         confirm: "Clear Conversations",
-        success: "Cleared {{threads}} conversations, {{workspaces}} workspaces, and {{media}} media files; {{messages}} messages and {{logs}} KB of server logs cleared.",
+        success: "Cleared {{threads}} conversations and {{media}} media files; {{messages}} messages and {{logs}} KB of server logs cleared.",
         partial:
-          "Cleared {{threads}} conversations, {{workspaces}} workspaces, and {{media}} media files; {{messages}} messages and {{logs}} KB of server logs cleared; {{failed}} conversations could not be cleared.",
+          "Cleared {{threads}} conversations and {{media}} media files; {{messages}} messages and {{logs}} KB of server logs cleared; {{failed}} cleanup item(s) could not be cleared.",
         empty: "There are no conversations or media files to clear. Server logs were cleared.",
         failed: "Failed to clear conversations. Please try again.",
       },

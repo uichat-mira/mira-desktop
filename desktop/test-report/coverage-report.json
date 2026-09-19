@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-09T17:16:29.018Z",
+  "generatedAt": "2026-08-11T17:43:17.621Z",
   "scope": "client",
   "summary": {
     "total": {
@@ -713571,7 +713571,7 @@
                 "line": 113,
                 "column": 43
               },
-              "count": 478
+              "count": 477
             }
           ]
         },

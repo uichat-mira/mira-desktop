@@ -1,7 +1,7 @@
 ---
 status: current
 owner: runtime
-last_verified: 2026-07-31
+last_verified: 2026-09-16
 layer: schema
 module: ModelSetting
 feature: ProviderStandards
@@ -154,17 +154,19 @@ Rerank 必须显式声明，不能从 Chat adapter 推断。
 
 ## 4. 当前 Template Matrix
 
-| Template | Sync | Chat | Embedding | Rerank | Image | 显式 role 限制 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `ollama` | Ollama | Ollama | Ollama | 无 | 无 | 默认角色集合 |
-| `lmstudio` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | 无 | 默认角色集合 |
-| `openai` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | OpenAI Images | 默认角色集合 |
-| `google` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | 无 | 默认角色集合 |
-| `cloudflare` | Cloudflare | OpenAI-compatible | Cloudflare | 无 | 无 | 默认角色集合 |
-| `volcengine` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI Images | 默认角色集合 |
-| `volcengine-code-plan` | Ark Plan | OpenAI-compatible | 无 | 无 | 无 | `llm / task / agentTask / evaluation` |
-| `volcengine-agent-plan` | Ark Plan | OpenAI-compatible | 无 | 无 | 无 | `llm / task / agentTask / evaluation` |
-| `openai-compatible-custom` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI Images | 默认角色集合 |
+| Template | Sync | Chat | Embedding | Rerank | Image | Planner structured | 显式 role 限制 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ollama` | Ollama | Ollama | Ollama | 无 | 无 | Ollama JSON Schema | 默认角色集合 |
+| `lmstudio` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | 无 | 无，保留 text-JSON compatibility | 默认角色集合 |
+| `openai` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | OpenAI Images | 无，保留 text-JSON compatibility | 默认角色集合 |
+| `google` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | 无 | 无 | 无，保留 text-JSON compatibility | 默认角色集合 |
+| `cloudflare` | Cloudflare | OpenAI-compatible | Cloudflare | 无 | 无 | 无，保留 text-JSON compatibility | 默认角色集合 |
+| `volcengine` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI Images | 无，保留 text-JSON compatibility | 默认角色集合 |
+| `volcengine-code-plan` | Ark Plan | OpenAI-compatible | 无 | 无 | 无 | Ark JSON Schema | `llm / task / agentTask / evaluation` |
+| `volcengine-agent-plan` | Ark Plan | OpenAI-compatible | 无 | 无 | 无 | Ark JSON Schema | `llm / task / agentTask / evaluation` |
+| `openai-compatible-custom` | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI-compatible | OpenAI Images | 无，保留 text-JSON compatibility | 默认角色集合 |
+
+Planner structured 只有在 Template 明确声明对应 adapter 且当前 Mira 调用协议已覆盖时才成立。共享的 OpenAI-compatible Chat adapter 不自动等于 Planner native structured；未声明的 Provider 继续使用 text-JSON compatibility codec。
 
 ## 5. 默认角色集合
 

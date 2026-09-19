@@ -41,6 +41,7 @@ Canonical Mira Routes / safe projections
   ├─ Workspace / Thread / Message
   ├─ Persisted Chat Stream
   ├─ Agent Run
+  ├─ Mobile-safe Tool Gateway projection
   └─ Artifact Read
 ```
 
@@ -150,6 +151,10 @@ Host 不持久化长期可解密凭证明文。撤销后下一次 HTTP 请求立
 | `agent:read` | 读取 Agent Run |
 | `agent:approve` | 批准或拒绝 pending approval |
 | `agent:control` | 取消 Agent Run |
+| `tools:read` | 读取 Mobile-safe Agent tool projection |
+| `tools:invoke` | 通过 Remote Gateway 调用一个已暴露工具 |
+| `tools:approve` | 在 Mobile 批准或拒绝一个 awaiting-approval tool invocation |
+| `tools:control` | 取消当前 owner user 的 tool invocation |
 | `artifacts:read` | 读取已归属 Thread 的媒体 / Artifact |
 
 默认批准 scope：
@@ -161,6 +166,10 @@ messages:write
 agent:read
 agent:approve
 agent:control
+tools:read
+tools:invoke
+tools:approve
+tools:control
 artifacts:read
 ```
 
@@ -196,6 +205,10 @@ GET    /agent/runs/:runId
 POST   /agent/runs/:runId/approve
 POST   /agent/runs/:runId/reject
 POST   /agent/runs/:runId/cancel
+GET    /remote/v1/tools
+POST   /remote/v1/tool-invocations/stream
+POST   /remote/v1/tool-invocations/:invocationId/approval
+POST   /remote/v1/tool-invocations/:invocationId/cancel
 GET    /threads/:id/media/:mediaId/content
 ```
 
@@ -238,7 +251,7 @@ V1 不伪造尚未存在的 durable event journal。重连采用 canonical state
 - 配对码、poll token 与 device credential 均使用 timing-safe 哈希比较。
 - Desktop 必须显示真实请求设备与 scope，不能自动批准。
 - 同处 Tailnet 不等于通过 Mira 应用授权。
-- Device credential 不能调用账号设置、Provider、Knowledge Base 写操作、Terminal 或任何未被 Remote Gateway 显式映射到已批准 scope 的 route。
+- Device credential 不能直接调用账号设置、Provider、Knowledge Base 写操作、任意本地进程接口或任何未被 Remote Gateway 显式映射到已批准 scope 的 route。Terminal 等 Harness 工具只有在进入 Mobile-safe Tool Gateway exposure、设备持有对应 `tools:*` scope、并满足 exact invocation Policy/approval 时才能通过 Gateway 间接执行；Mobile 不获得 Terminal route 或 Host shell credential。
 - Thread 创建 / 删除仍经过 owner user 约束；paired device 不能在 body 中切换用户，也不能操作其他用户 Thread。
 - Workspace Remote projection 不返回 `rootPath`，不允许 Workspace 写操作。
 - Agent 审批仍使用现有 exact invocation 与 checkpoint；Remote Gateway 不改变 Harness 合同。
@@ -258,3 +271,8 @@ V1 不伪造尚未存在的 durable event journal。重连采用 canonical state
 - `PATCH /threads/:id`、archive / restore、bulk history cleanup 与 Workspace 写能力仍拒绝。
 - Workspace 列表包含 active / archived 状态且不返回 `rootPath`。
 - mobile 使用 device credential 调用 persisted default chat stream 时，仍按 owner user 的 Thread 权限和 Agent 审批合同执行。
+- `tools:read` 只返回当前 Agent exposure 的 Mobile-safe tool projection，不返回 MCP secret、stdio command 或私有 endpoint。
+- `tools:invoke` 只能执行当前 exposure 中的 canonical tool；需要审批时返回 awaiting-approval，而不是静默执行。
+- `tools:approve` 必须校验 invocation owner、toolId 和原始 args inputHash；参数变化后旧批准无效。
+- `tools:control` 只能取消当前 owner user 的 invocation。
+- 旧 paired device 不静默获得新增 `tools:*` scope；缺少工具 scope 不影响其已有 Thread/Message 能力。

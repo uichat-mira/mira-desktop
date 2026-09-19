@@ -40,7 +40,7 @@ const CONFIG = {
     runtimeConfig.backend.host,
   DATABASE_DIR: process.env.UI_CHAT_DATABASE_DIR ?? "data",
   DATABASE_NAME: "uichat-rag-test.db",
-  JWT_EXPIRES_IN: "8h" as const,
+  JWT_EXPIRES_IN: "24h" as const,
   SWAGGER_PREFIX: "/api-docs",
   LOG_DIR: process.env.UI_CHAT_LOG_DIR ?? "logs",
   TOOLS_DIR: process.env.UI_CHAT_TOOLS_DIR ?? "tools",

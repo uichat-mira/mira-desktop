@@ -23,8 +23,15 @@ const MAX_DEVICE_NAME_LENGTH = 80;
 const MAX_PLATFORM_LENGTH = 40;
 const MAX_PUBLIC_KEY_LENGTH = 4096;
 
-export const DEFAULT_REMOTE_DEVICE_SCOPES: readonly RemoteDeviceScope[] =
-  REMOTE_DEVICE_SCOPES;
+export const DEFAULT_REMOTE_DEVICE_SCOPES: readonly RemoteDeviceScope[] = [
+  "threads:read",
+  "messages:read",
+  "messages:write",
+  "agent:read",
+  "agent:approve",
+  "agent:control",
+  "artifacts:read",
+];
 
 export type PairingClaimSummary = {
   claimId: string;

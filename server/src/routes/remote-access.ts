@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
+import { Readable } from "node:stream";
 import {
   PairingServiceError,
   remoteAccessPairingService,
@@ -29,11 +30,22 @@ import {
   REMOTE_DEVICE_SCOPES,
   REMOTE_PAIRING_TRANSPORTS,
 } from "@/db/repositories/tailscale-remote-access.repository.js";
+import {
+  assertRemoteToolAvailable,
+  cancelRemoteToolInvocation,
+  executeRemoteToolInvocation,
+  listRemoteToolManifests,
+  resolveRemoteToolApproval,
+  type RemoteToolGatewayStreamEvent,
+} from "@/services/remote-tool-gateway.service.js";
 
 const looseObjectSchema = {
   type: "object",
   additionalProperties: true,
 } as const;
+
+const toRemoteToolSseChunk = (event: RemoteToolGatewayStreamEvent) =>
+  `data: ${JSON.stringify(event)}\n\n`;
 
 const remoteWorkspaceSchema = {
   type: "object",
@@ -410,7 +422,11 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
             requestedScopes: {
               type: "array",
               uniqueItems: true,
-              items: { type: "string", enum: [...REMOTE_DEVICE_SCOPES] },
+              maxItems: 32,
+              // Pairing requests are capability proposals, not grants. Accept
+              // future scope names here so newer Mobile clients can pair with
+              // an older Host; the service keeps only REMOTE_DEVICE_SCOPES.
+              items: { type: "string", minLength: 1, maxLength: 128 },
             },
           },
         },
@@ -531,6 +547,229 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
   );
 
   app.get(
+    "/remote/v1/tools",
+    {
+      schema: {
+        tags: ["Remote Access"],
+        summary: "List mobile-safe remote Agent tools",
+        operationId: "listRemoteDeviceTools",
+        response: {
+          200: successEnvelope({
+            type: "array",
+            items: looseObjectSchema,
+          }),
+          401: errorEnvelope,
+          403: errorEnvelope,
+          500: errorEnvelope,
+        },
+      },
+    },
+    routeHandler("Failed to list remote device tools", async (request) => {
+      if (!request.remoteDevice || !request.authUser) {
+        throw forbidden("A paired remote device credential is required");
+      }
+      return success(await listRemoteToolManifests());
+    }),
+  );
+
+  app.post<{
+    Body: { toolId: string; args?: Record<string, unknown> };
+  }>(
+    "/remote/v1/tool-invocations/stream",
+    {
+      schema: {
+        tags: ["Remote Access"],
+        summary: "Execute one mobile remote tool invocation with SSE",
+        operationId: "streamRemoteDeviceToolInvocation",
+        body: {
+          type: "object",
+          required: ["toolId"],
+          additionalProperties: false,
+          properties: {
+            toolId: { type: "string", minLength: 1, maxLength: 512 },
+            args: { type: "object", additionalProperties: true },
+          },
+        },
+        response: {
+          400: errorEnvelope,
+          401: errorEnvelope,
+          403: errorEnvelope,
+          500: errorEnvelope,
+        },
+      },
+    },
+    routeHandler("Failed to stream remote device tool invocation", async (request, reply) => {
+      const user = request.authUser;
+      if (!request.remoteDevice || !user) {
+        throw forbidden("A paired remote device credential is required");
+      }
+
+      await assertRemoteToolAvailable(request.body.toolId);
+
+      const routeAbortController = new AbortController();
+      const abortOnDisconnect = () => routeAbortController.abort();
+      reply.raw.once("close", abortOnDisconnect);
+
+      reply
+        .header("Content-Type", "text/event-stream")
+        .header("Cache-Control", "no-cache, no-transform")
+        .header("Connection", "keep-alive");
+
+      const stream = Readable.from(
+        (async function* () {
+          const queue: string[] = [];
+          let resolvePending: (() => void) | null = null;
+          let finished = false;
+
+          const wake = () => {
+            resolvePending?.();
+            resolvePending = null;
+          };
+
+          const runner = executeRemoteToolInvocation({
+            toolId: request.body.toolId,
+            args: request.body.args,
+            userId: user.id,
+            signal: routeAbortController.signal,
+            onEvent(event) {
+              queue.push(toRemoteToolSseChunk(event));
+              wake();
+            },
+          })
+            .then((invocation) => {
+              queue.push(
+                toRemoteToolSseChunk({
+                  type: "tool:complete",
+                  invocation,
+                }),
+              );
+            })
+            .catch(() => {
+              queue.push(
+                toRemoteToolSseChunk({
+                  type: "tool:error",
+                  code: "REMOTE_TOOL_REQUEST_FAILED",
+                  message: "Remote tool request failed before a final invocation result was available.",
+                }),
+              );
+            })
+            .finally(() => {
+              finished = true;
+              reply.raw.off("close", abortOnDisconnect);
+              wake();
+            });
+
+          while (!finished || queue.length > 0) {
+            while (queue.length > 0) {
+              yield queue.shift()!;
+            }
+            if (!finished) {
+              await new Promise<void>((resolve) => {
+                resolvePending = resolve;
+              });
+            }
+          }
+
+          await runner;
+        })(),
+      );
+
+      return reply.send(stream);
+    }),
+  );
+
+  app.post<{
+    Params: { invocationId: string };
+    Body: {
+      decision: "approved" | "rejected";
+      toolId: string;
+      args?: Record<string, unknown>;
+    };
+  }>(
+    "/remote/v1/tool-invocations/:invocationId/approval",
+    {
+      schema: {
+        tags: ["Remote Access"],
+        summary: "Resolve one mobile remote tool approval",
+        operationId: "resolveRemoteDeviceToolApproval",
+        params: {
+          type: "object",
+          required: ["invocationId"],
+          properties: {
+            invocationId: { type: "string", minLength: 1 },
+          },
+        },
+        body: {
+          type: "object",
+          required: ["decision", "toolId"],
+          additionalProperties: false,
+          properties: {
+            decision: { type: "string", enum: ["approved", "rejected"] },
+            toolId: { type: "string", minLength: 1, maxLength: 512 },
+            args: { type: "object", additionalProperties: true },
+          },
+        },
+        response: {
+          200: successEnvelope(looseObjectSchema),
+          400: errorEnvelope,
+          401: errorEnvelope,
+          403: errorEnvelope,
+          404: errorEnvelope,
+          500: errorEnvelope,
+        },
+      },
+    },
+    routeHandler("Failed to resolve remote device tool approval", async (request) => {
+      const user = request.authUser;
+      if (!request.remoteDevice || !user) {
+        throw forbidden("A paired remote device credential is required");
+      }
+      return success(
+        await resolveRemoteToolApproval({
+          invocationId: request.params.invocationId,
+          decision: request.body.decision,
+          toolId: request.body.toolId,
+          args: request.body.args,
+          userId: user.id,
+        }),
+      );
+    }),
+  );
+
+  app.post<{ Params: { invocationId: string } }>(
+    "/remote/v1/tool-invocations/:invocationId/cancel",
+    {
+      schema: {
+        tags: ["Remote Access"],
+        summary: "Cancel one mobile remote tool invocation",
+        operationId: "cancelRemoteDeviceToolInvocation",
+        params: {
+          type: "object",
+          required: ["invocationId"],
+          properties: {
+            invocationId: { type: "string", minLength: 1 },
+          },
+        },
+        response: {
+          200: successEnvelope(looseObjectSchema),
+          401: errorEnvelope,
+          403: errorEnvelope,
+          404: errorEnvelope,
+          500: errorEnvelope,
+        },
+      },
+    },
+    routeHandler("Failed to cancel remote device tool invocation", async (request) => {
+      if (!request.remoteDevice || !request.authUser) {
+        throw forbidden("A paired remote device credential is required");
+      }
+      return success(
+        cancelRemoteToolInvocation(request.params.invocationId, request.authUser.id),
+      );
+    }),
+  );
+
+  app.get(
     "/remote/v1/manifest",
     {
       schema: {
@@ -573,6 +812,12 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
             "POST /agent/runs/:runId/approve",
             "POST /agent/runs/:runId/reject",
             "POST /agent/runs/:runId/cancel",
+          ],
+          tools: [
+            "GET /remote/v1/tools",
+            "POST /remote/v1/tool-invocations/stream",
+            "POST /remote/v1/tool-invocations/:invocationId/approval",
+            "POST /remote/v1/tool-invocations/:invocationId/cancel",
           ],
           artifacts: ["GET /threads/:id/media/:mediaId/content"],
         },

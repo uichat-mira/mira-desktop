@@ -11,6 +11,7 @@ import {
   scheduleApprovedAgentRunResume,
 } from "./resume";
 import { getAgentRunById } from "./run-read";
+import { cancelAgentRunExecution } from "./run-control";
 
 const agentApprovalRequestSchema = {
   type: "object",
@@ -78,6 +79,13 @@ const agentRunSchema = {
 type AgentRouteParams = {
   runId: string;
 };
+
+const TERMINAL_AGENT_RUN_STATUSES = new Set<AgentRun["status"]>([
+  "completed",
+  "failed",
+  "blocked",
+  "cancelled",
+]);
 
 const verifyRunOwnership = (run: AgentRun | undefined, userId: number) => {
   if (!run) {
@@ -178,6 +186,10 @@ const registerAgentRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         throw notFound("Agent run not found");
       }
 
+      if (visibleRun.status !== "waiting_approval" || !visibleRun.pendingApproval) {
+        return success(visibleRun);
+      }
+
       const next = agentRunStore.complete(visibleRun.id, {
         status: "blocked",
         pendingApproval: undefined,
@@ -223,11 +235,22 @@ const registerAgentRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         throw notFound("Agent run not found");
       }
 
+      if (TERMINAL_AGENT_RUN_STATUSES.has(visibleRun.status)) {
+        return success(visibleRun);
+      }
+
+      cancelAgentRunExecution(visibleRun.id);
       const next = agentRunStore.complete(visibleRun.id, {
         status: "cancelled",
         pendingApproval: undefined,
         pendingToolCall: undefined,
         selectedToolId: undefined,
+        terminalReason: "cancelled",
+      });
+      persistAgentAssistantState({
+        run: next,
+        status: "cancelled",
+        content: "Agent 运行已取消。",
         terminalReason: "cancelled",
       });
 

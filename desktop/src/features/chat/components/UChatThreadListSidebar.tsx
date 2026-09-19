@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import {
   useChatRuntime,
   useChatRuntimeSelector,
@@ -33,6 +34,7 @@ const sortByUpdatedAtDesc = (left: { updatedAt: string }, right: { updatedAt: st
 
 export function UChatThreadListSidebar() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const runtime = useChatRuntime();
   const { resetDraft } = useChatThreadDraftState();
   const threads = useChatRuntimeSelector((state) => state.threads);
@@ -88,7 +90,10 @@ export function UChatThreadListSidebar() {
   }, [threads, workspaces]);
 
   const sidebarEntries = useMemo<ChatSidebarEntry[]>(
-    () => [{ id: "chat-search", label: t("chat.sidebar.tools.search") }],
+    () => [
+      { id: "chat-search", label: t("chat.sidebar.tools.search") },
+      { id: "forge-open", label: "淬行", description: "Forge" },
+    ],
     [t],
   );
 
@@ -133,6 +138,9 @@ export function UChatThreadListSidebar() {
     if (entry.id === "chat-search") {
       setToolsModalMode("search");
       return;
+    }
+    if (entry.id === "forge-open") {
+      navigate("/forge");
     }
   };
 

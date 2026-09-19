@@ -2,6 +2,13 @@
 
 > 当前产品更新日志的唯一真相源。`docs/CHANGELOG.md` 仅保留为历史归档，不再记录当前版本变化。
 
+## 0.101.0 - 2026-09-19
+
+- 完成 Mira Next 第一阶段 Agent 基础工程：结构化 Planner decision、Chat 行为基线与 Conversation Workdir 合同正式进入稳定基线。
+- Conversation Workdir 增加稳定 Artifact reference、显式 final output 注册、持久化、重载与 Host read-back；temporary 输出保持执行期本地语义。
+- 收紧 Artifact 持久化路径边界：绝对路径、遍历、非规范 persisted identity、失效 Workdir 与 symlink/junction escape 均按合同 fail closed。
+- 保持 ChatWorkspace、Terminal、Edit、approval、tool cwd、MCP/Sandbox/MicroApp Artifact 所有权边界不变，为后续默认 Agent 与跨设备 Artifact handoff 提供已验收依赖。
+
 ## 0.99.0 - 2026-07-26
 
 - 新增 GitHub 微应用，支持设备授权、账号或组织安装范围管理，以及已授权仓库浏览。
