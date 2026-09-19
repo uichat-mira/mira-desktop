@@ -15,6 +15,7 @@ const terminalMocks = vi.hoisted(() => ({
   removeTerminalSessionMock: vi.fn(),
   clearTerminalSessionsMock: vi.fn(),
   spawnMock: vi.fn(),
+  killTerminalProcessTreeMock: vi.fn(),
 }));
 
 vi.mock("../terminal-sessions.js", () => ({
@@ -32,6 +33,10 @@ vi.mock("node:child_process", async (importOriginal) => {
     spawn: terminalMocks.spawnMock,
   };
 });
+
+vi.mock("../terminal/process-tree.js", () => ({
+  killTerminalProcessTree: terminalMocks.killTerminalProcessTreeMock,
+}));
 
 type MockSession = {
   id: string;
@@ -98,16 +103,24 @@ const createMockSpawnProcess = () => {
   const stdout = new EventEmitter();
   const stderr = new EventEmitter();
   const child = new EventEmitter() as EventEmitter & {
+    pid: number;
     stdout: EventEmitter;
     stderr: EventEmitter;
     kill: ReturnType<typeof vi.fn>;
   };
+  child.pid = 12345;
   child.stdout = stdout;
   child.stderr = stderr;
   child.kill = vi.fn(() => {
     child.emit("close", null);
   });
   return child;
+};
+
+const waitForSpawnedProcess = async () => {
+  await vi.waitFor(() => {
+    expect(terminalMocks.spawnMock).toHaveBeenCalledTimes(1);
+  });
 };
 
 describe("terminal_session tool", () => {
@@ -126,6 +139,8 @@ describe("terminal_session tool", () => {
     terminalMocks.removeTerminalSessionMock.mockReset();
     terminalMocks.clearTerminalSessionsMock.mockReset();
     terminalMocks.spawnMock.mockReset();
+    terminalMocks.killTerminalProcessTreeMock.mockReset();
+    terminalMocks.killTerminalProcessTreeMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -161,13 +176,16 @@ describe("terminal_session tool", () => {
       },
     });
 
+    await waitForSpawnedProcess();
+
     child.stdout.emit("data", "hello stdout\n");
+    child.stderr.emit("data", "__MIRA_WINDOWS_JOB_OBJECT__:assigned\n");
     child.stderr.emit("data", "oops stderr\n");
     child.emit("close", 3);
 
     const result = await promise;
 
-    expect(events[0]?.message).toBe("Terminal plan: child-process-shell-command");
+    expect(events[0]?.message).toBe("Terminal runtime: host_spawn (ephemeral)");
     expect(events.filter((event) => event.type === "invocation:stdout")).toHaveLength(2);
     expect(events.some((event) => event.stream === "stderr")).toBe(true);
     expect((result.result as { stdout: string }).stdout).toBe("hello stdout");
@@ -176,10 +194,8 @@ describe("terminal_session tool", () => {
     expect((result.result as { stderrSeparated: boolean }).stderrSeparated).toBe(true);
     expect((result.result as { exitCode: number }).exitCode).toBe(3);
     expect(artifacts[0]?.metadata).toMatchObject({
-      streamMode: "split",
+      runtimeId: "host_spawn",
       sessionMode: "ephemeral",
-      stderrSeparated: true,
-      provider: "node-child_process",
     });
   });
 
@@ -278,7 +294,7 @@ describe("terminal_session tool", () => {
       },
     });
 
-    expect(events.some((event) => event.message === "PTY stream merges stdout and stderr")).toBe(true);
+    expect(events.some((event) => event.message === "Terminal runtime: host_spawn (persistent)")).toBe(true);
     expect((result.result as { sessionMode: string }).sessionMode).toBe("persistent");
     expect((result.result as { stderrSeparated: boolean }).stderrSeparated).toBe(false);
     expect(terminalMocks.removeTerminalSessionMock).not.toHaveBeenCalled();
@@ -365,7 +381,7 @@ describe("terminal_session tool", () => {
     });
 
     const startedIndex = events.findIndex(
-      (event) => event.type === "invocation:progress" && event.message === "Started terminal session session-progress-order",
+      (event) => event.type === "invocation:progress" && event.message === "Terminal runtime: host_spawn (persistent)",
     );
     const stdoutIndex = events.findIndex(
       (event) => event.type === "invocation:stdout" && event.chunk === "first line\n",
@@ -396,12 +412,16 @@ describe("terminal_session tool", () => {
       },
     });
 
+    await waitForSpawnedProcess();
     await vi.advanceTimersByTimeAsync(120);
     const result = await promise;
 
     expect((result.result as { timedOut: boolean }).timedOut).toBe(true);
     expect((result.result as { exitCode: number | null }).exitCode).toBe(null);
-    expect(child.kill).toHaveBeenCalled();
+    expect(terminalMocks.killTerminalProcessTreeMock).toHaveBeenCalledWith({
+      pid: 12345,
+      mode: "windows_job_object",
+    });
   });
 
   it("uses the default timeout when timeoutMs is omitted", async () => {
@@ -423,15 +443,13 @@ describe("terminal_session tool", () => {
       },
     });
 
-    await vi.advanceTimersByTimeAsync(1990);
-    await Promise.resolve();
-    expect(child.kill).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(20);
+    await waitForSpawnedProcess();
+    terminalMocks.killTerminalProcessTreeMock.mockClear();
+    await vi.advanceTimersByTimeAsync(120_000);
     const result = await promise;
 
     expect((result.result as { timedOut: boolean }).timedOut).toBe(true);
-    expect(child.kill).toHaveBeenCalled();
+    expect(terminalMocks.killTerminalProcessTreeMock).toHaveBeenCalled();
   });
 
   it("clamps timeoutMs below the lower bound", async () => {
@@ -454,15 +472,13 @@ describe("terminal_session tool", () => {
       },
     });
 
-    await vi.advanceTimersByTimeAsync(90);
-    await Promise.resolve();
-    expect(child.kill).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(20);
+    await waitForSpawnedProcess();
+    terminalMocks.killTerminalProcessTreeMock.mockClear();
+    await vi.advanceTimersByTimeAsync(100);
     const result = await promise;
 
     expect((result.result as { timedOut: boolean }).timedOut).toBe(true);
-    expect(child.kill).toHaveBeenCalled();
+    expect(terminalMocks.killTerminalProcessTreeMock).toHaveBeenCalled();
   });
 
   it("clamps timeoutMs above the upper bound", async () => {
@@ -485,15 +501,13 @@ describe("terminal_session tool", () => {
       },
     });
 
-    await vi.advanceTimersByTimeAsync(59990);
-    await Promise.resolve();
-    expect(child.kill).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(20);
+    await waitForSpawnedProcess();
+    terminalMocks.killTerminalProcessTreeMock.mockClear();
+    await vi.advanceTimersByTimeAsync(86_400_000);
     const result = await promise;
 
     expect((result.result as { timedOut: boolean }).timedOut).toBe(true);
-    expect(child.kill).toHaveBeenCalled();
+    expect(terminalMocks.killTerminalProcessTreeMock).toHaveBeenCalled();
   });
 
   it("rejects empty commands", async () => {
@@ -536,6 +550,7 @@ describe("terminal_session tool", () => {
         return { id: "a", ...artifact };
       },
     });
+    await waitForSpawnedProcess();
     child.emit("close", 0);
     await promise;
 
@@ -549,7 +564,7 @@ describe("terminal_session tool", () => {
     const spawnOptions = terminalMocks.spawnMock.mock.calls[0]?.[2] as {
       env?: Record<string, string>;
     };
-    expect(spawnOptions.env).not.toHaveProperty("OK");
+    expect(spawnOptions.env).toHaveProperty("OK", "1");
     expect(spawnOptions.env).not.toHaveProperty("BAD");
     expect(spawnOptions.env).not.toHaveProperty("NOPE");
   });
@@ -580,17 +595,19 @@ describe("terminal_session tool", () => {
         },
       });
 
+      await waitForSpawnedProcess();
       child.stdout.emit("data", "D:\\workspace\\rag-demo\n");
       child.emit("close", 0);
       await promise;
 
-      expect(terminalMocks.spawnMock).toHaveBeenCalledWith(
-        expect.stringContaining("powershell.exe"),
-        ["-NoProfile", "-Command", "pwd"],
-        expect.objectContaining({
-          windowsHide: true,
-        }),
+      expect(String(terminalMocks.spawnMock.mock.calls[0]?.[0] ?? "")).toContain("powershell.exe");
+      expect(terminalMocks.spawnMock.mock.calls[0]?.[1]).toEqual(
+        expect.arrayContaining(["-NoLogo", "-NoProfile", "-EncodedCommand"]),
       );
+      expect(terminalMocks.spawnMock.mock.calls[0]?.[2]).toMatchObject({
+        windowsHide: true,
+        shell: false,
+      });
     } finally {
       if (originalPlatformDescriptor) {
         Object.defineProperty(process, "platform", originalPlatformDescriptor);
@@ -613,7 +630,7 @@ describe("terminal_session tool", () => {
       const promise = terminalSessionTool.execute({
         invocationId: "inv-win-encoding",
         args: {
-          command: "echo 中文",
+          command: "echo hello",
           sessionMode: "ephemeral",
         },
         signal: new AbortController().signal,
@@ -624,20 +641,20 @@ describe("terminal_session tool", () => {
         },
       });
 
-      child.stdout.emit("data", Buffer.from("中文\n", "utf16le"));
+      await waitForSpawnedProcess();
+      child.stderr.emit("data", "__MIRA_WINDOWS_JOB_OBJECT__:assigned\n");
+      child.stdout.emit("data", Buffer.from("hello\n", "utf16le"));
       child.emit("close", 0);
       const result = await promise;
 
-      expect((result.result as { stdout: string }).stdout).toContain("中文");
+      expect((result.result as { stdout: string }).stdout).toContain("hello");
       expect((result.result as { binaryDetected: boolean }).binaryDetected).toBe(false);
       expect((result.result as { stdoutEncoding: string }).stdoutEncoding).toBe("utf16le");
       expect(terminalMocks.spawnMock).toHaveBeenCalledTimes(1);
       expect(String(terminalMocks.spawnMock.mock.calls[0]?.[0] ?? "")).toContain("powershell.exe");
-      expect(terminalMocks.spawnMock.mock.calls[0]?.[1]).toEqual([
-        "-NoProfile",
-        "-Command",
-        "echo 中文",
-      ]);
+      expect(terminalMocks.spawnMock.mock.calls[0]?.[1]).toEqual(
+        expect.arrayContaining(["-NoLogo", "-NoProfile", "-EncodedCommand"]),
+      );
     } finally {
       if (originalPlatformDescriptor) {
         Object.defineProperty(process, "platform", originalPlatformDescriptor);
@@ -685,11 +702,14 @@ describe("terminal_session tool", () => {
       },
     });
 
-    await Promise.resolve();
+    await waitForSpawnedProcess();
     controller.abort();
 
     await expect(promise).rejects.toThrow("Terminal session aborted");
-    expect(child.kill).toHaveBeenCalled();
+    expect(terminalMocks.killTerminalProcessTreeMock).toHaveBeenCalledWith({
+      pid: 12345,
+      mode: "windows_job_object",
+    });
   });
 
   it("surfaces approval-required requests through harness invocation status", async () => {

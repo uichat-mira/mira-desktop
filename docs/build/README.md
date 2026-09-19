@@ -65,35 +65,47 @@ pnpm version:sync
 
 ## GitHub Actions 发布流程
 
-当前唯一的桌面发布工作流是 `.github/workflows/build-desktop.yml`。
+桌面构建分为两类入口：
 
-触发条件：`main`、`master`、`dev` 分支 push；`v*` 标签 push；GitHub Actions 手动运行；以及面向 `main`、`master` 的 Pull Request。
+- `.github/workflows/build-desktop.yml`：环境分支包。
+- `.github/workflows/release-production.yml`：`v*` 标签正式发布；重型校验和打包由 `release-factory-v2.yml` 执行。
 
-Windows 构建分为两个独立 job，并行执行：
+当前触发规则：
 
-1. Electron job 安装根 workspace 依赖和 `mira-clipper-ext` 的 npm 依赖，执行扩展签名配置、类型检查、本地模型准备和 `node scripts/build-dist.js win`。
-2. Tauri job 安装 Rust，执行同样的扩展签名、类型检查和本地模型准备，再执行 `pnpm package:tauri:win`。
-3. 两个 job 都成功后，标签构建才进入 Release job。
+| 事件 | 行为 |
+| --- | --- |
+| Pull Request → `dev/test/prod` | 轻量检查，不执行完整桌面打包 |
+| push → `dev` | 构建 Electron / Tauri 分支包，保存 Actions artifacts |
+| push → `test` | 构建 Electron / Tauri 分支包，保存 Actions artifacts |
+| push → `prod` | 构建 Electron / Tauri 分支包，保存 Actions artifacts，并同步 R2 `mira/latest/` |
+| push → `v*` tag | Release Factory 完整校验与打包，创建 GitHub Release，并同步 R2 `mira/latest/` |
 
-GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
+Windows 分支构建仍由 Electron 与 Tauri 两个独立 job 并行执行。GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
 
-| 平台 | Release 资产 |
+| 平台 | 分支包 / Release 资产 |
 | --- | --- |
 | Electron | `*Setup*.exe`、对应 `.exe.blockmap` |
 | Tauri | `msi/*.msi`、`nsis/*setup.exe` |
-| GitHub 自动生成 | Source code (`.zip`、`.tar.gz`) |
+| GitHub 自动生成 | Source code (`.zip`、`.tar.gz`，仅 GitHub Release) |
 
-上传到 GitHub Release 前，artifact 会被展平并加上来源前缀，避免 Electron 和 Tauri 同名文件冲突。Actions artifact 只保留 3 天；GitHub Release 负责保存历史版本。
+Actions artifact 为短期构建产物；GitHub Release 保存标签版本历史。
 
 ### Cloudflare R2 当前版本分发
 
-标签构建的 Release job 还会把同一批四个桌面安装文件上传到 Cloudflare R2：
+R2 作为当前版本分发源：
 
 ```text
 mira/latest/
 ```
 
-R2 只作为当前版本分发源，不保存历史 Release。每次成功发布使用 `--delete` 同步并覆盖 `latest`，旧的 `mira/previous/` 会先清理。R2 所需 GitHub Secrets 为：
+以下两种成功事件都会覆盖同一 `mira/latest/`：
+
+1. `prod` 分支构建成功；
+2. `v*` 标签正式发布成功。
+
+因此 `mira/latest/` 表示**最近一次成功的 prod/tag 发布结果**，不承担历史版本保存职责。标签历史由 GitHub Release 保存。
+
+R2 所需 GitHub Secrets 为：
 
 ```text
 R2_ACCOUNT_ID
@@ -103,7 +115,7 @@ R2_BUCKET
 R2_PUBLIC_BASE_URL
 ```
 
-R2 公开地址格式为 `${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`。只有 `v*` 标签构建会创建 GitHub Release 并上传 R2；普通分支构建只验证打包流程并保存短期 Actions artifacts。
+R2 公开地址格式为 `${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`。每次发布使用 `--delete` 同步并覆盖 `latest`，旧的 `mira/previous/` 会先清理。
 
 ## 本地模型资源
 

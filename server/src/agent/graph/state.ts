@@ -17,16 +17,19 @@ import type {
   AgentRetrievalEvidence,
   AgentSchemaReplanDiagnostics,
   AgentToolExposureState,
+  ConversationWorkdirOutputDeclaration,
 } from "../types";
 import type { AgentRuntimeCheckpoint } from "../runtime-checkpoint";
 import type { EmitAgentExecutionNode } from "../node-runtime";
 import { createInitialCurrentTaskFrame } from "../node-runtime";
+import { isAgentRunCancellationRequested } from "../run-control";
 
 export const AGENT_EMIT_CONFIG_KEY = "agent:emitExecutionNode";
 export const DEFAULT_AGENT_MAX_ITERATIONS = 8;
 
 export const AgentGraphStateAnnotation = Annotation.Root({
   runId: Annotation<string>,
+  runControlLeaseId: Annotation<string | undefined>,
   threadId: Annotation<string>,
   userId: Annotation<number>,
   goal: Annotation<AgentGoal>,
@@ -37,6 +40,7 @@ export const AgentGraphStateAnnotation = Annotation.Root({
   knowledgeBaseId: Annotation<string | null | undefined>,
   intentConfig: Annotation<AgentIntentEmbeddingConfig | undefined>,
   workspaceRoot: Annotation<string | null | undefined>,
+  conversationWorkdirOutputs: Annotation<ConversationWorkdirOutputDeclaration[] | undefined>,
   requestedToolGroupIds: Annotation<string[] | undefined>,
   toolIntent: Annotation<ToolIntentResult | undefined>,
   toolExposure: Annotation<AgentToolExposureState | undefined>,
@@ -88,6 +92,17 @@ export const createAgentNode =
     ) => Promise<Partial<AgentGraphStateType>>,
   ) =>
   async (state: AgentGraphStateType, config?: LangGraphRunnableConfig) => {
+    if (
+      nodeId !== "error" &&
+      isAgentRunCancellationRequested(state.runId, state.runControlLeaseId)
+    ) {
+      return {
+        errorMessage: "Agent run was cancelled.",
+        errorSourceNodeId: "run-control",
+        terminalReason: "cancelled",
+      };
+    }
+
     try {
       return await runWithAgentNodeSpan({
         nodeName: nodeId,
@@ -110,6 +125,7 @@ export const createInitialAgentGraphState = (
 
   return {
     runId: input.runId,
+    runControlLeaseId: input.runControlLeaseId,
     threadId: input.threadId,
     userId: input.userId,
     goal: input.goal,
@@ -127,6 +143,8 @@ export const createInitialAgentGraphState = (
     knowledgeBaseId: input.knowledgeBaseId,
     intentConfig: input.intentConfig,
     workspaceRoot: input.workspaceRoot,
+    conversationWorkdirOutputs:
+      checkpointInput.conversationWorkdirOutputs ?? input.conversationWorkdirOutputs,
     requestedToolGroupIds: input.requestedToolGroupIds,
     toolIntent: undefined,
     observations: checkpointInput.observations ?? [],

@@ -27,7 +27,7 @@ import changelogText from "../../../../../../CHANGELOG.md?raw";
 
 const MAX_VISIBLE_GIT_VERSIONS = 5;
 const FEEDBACK_ISSUE_URL =
-  "https://github.com/dangjingtao/uichat-mira/issues/new";
+  "https://github.com/uichat-mira/mira-desktop/issues/new";
 const FEEDBACK_EMAIL_URL =
   "mailto:dangjingtao@gmail.com?subject=UIChat%20Mira%20反馈";
 

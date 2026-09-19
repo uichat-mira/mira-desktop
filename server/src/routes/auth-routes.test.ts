@@ -52,6 +52,7 @@ describe("authentication routes", () => {
     expect(response.json().data).toMatchObject({
       tokenType: "Bearer",
       token: "signed-token",
+      expiresIn: "24h",
       user: { id: 7, username: "alice", role: "user" },
     });
     expect(authMocks.authenticateUser).toHaveBeenCalledWith("alice", "secret");

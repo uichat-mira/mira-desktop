@@ -1,8 +1,20 @@
 import type { AgentNextAction } from "../types";
 import { INVALID_PLANNER_OUTPUT_REASON, toNextActionFallback } from "./action-types";
-import type { PlannerOutputParseResult } from "./parse";
+import type { PlannerDecisionAdapterResult } from "./decision-adapter";
+import type { PlannerOutputParseResult } from "./text-json-codec";
 
 const DIRECT_TOOL_ACTION_NORMALIZED_WARNING = "direct_tool_action_normalized";
+
+type PlannerValidationInput =
+  | PlannerOutputParseResult
+  | PlannerDecisionAdapterResult;
+
+const unwrapPlannerValidationInput = (
+  input: PlannerValidationInput,
+): PlannerOutputParseResult =>
+  "diagnostics" in input
+    ? { action: input.decision, ...input.diagnostics }
+    : input;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -43,7 +55,7 @@ const normalizeDirectToolAction = (
 };
 
 export const validateNextAction = (
-  parseResult: PlannerOutputParseResult,
+  input: PlannerValidationInput,
   exposedTools: string[],
 ): {
   action: AgentNextAction;
@@ -51,6 +63,7 @@ export const validateNextAction = (
   sanitizedOutput?: string;
   parseWarnings?: string[];
 } => {
+  const parseResult = unwrapPlannerValidationInput(input);
   if (!parseResult.action) {
     const normalizedDirectToolAction = normalizeDirectToolAction(
       parseResult,

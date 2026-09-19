@@ -1,9 +1,9 @@
+import { getSqlite } from "@/db";
 import {
-  getSqlite,
   modelConfigRepository,
   modelParamTemplateRepository,
-  providerConnectionRepository,
-} from "@/db";
+} from "@/db/repositories/model-config.repository.js";
+import { providerConnectionRepository } from "@/db/repositories/provider-settings.repository.js";
 import { applySqliteConnectionPragmas } from "@/db/init-utils";
 import {
   DEFAULT_PROVIDER_CONNECTIONS,

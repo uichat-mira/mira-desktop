@@ -60,13 +60,16 @@ test("applyRoleSpecificProviderParams treats agentTask like task", () => {
   );
 });
 
-test("applyRoleSpecificProviderParams leaves non-task roles unchanged", () => {
+test("applyRoleSpecificProviderParams disables thinking for every default chat role", () => {
   const params = { temperature: 0.7 };
 
-  assert.deepEqual(applyRoleSpecificProviderParams("llm", "ollama", params), params);
+  assert.deepEqual(applyRoleSpecificProviderParams("llm", "ollama", params), {
+    temperature: 0.7,
+    think: false,
+  });
   assert.deepEqual(
     applyRoleSpecificProviderParams("evaluation", "volcengine", params),
-    params,
+    { temperature: 0.7, thinking: false },
   );
 });
 

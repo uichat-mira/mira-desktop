@@ -3,6 +3,7 @@ import { test } from "vitest";
 import {
   getProviderCapabilities,
   getProviderDefinition,
+  getPlannerStructuredOutputAdapter,
   supportsRoleForProvider,
 } from "./catalog.js";
 
@@ -71,5 +72,26 @@ test("Volcengine Plan templates expose separate services under one provider", ()
   assert.equal(
     supportsRoleForProvider("volcengine", "voice"),
     true,
+  );
+});
+
+test("Planner structured output capability is explicit and independent from chat protocol", () => {
+  assert.equal(
+    getPlannerStructuredOutputAdapter("volcengine-agent-plan"),
+    "ark-json-schema",
+  );
+  assert.equal(
+    getPlannerStructuredOutputAdapter("volcengine-code-plan"),
+    "ark-json-schema",
+  );
+  assert.equal(getPlannerStructuredOutputAdapter("ollama"), "ollama-json-schema");
+  assert.equal(getPlannerStructuredOutputAdapter("openai"), "none");
+  assert.equal(getPlannerStructuredOutputAdapter("lmstudio"), "none");
+  assert.equal(getPlannerStructuredOutputAdapter("google"), "none");
+  assert.equal(getPlannerStructuredOutputAdapter("cloudflare"), "none");
+  assert.equal(getPlannerStructuredOutputAdapter("volcengine"), "none");
+  assert.equal(
+    getPlannerStructuredOutputAdapter("openai-compatible-custom"),
+    "none",
   );
 });

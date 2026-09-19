@@ -136,6 +136,11 @@ import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capabil
 import { getCapabilityImplementation } from "@/harness/registry.js";
 import { registerCapability } from "@/harness/registry.js";
 import { computerUseRepository, createPersistentComputerUseTaskStore, createPersistentComputerUseEvidenceStore } from "@/db/repositories/computer-use/repository.js";
+import {
+  initializeForgeRuntime,
+  shutdownForgeRuntime,
+} from "@/forge/runtime/index.js";
+import forgeRoutes from "@/forge/routes/index.js";
 
 const app = Fastify({
   bodyLimit: MAX_UPLOAD_FILE_BYTES,
@@ -181,6 +186,10 @@ const readSwaggerLogo = async () => {
 };
 
 app.setErrorHandler(sendRouteError);
+
+app.addHook("onClose", async () => {
+  await shutdownForgeRuntime();
+});
 
 const createImageGenerationAdapterRegistry = () => {
   const resolveConfiguredImageProvider = (providerId: string) => {
@@ -760,6 +769,7 @@ const setupRoutes = async () => {
   await app.register(agentRoute);
   await app.register(mcpRoutes);
   await app.register(webbridgeRoute);
+  await app.register(forgeRoutes);
   await app.register(dashboardController, { newsHubService, mailCenterService });
 };
 
@@ -852,6 +862,19 @@ const setupDatabase = async () => {
   }
 };
 
+const setupForgeRuntime = async () => {
+  const runtime = await initializeForgeRuntime();
+  const report = await runtime.initialize();
+  app.log.info(
+    {
+      stateFile: report.stateFile,
+      interruptedDispatches: report.reconcile.interruptedDispatchIds.length,
+      interruptedMainThreads: report.reconcile.interruptedThreadIds.length,
+    },
+    "Forge runtime initialized under Mira Server lifecycle",
+  );
+};
+
 const isExistingBackendHealthy = async (port: number): Promise<boolean> => {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/health`);
@@ -875,6 +898,7 @@ const start = async () => {
     await setupDatabase();
     await setupRoutes();
     await startServer();
+    await setupForgeRuntime();
   } catch (error) {
     if (
       allowBackendReuse &&

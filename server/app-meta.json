@@ -1,13 +1,13 @@
 {
   "name": "ui-chat-mira",
-  "version": "0.99.7",
+  "version": "0.100.1",
   "author": "Tomz Dang <dangjingtao@gmail.com>",
   "description": "An intelligent agent cabin that starts with a chat and returns to your side.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dangjingtao/uichat-mira.git"
+    "url": "https://github.com/uichat-mira/mira-desktop.git"
   },
-  "homepage": "https://tomz.io",
+  "homepage": "https://mira.tomz.io",
   "appMeta": {
     "displayName": "UIChat Mira",
     "links": [
@@ -18,13 +18,13 @@
       },
       {
         "label": "项目仓库",
-        "value": "https://github.com/dangjingtao/uichat-mira.git",
-        "href": "https://github.com/dangjingtao/uichat-mira"
+        "value": "https://github.com/uichat-mira/mira-desktop.git",
+        "href": "https://github.com/uichat-mira/mira-desktop"
       },
       {
         "label": "官方文档",
-        "value": "https://tomz.io",
-        "href": "https://tomz.io"
+        "value": "https://mira.tomz.io",
+        "href": "https://mira.tomz.io"
       },
       {
         "label": "组件文档",
@@ -36,13 +36,73 @@
       "branch": "dev",
       "versions": [
         {
+          "version": "0.100.1",
+          "commit": {
+            "hash": "1b19352c3590306458f5a2a83c7f147a1778d770",
+            "shortHash": "1b19352",
+            "message": "feat(auth): extend JWT session lifetime to 24 hours",
+            "author": "Tomz Dang",
+            "date": "2026-09-08T10:40:01+08:00"
+          }
+        },
+        {
+          "version": "0.100.0",
+          "commit": {
+            "hash": "025ecfc7551df9111a98e5c78353804833002a37",
+            "shortHash": "025ecfc",
+            "message": "docs(remote): close pairing compatibility ledger item",
+            "author": "DangJingtao",
+            "date": "2026-09-07T23:49:29+08:00"
+          }
+        },
+        {
+          "version": "0.99.12",
+          "commit": {
+            "hash": "049654b3417f1f4b2b3e1593a9e14c161cbe9d61",
+            "shortHash": "049654b",
+            "message": "feat: add Forge terminal intro and provider fixes",
+            "author": "Tomz",
+            "date": "2026-09-06T21:22:43+08:00"
+          }
+        },
+        {
+          "version": "0.99.11",
+          "commit": {
+            "hash": "e1752500cafd300bb6c9c82e9b5a610beb985d2c",
+            "shortHash": "e175250",
+            "message": "MOB-024: allow paired Mobile thread creation",
+            "author": "DangJingtao",
+            "date": "2026-08-29T20:45:42+08:00"
+          }
+        },
+        {
+          "version": "0.99.10",
+          "commit": {
+            "hash": "2a6770e4ec543963e2d55e09c77d40bce8e93f16",
+            "shortHash": "2a6770e",
+            "message": "Merge pull request #84 from dangjingtao/fix/issue-80-workspace-thread-pagination",
+            "author": "DangJingtao",
+            "date": "2026-08-28T00:32:24+08:00"
+          }
+        },
+        {
+          "version": "0.99.9",
+          "commit": {
+            "hash": "f8187e9f161a3f7fd92e56008b6ba517f0b6528e",
+            "shortHash": "f8187e9",
+            "message": "feat(remote): merge relay-first pairing work",
+            "author": "DangJingtao",
+            "date": "2026-08-26T13:10:19+08:00"
+          }
+        },
+        {
           "version": "0.99.7",
           "commit": {
-            "hash": "584cef5640df640e164d5886877461a030b40e60",
-            "shortHash": "584cef5",
-            "message": "feat(macos): add isolated Electron development support",
+            "hash": "3c7431eaeae2fdc6275e908af9ab176e17703539",
+            "shortHash": "3c7431e",
+            "message": "chore(runtime): align desktop development port",
             "author": "Tomz Dang",
-            "date": "2026-08-22T13:52:30+08:00"
+            "date": "2026-08-22T15:54:17+08:00"
           }
         },
         {

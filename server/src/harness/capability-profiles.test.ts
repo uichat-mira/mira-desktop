@@ -222,7 +222,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
         preferredToolId: "browser_observe",
         supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
         workbench: {
-          label: "Computer Use",
+          label: "智控",
           description: expect.any(String),
           order: 50,
           icon: "mouse-pointer",

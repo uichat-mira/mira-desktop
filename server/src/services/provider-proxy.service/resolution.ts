@@ -38,23 +38,31 @@ export const applyRoleSpecificProviderParams = (
   providerCode: ProviderCode,
   params: Record<string, unknown>,
 ) => {
+  const nextParams = { ...params };
+  if (providerCode === "ollama" && nextParams.think === undefined) {
+    nextParams.think = false;
+  }
+  if (providerCode === "volcengine" && nextParams.thinking === undefined) {
+    nextParams.thinking = false;
+  }
+
   if (roleType !== "task" && roleType !== "agentTask") {
-    return params;
+    return nextParams;
   }
 
   switch (providerCode) {
     case "ollama":
       return {
-        ...params,
+        ...nextParams,
         think: false,
       };
     case "volcengine":
       return {
-        ...params,
+        ...nextParams,
         thinking: false,
       };
     default:
-      return params;
+      return nextParams;
   }
 };
 

@@ -155,7 +155,7 @@ describe("Ark Plan structured output adapter", () => {
     );
   });
 
-  test("rejects invalid JSON before emitting fallback-blocking output", async () => {
+  test("keeps invalid JSON as one native result for the Planner adapter boundary", async () => {
     const stream = streamArkPlanStructuredOutputText(
       createResolution("volcengine-agent-plan"),
       input,
@@ -165,10 +165,8 @@ describe("Ark Plan structured output adapter", () => {
         }),
     );
 
-    await assert.rejects(
-      stream.next(),
-      /Ark Plan structured output returned invalid JSON/,
-    );
+    assert.deepEqual(await stream.next(), { value: "not-json", done: false });
+    assert.deepEqual(await stream.next(), { value: undefined, done: true });
   });
 
   test("only claims the two Ark Plan connection templates", () => {

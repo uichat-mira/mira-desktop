@@ -11,6 +11,7 @@ import { threadContextSummaryNode } from "@/services/shared-nodes/thread-context
 import { isValidWorkspaceRootPath } from "@/services/workspace-path-validation.js";
 import { THREAD_ACCESS_ERROR_MESSAGE } from "@/utils/errors.js";
 import { chatMediaService } from "@/services/chat-media.service.js";
+import { conversationWorkdirService } from "@/services/conversation-workdir.service.js";
 import { getHarnessEnvironmentSnapshot } from "@/harness/environment.js";
 import {
   removeFileAttachmentsFromParts,
@@ -138,6 +139,8 @@ export interface CreateMessageInput {
       }
   >;
   metadata?: Record<string, unknown>;
+  /** Update this message in place without pruning later messages in the thread. */
+  preserveDescendants?: boolean;
 }
 
 const parsePartsJson = (
@@ -716,6 +719,7 @@ export const threadService = {
     if (!existing) {
       return false;
     }
+    conversationWorkdirService.cleanup({ threadId: id, userId });
     const mediaCleanup = chatMediaService.removeForThread(id);
     if (mediaCleanup.failed > 0) {
       throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s): ${mediaCleanup.errors.map((item) => item.mediaId).join(", ")}`);
@@ -730,7 +734,7 @@ export const threadService = {
     deletedThreads: number;
     deletedMessages: number;
     failedThreads: number;
-    deletedWorkspaces: number;
+    failedWorkdirs: number;
   } {
     const threadsToDelete = [
       ...threadRepository.list({ userId, status: "active", sortBy: "updatedAt", sortOrder: "asc" }),
@@ -739,11 +743,17 @@ export const threadService = {
     let deletedThreads = 0;
     let deletedMessages = 0;
     let failedThreads = 0;
-    let deletedWorkspaces = 0;
+    let failedWorkdirs = 0;
 
     for (const thread of threadsToDelete) {
       try {
         const messages = messageRepository.listByThread(thread.id);
+        try {
+          conversationWorkdirService.cleanup({ threadId: thread.id, userId });
+        } catch {
+          failedWorkdirs += 1;
+          continue;
+        }
         const mediaCleanup = chatMediaService.removeForMessages(messages.map((message) => message.id));
         if (mediaCleanup.failed > 0) {
           throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s)`);
@@ -759,21 +769,7 @@ export const threadService = {
       }
     }
 
-    const workspacesToDelete = [
-      ...chatWorkspaceRepository.list({ userId, status: "active", sortOrder: "asc" }),
-      ...chatWorkspaceRepository.list({ userId, status: "archived", sortOrder: "asc" }),
-    ];
-    for (const workspace of workspacesToDelete) {
-      const defaultRootPath = getHarnessEnvironmentSnapshot().workspace.rootPath?.trim();
-      if (defaultRootPath && workspace.rootPath === defaultRootPath) {
-        continue;
-      }
-      if (chatWorkspaceRepository.deleteById(workspace.id)) {
-        deletedWorkspaces += 1;
-      }
-    }
-
-    return { deletedThreads, deletedMessages, failedThreads, deletedWorkspaces };
+    return { deletedThreads, deletedMessages, failedThreads, failedWorkdirs };
   },
 
   createMessage(
@@ -806,7 +802,10 @@ export const threadService = {
       throw new Error("Message id already exists on a different thread");
     }
 
-    if (effectiveParentId !== undefined) {
+    if (
+      effectiveParentId !== undefined &&
+      (!existing || !input.preserveDescendants)
+    ) {
       pruneThreadTail(
         threadId,
         existing ? existing.id : effectiveParentId ?? null,

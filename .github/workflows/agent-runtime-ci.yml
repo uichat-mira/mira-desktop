@@ -7,6 +7,9 @@ on:
     paths:
       - "server/src/agent/**"
       - "server/src/skills/agent/**"
+      - "server/src/services/conversation-workdir.service.ts"
+      - "server/src/services/conversation-workdir.service.test.ts"
+      - "server/src/db/repositories/conversation-workdir.repository.ts"
       - "server/package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/agent-runtime-ci.yml"
@@ -75,6 +78,7 @@ jobs:
           src/agent/__tests__/pi-agent-loop-runtime.test.ts
           src/agent/__tests__/pi-loop-semantic-compat.test.ts
           src/agent/__tests__/unbounded-agent-iterations.test.ts
+          src/services/conversation-workdir.service.test.ts
           --maxWorkers=1
           --fileParallelism=false
           --reporter=json

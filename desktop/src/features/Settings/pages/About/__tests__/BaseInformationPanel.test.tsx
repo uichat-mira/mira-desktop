@@ -39,7 +39,7 @@ const appMeta = {
     displayName: "UIChat Mira",
     author: "Tomz Dang",
     description: "Test app",
-    repositoryUrl: "https://github.com/dangjingtao/uichat-mira.git",
+    repositoryUrl: "https://github.com/uichat-mira/mira-desktop.git",
     homepageUrl: "",
     links: [
       {
@@ -163,7 +163,7 @@ describe("BaseInformationPanel", () => {
     );
     await waitFor(() => {
       expect(uiMocks.openExternalUrl).toHaveBeenCalledWith(
-        "https://github.com/dangjingtao/uichat-mira/issues/new",
+        "https://github.com/uichat-mira/mira-desktop/issues/new",
       );
     });
 
@@ -204,13 +204,13 @@ describe("BaseInformationPanel", () => {
       currentVersion: "0.7.1",
       latestVersion: "0.8.0",
       latestTag: "v0.8.0",
-      tagUrl: "https://github.com/dangjingtao/uichat-mira/tree/v0.8.0",
+      tagUrl: "https://github.com/uichat-mira/mira-desktop/tree/v0.8.0",
       updateAvailable: true,
     });
 
     await waitFor(() => {
       expect(uiMocks.checkGithubTagUpdate).toHaveBeenCalledWith(
-        "https://github.com/dangjingtao/uichat-mira.git",
+        "https://github.com/uichat-mira/mira-desktop.git",
         "0.7.1",
       );
       expect(uiMocks.modalShow).toHaveBeenCalledWith(
@@ -239,7 +239,7 @@ describe("BaseInformationPanel", () => {
     );
     await waitFor(() => {
       expect(uiMocks.openExternalUrl).toHaveBeenCalledWith(
-        "https://github.com/dangjingtao/uichat-mira/tree/v0.8.0",
+        "https://github.com/uichat-mira/mira-desktop/tree/v0.8.0",
       );
       expect(uiMocks.modalClose).toHaveBeenCalledWith("update-modal");
     });

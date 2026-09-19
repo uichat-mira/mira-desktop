@@ -33,6 +33,10 @@ const scopeLabels: Record<RemoteDeviceScope, { zh: string; en: string }> = {
   "agent:read": { zh: "读取 Agent 状态", en: "Read agent state" },
   "agent:approve": { zh: "审批工具调用", en: "Approve tool calls" },
   "agent:control": { zh: "停止 Agent", en: "Control agent runs" },
+  "tools:read": { zh: "查看远程工具", en: "Discover remote tools" },
+  "tools:invoke": { zh: "调用远程工具", en: "Invoke remote tools" },
+  "tools:approve": { zh: "审批远程工具", en: "Approve remote tools" },
+  "tools:control": { zh: "取消远程工具", en: "Cancel remote tools" },
   "artifacts:read": { zh: "读取产物", en: "Read artifacts" },
 };
 

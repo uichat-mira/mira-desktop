@@ -33,6 +33,7 @@ import type {
   AgentToolCallRequest,
   AgentToolExecutionResult,
   AgentToolExposureState,
+  ConversationWorkdirOutputDeclaration,
   CurrentTaskFrame,
   CurrentTaskFrameConfirmedObject,
   PlannerObservationContext,
@@ -63,6 +64,7 @@ const getCurrentTaskFrameGlobalGoalText = (input: {
 
 export interface AgentNodeState {
   runId: string;
+  runControlLeaseId?: string;
   threadId: string;
   userId: number;
   goal: AgentGoal;
@@ -74,6 +76,7 @@ export interface AgentNodeState {
   knowledgeBaseId?: string | null;
   intentConfig?: AgentIntentEmbeddingConfig;
   workspaceRoot?: string | null;
+  conversationWorkdirOutputs?: ConversationWorkdirOutputDeclaration[];
   requestedToolGroupIds?: string[];
   toolIntent?: ToolIntentResult;
   toolExposure?: AgentToolExposureState;

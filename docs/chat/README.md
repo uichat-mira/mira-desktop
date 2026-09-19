@@ -10,6 +10,7 @@ canonical: true
 related:
   - ../CHAT_CURRENT_TRUTH.md
   - workspace.md
+  - behavior-equivalence-baseline.md
   - ../uchat.md
   - persistence-and-media.md
   - ../AGENT_CURRENT_TRUTH.md
@@ -27,12 +28,13 @@ related:
 
 1. [[CHAT_CURRENT_TRUTH]]：Thread、Message、三条发送链、持久化与已知缺陷；
 2. [[chat/workspace]]：ChatWorkspace、`Mira BASE`、默认物理目录、Harness root 与受管 staging 合同；
-3. [[uchat]]：桌面 UChat core / ui / integration 合同；
-4. [[chat/persistence-and-media]]：消息落库、编辑重跑、附件、TTS、图片与删除行为；
-5. [[AGENT_CURRENT_TRUTH]]：AgentRun、审批、恢复与终止语义；
-6. [[KNOWLEDGE_BASE_CURRENT_TRUTH]]：Knowledge Base 与 RAG；
-7. [[PROVIDER_CURRENT_TRUTH]]：模型角色与调用解析；
-8. [[TOOL_CURRENT_TRUTH]]：Harness Tool 公共面与审批。
+3. [[chat/behavior-equivalence-baseline]]：E02 / #146 的 Normal、RAG、Agent 行为等价矩阵与回归证据；
+4. [[uchat]]：桌面 UChat core / ui / integration 合同；
+5. [[chat/persistence-and-media]]：消息落库、编辑重跑、附件、TTS、图片与删除行为；
+6. [[AGENT_CURRENT_TRUTH]]：AgentRun、审批、恢复与终止语义；
+7. [[KNOWLEDGE_BASE_CURRENT_TRUTH]]：Knowledge Base 与 RAG；
+8. [[PROVIDER_CURRENT_TRUTH]]：模型角色与调用解析；
+9. [[TOOL_CURRENT_TRUTH]]：Harness Tool 公共面与审批。
 
 ## 当前对象链
 

@@ -1,6 +1,6 @@
 [package]
 name = "ui-chat-rag-tester"
-version = "0.99.9"
+version = "0.101.0"
 description = "UIChat Mira - Tauri Desktop App"
 authors = ["Dang Jingtao <dangjingtao@163.com>"]
 license = ""

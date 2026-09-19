@@ -8,6 +8,16 @@ import { createAgentGoal } from "../nodes/index";
 import * as messagePersistenceModule from "@/routes/proxy-provider/message-persistence";
 import { threadService } from "@/services/thread.service";
 
+const withoutEmittedAt = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutEmittedAt);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== "emittedAt")
+      .map(([key, entry]) => [key, withoutEmittedAt(entry)]),
+  );
+};
+
 test("resumeApprovedAgentRun resumes a pending run and keeps approval state", async () => {
   const approvedInput = { query: "hello" };
   const goal = createAgentGoal("answer the user");
@@ -139,7 +149,7 @@ test("resumeApprovedAgentRun resumes a pending run and keeps approval state", as
     assert.equal(result.run?.pendingToolCall, undefined);
     assert.equal(result.run?.contextBudget?.policy, "task-chat");
     assert.equal(persistAssistantMessageSpy.mock.calls.length, 1);
-    assert.deepEqual(persistAssistantMessageSpy.mock.calls[0]?.[0], {
+    assert.deepEqual(withoutEmittedAt(persistAssistantMessageSpy.mock.calls[0]?.[0]), {
       threadId: "thread-1",
       userId: 1,
       assistantMessageId: "assistant-1",
@@ -290,7 +300,7 @@ test("resumeApprovedAgentRun updates assistant message when run returns waiting 
     assert.equal(result.run?.status, "waiting_approval");
     assert.equal(result.run?.selectedToolId, "terminal_session");
     assert.equal(persistAssistantMessageSpy.mock.calls.length, 1);
-    assert.deepEqual(persistAssistantMessageSpy.mock.calls[0]?.[0], {
+    assert.deepEqual(withoutEmittedAt(persistAssistantMessageSpy.mock.calls[0]?.[0]), {
       threadId: "thread-1",
       userId: 1,
       assistantMessageId: "assistant-1",
@@ -442,7 +452,7 @@ test("resumeApprovedAgentRun updates assistant message when resumed run fails", 
     assert.equal(result.run?.status, "failed");
     assert.equal(result.run?.selectedToolId, "web-search");
     assert.equal(persistAssistantMessageSpy.mock.calls.length, 1);
-    assert.deepEqual(persistAssistantMessageSpy.mock.calls[0]?.[0], {
+    assert.deepEqual(withoutEmittedAt(persistAssistantMessageSpy.mock.calls[0]?.[0]), {
       threadId: "thread-1",
       userId: 1,
       assistantMessageId: "assistant-1",
@@ -579,7 +589,7 @@ test("resumeApprovedAgentRun blocks execution when approval toolCallId does not 
       /approved toolCallId pending-other does not match frozen pendingToolCall\.id pending-actual/i,
     );
     assert.equal(persistAssistantMessageSpy.mock.calls.length, 1);
-    assert.deepEqual(persistAssistantMessageSpy.mock.calls[0]?.[0], {
+    assert.deepEqual(withoutEmittedAt(persistAssistantMessageSpy.mock.calls[0]?.[0]), {
       threadId: "thread-1",
       userId: 1,
       assistantMessageId: "assistant-mismatch-1",

@@ -464,12 +464,12 @@ export const threadRouteSchemas = {
     response: {
       200: successEnvelope({
         type: "object",
-        required: ["deletedThreads", "deletedMessages", "failedThreads", "deletedWorkspaces", "clearedLogBytes"],
+        required: ["deletedThreads", "deletedMessages", "failedThreads", "failedWorkdirs", "clearedLogBytes"],
         properties: {
           deletedThreads: { type: "integer", minimum: 0 },
           deletedMessages: { type: "integer", minimum: 0 },
           failedThreads: { type: "integer", minimum: 0 },
-          deletedWorkspaces: { type: "integer", minimum: 0 },
+          failedWorkdirs: { type: "integer", minimum: 0 },
           clearedLogBytes: { type: "integer", minimum: 0 },
           media: {
             type: "object",

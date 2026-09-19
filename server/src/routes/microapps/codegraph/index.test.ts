@@ -314,7 +314,18 @@ test("CodeGraph microapp routes expose report, config save, and smoke query acti
       payload: null,
       report: await codeGraphStudioService.getReport(),
     })),
-    getDraft: vi.fn(),
+    getDraft: vi.fn(() => ({
+      microAppEnabled: true,
+      agentCapabilityEnabled: true,
+      command: "mock-codegraph",
+      startArgs: ["serve", "--mcp"],
+      versionProbeArgs: ["--version"],
+      telemetryProbeArgs: ["telemetry", "status"],
+      appDataRoot: "",
+      timeoutMs: 2000,
+      maxResults: 5,
+      queryLimit: 5,
+    })),
     getStoragePath: vi.fn(),
     getCapabilityGate: vi.fn(),
     getManagedCapabilityContext: vi.fn(),
@@ -330,11 +341,14 @@ test("CodeGraph microapp routes expose report, config save, and smoke query acti
   });
 
   assert.equal(reportResponse.statusCode, 200, reportResponse.body);
-  assert.equal(reportResponse.json().data.status, "blocked");
-  assert.equal(
-    reportResponse.json().data.blockedReasons[0].code,
-    "external_index_root_unsupported",
-  );
+  const report = reportResponse.json().data;
+  assert.equal(report.status, "blocked");
+  assert.deepEqual(report.blockedReasons, []);
+  assert.equal(report.config.agentCapabilityEnabled, true);
+  assert.equal(report.capability.checks.agentCapabilityEnabled, true);
+  assert.equal(report.capability.checks.repoPollutionSafe, true);
+  assert.equal(report.pollutionGuard.status, "ready");
+  assert.equal(report.pollutionGuard.blockedReason, null);
 
   const configResponse = await app.inject({
     method: "PUT",

@@ -104,6 +104,47 @@ describe("RemoteDevicePairingModal", () => {
     expect(apiMocks.create).toHaveBeenCalledTimes(1);
   });
 
+  it("renders and approves the new remote tool scopes", async () => {
+    const toolChallenge = {
+      ...claimedChallenge,
+      claim: {
+        ...claimedChallenge.claim,
+        requestedScopes: [
+          "tools:read",
+          "tools:invoke",
+          "tools:approve",
+          "tools:control",
+        ] as const,
+      },
+    };
+    apiMocks.create.mockResolvedValueOnce(toolChallenge);
+    apiMocks.get.mockResolvedValue(toolChallenge);
+
+    render(
+      <RemoteDevicePairingModal
+        open
+        onClose={() => void 0}
+        onPaired={() => void 0}
+      />,
+    );
+
+    expect(await screen.findByText("查看远程工具")).toBeInTheDocument();
+    expect(screen.getByText("调用远程工具")).toBeInTheDocument();
+    expect(screen.getByText("审批远程工具")).toBeInTheDocument();
+    expect(screen.getByText("取消远程工具")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "批准设备" }));
+
+    await waitFor(() => {
+      expect(apiMocks.approve).toHaveBeenCalledWith("claim-1", [
+        "tools:read",
+        "tools:invoke",
+        "tools:approve",
+        "tools:control",
+      ]);
+    });
+  });
+
   it("requires explicit desktop approval and forwards only requested scopes", async () => {
     const onPaired = vi.fn();
     render(

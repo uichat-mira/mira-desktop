@@ -63,6 +63,14 @@ describe("agent routes", () => {
     const run = createRun();
     agentRunStore.update(run.id, {
       status: "waiting_approval",
+      runtimeInput: {
+        messages: [],
+        conversationWorkdir: {
+          id: "workdir-1",
+          threadId: "thread-1",
+          rootPath: "/host-private/conversation-workdirs/thread-1",
+        },
+      },
       pendingApproval: {
         id: "approval-1",
         runId: run.id,
@@ -78,9 +86,16 @@ describe("agent routes", () => {
       url: `/agent/runs/${run.id}`,
     });
     expect(getResponse.statusCode).toBe(200);
-    const getBody = getResponse.json() as { data: { id: string; selectedCapabilityId?: string } };
+    const getBody = getResponse.json() as {
+      data: {
+        id: string;
+        selectedCapabilityId?: string;
+        runtimeInput?: unknown;
+      };
+    };
     expect(getBody.data.id).toBe(run.id);
     expect(getBody.data.selectedCapabilityId).toBeUndefined();
+    expect(getBody.data.runtimeInput).toBeUndefined();
 
     const approveResponse = await app.inject({
       method: "POST",
@@ -100,7 +115,7 @@ describe("agent routes", () => {
     expect(rejectResponse.statusCode).toBe(200);
     expect(
       (rejectResponse.json() as { data: { status: string } }).data.status,
-    ).toBe("blocked");
+    ).toBe("running");
     const cancelResponse = await app.inject({
       method: "POST",
       url: `/agent/runs/${run.id}/cancel`,
@@ -324,4 +339,35 @@ describe("agent routes", () => {
 
     await app.close();
   });
+});
+
+
+test("cancel is idempotent after an Agent run is terminal", async () => {
+  const app = Fastify({
+    logger: getLoggerConfig(),
+    serializerOpts: { encoding: "utf8" },
+  });
+  app.setErrorHandler(sendRouteError);
+  await app.register(agentRoute);
+
+  const completedRun = createRun();
+  agentRunStore.complete(completedRun.id, {
+    status: "completed",
+    terminalReason: "answered",
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: `/agent/runs/${completedRun.id}/cancel`,
+  });
+
+  expect(response.statusCode).toBe(200);
+  const data = (response.json() as { data: { status: string; terminalReason?: string } }).data;
+  expect(data.status).toBe("completed");
+  expect(data.terminalReason).toBe("answered");
+  expect(agentRunStore.get(completedRun.id)?.status).toBe("completed");
+  expect(agentRunStore.get(completedRun.id)?.terminalReason).toBe("answered");
+
+  await app.close();
+  agentRunStore.clear();
 });

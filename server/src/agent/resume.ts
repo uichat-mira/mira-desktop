@@ -10,7 +10,18 @@ import type {
 } from "./types";
 import { persistAssistantMessage } from "@/routes/proxy-provider/message-persistence";
 import { threadService } from "@/services/thread.service";
+import {
+  ConversationWorkdirError,
+  conversationWorkdirService,
+} from "@/services/conversation-workdir.service.js";
 import type { AssistantExecutionNodeEvent } from "@/services/chat-stream-events";
+import {
+  finishAgentRunControl,
+  startAgentRunControlLease,
+} from "./run-control";
+import { registerConversationWorkdirOutputs } from "./conversation-artifact-registration";
+import type { ConversationArtifactReference } from "@/services/conversation-artifact.service.js";
+import { getAgentRuntimeCheckpoint } from "./runtime-checkpoint";
 
 const buildAssistantMetadata = (input: {
   runId: string;
@@ -21,7 +32,8 @@ const buildAssistantMetadata = (input: {
     | "failed"
     | "blocked"
     | "waiting_approval"
-    | "waiting_user";
+    | "waiting_user"
+    | "cancelled";
   pendingApproval?: {
     id: string;
     stepId: string;
@@ -36,6 +48,7 @@ const buildAssistantMetadata = (input: {
   terminalReason?: string;
   errorMessage?: string;
   errorSourceNodeId?: string;
+  conversationArtifacts?: ConversationArtifactReference[];
 }) => ({
   agent: {
     status: input.status,
@@ -65,6 +78,9 @@ const buildAssistantMetadata = (input: {
       ? {
           errorSourceNodeId: input.errorSourceNodeId,
         }
+      : {}),
+    ...(input.conversationArtifacts?.length
+      ? { conversationArtifacts: input.conversationArtifacts }
       : {}),
   },
 });
@@ -190,13 +206,15 @@ export const persistAgentAssistantState = (input: {
     | "failed"
     | "blocked"
     | "waiting_approval"
-    | "waiting_user";
+    | "waiting_user"
+    | "cancelled";
   content: string;
   pendingApproval?: AgentApprovalRequest;
   blockedReason?: string;
   terminalReason?: string;
   errorMessage?: string;
   errorSourceNodeId?: string;
+  conversationArtifacts?: ConversationArtifactReference[];
   executionNodes?: AssistantExecutionNodeEvent[];
 }) => {
   if (
@@ -234,6 +252,7 @@ export const persistAgentAssistantState = (input: {
       terminalReason: input.terminalReason,
       errorMessage: input.errorMessage,
       errorSourceNodeId: input.errorSourceNodeId,
+      conversationArtifacts: input.conversationArtifacts,
     }),
   });
 };
@@ -241,6 +260,7 @@ export const persistAgentAssistantState = (input: {
 type PreparedApprovedAgentRunResume = {
   run: AgentRun;
   runtimeInput: NonNullable<AgentRun["runtimeInput"]>;
+  conversationWorkdir: NonNullable<AgentRun["runtimeInput"]>["conversationWorkdir"];
   pendingApproval: AgentApprovalRequest;
   pendingToolCall: AgentToolCallRequest;
   approvedInvocations: AgentApprovedInvocation[];
@@ -309,6 +329,21 @@ const prepareApprovedAgentRunResume = (
     pendingApproval,
     pendingToolCall,
   });
+  const conversationWorkdir = runtimeInput.conversationWorkdir
+    ? conversationWorkdirService.reopen({
+        threadId: run.threadId,
+        userId: run.userId,
+        reference: runtimeInput.conversationWorkdir,
+      })
+    : undefined;
+  const checkpoint = getAgentRuntimeCheckpoint(runtimeInput);
+  const conversationWorkdirOutputs =
+    runtimeInput.conversationWorkdirOutputs ?? checkpoint?.conversationWorkdirOutputs;
+  const resumedRuntimeInput = {
+    ...runtimeInput,
+    ...(conversationWorkdir ? { conversationWorkdir } : {}),
+    ...(conversationWorkdirOutputs ? { conversationWorkdirOutputs } : {}),
+  };
   const approvedInvocations = [
     ...(run.approvedInvocations ?? []),
     approvedInvocation,
@@ -321,6 +356,7 @@ const prepareApprovedAgentRunResume = (
     // Compatibility field only; graph execution still uses pendingToolCall.
     selectedToolId: pendingToolCall.toolId,
     pendingToolCall,
+    runtimeInput: resumedRuntimeInput,
   });
   const resumeExecutionNode = toAgentResumeExecutionNode({
     runId,
@@ -340,7 +376,8 @@ const prepareApprovedAgentRunResume = (
 
   return {
     run: runningRun,
-    runtimeInput,
+    runtimeInput: resumedRuntimeInput,
+    conversationWorkdir,
     pendingApproval,
     pendingToolCall,
     approvedInvocations,
@@ -367,7 +404,10 @@ const persistIncrementalResumeNode = (
 
 const executePreparedApprovedAgentRunResume = async (
   prepared: PreparedApprovedAgentRunResume,
-  options: { persistIncrementally: boolean },
+  options: {
+    persistIncrementally: boolean;
+    runControlLeaseId: string;
+  },
 ) => {
   const { run, runtimeInput, pendingApproval, pendingToolCall, approvedInvocations } =
     prepared;
@@ -376,6 +416,7 @@ const executePreparedApprovedAgentRunResume = async (
   ];
   const output = await agentGraph.run({
     runId: run.id,
+    runControlLeaseId: options.runControlLeaseId,
     threadId: run.threadId,
     userId: run.userId,
     goal: run.goal,
@@ -385,6 +426,8 @@ const executePreparedApprovedAgentRunResume = async (
     knowledgeBaseId: runtimeInput.knowledgeBaseId,
     intentConfig: runtimeInput.intentConfig,
     workspaceRoot: runtimeInput.workspaceRoot,
+    conversationWorkdir: prepared.conversationWorkdir,
+    conversationWorkdirOutputs: runtimeInput.conversationWorkdirOutputs,
     approvedInvocations,
     // Compatibility input only; createInitialAgentGraphState does not store or read it.
     selectedToolId: pendingToolCall.toolId,
@@ -397,10 +440,6 @@ const executePreparedApprovedAgentRunResume = async (
     },
   });
 
-  for (const observation of output.observations) {
-    agentRunStore.addObservation(run.id, observation);
-  }
-
   const currentRun = getAgentRunById(run.id);
   if (currentRun?.status === "cancelled") {
     return {
@@ -409,25 +448,45 @@ const executePreparedApprovedAgentRunResume = async (
     };
   }
 
+  const outputDeclarations =
+    output.conversationWorkdirOutputs ??
+    runtimeInput.conversationWorkdirOutputs;
+  const conversationArtifacts =
+    output.status === "completed"
+      ? registerConversationWorkdirOutputs({
+          threadId: run.threadId,
+          userId: run.userId,
+          declarations: outputDeclarations,
+        })
+      : [];
+  const outputWithArtifacts = conversationArtifacts.length
+    ? { ...output, conversationArtifacts }
+    : output;
+
+  for (const observation of outputWithArtifacts.observations) {
+    agentRunStore.addObservation(run.id, observation);
+  }
+
   agentRunStore.complete(run.id, {
-    status: output.status,
-    contextBudget: output.contextBudget,
-    blockedReason: output.blockedReason,
-    terminalReason: output.terminalReason,
-    finalizationPacket: output.finalizationPacket,
-    approvedInvocations: output.approvedInvocations ?? approvedInvocations,
+    status: outputWithArtifacts.status,
+    contextBudget: outputWithArtifacts.contextBudget,
+    blockedReason: outputWithArtifacts.blockedReason,
+    terminalReason: outputWithArtifacts.terminalReason,
+    finalizationPacket: outputWithArtifacts.finalizationPacket,
+    approvedInvocations:
+      outputWithArtifacts.approvedInvocations ?? approvedInvocations,
     // Resume output follows the same compatibility rule: no execution may be
     // derived from selectedToolId.
     selectedToolId:
-      output.selectedToolId ??
-      output.pendingApproval?.toolId ??
+      outputWithArtifacts.selectedToolId ??
+      outputWithArtifacts.pendingApproval?.toolId ??
       pendingApproval.toolId,
-    pendingToolCall: output.pendingToolCall,
-    lastToolExecution: output.lastToolExecution,
-    ...(output.pendingApproval
-      ? { pendingApproval: output.pendingApproval }
+    pendingToolCall: outputWithArtifacts.pendingToolCall,
+    lastToolExecution: outputWithArtifacts.lastToolExecution,
+    ...(outputWithArtifacts.pendingApproval
+      ? { pendingApproval: outputWithArtifacts.pendingApproval }
       : { pendingApproval: undefined }),
-    ...(output.status === "completed"
+    ...(outputWithArtifacts.status === "completed"
       ? { pendingApproval: undefined }
       : {}),
   });
@@ -437,20 +496,21 @@ const executePreparedApprovedAgentRunResume = async (
   if (nextRun) {
     persistAgentAssistantState({
       run: nextRun,
-      status: output.status,
-      content: output.answer,
-      pendingApproval: output.pendingApproval,
-      blockedReason: output.blockedReason,
-      terminalReason: output.terminalReason,
-      errorMessage: output.errorMessage,
-      errorSourceNodeId: output.errorSourceNodeId,
+      status: outputWithArtifacts.status,
+      content: outputWithArtifacts.answer,
+      pendingApproval: outputWithArtifacts.pendingApproval,
+      blockedReason: outputWithArtifacts.blockedReason,
+      terminalReason: outputWithArtifacts.terminalReason,
+      errorMessage: outputWithArtifacts.errorMessage,
+      errorSourceNodeId: outputWithArtifacts.errorSourceNodeId,
+      conversationArtifacts: outputWithArtifacts.conversationArtifacts,
       executionNodes: resumedExecutionNodes,
     });
   }
 
   return {
     run: nextRun,
-    output,
+    output: outputWithArtifacts,
   };
 };
 
@@ -503,9 +563,18 @@ export const resumeApprovedAgentRun = async (runId: string) => {
   const prepared = prepareApprovedAgentRunResume(runId, {
     persistRunningState: false,
   });
-  return executePreparedApprovedAgentRunResume(prepared, {
-    persistIncrementally: false,
-  });
+  const runControl = startAgentRunControlLease(runId);
+  try {
+    return await executePreparedApprovedAgentRunResume(prepared, {
+      persistIncrementally: false,
+      runControlLeaseId: runControl.leaseId,
+    });
+  } catch (error) {
+    failScheduledApprovedAgentRunResume(prepared, error);
+    throw error;
+  } finally {
+    finishAgentRunControl(runId, runControl.leaseId);
+  }
 };
 
 /**
@@ -513,16 +582,49 @@ export const resumeApprovedAgentRun = async (runId: string) => {
  * synchronously moved to `running`; execution continues in the next microtask.
  */
 export const scheduleApprovedAgentRunResume = (runId: string) => {
-  const prepared = prepareApprovedAgentRunResume(runId, {
-    persistRunningState: true,
-  });
+  let prepared: PreparedApprovedAgentRunResume;
+  try {
+    prepared = prepareApprovedAgentRunResume(runId, {
+      persistRunningState: true,
+    });
+  } catch (error) {
+    if (error instanceof ConversationWorkdirError) {
+      const run = getAgentRunById(runId);
+      if (run) {
+        persistAgentAssistantState({
+          run,
+          status: "waiting_approval",
+          content: "工作目录无法恢复，审批仍保留，请修复工作目录后重试。",
+          pendingApproval: run.pendingApproval,
+          errorMessage: error.message,
+          errorSourceNodeId: "agent-resume-workdir",
+          executionNodes: [
+            toAgentErrorExecutionNode({
+              runId,
+              nodeId: "agent-resume-workdir",
+              label: "恢复工作目录",
+              summary: "工作目录恢复失败，未开始恢复执行",
+              details: { code: error.code, errorMessage: error.message },
+            }),
+          ],
+        });
+      }
+    }
+    throw error;
+  }
 
+  const runControl = startAgentRunControlLease(runId);
   queueMicrotask(() => {
     void executePreparedApprovedAgentRunResume(prepared, {
       persistIncrementally: true,
-    }).catch((error) => {
-      failScheduledApprovedAgentRunResume(prepared, error);
-    });
+      runControlLeaseId: runControl.leaseId,
+    })
+      .catch((error) => {
+        failScheduledApprovedAgentRunResume(prepared, error);
+      })
+      .finally(() => {
+        finishAgentRunControl(runId, runControl.leaseId);
+      });
   });
 
   return prepared.run;

@@ -9,6 +9,10 @@ const scopes = vi.hoisted(
       "agent:read",
       "agent:approve",
       "agent:control",
+      "tools:read",
+      "tools:invoke",
+      "tools:approve",
+      "tools:control",
       "artifacts:read",
     ] as const,
 );
@@ -251,6 +255,39 @@ describe("RemoteAccessPairingService", () => {
     ).toBeNull();
   });
 
+  it("filters unknown future scopes before persistence and approval", () => {
+    const service = new RemoteAccessPairingService();
+    const challenge = service.createChallenge({
+      userId: 7,
+      hostUrl: "https://mira.example.ts.net",
+    });
+    const claim = service.claim({
+      challengeId: challenge.challengeId,
+      code: challenge.code,
+      requestedScopes: [
+        "threads:read",
+        "tools:read",
+        "future:capability",
+      ],
+    });
+
+    const view = service.getChallengeForUser(challenge.challengeId, 7);
+    expect(view.claim?.requestedScopes).toEqual([
+      "threads:read",
+      "tools:read",
+    ]);
+
+    const approved = service.approve({
+      claimId: claim.claimId,
+      userId: 7,
+      scopes: ["threads:read", "future:capability"],
+    });
+
+    expect(approved.approvedScopes).toEqual(["threads:read"]);
+    expect(state.devices).toHaveLength(1);
+    expect(state.devices[0]?.permissions).toEqual(["threads:read"]);
+  });
+
   it("does not return a credential when another poll wins atomic delivery", () => {
     const service = new RemoteAccessPairingService();
     const challenge = service.createChallenge({
@@ -294,6 +331,33 @@ describe("RemoteAccessPairingService", () => {
       }),
     ).toThrowError(PairingServiceError);
     expect(state.devices).toHaveLength(0);
+  });
+
+  it("does not silently grant tool scopes to legacy claims without requestedScopes", () => {
+    const service = new RemoteAccessPairingService();
+    const challenge = service.createChallenge({
+      userId: 7,
+      hostUrl: "https://mira.example.ts.net",
+    });
+
+    service.claim({
+      challengeId: challenge.challengeId,
+      code: challenge.code,
+    });
+
+    const requested =
+      service.getChallengeForUser(challenge.challengeId, 7).claim
+        ?.requestedScopes ?? [];
+    expect(requested).toEqual([
+      "threads:read",
+      "messages:read",
+      "messages:write",
+      "agent:read",
+      "agent:approve",
+      "agent:control",
+      "artifacts:read",
+    ]);
+    expect(requested.some((scope) => scope.startsWith("tools:"))).toBe(false);
   });
 
   it("keeps old Mobile claims compatible when transport is omitted", () => {

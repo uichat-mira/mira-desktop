@@ -22,7 +22,7 @@ describe("githubUpdate", () => {
 
     await expect(
       checkGithubTagUpdate(
-        "https://github.com/dangjingtao/uichat-mira.git",
+        "https://github.com/uichat-mira/mira-desktop.git",
         "0.99.0",
         fetchTags,
       ),
@@ -30,11 +30,11 @@ describe("githubUpdate", () => {
       currentVersion: "0.99.0",
       latestVersion: "1.0.0",
       latestTag: "v1.0.0",
-      tagUrl: "https://github.com/dangjingtao/uichat-mira/tree/v1.0.0",
+      tagUrl: "https://github.com/uichat-mira/mira-desktop/tree/v1.0.0",
       updateAvailable: true,
     });
     expect(fetchTags).toHaveBeenCalledWith(
-      "https://api.github.com/repos/dangjingtao/uichat-mira/tags?per_page=100",
+      "https://api.github.com/repos/uichat-mira/mira-desktop/tags?per_page=100",
       { cache: "no-store" },
     );
   });

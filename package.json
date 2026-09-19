@@ -1,6 +1,6 @@
 {
   "name": "ui-chat-mira",
-  "version": "0.99.12",
+  "version": "0.101.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.12.0",
@@ -9,9 +9,9 @@
   "description": "An intelligent agent cabin that starts with a chat and returns to your side.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dangjingtao/uichat-mira.git"
+    "url": "https://github.com/uichat-mira/mira-desktop.git"
   },
-  "homepage": "https://tomz.io",
+  "homepage": "https://mira.tomz.io",
   "appMeta": {
     "displayName": "UIChat Mira",
     "links": [
@@ -22,13 +22,13 @@
       },
       {
         "label": "项目仓库",
-        "value": "https://github.com/dangjingtao/uichat-mira.git",
-        "href": "https://github.com/dangjingtao/uichat-mira"
+        "value": "https://github.com/uichat-mira/mira-desktop.git",
+        "href": "https://github.com/uichat-mira/mira-desktop"
       },
       {
         "label": "官方文档",
-        "value": "https://tomz.io",
-        "href": "https://tomz.io"
+        "value": "https://mira.tomz.io",
+        "href": "https://mira.tomz.io"
       },
       {
         "label": "组件文档",
@@ -60,7 +60,7 @@
     "clean:artifacts": "node scripts/cleanup-artifacts.js",
     "check:no-db-in-index": "node scripts/check-no-db-in-index.js",
     "check:remote-relay": "tsc --noEmit -p packages/remote-relay/tsconfig.json",
-    "check": "pnpm check:remote-relay && pnpm -r --workspace-concurrency=1 typecheck",
+    "check": "pnpm check:forge-cutover && pnpm check:remote-relay && pnpm -r --workspace-concurrency=1 typecheck",
     "check:tauri": "pnpm internal:prepare:tauri && cross-env CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo check --manifest-path tauri/Cargo.toml -j 1",
     "version:sync": "node scripts/sync-version.js",
     "internal:build:desktop": "pnpm --filter @ui-chat-mira/desktop build",
@@ -77,7 +77,8 @@
     "prepare:local-model-packs": "node scripts/prepare-local-model-packs.mjs",
     "archive:local-model-packs": "node scripts/archive-local-model-packs.mjs",
     "smoke:local-model-runtime": "node scripts/smoke-local-model-runtime.mjs",
-    "eval:local-model-runtime": "node scripts/eval-local-model-runtime.mjs"
+    "eval:local-model-runtime": "node scripts/eval-local-model-runtime.mjs",
+    "check:forge-cutover": "node scripts/check-forge-cutover.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

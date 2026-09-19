@@ -2,6 +2,7 @@
 status: current
 owner: project-owner
 last_verified: 2026-07-31
+freshness_audited: 2026-09-19
 layer: wiki
 module: Project
 feature: ProductTruth
@@ -220,6 +221,21 @@ MCP 市场目录以 SQLite 为读取真相，官方 Registry 只作为 backend �
 - Stateful Skill Flow 是可选确定性 controller；
 - V1 禁止 nested SubAgent 与 recursive delegation。
 
+### Forge / 淬行
+
+截至 2026-09-06，Forge 已作为 Mira 内部一级工程执行域接入，而不是独立 control-plane：
+
+- Mira Server 在 `server/src/forge/**` 拥有 Forge runtime lifecycle、persistence、startup reconcile、Main Thread、Builder dispatch、Review 和 API routes；
+- Desktop 产品入口为 **淬行**（`/forge`），标准 UI 与 Terminal View 共用同一份 `ForgeWorkspaceSnapshot`、typed API 和 orchestration；
+- Forge Project Task Source 与 Forge Runtime Truth 分离；Mira 工程 work-item contract / outcome 由 GitHub Issue 持有，repository-native Task Card 只在 Forge 注册项目显式选择对应 task source 时作为领域输入，runtime 只保存执行引用与证据；
+- Dispatch 是显式动作，当前保持全局单 active Builder；绑定 source Main Thread 时必须属于同一 project；
+- Builder 正常完成只把 runtime task 推进到 `reviewing`，不等于 Repository PASS；
+- Review 继续按 concrete SHA 绑定，只有当前 SHA 与 reviewed SHA 一致时才能执行 integration；
+- terminal Builder result 会以 dispatch identity 幂等写入显式相关 Main Thread；下一次用户 turn 可消费新到达的 bounded handoff，Builder prose 不覆盖 authoritative runtime state；
+- 当前 Mira runtime 不依赖旧 `:47831` standalone Forge server，也不需要 Forge 独立 package / lockfile / Vite build。
+
+旧 T010、T015-T018 与固定源 work ledger 只作为 Forge 迁移时期的实现/验收证据追溯；它们不拥有当前 Mira Organization 的 work-item 状态或结果。Forge 当前 authority 与 Task Source 边界以 `forge/FORGE_CURRENT_CONTRACT.md` 和 Organization governance 为准。
+
 ### MicroApps Hub 与 MicroAPP Runtime
 
 完整事实见 [[MICROAPP_CURRENT_TRUTH]]。
@@ -344,7 +360,7 @@ MicroApp 还必须额外说明：
 1. 当前代码与可重复验证；
 2. current-contract / current-snapshot；
 3. 工程共同记忆；
-4. 正在施工的 checklist / workboard / ledger；
+4. 历史 task / review / project-control evidence；
 5. design / plan / research / POC；
 6. historical / superseded / archive。
 
@@ -353,7 +369,7 @@ MicroApp 还必须额外说明：
 ## 维护规则
 
 - 产品能力变化时先更新对应 current-contract，再更新这页；
-- 新功能验证前只能进入施工与验证或方案与实验；
+- 新功能验证前只能进入 GitHub work-item 流程、验证证据或方案与实验；
 - 当前文档超过 90 天未核验应显示过期；
 - 无状态、无核验信息的文档进入待核验；
 - 已知实现偏差必须写明影响与修复状态。
