@@ -1,7 +1,7 @@
 ---
 status: planned
 owner: architecture / agent-runtime / harness / microapp
-last_verified: 2026-09-16
+last_verified: 2026-09-19
 layer: design
 module: MiraNext
 feature: AgentCapabilityMicroApp
@@ -203,6 +203,10 @@ reusable capability grant 不能直接覆盖这条债。
 
 这和“一条 Conversation 自己天然拥有的小目录”不是同一个对象。
 
+> 2026-09-19 产品决策校正：这里保留当时的原判断，不做删除或改写。回看讨论后确认，当时这里存在理解差别：草案把 Workspace 与 Conversation 的执行目录拆成了两个平行对象；维护者实际强调的是“一个线程一个工作空间”，并以这个工作空间作为 Agent 的默认施工边界，而不是在 Workspace 之外再创造一套 Workdir。
+
+**正确决策：一个 Thread 只拥有一个 Workspace。这个 Workspace 随 Thread 持久存在、默认相对隔离，并承担 Agent 的读取、写入、临时施工、下载、脚本和最终产物承载。Mira 不再把 Conversation Workdir 作为与 Workspace 平行的第二个根目录。**
+
 ### 3.11 Mobile 已经正式形成双链路
 
 Mobile 当前根合同已经明确：
@@ -343,6 +347,10 @@ Capability taxonomy 与 Approval taxonomy 分离。
 - Platform MicroApp != Integration `MicroAppDefinition`；
 - 产品草案只是输入，不是 current contract。
 
+> 2026-09-19 产品决策校正：上面的 `ChatWorkspace != Conversation Workdir` 保留为当时草案原话，用来记录当时的理解路径。
+
+**正确决策：不再建立 Workspace 与 Conversation Workdir 两套平行目录语义。一个 Thread 一个 Workspace，默认相对隔离；AgentRun 是一次执行，Workspace 才是 Thread 持续拥有的施工空间。**
+
 不改 Runtime。
 
 ### Phase 1 — Structured Decision Boundary
@@ -395,6 +403,12 @@ Conversation Workdir
 - 生命周期、清理、容量、Artifact 引用必须有合同。
 
 这一步涉及文件权限边界，不能顺手放宽 Terminal 或任意绝对路径。
+
+> 2026-09-19 产品决策校正：本节保留原方案，明确记录当时的设计错误和理解差别。这里把“Workspace”和“Conversation 自己的执行目录”拆成两个对象，实际违背了维护者一直强调的产品心智：一个线程一个工作空间、相对隔离。该问题在 v0.101.0 人工烟测时暴露出来。
+
+**正确决策：Phase 2 的目标改为「Thread-owned Workspace」。每个 Thread 拥有一个持续、可恢复、相对隔离的 Workspace；Agent 的临时文件、中间产物、脚本、下载与最终文件都在这一个 Workspace 语义下工作。若需要区分内部临时数据，可以在 Workspace 内使用实现级内部区域，但不再引入第二个平行根目录。**
+
+**v0.101.0 需要返工，但不回滚。已落地的 Conversation Workdir 相关实现按“保留有价值能力、修正所有权模型”的原则逐步收敛：可复用的持久化、恢复、路径校验、quota / cleanup、Artifact reference 等能力继续保留；独立 Workdir 身份与第二套目录语义需要重新接回 Thread Workspace。**
 
 ### Phase 3 — Chat 收敛到 Agent Runtime
 
@@ -662,6 +676,8 @@ P9 Work Object / Board
 - Pi Loop 和现有 Agent execution contract 是地基；
 - Structured Decision 是默认 Agent 前最值得先处理的可靠性边界；
 - Conversation Workdir 必须与 ChatWorkspace 分开；
+
+**2026-09-19 修正：上述结论保留为当时原话，但不再作为后续施工方向。正确决策是一个 Thread 一个 Workspace、默认相对隔离；v0.101.0 的独立 Conversation Workdir 方案需要返工，不需要版本回滚。**
 - Chat → Agent 是明确目标，但必须做行为等价迁移；
 - Tool / MCP 解耦有真实代码依据，应渐进迁移；
 - Deferred Tool Search 应替代 embedding 作为唯一候选裁判，但永远不能直接获得 invocation authority；
