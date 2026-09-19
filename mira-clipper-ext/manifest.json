@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "触界",
-  "version": "0.100.1",
+  "version": "0.101.0",
   "key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAswcoGRhTA6o8/uquw7muyo2oRKC9jDc8YrCmEnQ09lwI36vA2+HtNO9i1hAHk6mLgFvnLolaDnDGskSRCCDi3W9qdltEYUtgoV2t3xEQMVa/elXRNShJ6kBsfZsSWKREee1CUMGHPjy5qm6FZRb3OnHl1W5B1wPEatjT8OeYMysRrfnMposG8HFVfmKFSXYK/EPO9gaOVruDcgWfT4/4BeISVW5KbXwRn/rn4H+tHE+5mhsslMYUQQE9IHkzIm5F4WHVuKMySjK11g13BXT0v+unx48H+pfBG4DDXEMf/ywBLBFH9xPNNzLwvMbbMXGa7FDhPc5yl2Ituly1RZ7uIiVlN097ahv/ydZWWAvawudjWpdop0WRNx26/ezUnXEJi35H70Hze6HpnqhBcKmo9QYcjjK08ymLWEYLaOhXUm7/1L0yykwMsdudX96mpj7ipSHw5OxZsQKlHPLIytJ5X2vM89p89nZedpGCKSBvOl+2vVU9RodNwRw/Fay467RL244TwU6c9Luji4jDD6DFW2CDqsxBgFo9uMQztoC5rgpF3mXjcntbG88PrQipsImK1NlPHlVYJjIiT1/l6KHP80w8PlojL+HPV7rLF3YjkS9G0OiYmELvWwfQwSX0zh6u+W0XY4j5ZX+LqafbLXNtYeZNfhivddUP7+cS3bApsMkCAwEAAQ==",
   "description": "连接 Mira，操作网页并支持用户主动剪藏",
   "permissions": [
