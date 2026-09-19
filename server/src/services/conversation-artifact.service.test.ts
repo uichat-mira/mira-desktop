@@ -8,7 +8,7 @@ import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
 import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { resetDatabaseClients } from "@/db";
-import { threadRepository, userRepository } from "@/db/repositories";
+import { conversationArtifactRepository, threadRepository, userRepository } from "@/db/repositories";
 import { conversationWorkdirService, ConversationWorkdirError } from "./conversation-workdir.service.js";
 import { conversationArtifactService, ConversationArtifactError } from "./conversation-artifact.service.js";
 import { createTimestampedTestArtifactPath, getTestArtifactDir } from "@/test-support/artifacts.js";
@@ -31,7 +31,56 @@ test("registers stable final identity and resolves after reload", () => {
   assert.equal(ref.threadId, thread.id); assert.equal(ref.workdirId, workdir.id); assert.equal(ref.lifecycle, "final");
   resetDatabaseClients(); initializeAuthDatabase(); initializeModelConfigDatabase(); initializeKnowledgeBaseDatabase(); initializeRoleDatabase(); initializeThreadDatabase();
   const resolved = conversationArtifactService.resolve({ id: ref.id, threadId: thread.id, userId: user.id, storageRoot: root });
-  assert.equal(resolved.reference.id, ref.id); assert.equal(resolved.absolutePath, path.join(workdir.rootPath, "final.txt"));
+  assert.equal(resolved.reference.id, ref.id);
+  assert.equal(resolved.reference.sourceRelativePath, "final.txt");
+  assert.equal(resolved.absolutePath, path.join(workdir.rootPath, "final.txt"));
+});
+
+test("rejects a persisted absolute source path during resolve", () => {
+  const absolutePath = path.join(workdir.rootPath, "persisted-absolute.txt");
+  fs.writeFileSync(absolutePath, "absolute");
+  const id = `artifact-absolute-${crypto.randomUUID()}`;
+  conversationArtifactRepository.create({
+    id,
+    threadId: thread.id,
+    userId: user.id,
+    workdirId: workdir.id,
+    sourceRelativePath: absolutePath,
+    lifecycle: "final",
+    mimeType: "text/plain",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  assert.throws(
+    () => conversationArtifactService.resolve({ id, threadId: thread.id, userId: user.id, storageRoot: root }),
+    (error) => error instanceof ConversationArtifactError && error.code === "unsupported_absolute_path",
+  );
+});
+
+test("rejects persisted traversal and malformed relative sources during resolve", () => {
+  for (const [sourceRelativePath, expectedCode] of [
+    ["../escape.txt", "path_escape"],
+    ["", "invalid_source"],
+  ] as const) {
+    const id = `artifact-invalid-${crypto.randomUUID()}`;
+    conversationArtifactRepository.create({
+      id,
+      threadId: thread.id,
+      userId: user.id,
+      workdirId: workdir.id,
+      sourceRelativePath,
+      lifecycle: "final",
+      mimeType: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    assert.throws(
+      () => conversationArtifactService.resolve({ id, threadId: thread.id, userId: user.id, storageRoot: root }),
+      (error) => error instanceof ConversationArtifactError && error.code === expectedCode,
+    );
+  }
 });
 
 test("fails closed for temporary, traversal, absolute path, ownership and stale source", () => {
