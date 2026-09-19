@@ -1,6 +1,6 @@
 {
   "name": "mira-clipper-ext",
-  "version": "0.100.1",
+  "version": "0.101.0",
   "description": "触界 - Mira 浏览器操作与用户主动剪藏扩展",
   "type": "module",
   "scripts": {
