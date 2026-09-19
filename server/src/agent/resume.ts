@@ -19,6 +19,9 @@ import {
   finishAgentRunControl,
   startAgentRunControlLease,
 } from "./run-control";
+import { registerConversationWorkdirOutputs } from "./conversation-artifact-registration";
+import type { ConversationArtifactReference } from "@/services/conversation-artifact.service.js";
+import { getAgentRuntimeCheckpoint } from "./runtime-checkpoint";
 
 const buildAssistantMetadata = (input: {
   runId: string;
@@ -45,6 +48,7 @@ const buildAssistantMetadata = (input: {
   terminalReason?: string;
   errorMessage?: string;
   errorSourceNodeId?: string;
+  conversationArtifacts?: ConversationArtifactReference[];
 }) => ({
   agent: {
     status: input.status,
@@ -74,6 +78,9 @@ const buildAssistantMetadata = (input: {
       ? {
           errorSourceNodeId: input.errorSourceNodeId,
         }
+      : {}),
+    ...(input.conversationArtifacts?.length
+      ? { conversationArtifacts: input.conversationArtifacts }
       : {}),
   },
 });
@@ -207,6 +214,7 @@ export const persistAgentAssistantState = (input: {
   terminalReason?: string;
   errorMessage?: string;
   errorSourceNodeId?: string;
+  conversationArtifacts?: ConversationArtifactReference[];
   executionNodes?: AssistantExecutionNodeEvent[];
 }) => {
   if (
@@ -244,6 +252,7 @@ export const persistAgentAssistantState = (input: {
       terminalReason: input.terminalReason,
       errorMessage: input.errorMessage,
       errorSourceNodeId: input.errorSourceNodeId,
+      conversationArtifacts: input.conversationArtifacts,
     }),
   });
 };
@@ -327,9 +336,14 @@ const prepareApprovedAgentRunResume = (
         reference: runtimeInput.conversationWorkdir,
       })
     : undefined;
-  const resumedRuntimeInput = conversationWorkdir
-    ? { ...runtimeInput, conversationWorkdir }
-    : runtimeInput;
+  const checkpoint = getAgentRuntimeCheckpoint(runtimeInput);
+  const conversationWorkdirOutputs =
+    runtimeInput.conversationWorkdirOutputs ?? checkpoint?.conversationWorkdirOutputs;
+  const resumedRuntimeInput = {
+    ...runtimeInput,
+    ...(conversationWorkdir ? { conversationWorkdir } : {}),
+    ...(conversationWorkdirOutputs ? { conversationWorkdirOutputs } : {}),
+  };
   const approvedInvocations = [
     ...(run.approvedInvocations ?? []),
     approvedInvocation,
@@ -413,6 +427,7 @@ const executePreparedApprovedAgentRunResume = async (
     intentConfig: runtimeInput.intentConfig,
     workspaceRoot: runtimeInput.workspaceRoot,
     conversationWorkdir: prepared.conversationWorkdir,
+    conversationWorkdirOutputs: runtimeInput.conversationWorkdirOutputs,
     approvedInvocations,
     // Compatibility input only; createInitialAgentGraphState does not store or read it.
     selectedToolId: pendingToolCall.toolId,
@@ -425,10 +440,6 @@ const executePreparedApprovedAgentRunResume = async (
     },
   });
 
-  for (const observation of output.observations) {
-    agentRunStore.addObservation(run.id, observation);
-  }
-
   const currentRun = getAgentRunById(run.id);
   if (currentRun?.status === "cancelled") {
     return {
@@ -437,25 +448,45 @@ const executePreparedApprovedAgentRunResume = async (
     };
   }
 
+  const outputDeclarations =
+    output.conversationWorkdirOutputs ??
+    runtimeInput.conversationWorkdirOutputs;
+  const conversationArtifacts =
+    output.status === "completed"
+      ? registerConversationWorkdirOutputs({
+          threadId: run.threadId,
+          userId: run.userId,
+          declarations: outputDeclarations,
+        })
+      : [];
+  const outputWithArtifacts = conversationArtifacts.length
+    ? { ...output, conversationArtifacts }
+    : output;
+
+  for (const observation of outputWithArtifacts.observations) {
+    agentRunStore.addObservation(run.id, observation);
+  }
+
   agentRunStore.complete(run.id, {
-    status: output.status,
-    contextBudget: output.contextBudget,
-    blockedReason: output.blockedReason,
-    terminalReason: output.terminalReason,
-    finalizationPacket: output.finalizationPacket,
-    approvedInvocations: output.approvedInvocations ?? approvedInvocations,
+    status: outputWithArtifacts.status,
+    contextBudget: outputWithArtifacts.contextBudget,
+    blockedReason: outputWithArtifacts.blockedReason,
+    terminalReason: outputWithArtifacts.terminalReason,
+    finalizationPacket: outputWithArtifacts.finalizationPacket,
+    approvedInvocations:
+      outputWithArtifacts.approvedInvocations ?? approvedInvocations,
     // Resume output follows the same compatibility rule: no execution may be
     // derived from selectedToolId.
     selectedToolId:
-      output.selectedToolId ??
-      output.pendingApproval?.toolId ??
+      outputWithArtifacts.selectedToolId ??
+      outputWithArtifacts.pendingApproval?.toolId ??
       pendingApproval.toolId,
-    pendingToolCall: output.pendingToolCall,
-    lastToolExecution: output.lastToolExecution,
-    ...(output.pendingApproval
-      ? { pendingApproval: output.pendingApproval }
+    pendingToolCall: outputWithArtifacts.pendingToolCall,
+    lastToolExecution: outputWithArtifacts.lastToolExecution,
+    ...(outputWithArtifacts.pendingApproval
+      ? { pendingApproval: outputWithArtifacts.pendingApproval }
       : { pendingApproval: undefined }),
-    ...(output.status === "completed"
+    ...(outputWithArtifacts.status === "completed"
       ? { pendingApproval: undefined }
       : {}),
   });
@@ -465,20 +496,21 @@ const executePreparedApprovedAgentRunResume = async (
   if (nextRun) {
     persistAgentAssistantState({
       run: nextRun,
-      status: output.status,
-      content: output.answer,
-      pendingApproval: output.pendingApproval,
-      blockedReason: output.blockedReason,
-      terminalReason: output.terminalReason,
-      errorMessage: output.errorMessage,
-      errorSourceNodeId: output.errorSourceNodeId,
+      status: outputWithArtifacts.status,
+      content: outputWithArtifacts.answer,
+      pendingApproval: outputWithArtifacts.pendingApproval,
+      blockedReason: outputWithArtifacts.blockedReason,
+      terminalReason: outputWithArtifacts.terminalReason,
+      errorMessage: outputWithArtifacts.errorMessage,
+      errorSourceNodeId: outputWithArtifacts.errorSourceNodeId,
+      conversationArtifacts: outputWithArtifacts.conversationArtifacts,
       executionNodes: resumedExecutionNodes,
     });
   }
 
   return {
     run: nextRun,
-    output,
+    output: outputWithArtifacts,
   };
 };
 

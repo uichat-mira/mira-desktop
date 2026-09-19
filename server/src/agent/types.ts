@@ -4,6 +4,7 @@ import type { RetrievedChunk } from "@/services/rag-nodes";
 import type { ContextBudgetAudit } from "@/services/context-budget/index";
 import type { SandboxOutputEncoding } from "@/harness/sandbox/contract";
 import type { McpInvocationFailureCode, McpToolDefinition, McpToolEvidence } from "@/mcp/core/definitions";
+import type { ConversationArtifactReference } from "@/services/conversation-artifact.service";
 import type {
   AgentIntentEmbeddingConfig,
   ToolIntentResult,
@@ -507,6 +508,12 @@ export interface ConversationWorkdirReference {
   rootPath: string;
 }
 
+export interface ConversationWorkdirOutputDeclaration {
+  sourceRelativePath: string;
+  lifecycle: "temporary" | "final";
+  mimeType?: string | null;
+}
+
 export interface AgentRun {
   id: string;
   threadId: string;
@@ -543,6 +550,7 @@ export interface AgentRun {
     | "intentConfig"
     | "workspaceRoot"
     | "conversationWorkdir"
+    | "conversationWorkdirOutputs"
     | "requestedToolGroupIds"
   >;
   createdAt: string;
@@ -565,6 +573,7 @@ export interface AgentRunStore {
       | "intentConfig"
       | "workspaceRoot"
       | "conversationWorkdir"
+      | "conversationWorkdirOutputs"
       | "requestedToolGroupIds"
     >;
   }): AgentRun;
@@ -603,6 +612,7 @@ export interface AgentGraphInput {
   intentConfig?: AgentIntentEmbeddingConfig;
   workspaceRoot?: string | null;
   conversationWorkdir?: ConversationWorkdirReference;
+  conversationWorkdirOutputs?: ConversationWorkdirOutputDeclaration[];
   requestedToolGroupIds?: string[];
   approvedInvocations?: AgentApprovedInvocation[];
   policyDecision?: AgentPolicyDecision;
@@ -637,6 +647,8 @@ export interface AgentGraphOutput {
   selectedToolId?: string;
   pendingToolCall?: AgentToolCallRequest;
   approvedInvocations?: AgentApprovedInvocation[];
+  conversationWorkdirOutputs?: ConversationWorkdirOutputDeclaration[];
+  conversationArtifacts?: ConversationArtifactReference[];
   lastToolExecution?: AgentToolExecutionResult;
   currentTaskFrame?: CurrentTaskFrame;
   finalizationPacket?: AgentFinalizationPacket;
