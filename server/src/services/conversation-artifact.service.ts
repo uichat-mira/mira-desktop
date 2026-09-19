@@ -70,7 +70,6 @@ export const conversationArtifactService = {
   resolve(input: { id: string; threadId: string; userId: number; storageRoot?: string }): { reference: ConversationArtifactReference; absolutePath: string } {
     const row = conversationArtifactRepository.findById(input.id, input.userId) ?? fail("invalid_ownership", "Artifact ownership does not match the requested thread");
     if (row.threadId !== input.threadId) fail("invalid_ownership", "Artifact ownership does not match the requested thread");
-    const relative = validateRelativeSource(row.sourceRelativePath);
     const persistedWorkdir = conversationWorkdirRepository.findByThreadId(input.threadId, input.userId) ?? fail("stale_reference", "Artifact workdir reference is stale");
     const workdir = (() => {
       try {
@@ -81,6 +80,8 @@ export const conversationArtifactService = {
       }
     })();
     if (workdir.id !== row.workdirId) fail("stale_reference", "Artifact workdir reference is stale");
+    const relative = validateRelativeSource(row.sourceRelativePath);
+    if (relative !== row.sourceRelativePath) fail("invalid_source", "Artifact source identity is not canonical");
     return {
       reference: { ...toReference(row), sourceRelativePath: relative },
       absolutePath: resolveSource(workdir.rootPath, relative),

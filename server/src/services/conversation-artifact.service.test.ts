@@ -83,6 +83,55 @@ test("rejects persisted traversal and malformed relative sources during resolve"
   }
 });
 
+test("rejects persisted non-canonical relative source identities", () => {
+  fs.mkdirSync(path.join(workdir.rootPath, "report"), { recursive: true });
+  fs.writeFileSync(path.join(workdir.rootPath, "report", "2026.txt"), "report");
+  fs.mkdirSync(path.join(workdir.rootPath, "dir"), { recursive: true });
+  fs.writeFileSync(path.join(workdir.rootPath, "dir", "file.txt"), "file");
+
+  for (const sourceRelativePath of ["report\\2026.txt", "dir//file.txt"]) {
+    const id = `artifact-non-canonical-${crypto.randomUUID()}`;
+    conversationArtifactRepository.create({
+      id,
+      threadId: thread.id,
+      userId: user.id,
+      workdirId: workdir.id,
+      sourceRelativePath,
+      lifecycle: "final",
+      mimeType: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    assert.throws(
+      () => conversationArtifactService.resolve({ id, threadId: thread.id, userId: user.id, storageRoot: root }),
+      (error) => error instanceof ConversationArtifactError && error.code === "invalid_source",
+    );
+  }
+});
+
+test("reports a stale workdir before an invalid persisted source", () => {
+  const staleThread = threadRepository.create({ userId: user.id, title: "stale artifact workdir" });
+  const staleWorkdir = conversationWorkdirService.ensure({ threadId: staleThread.id, userId: user.id, storageRoot: root });
+  const id = `artifact-stale-${crypto.randomUUID()}`;
+  conversationArtifactRepository.create({
+    id,
+    threadId: thread.id,
+    userId: user.id,
+    workdirId: staleWorkdir.id,
+    sourceRelativePath: "../escape.txt",
+    lifecycle: "final",
+    mimeType: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  assert.throws(
+    () => conversationArtifactService.resolve({ id, threadId: thread.id, userId: user.id, storageRoot: root }),
+    (error) => error instanceof ConversationArtifactError && error.code === "stale_reference",
+  );
+});
+
 test("fails closed for temporary, traversal, absolute path, ownership and stale source", () => {
   assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, sourceRelativePath: "tmp.txt", lifecycle: "temporary" }), (e) => e instanceof ConversationArtifactError && e.code === "invalid_source");
   for (const sourceRelativePath of ["../escape.txt", path.resolve(root, "final.txt")]) assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, sourceRelativePath, lifecycle: "final" }), ConversationArtifactError);
