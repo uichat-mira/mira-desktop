@@ -80,6 +80,11 @@ export const conversationArtifactService = {
       }
     })();
     if (workdir.id !== row.workdirId) fail("stale_reference", "Artifact workdir reference is stale");
-    return { reference: toReference(row), absolutePath: resolveSource(workdir.rootPath, row.sourceRelativePath) };
+    const relative = validateRelativeSource(row.sourceRelativePath);
+    if (relative !== row.sourceRelativePath) fail("invalid_source", "Artifact source identity is not canonical");
+    return {
+      reference: { ...toReference(row), sourceRelativePath: relative },
+      absolutePath: resolveSource(workdir.rootPath, relative),
+    };
   },
 };
