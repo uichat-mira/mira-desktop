@@ -295,7 +295,7 @@ export function AppNavigationRail() {
       <div className="flex flex-col items-center gap-1">
         {primaryItems.map((item) => (
           <div key={item.id}>
-            {item.kind === "library" ? (
+            {item.id === "projects" ? (
               <LibraryMenu active={isLibraryRoute(pathname)} />
             ) : (
               <RailButton
@@ -310,7 +310,7 @@ export function AppNavigationRail() {
       <div className="mt-auto flex flex-col items-center gap-1">
         <RailButton
           item={{
-                    id: "settings",
+            id: "settings",
             label: t("app.navigation.settings"),
             icon: Settings2,
             to: "/settings/general",
