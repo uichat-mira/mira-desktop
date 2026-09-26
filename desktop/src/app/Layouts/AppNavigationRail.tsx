@@ -23,7 +23,6 @@ import { openExternalUrl } from "@/shared/platform/desktopRuntime";
 type RailLinkId = "home" | "remote-access" | "dashboard" | "forge" | "settings";
 
 type RailLinkItem = {
-  kind: "link";
   id: RailLinkId;
   label: string;
   icon: LucideIcon;
@@ -31,7 +30,6 @@ type RailLinkItem = {
 };
 
 type RailMenuItem = {
-  kind: "library";
   id: "projects";
 };
 
@@ -39,29 +37,25 @@ type PrimaryRailItem = RailLinkItem | RailMenuItem;
 
 const primaryItems: PrimaryRailItem[] = [
   {
-    kind: "link",
     id: "home",
     label: "app.navigation.home",
     icon: Home,
     to: "/chat",
   },
   {
-    kind: "link",
     id: "remote-access",
     label: "app.navigation.remoteAccess",
     icon: Smartphone,
     to: "/remote-access",
   },
   {
-    kind: "link",
     id: "dashboard",
     label: "app.navigation.dashboard",
     icon: LayoutDashboard,
     to: "/dashboard",
   },
-  { kind: "library", id: "projects" },
+  { id: "projects" },
   {
-    kind: "link",
     id: "forge",
     label: "app.navigation.forge",
     icon: GitBranch,
@@ -73,7 +67,7 @@ function matchesRoute(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(`${route}/`);
 }
 
-function resolveActiveItem(pathname: string): RailLinkId | "settings" | null {
+function resolveActiveItem(pathname: string): RailLinkId | null {
   if (pathname === "/" || matchesRoute(pathname, "/chat")) return "home";
   if (matchesRoute(pathname, "/settings")) return "settings";
   if (matchesRoute(pathname, "/forge")) return "forge";
@@ -316,8 +310,7 @@ export function AppNavigationRail() {
       <div className="mt-auto flex flex-col items-center gap-1">
         <RailButton
           item={{
-            kind: "link",
-            id: "settings",
+                    id: "settings",
             label: t("app.navigation.settings"),
             icon: Settings2,
             to: "/settings/general",
