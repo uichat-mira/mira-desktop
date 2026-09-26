@@ -2,17 +2,12 @@ import type { ReactNode } from "react";
 import type { RouteObject } from "react-router-dom";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Navigate, Outlet } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Blend,
   Bolt,
   Boxes,
-  Braces,
-  Info,
-  LibraryBig,
-  ListChecks,
-  Network,
   PanelsTopLeft,
   SlidersHorizontal,
   Sparkles,
@@ -20,22 +15,10 @@ import {
   Wrench,
   UserRoundPen,
 } from "lucide-react";
-import About from "@/features/Settings/pages/About/index";
 import GeneralSettings from "@/features/Settings/pages/General/index";
 import PersonalizationSettings from "@/features/Settings/pages/Personalization/index";
-import TailscaleRemoteAccessSettings from "@/features/Settings/pages/TailscaleRemoteAccess/index";
 import AccountSettings from "@/features/Settings/pages/Account/index";
-import KnowledgeBaseSettings from "@/features/Settings/pages/KnowledgeBase/index";
-import KnowledgeBaseAddWizard from "@/features/Settings/pages/KnowledgeBase/Add";
-import KnowledgeBaseDetail from "@/features/Settings/pages/KnowledgeBase/Detail";
 import ModelSettings from "@/features/Settings/pages/ModelSetting";
-import EvaluationNew from "@/features/Settings/pages/Evaluation/New";
-import EvaluationCenter from "@/features/Settings/pages/Evaluation/Center";
-import DevelopmentSettings from "@/features/Settings/pages/Development/index";
-import DevelopmentLogsPage from "@/features/Settings/pages/Development/pages/Logs/index";
-import DevelopmentDatabasePage from "@/features/Settings/pages/Development/pages/Database/index";
-import DevelopmentClientTestsPage from "@/features/Settings/pages/Development/pages/ClientTests/index";
-import DevelopmentServerTestsPage from "@/features/Settings/pages/Development/pages/ServerTests/index";
 import McpSettings from "@/features/Settings/pages/Mcp/index";
 import IntegrationsSettings from "@/features/Settings/pages/Integrations/index";
 import ToolsSettings from "@/features/Settings/pages/Tools/index";
@@ -107,31 +90,9 @@ const settingsRouteTree: SettingsRouteConfig[] = [
     },
   },
   {
-    path: "tailscale-remote-access",
-    element: <TailscaleRemoteAccessSettings />,
-    nav: {
-      labelKey: "settings.navigation.tailscaleRemoteAccess",
-      icon: Network,
-      group: "general",
-      order: 30,
-    },
-  },
-  {
     path: "model-setting",
     element: <ModelSettings />,
     nav: { labelKey: "settings.navigation.model", icon: Blend, group: "basic", order: 10 },
-  },
-  {
-    path: "knowledge-base",
-    element: <KnowledgeBaseSettings />,
-    nav: {
-      labelKey: "settings.navigation.knowledgeBase",
-      icon: LibraryBig,
-      group: "knowledge",
-      order: 10,
-      match: "prefix",
-      preserveSearch: true,
-    },
   },
   {
     path: "roles",
@@ -209,67 +170,6 @@ const settingsRouteTree: SettingsRouteConfig[] = [
     ],
   },
   {
-    path: "knowledge-base/add",
-    element: <KnowledgeBaseAddWizard />,
-  },
-  {
-    path: "knowledge-base/detail",
-    element: <KnowledgeBaseDetail />,
-  },
-  {
-    path: "evaluation",
-    children: [
-      {
-        path: "center",
-        element: <EvaluationCenter />,
-        nav: {
-          labelKey: "settings.navigation.evaluationCenter",
-          icon: ListChecks,
-          group: "knowledge",
-          order: 20,
-          match: "prefix",
-        },
-      },
-      {
-        path: "center/new",
-        element: <EvaluationNew />,
-      },
-    ],
-  },
-  {
-    path: "development",
-    element: <DevelopmentSettings />,
-    children: [
-      {
-        path: "logs",
-        element: <DevelopmentLogsPage />,
-      },
-      {
-        path: "database",
-        element: <DevelopmentDatabasePage />,
-      },
-      {
-        path: "client-tests",
-        element: <DevelopmentClientTestsPage />,
-      },
-      {
-        path: "server-tests",
-        element: <DevelopmentServerTestsPage />,
-      },
-      {
-        path: "base-information",
-        element: <Navigate to="/settings/about" replace />,
-      },
-    ],
-    nav: {
-      labelKey: "settings.navigation.development",
-      icon: Braces,
-      group: "other",
-      order: 10,
-      match: "prefix",
-    },
-  },
-  {
     path: "mcp",
     element: <McpSettings />,
     nav: { labelKey: "settings.navigation.mcp", icon: Boxes, group: "basic", order: 30 },
@@ -288,11 +188,6 @@ const settingsRouteTree: SettingsRouteConfig[] = [
     path: "tools",
     element: <ToolsSettings />,
     nav: { labelKey: "settings.navigation.tools", icon: Wrench, group: "basic", order: 20 },
-  },
-  {
-    path: "about",
-    element: <About />,
-    nav: { labelKey: "settings.navigation.about", icon: Info, group: "other", order: 20 },
   },
   {
     path: "account",

@@ -10,6 +10,7 @@ import { RouteErrorBoundary } from "@/shared/ui/ErrorBoundary";
 import { settingsRoutes } from "@/app/routes/settingsRoutes";
 import { ChatApplicationStateBoundary } from "@/app/ChatApplicationStateBoundary";
 import CuixingPage from "@/features/forge/pages/CuixingPage";
+import { standaloneRoutes } from "./routes/standaloneRoutes";
 
 export const router = createHashRouter([
   {
@@ -25,12 +26,9 @@ export const router = createHashRouter([
             children: [
               { index: true, element: <HomePage /> },
               { path: "forge", element: <CuixingPage /> },
+              ...standaloneRoutes,
               {
                 path: "chat",
-                element: <BaseLayout />,
-              },
-              {
-                path: "dashboard",
                 element: <BaseLayout />,
               },
               {
