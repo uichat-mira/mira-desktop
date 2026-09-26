@@ -20,7 +20,7 @@ import { useAuth } from "@/app/providers/AuthProvider";
 import DropdownMenu from "@/shared/ui/DropdownMenu";
 import { openExternalUrl } from "@/shared/platform/desktopRuntime";
 
-type RailLinkId = "home" | "remote-access" | "dashboard" | "forge";
+type RailLinkId = "home" | "remote-access" | "dashboard" | "forge" | "settings";
 
 type RailLinkItem = {
   kind: "link";
@@ -317,7 +317,7 @@ export function AppNavigationRail() {
         <RailButton
           item={{
             kind: "link",
-            id: "home",
+            id: "settings",
             label: t("app.navigation.settings"),
             icon: Settings2,
             to: "/settings/general",
