@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { AlertCircle } from "lucide-react";
 import { Result } from "@/shared/ui";
 import { useAuth } from "@/app/providers/AuthProvider";
-import SettingsPageLayout from "@/features/Settings/components/SettingsPageLayout";
+import AppPageLayout from "@/app/Layouts/AppPageLayout";
 import { getDashboardMail, getDashboardNews, getDashboardOverview, getDashboardWeather } from "./api/dashboard-api";
 import { WidgetCard } from "./components/WidgetCard";
 import { DashboardGreeting } from "./components/DashboardGreeting";
@@ -95,7 +95,7 @@ export default function DashboardPage() {
   }, [i18n.language]);
 
   return (
-    <SettingsPageLayout
+    <AppPageLayout
       miniTitle="Mira"
       title="Mira 工作台"
       description="你的智能助手，随时为你掌握全局"
@@ -107,6 +107,6 @@ export default function DashboardPage() {
         <DashboardGreeting username={session?.user.username || "朋友"} newsCount={newsData?.items.length ?? 0} mailCount={mailData?.attentionCount ?? 0} />
         {error ? <div className="rounded-ui-panel border border-danger-border bg-danger-soft"><Result title="工作台暂时无法加载" description={error} variant="danger" size="sm" icon={<AlertCircle className="h-5 w-5" />} /></div> : overview ? <WidgetGrid>{overview.widgets.map((widget) => { const Renderer = isDashboardWidgetType(widget.type) ? dashboardWidgetRegistry[widget.type] : null; const resolvedWidget = widget.type === "clock-weather" && weatherData ? { ...widget, data: weatherData } : widget.type === "news" && newsData ? { ...widget, data: newsData } : widget.type === "mail" && mailData ? { ...widget, data: mailData } : widget; return Renderer ? <Renderer key={widget.id} widget={resolvedWidget} /> : <WidgetCard key={widget.id} widget={resolvedWidget} state="error" error="暂不支持此 Widget 类型" />; })}<InsightPlaceholder /></WidgetGrid> : <DashboardLoadingSkeleton />}
       </div>
-    </SettingsPageLayout>
+    </AppPageLayout>
   );
 }

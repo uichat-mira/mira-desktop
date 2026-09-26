@@ -24,7 +24,7 @@ export function SettingsWorkspace({ visible }: { visible: boolean }) {
     <div className="flex min-h-0 flex-1">
       <WorkspaceShell
         showBackToChatLink={false}
-        sidebarContent={<SettingsNavigation />}
+        sidebarContent={<SettingsNavigation showBackToChatLink={false} />}
         mainContent={<SettingsContent />}
         shellClassName="rounded-l-[28px] border border-border/70 bg-surface-secondary shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
         contentClassName="px-3 sm:px-4 lg:px-5 xl:px-6"

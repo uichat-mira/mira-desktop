@@ -1,5 +1,22 @@
 const app = {
   app: {
+    navigation: {
+      home: "主页",
+      history: "历史",
+      projects: "知识与评测",
+      forge: "淬行",
+      remoteAccess: "远程连接",
+      dashboard: "工作台",
+      settings: "设置",
+      help: "帮助",
+      account: "账户",
+      about: "关于",
+      development: "开发",
+      knowledgeBase: "知识库",
+      evaluation: "评测中心",
+      externalApp: "应用外",
+      primary: "主导航",
+    },
     sidebar: {
       unknown: "检测中",
       running: "运行中",
