@@ -1,3 +1,4 @@
+import { Navigate } from "react-router-dom";
 import About from "@/features/About/index";
 import DevelopmentSettings from "@/features/Development/index";
 import DevelopmentLogsPage from "@/features/Development/pages/Logs/index";
@@ -37,6 +38,7 @@ export const standaloneRoutes = [
     path: "evaluation",
     element: <StandaloneWorkspace />,
     children: [
+      { index: true, element: <Navigate to="center" replace /> },
       { path: "center", element: <EvaluationCenter /> },
       { path: "center/new", element: <EvaluationNew /> },
     ],

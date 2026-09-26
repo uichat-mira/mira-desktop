@@ -18,6 +18,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/app/providers/AuthProvider";
 import DropdownMenu from "@/shared/ui/DropdownMenu";
+import { message } from "@/shared/ui/Message";
 import { openExternalUrl } from "@/shared/platform/desktopRuntime";
 
 type RailLinkId = "home" | "remote-access" | "dashboard" | "forge" | "settings";
@@ -214,7 +215,9 @@ function ResourceMenu({ active = false }: { active?: boolean }) {
         } else if (item.id === "development") {
           navigate("/development/logs");
         } else if (item.id === "help") {
-          void openExternalUrl("https://mira.tomz.io");
+          void openExternalUrl("https://mira.tomz.io").catch(() => {
+            message.error(t("app.navigation.helpOpenFailed"));
+          });
         }
       }}
     />

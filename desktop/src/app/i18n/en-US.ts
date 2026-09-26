@@ -8,6 +8,7 @@ const app = {
       dashboard: "Workbench",
       settings: "Settings",
       help: "Help",
+      helpOpenFailed: "The help page could not be opened. Please try again.",
       account: "Account",
       about: "About",
       development: "Development",

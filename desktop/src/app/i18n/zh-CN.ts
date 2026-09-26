@@ -8,6 +8,7 @@ const app = {
       dashboard: "工作台",
       settings: "设置",
       help: "帮助",
+      helpOpenFailed: "帮助页面打开失败，请稍后重试。",
       account: "账户",
       about: "关于",
       development: "开发",
