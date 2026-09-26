@@ -1,8 +1,6 @@
-"use client";
-
 import {
-  CircleHelp,
   Braces,
+  CircleHelp,
   ExternalLink,
   FolderKanban,
   GitBranch,
@@ -14,60 +12,96 @@ import {
   LogOut,
   Settings2,
   Smartphone,
+  type LucideIcon,
 } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/app/providers/AuthProvider";
 import DropdownMenu from "@/shared/ui/DropdownMenu";
 import { openExternalUrl } from "@/shared/platform/desktopRuntime";
 
-type RailItem = {
-  id: string;
+type RailLinkId = "home" | "remote-access" | "dashboard" | "forge";
+
+type RailLinkItem = {
+  kind: "link";
+  id: RailLinkId;
   label: string;
-  icon: typeof Home;
+  icon: LucideIcon;
+  to: string;
 };
 
-const primaryItems: RailItem[] = [
-  { id: "home", label: "app.navigation.home", icon: Home },
-  { id: "remote-access", label: "app.navigation.remoteAccess", icon: Smartphone },
-  { id: "dashboard", label: "app.navigation.dashboard", icon: LayoutDashboard },
-  { id: "projects", label: "app.navigation.projects", icon: FolderKanban },
-  { id: "forge", label: "app.navigation.forge", icon: GitBranch },
+type RailMenuItem = {
+  kind: "library";
+  id: "projects";
+};
+
+type PrimaryRailItem = RailLinkItem | RailMenuItem;
+
+const primaryItems: PrimaryRailItem[] = [
+  {
+    kind: "link",
+    id: "home",
+    label: "app.navigation.home",
+    icon: Home,
+    to: "/chat",
+  },
+  {
+    kind: "link",
+    id: "remote-access",
+    label: "app.navigation.remoteAccess",
+    icon: Smartphone,
+    to: "/remote-access",
+  },
+  {
+    kind: "link",
+    id: "dashboard",
+    label: "app.navigation.dashboard",
+    icon: LayoutDashboard,
+    to: "/dashboard",
+  },
+  { kind: "library", id: "projects" },
+  {
+    kind: "link",
+    id: "forge",
+    label: "app.navigation.forge",
+    icon: GitBranch,
+    to: "/forge",
+  },
 ];
 
-function resolveActiveItem(pathname: string) {
-  if (pathname.startsWith("/settings")) return "settings";
-  if (pathname === "/forge") return "forge";
-  if (pathname === "/remote-access") return "remote-access";
-  if (pathname === "/dashboard") return "dashboard";
-  return "home";
+function matchesRoute(pathname: string, route: string) {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
+function resolveActiveItem(pathname: string): RailLinkId | "settings" | null {
+  if (pathname === "/" || matchesRoute(pathname, "/chat")) return "home";
+  if (matchesRoute(pathname, "/settings")) return "settings";
+  if (matchesRoute(pathname, "/forge")) return "forge";
+  if (matchesRoute(pathname, "/remote-access")) return "remote-access";
+  if (matchesRoute(pathname, "/dashboard")) return "dashboard";
+  return null;
 }
 
 function isResourceRoute(pathname: string) {
   return (
-    pathname === "/about" ||
-    pathname.startsWith("/about/") ||
-    pathname === "/development" ||
-    pathname.startsWith("/development/")
+    matchesRoute(pathname, "/about") ||
+    matchesRoute(pathname, "/development")
   );
 }
 
 function isLibraryRoute(pathname: string) {
   return (
-    pathname.startsWith("/knowledge-base") ||
-    pathname.startsWith("/evaluation")
+    matchesRoute(pathname, "/knowledge-base") ||
+    matchesRoute(pathname, "/evaluation")
   );
 }
 
 function RailButton({
   item,
   active,
-  to,
 }: {
-  item: RailItem;
+  item: RailLinkItem;
   active: boolean;
-  to?: string;
 }) {
   const Icon = item.icon;
   const className = `group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
@@ -76,34 +110,16 @@ function RailButton({
       : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
   }`;
 
-  const content = (
-    <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />
-  );
-
-  if (to) {
-    return (
-      <NavLink
-        to={to}
-        aria-label={item.label}
-        title={item.label}
-        aria-current={active ? "page" : undefined}
-        className={className}
-      >
-        {content}
-      </NavLink>
-    );
-  }
-
   return (
-    <button
-      type="button"
+    <NavLink
+      to={item.to}
       aria-label={item.label}
       title={item.label}
       aria-current={active ? "page" : undefined}
       className={className}
     >
-      {content}
-    </button>
+      <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />
+    </NavLink>
   );
 }
 
@@ -175,7 +191,10 @@ function ResourceMenu({ active = false }: { active?: boolean }) {
               : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
           }`}
         >
-          <CircleHelp className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />
+          <CircleHelp
+            className="h-[18px] w-[18px]"
+            strokeWidth={active ? 2.2 : 1.8}
+          />
         </button>
       }
       items={[
@@ -229,7 +248,10 @@ function LibraryMenu({ active = false }: { active?: boolean }) {
           aria-current={active ? "page" : undefined}
           className={triggerClassName}
         >
-          <FolderKanban className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />
+          <FolderKanban
+            className="h-[18px] w-[18px]"
+            strokeWidth={active ? 2.2 : 1.8}
+          />
         </button>
       }
       items={[
@@ -245,7 +267,11 @@ function LibraryMenu({ active = false }: { active?: boolean }) {
         },
       ]}
       onSelect={(item) => {
-          navigate(item.id === "knowledge-base" ? "/knowledge-base" : "/evaluation/center");
+        navigate(
+          item.id === "knowledge-base"
+            ? "/knowledge-base"
+            : "/evaluation/center",
+        );
       }}
     />
   );
@@ -255,10 +281,6 @@ export function AppNavigationRail() {
   const { pathname } = useLocation();
   const { t } = useTranslation();
   const activeItem = resolveActiveItem(pathname);
-  const localizedPrimaryItems = primaryItems.map((item) => ({
-    ...item,
-    label: t(item.label),
-  }));
 
   return (
     <nav
@@ -277,25 +299,14 @@ export function AppNavigationRail() {
       </NavLink>
 
       <div className="flex flex-col items-center gap-1">
-        {localizedPrimaryItems.map((item) => (
+        {primaryItems.map((item) => (
           <div key={item.id}>
-            {item.id === "projects" ? (
+            {item.kind === "library" ? (
               <LibraryMenu active={isLibraryRoute(pathname)} />
             ) : (
               <RailButton
-                item={item}
+                item={{ ...item, label: t(item.label) }}
                 active={activeItem === item.id}
-                to={
-                  item.id === "home"
-                    ? "/chat"
-                    : item.id === "remote-access"
-                      ? "/remote-access"
-                    : item.id === "dashboard"
-                      ? "/dashboard"
-                    : item.id === "forge"
-                      ? "/forge"
-                      : undefined
-                }
               />
             )}
           </div>
@@ -304,9 +315,14 @@ export function AppNavigationRail() {
 
       <div className="mt-auto flex flex-col items-center gap-1">
         <RailButton
-          item={{ id: "settings", label: t("app.navigation.settings"), icon: Settings2 }}
+          item={{
+            kind: "link",
+            id: "home",
+            label: t("app.navigation.settings"),
+            icon: Settings2,
+            to: "/settings/general",
+          }}
           active={activeItem === "settings"}
-          to="/settings/general"
         />
         <ResourceMenu active={isResourceRoute(pathname)} />
         <UserMenu />
@@ -314,4 +330,3 @@ export function AppNavigationRail() {
     </nav>
   );
 }
-
