@@ -2,7 +2,6 @@
 
 import {
   CircleHelp,
-  Clock3,
   Braces,
   ExternalLink,
   FolderKanban,
@@ -33,7 +32,6 @@ const primaryItems: RailItem[] = [
   { id: "home", label: "app.navigation.home", icon: Home },
   { id: "remote-access", label: "app.navigation.remoteAccess", icon: Smartphone },
   { id: "dashboard", label: "app.navigation.dashboard", icon: LayoutDashboard },
-  { id: "history", label: "app.navigation.history", icon: Clock3 },
   { id: "projects", label: "app.navigation.projects", icon: FolderKanban },
   { id: "forge", label: "app.navigation.forge", icon: GitBranch },
 ];

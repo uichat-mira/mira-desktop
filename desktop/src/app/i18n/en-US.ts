@@ -2,7 +2,6 @@ const app = {
   app: {
     navigation: {
       home: "Home",
-      history: "History",
       projects: "Knowledge and Evaluation",
       forge: "Forge",
       remoteAccess: "Remote connection",

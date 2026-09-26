@@ -2,7 +2,6 @@ const app = {
   app: {
     navigation: {
       home: "主页",
-      history: "历史",
       projects: "知识与评测",
       forge: "淬行",
       remoteAccess: "远程连接",
