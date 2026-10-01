@@ -65,11 +65,13 @@ Related:
 | --- | --- | --- | --- |
 | L0 | 已完成 | 主机 `darwin/x64`、Node v22.22.3、pnpm 9.12.0（与 `packageManager` 一致）；`@img/sharp-darwin-x64@0.35.3`、`sqlite-vec-darwin-x64@0.1.9`、`better-sqlite3@12.10.0` 均在 `node_modules/.pnpm`；`node-pty` prebuilds 含 `darwin-x64` 与 `darwin-arm64` | 进入 L1 |
 | L1 | 已完成 | `pnpm internal:build:server` 在 darwin-x64 成功产出 `.artifacts/server-bundle`；staged bundle 内 4 个 native 模块加载成功（`better-sqlite3`、`sharp v0.35.3`、`sqlite-vec` → `vec0.dylib`、`node-pty`）；实际启动 `server.cjs` 后 `/health` 返回 `200 {"success":true}`，Forge runtime initialized，sqlite-vec 扩展已加载 | 进入 L2 |
-| L2 | 已完成 | `pnpm internal:build:desktop` 在 darwin 成功（Vite 构建完成）；`preload.cjs` 暴露 `desktopRuntime.platform = process.platform`；[runtimePolicies](file:///Users/apple/Desktop/codespace/mira-desktop/desktop/src/features/chat/core/runtimePolicies.ts#L86-L100) 对 `darwin` 接受 POSIX 绝对路径；平台/路径测试 29/29 通过，macOS POSIX workspace 用例通过 | 进入 L3 |
+| L2 | 已完成 | `pnpm internal:build:desktop` 在 darwin 成功（Vite 构建完成）；`preload.cjs` 暴露 `desktopRuntime.platform = process.platform`；[runtimePolicies](../../desktop/src/features/chat/core/runtimePolicies.ts#L86-L100) 对 `darwin` 接受 POSIX 绝对路径；平台/路径测试 29/29 通过，macOS POSIX workspace 用例通过 | 进入 L3 |
 | L3 | 已完成 | `node scripts/prepare-desktop-artifacts.js` 在 darwin-x64 上完整跑通，输出「Desktop artifacts are ready」；`.artifacts/electron-app` 结构完整（backend/server.cjs + darwin-x64 native、desktop/dist、icons、runtime.config.cjs、main.cjs、preload.cjs、electron-builder.yml、空 browser-extension 占位）；Windows 分支逻辑逐字保留在 `if (isWindowsHost)` 内 | 进入 L4/L5 |
 | L4 | 已完成（随 L3 实施） | darwin 下 Native Host / 扩展打包 / Terminal Dev Runtime / Piper / staged server runtime smoke 均被显式跳过并打印 warning，无静默降级；`browser-extension` 目录保留空占位以维持资源布局 | 进入 L5 |
 | L5 | 已完成 | `electron-builder --mac --x64` 在 staged `electron-app` 上产出 `UIChat Mira.app`（Mach-O x86_64，bundle id `com.tomz.uichat`）与 `UIChat Mira-0.101.0.dmg`（约 181MB），Resources 含 app.asar / server / runtime.config.cjs / icon.icns，无 `.exe`/`.dll`；**退出码 0**（补 `repository` 字段前为 1） | 进入 L6 |
 | L6 | 已完成（Core） | 方案 1 落地后：`.app` 用随包 `node-runtime/node`（Node 22.23.1）启动 backend；`/health` 200、sqlite-vec 加载、Forge 初始化、默认 Workspace 创建、重启复用同一 DB、退出后端 code 0 且无残留 | 收尾（可选：DMG 复验、static 警告排查） |
+
+> 2026-10-02 集成加固说明：上表保留 2026-10-01 Intel Mac 原始实测证据。PR #205 后续将 staged server runtime smoke 平台化，并在 Darwin 准备好随包 Node 22.23.1 后用该运行时实际加载 `better-sqlite3`；这一步作为 ABI gate，失败即阻止打包。该新增 gate 尚未在原 Intel Mac 上复验，不改写 10-01 的历史证据。
 
 ## L0：环境与基线冻结
 
@@ -116,7 +118,7 @@ Related:
 - 新增 `targetPlatform` / `targetArch` / `nodePtyPrebuildName` / `sharpPlatformPackage` / `sharpLibvipsPackage` / `sqliteVecPlatformPackage` 常量；
 - `copyPackage` 由硬编码 `@img/sharp-win32-x64` 改为 `@img/sharp-${platform}-${arch}`；
 - darwin / linux 下额外复制 `@img/sharp-libvips-${platform}-${arch}`（Windows 分支不复制，行为不变）；
-- `sqlite-vec-windows-x64` 改为 `sqlite-vec-${platform}-${arch}`；
+- `sqlite-vec` 按平台选择，并仅对 Windows 将 Node 的 `win32` 平台名映射为包名使用的 `windows`；
 - `pruneNodePtyRuntime` 由固定 `win32-x64` 改为 `${platform}-${arch}`，Windows 下等价于原行为。
 
 未新增任何 fallback 或静默降级。Windows 平台解析结果与原硬编码值逐一相同。

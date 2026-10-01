@@ -180,8 +180,13 @@ if (isWindowsHost) {
   execSync("pnpm prepare:piper-runtime", { cwd: projectRoot, stdio: "inherit" });
 } else {
   execSync("pnpm prepare:node-runtime", { cwd: projectRoot, stdio: "inherit" });
+  execSync("node scripts/smoke-staged-server-runtime.mjs", {
+    cwd: projectRoot,
+    stdio: "inherit",
+    env: process.env,
+  });
   console.warn(
-    `[desktop-artifacts] Prepared the Node backend runtime for ${process.platform}. Terminal Dev Runtime (git/uv/ripgrep), staged server runtime smoke, and Piper remain Windows-only and are explicitly unavailable on this platform.`,
+    `[desktop-artifacts] Prepared and verified the Node backend runtime for ${process.platform}. Terminal Dev Runtime (git/uv/ripgrep) and Piper remain Windows-only and are explicitly unavailable on this platform.`,
   );
 }
 

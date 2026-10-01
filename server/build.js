@@ -17,7 +17,8 @@ const targetArch = process.arch;
 const nodePtyPrebuildName = `${targetPlatform}-${targetArch}`;
 const sharpPlatformPackage = `@img/sharp-${targetPlatform}-${targetArch}`;
 const sharpLibvipsPackage = `@img/sharp-libvips-${targetPlatform}-${targetArch}`;
-const sqliteVecPlatformPackage = `sqlite-vec-${targetPlatform}-${targetArch}`;
+const sqliteVecPlatform = targetPlatform === "win32" ? "windows" : targetPlatform;
+const sqliteVecPlatformPackage = `sqlite-vec-${sqliteVecPlatform}-${targetArch}`;
 
 function readPackageJson(packageDir) {
   return JSON.parse(
