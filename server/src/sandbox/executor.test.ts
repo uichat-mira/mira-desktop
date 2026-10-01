@@ -26,8 +26,8 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 const createMockSpawnProcess = () => {
-  const stdout = new EventEmitter();
-  const stderr = new EventEmitter();
+  const stdout = Object.assign(new EventEmitter(), { destroy: vi.fn() });
+  const stderr = Object.assign(new EventEmitter(), { destroy: vi.fn() });
   const child = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
     stderr: EventEmitter;
@@ -215,6 +215,31 @@ describe("SandboxExecutor", () => {
     expect(result.binaryDetected).toBe(false);
     expect(child.kill).toHaveBeenCalled();
   });
+
+  it.skipIf(process.platform !== "win32")(
+    "settles after PowerShell exits even when redirected stdio close is delayed",
+    async () => {
+      vi.useFakeTimers();
+      const child = createMockSpawnProcess();
+      sandboxMocks.spawnMock.mockReturnValue(child);
+
+      const promise = executeSandboxedCommand({
+        command: "Write-Output 'ok'",
+        timeoutMs: 5_000,
+        signal: new AbortController().signal,
+        shellProfile,
+      });
+
+      child.stdout.emit("data", "ok\r\n");
+      child.emit("exit", 0);
+      await vi.advanceTimersByTimeAsync(150);
+
+      const result = await promise;
+      expect(result.exitCode).toBe(0);
+      expect(result.timedOut).toBe(false);
+      expect(result.stdout).toContain("ok");
+    },
+  );
 
   it("allows workspace-scoped node script execution", async () => {
     const child = createMockSpawnProcess();
