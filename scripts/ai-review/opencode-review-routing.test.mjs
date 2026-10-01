@@ -103,6 +103,33 @@ test("a supported alternate model is a routing configuration change, not a Contr
   assert.equal(route.credentialEnv, "OPENCODE_GO_API_KEY");
 });
 
+test("routing is bound to the trusted repository source rather than a workflow/env override", () => {
+  assert.match(
+    DEFAULT_REVIEW_ROUTING_PATH.replaceAll("\\", "/"),
+    /\/\.github\/ai-review\/opencode-routing\.json$/,
+  );
+
+  const runner = readFileSync(
+    new URL("./opencode-review-runner.mjs", import.meta.url),
+    "utf8",
+  );
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/mira-ai-review.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(runner, /await loadReviewRoutingConfig\(\)/);
+  assert.doesNotMatch(runner, /MIRA_REVIEW_ROUTING_PATH/);
+  assert.doesNotMatch(workflow, /MIRA_REVIEW_ROUTING_PATH/);
+});
+
+test("missing routing files fail explicitly instead of selecting an implicit default", async () => {
+  await assert.rejects(
+    () => loadReviewRoutingConfig("/definitely/missing/mira-routing.json"),
+    /review_route_config_unavailable/,
+  );
+});
+
 test("the committed routing source contains references only, not credential values", () => {
   const raw = readFileSync(DEFAULT_REVIEW_ROUTING_PATH, "utf8");
   assert.match(raw, /"credentialEnv": "OPENCODE_GO_API_KEY"/);
