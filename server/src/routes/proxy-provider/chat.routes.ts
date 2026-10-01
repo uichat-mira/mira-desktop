@@ -76,6 +76,17 @@ const resolveThreadWorkspaceRoot = (
   return threadService.getThreadWorkspaceRoot(threadId, userId);
 };
 
+const resolveAgentWorkspaceRoot = (
+  threadId: string | undefined,
+  userId: number | undefined,
+) => {
+  if (typeof threadId !== "string" || !userId) {
+    return null;
+  }
+
+  return threadService.getEffectiveAgentWorkspaceRoot(threadId, userId);
+};
+
 const collectThreadRequestContext = (
   threadId: string | undefined,
   userId: number | undefined,
@@ -97,7 +108,9 @@ const collectThreadRequestContext = (
   }
 
   const harnessEnvironment = getHarnessEnvironmentSnapshot();
-  const threadWorkspaceRoot = resolveThreadWorkspaceRoot(threadId, userId);
+  const threadWorkspaceRoot = options.agentEnabled
+    ? resolveAgentWorkspaceRoot(threadId, userId)
+    : resolveThreadWorkspaceRoot(threadId, userId);
   const toolSurface = resolveChatToolSurface({
     agentEnabled:
       typeof options.agentEnabled === "boolean"
@@ -243,7 +256,9 @@ const sendPersistedDefaultChatStream = ({
   knowledgeBaseId?: string | null;
   preludeChunks?: string[];
 }) => {
-  const workspaceRoot = resolveThreadWorkspaceRoot(threadId, authUserId);
+  const workspaceRoot = agentEnabled
+    ? resolveAgentWorkspaceRoot(threadId, authUserId)
+    : resolveThreadWorkspaceRoot(threadId, authUserId);
   const { latestUserMessageId, latestUserMessage } = persistVisibleUserMessage({
     threadId,
     userId: authUserId,
