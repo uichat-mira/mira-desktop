@@ -10,6 +10,7 @@ import {
   readStructuredDocument,
 } from "./document-readers.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
+import { hasExternalDocumentTooling } from "@/test-support/external-tooling.js";
 
 const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-document-readers");
 
@@ -95,7 +96,7 @@ describe("document readers", () => {
     expect(result.metadata.binary).toBe(true);
   });
 
-  it("uses structured readers for office documents", async () => {
+  it.skipIf(!hasExternalDocumentTooling())("uses structured readers for office documents", async () => {
     const docxPath = path.join(tempRoot, "sample.docx");
     createDocx(docxPath, "Hello Docx");
 

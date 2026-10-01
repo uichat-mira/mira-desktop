@@ -190,6 +190,8 @@ test("DELETE /threads/history removes all user threads and keeps workspaces", as
       generatedVideos: { files: 0, bytes: 0 },
     });
 
+  const workspacesBeforeDelete = threadService.listChatWorkspaces(user.id).length;
+
   const response = await app.inject({
     method: "DELETE",
     url: "/threads/history",
@@ -226,7 +228,14 @@ test("DELETE /threads/history removes all user threads and keeps workspaces", as
   assert.equal(threadService.getThreadById(archived.id, user.id), null);
   assert.equal(threadService.getThreadById(active.id, user.id), null);
   assert.ok(threadService.getThreadById(otherArchived.id, otherUser.id));
-  assert.equal(threadService.listChatWorkspaces(user.id).length, 1);
+  // The contract is that history deletion keeps a workspace for this user.
+  // A default workspace may already exist for this user id when a previous
+  // suite in the same process set a harness workspace root, so compare
+  // against the count observed before the delete rather than a fixed 1.
+  assert.equal(
+    threadService.listChatWorkspaces(user.id).length,
+    workspacesBeforeDelete,
+  );
 
   mediaCleanupSpy.mockRestore();
   await app.close();

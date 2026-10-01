@@ -27,6 +27,7 @@ import { ragPipeline } from "@/services/rag-pipeline.js";
 import { threadService } from "@/services/thread.service.js";
 import { sendRouteError } from "@/utils/route-errors.js";
 import * as agentModule from "@/agent/index.js";
+import { persistAssistantMessage } from "@/routes/proxy-provider/message-persistence.js";
 import { shouldUseThreadRag } from "./chat.routes.js";
 import {
   resolveChatToolSurface,
@@ -1036,7 +1037,25 @@ test("POST /proxy/chat/default persists agent metadata on completed agent respon
   };
   const createAndRunAgentSpy = vi
     .spyOn(agentModule, "createAndRunAgent")
-    .mockResolvedValue({
+    .mockImplementation(async (input) => {
+      // The real runtime persists the assistant message; the stub must keep
+      // that contract or the route-level persistence assertions are vacuous.
+      persistAssistantMessage({
+        threadId: input.threadId,
+        userId: input.userId,
+        assistantMessageId: input.assistantMessageId ?? crypto.randomUUID(),
+        parentId: input.assistantParentId ?? null,
+        content: "agent answer",
+        parts: [{ type: "text", text: "agent answer" }],
+        metadata: {
+          agent: {
+            status: "completed",
+            runId: "agent-run-2",
+            traceId: "trace-2",
+          },
+        },
+      });
+      return {
       run: {
         id: "agent-run-2",
         threadId: thread.id,
@@ -1066,7 +1085,8 @@ test("POST /proxy/chat/default persists agent metadata on completed agent respon
         retrievedChunks: [],
         status: "completed",
       },
-    } as never);
+      } as never;
+    });
 
   try {
     const response = await app.inject({
@@ -1143,7 +1163,25 @@ test("POST /proxy/chat/default does not block stream finish on async title gener
   };
   const createAndRunAgentSpy = vi
     .spyOn(agentModule, "createAndRunAgent")
-    .mockResolvedValue({
+    .mockImplementation(async (input) => {
+      // Keep the runtime persistence contract so the assertions below observe
+      // a real assistant message instead of a stub that writes nothing.
+      persistAssistantMessage({
+        threadId: input.threadId,
+        userId: input.userId,
+        assistantMessageId: input.assistantMessageId ?? crypto.randomUUID(),
+        parentId: input.assistantParentId ?? null,
+        content: "agent answer",
+        parts: [{ type: "text", text: "agent answer" }],
+        metadata: {
+          agent: {
+            status: "completed",
+            runId: "agent-run-async-title",
+            traceId: "trace-async-title",
+          },
+        },
+      });
+      return {
       run: {
         id: "agent-run-async-title",
         threadId: thread.id,
@@ -1173,7 +1211,8 @@ test("POST /proxy/chat/default does not block stream finish on async title gener
         retrievedChunks: [],
         status: "completed",
       },
-    } as never);
+      } as never;
+    });
 
   try {
     const response = await app.inject({

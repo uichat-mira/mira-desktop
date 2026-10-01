@@ -65,6 +65,11 @@ type ReadStrategyImplementation = {
 
 type PlannedReadStrategy = McpExecutionEnvironmentCapability & ReadStrategyImplementation;
 
+// Windows ships `python`, while most POSIX hosts only expose `python3`.
+// Resolve the interpreter for the current host instead of assuming one name.
+const resolvePythonExecutable = (): string =>
+  process.platform === "win32" ? "python" : "python3";
+
 const runCommand = (command: string, args: string[]) => {
   const result = spawnSync(command, args, {
     encoding: "utf-8",
@@ -116,7 +121,7 @@ const readPdfCli = (filePath: string) => runCommand("pdftotext", ["-layout", "-n
 
 const readDocxCli = (filePath: string) =>
   runCommand(
-    "python",
+    resolvePythonExecutable(),
     [
       "-c",
       [
@@ -139,7 +144,7 @@ const readDocxCli = (filePath: string) =>
 
 const readPptxCli = (filePath: string) =>
   runCommand(
-    "python",
+    resolvePythonExecutable(),
     [
       "-c",
       [
@@ -161,7 +166,7 @@ const readPptxCli = (filePath: string) =>
 
 const readXlsxCli = (filePath: string) =>
   runCommand(
-    "python",
+    resolvePythonExecutable(),
     [
       "-c",
       [

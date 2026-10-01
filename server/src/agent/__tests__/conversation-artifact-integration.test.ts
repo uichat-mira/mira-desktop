@@ -28,6 +28,7 @@ import type { AgentGraphOutput } from "../types.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 let dbPath = "";
+let workspaceRoot = "";
 
 const output = (): AgentGraphOutput => ({
   answer: "done",
@@ -55,6 +56,12 @@ const initializeTestDatabase = () => {
 beforeEach(() => {
   initializeTestDatabase();
   agentRunStore.clear();
+  // createAndRunAgent fails closed without an explicitly resolved workspace root.
+  workspaceRoot = createTimestampedTestArtifactPath(
+    "workspace",
+    `conversation-artifact-workspace-${process.pid}-${Date.now()}`,
+  );
+  fs.mkdirSync(workspaceRoot, { recursive: true });
 });
 
 afterEach(() => {
@@ -66,6 +73,10 @@ afterEach(() => {
     fs.rmSync(`${dbPath}${suffix}`, { force: true });
   }
   dbPath = "";
+  if (workspaceRoot) {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+    workspaceRoot = "";
+  }
   mocks.runAgentRuntime.mockReset();
 });
 
@@ -104,6 +115,7 @@ test("registers explicit final runtime output and reads it after reload", async 
   const result = await createAndRunAgent({
     threadId: thread.id,
     userId: user.id,
+    workspaceRoot,
     goalText: "produce a report",
     messages: [
       {
@@ -172,6 +184,7 @@ test("does not promote temporary runtime output", async () => {
   const result = await createAndRunAgent({
     threadId: thread.id,
     userId: user.id,
+    workspaceRoot,
     goalText: "temporary work",
     messages: [{ role: "user", content: "temporary work", parts: [{ type: "text", text: "temporary work" }] }],
   });
@@ -204,6 +217,7 @@ test("registers multiple final runtime outputs atomically", async () => {
       createAndRunAgent({
         threadId: thread.id,
         userId: user.id,
+        workspaceRoot,
         goalText: "batch output",
         messages: [{ role: "user", content: "batch output", parts: [{ type: "text", text: "batch output" }] }],
       }),

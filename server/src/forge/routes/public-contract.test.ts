@@ -59,8 +59,10 @@ describe("Forge public runtime projections", () => {
     const provider = projected.data.provider as Record<string, unknown>;
     expect(String(provider.raw)).toHaveLength(4096);
     const nested = provider.nested as Record<string, unknown>;
-    const deeper = nested.deeper as Record<string, unknown>;
-    expect(deeper.tooDeep).toBe("[bounded]");
+    // sanitizeValue bounds at depth >= 3, so provider.nested is depth 2 and
+    // its already-bounded value replaces everything nested below it.
+    expect(nested.deeper).toBe("[bounded]");
+    expect((nested as Record<string, unknown>).tooDeep).toBeUndefined();
   });
 
   it("derives summary from authoritative runtime state", () => {

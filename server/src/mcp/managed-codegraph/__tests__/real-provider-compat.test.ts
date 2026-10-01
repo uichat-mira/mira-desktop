@@ -95,7 +95,7 @@ Found 2 symbols across 1 file.
   assert.equal(result.trace.exposureMode, "controlled_tool_only");
 });
 
-test("resolveManagedCodeGraphLaunchSpec resolves Windows npm shims to node plus npm-shim.js", () => {
+test.skipIf(process.platform !== "win32")("resolveManagedCodeGraphLaunchSpec resolves Windows npm shims to node plus npm-shim.js", () => {
   const spec = resolveManagedCodeGraphLaunchSpec(
     path.join("C:\\Program Files\\nodejs", "codegraph.cmd"),
     ["serve", "--mcp"],
