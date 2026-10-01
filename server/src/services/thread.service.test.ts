@@ -368,6 +368,11 @@ test("unbound Agent threads resolve stable isolated private workspaces", () => {
     title: "Plain then Agent",
   });
   assert.equal(conversationWorkdirService.get(plain.id, user.id), null);
+  assert.equal(
+    threadService.getEffectiveAgentWorkspaceRoot(plain.id, user.id),
+    null,
+  );
+  assert.equal(conversationWorkdirService.get(plain.id, user.id), null);
   const activated = threadService.updateThread(plain.id, user.id, {
     agentEnabled: true,
   });
