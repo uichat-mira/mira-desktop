@@ -453,7 +453,7 @@ export const threadService = {
       return this.getThreadWorkspaceRoot(threadId, userId);
     }
 
-    return conversationWorkdirService.ensure({ threadId, userId }).rootPath;
+    return conversationWorkdirService.get(threadId, userId)?.rootPath ?? null;
   },
 
   createChatWorkspace(input: CreateChatWorkspaceInput): ChatWorkspaceResponse {
