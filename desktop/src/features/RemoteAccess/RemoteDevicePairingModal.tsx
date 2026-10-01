@@ -19,7 +19,7 @@ import {
   type RemoteDeviceScope,
 } from "@/shared/api/remoteAccess";
 import { ApiError } from "@/shared/lib/request";
-import { Button } from "@/shared/ui";
+import { Button, IconButton } from "@/shared/ui";
 import { ModalShell } from "@/shared/ui/Modal";
 import AppNotice from "@/app/Layouts/AppNotice";
 
@@ -73,7 +73,6 @@ export default function RemoteDevicePairingModal({
             failed: "创建配对挑战失败",
             uri: "配对链接",
             scan: "使用 Mira Mobile 扫描",
-            fallback: "无法扫码时，复制完整配对链接到手机端。",
             copy: "复制",
             copied: "已复制",
             waiting: "等待手机提交设备信息",
@@ -105,7 +104,6 @@ export default function RemoteDevicePairingModal({
             failed: "Failed to create pairing challenge",
             uri: "Pairing URI",
             scan: "Scan with Mira Mobile",
-            fallback: "If scanning is unavailable, paste the complete pairing URI on the phone.",
             copy: "Copy",
             copied: "Copied",
             waiting: "Waiting for the phone to submit device details",
@@ -316,23 +314,21 @@ export default function RemoteDevicePairingModal({
                 </div>
               </div>
 
-              <div className="min-w-0 space-y-3">
-                <div className="min-w-0 rounded-ui-panel border border-border bg-surface-secondary p-4">
-                  <div className="text-xs font-medium text-text-secondary">{copy.uri}</div>
-                  <div className="mt-2 max-h-20 overflow-auto break-all font-mono text-xs leading-5 text-text-primary">
-                    {challenge.pairingUri}
+              <div className="flex min-w-0 flex-col space-y-3">
+                <div className="flex min-w-0 flex-1 flex-col rounded-ui-panel border border-border bg-surface-secondary p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-medium text-text-secondary">{copy.uri}</div>
+                    <IconButton
+                      size="xs"
+                      ariaLabel={copied === "uri" ? copy.copied : copy.copy}
+                      title={copied === "uri" ? copy.copied : copy.copy}
+                      onClick={() => void handleCopy("uri", challenge.pairingUri)}
+                    >
+                      {copied === "uri" ? <Check className="h-3.5 w-3.5" /> : <Clipboard className="h-3.5 w-3.5" />}
+                    </IconButton>
                   </div>
-                  <Button
-                    className="mt-3"
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => void handleCopy("uri", challenge.pairingUri)}
-                  >
-                    {copied === "uri" ? <Check className="h-3.5 w-3.5" /> : <Clipboard className="h-3.5 w-3.5" />}
-                    {copied === "uri" ? copy.copied : copy.copy}
-                  </Button>
-                  <div className="mt-2 text-xs leading-5 text-text-tertiary">
-                    {copy.fallback}
+                  <div className="mt-2 min-h-0 flex-1 overflow-auto break-all font-mono text-xs leading-5 text-text-primary">
+                    {challenge.pairingUri}
                   </div>
                 </div>
               </div>
