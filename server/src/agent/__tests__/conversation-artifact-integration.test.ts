@@ -18,7 +18,7 @@ import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import { conversationArtifacts } from "@/db/schema.js";
-import { threadRepository, userRepository } from "@/db/repositories/index.js";
+import { agentRunRepository, threadRepository, userRepository } from "@/db/repositories/index.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { conversationArtifactService } from "@/services/conversation-artifact.service.js";
 import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
@@ -130,6 +130,14 @@ test("registers explicit final runtime output and reads it after reload", async 
     getDb().select().from(conversationArtifacts).all().length,
     2,
   );
+  assert.equal(result.run.runtimeInput?.workspaceRoot?.endsWith(thread.id), true);
+  assert.equal(
+    Boolean(
+      result.run.runtimeInput &&
+        "conversationWorkdir" in result.run.runtimeInput,
+    ),
+    false,
+  );
 
   agentRunStore.clear();
   resetDatabaseClients();
@@ -138,6 +146,16 @@ test("registers explicit final runtime output and reads it after reload", async 
   initializeKnowledgeBaseDatabase();
   initializeRoleDatabase();
   initializeThreadDatabase();
+
+  const reloadedRun = agentRunRepository.get(result.run.id);
+  assert.equal(reloadedRun?.runtimeInput?.workspaceRoot?.endsWith(thread.id), true);
+  assert.equal(
+    Boolean(
+      reloadedRun?.runtimeInput &&
+        "conversationWorkdir" in reloadedRun.runtimeInput,
+    ),
+    false,
+  );
 
   const readBack = readConversationArtifact({
     id: reference.id,
