@@ -43,6 +43,9 @@ const createMockSpawnProcess = () => {
   return child;
 };
 
+const wrapper = (command: string) =>
+  `${command}; $__mira_success = $?; $__mira_native_exit = $LASTEXITCODE; if ($null -ne $__mira_native_exit) { exit $__mira_native_exit }; if ($__mira_success) { exit 0 }; exit 1`;
+
 const executeAllowedCommand = async (command: string, stdoutText = "ok\n") => {
   const child = createMockSpawnProcess();
   sandboxMocks.spawnMock.mockReturnValue(child);
@@ -66,7 +69,7 @@ const executeAllowedCommand = async (command: string, stdoutText = "ok\n") => {
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      `${command}; exit $LASTEXITCODE`,
+      wrapper(command),
     ],
     expect.objectContaining({
       shell: false,
@@ -237,7 +240,7 @@ describe("SandboxExecutor", () => {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "node script.js; exit $LASTEXITCODE",
+        "node script.js; $__mira_success = $?; $__mira_native_exit = $LASTEXITCODE; if ($null -ne $__mira_native_exit) { exit $__mira_native_exit }; if ($__mira_success) { exit 0 }; exit 1",
       ],
       expect.objectContaining({
         shell: false,
