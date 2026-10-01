@@ -60,7 +60,7 @@
     "clean:artifacts": "node scripts/cleanup-artifacts.js",
     "check:no-db-in-index": "node scripts/check-no-db-in-index.js",
     "check:remote-relay": "tsc --noEmit -p packages/remote-relay/tsconfig.json",
-    "check": "pnpm check:forge-cutover && pnpm check:remote-relay && pnpm -r --workspace-concurrency=1 typecheck",
+    "check": "pnpm check:ai-review-runner && pnpm check:forge-cutover && pnpm check:remote-relay && pnpm -r --workspace-concurrency=1 typecheck",
     "check:tauri": "pnpm internal:prepare:tauri && cross-env CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo check --manifest-path tauri/Cargo.toml -j 1",
     "version:sync": "node scripts/sync-version.js",
     "internal:build:desktop": "pnpm --filter @ui-chat-mira/desktop build",
@@ -78,7 +78,8 @@
     "archive:local-model-packs": "node scripts/archive-local-model-packs.mjs",
     "smoke:local-model-runtime": "node scripts/smoke-local-model-runtime.mjs",
     "eval:local-model-runtime": "node scripts/eval-local-model-runtime.mjs",
-    "check:forge-cutover": "node scripts/check-forge-cutover.mjs"
+    "check:forge-cutover": "node scripts/check-forge-cutover.mjs",
+    "check:ai-review-runner": "node --test scripts/ai-review/opencode-review-runner.test.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
