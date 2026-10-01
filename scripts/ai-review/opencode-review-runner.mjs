@@ -328,7 +328,7 @@ function safeFailureReason(error) {
 export async function executeOpenCodeReview(
   createOpencode,
   pkg,
-  { promptTimeoutMs = 300_000 } = {},
+  { promptTimeoutMs = 300_000, disposeTimeoutMs = 5_000 } = {},
 ) {
   const instance = await createOpencode({
     hostname: "127.0.0.1",
@@ -405,6 +405,29 @@ export async function executeOpenCodeReview(
       clearTimeout(timeout);
     }
   } finally {
+    const dispose = instance.client?.instance?.dispose;
+    if (typeof dispose === "function") {
+      const controller = new AbortController();
+      let timeout;
+      const disposeTimedOut = new Promise((resolve) => {
+        timeout = setTimeout(() => {
+          controller.abort();
+          resolve(undefined);
+        }, disposeTimeoutMs);
+      });
+      try {
+        await Promise.race([
+          Promise.resolve(
+            dispose.call(instance.client.instance, {
+              signal: controller.signal,
+            }),
+          ).catch(() => undefined),
+          disposeTimedOut,
+        ]);
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
     instance.server?.close?.();
   }
 }
