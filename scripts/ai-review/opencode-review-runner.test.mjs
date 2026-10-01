@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -262,4 +263,54 @@ test("maps StructuredOutputError to a fail-closed submission rather than a clean
   assert.equal(result.runner.state, "REVIEW_UNAVAILABLE");
   assert.equal(result.runner.reason, "structured_output_failed");
   assert.equal(result.submission.execution.review, null);
+});
+
+test("workflow keeps the trusted transition gate and never checks out PR head", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/mira-ai-review.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(workflow, /pull_request_target:/);
+  assert.match(
+    workflow,
+    /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/,
+  );
+  assert.match(workflow, /persist-credentials: false/);
+  assert.doesNotMatch(
+    workflow,
+    /ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/,
+  );
+  assert.match(
+    workflow,
+    /\^\(feat\|feature\|fix\|hotfix\|refactor\|perf\|docs\|test\|chore\)/,
+  );
+  assert.match(
+    workflow,
+    /pr\.base\.ref === 'dev' && workBranch\.test\(pr\.head\.ref\)/,
+  );
+  assert.match(
+    workflow,
+    /pr\.base\.ref === 'test' && \(pr\.head\.ref === 'dev'/,
+  );
+  assert.match(
+    workflow,
+    /pr\.base\.ref === 'prod' && \(pr\.head\.ref === 'test'/,
+  );
+});
+
+test("workflow routes execution through OpenCode and the external result handoff only", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/mira-ai-review.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(workflow, /\/api\/v1\/ai-review\/package/);
+  assert.match(workflow, /\/api\/v1\/ai-review\/result/);
+  assert.doesNotMatch(workflow, /\/api\/v1\/ai-review\/publish/);
+  assert.match(workflow, /AI_REVIEW_EXTERNAL_RESULT_TOKEN/);
+  assert.match(workflow, /AI_PROVIDER_OPENCODE_GO_KEY/);
+  assert.match(workflow, /opencode-ai@1\.18\.34/);
+  assert.match(workflow, /@opencode-ai\/sdk@1\.18\.34/);
+  assert.match(workflow, /workspace="\$review_dir\/workspace"/);
 });
