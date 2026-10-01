@@ -13,12 +13,14 @@ const runtimeAdapterMocks = vi.hoisted(() => ({
   repositoryConstructions: 0,
   listThreads: vi.fn(async () => []),
   getThread: vi.fn(),
+  getCreateThreadInput: undefined as undefined | (() => unknown),
 }));
 
 vi.mock("./protocol", () => ({
   DesktopChatRepository: class DesktopChatRepository {
-    constructor() {
+    constructor(getCreateThreadInput: () => unknown) {
       runtimeAdapterMocks.repositoryConstructions += 1;
+      runtimeAdapterMocks.getCreateThreadInput = getCreateThreadInput;
     }
 
     listThreads = runtimeAdapterMocks.listThreads;
@@ -46,7 +48,13 @@ function StateProbe({ label }: { label: string }) {
   const attachmentCount = useChatRuntimeSelector(
     (state) => state.composer.attachments.length,
   );
-  const { draftRoleId, setDraftRoleId } = useChatThreadDraftState();
+  const {
+    draftRoleId,
+    draftAgentEnabled,
+    setDraftRoleId,
+    setDraftAgentEnabled,
+    resetDraft,
+  } = useChatThreadDraftState();
 
   return (
     <div>
@@ -54,11 +62,18 @@ function StateProbe({ label }: { label: string }) {
       <div data-testid="composer-text">{composerText}</div>
       <div data-testid="attachment-count">{attachmentCount}</div>
       <div data-testid="draft-role">{draftRoleId ?? ""}</div>
+      <div data-testid="draft-agent-enabled">{String(draftAgentEnabled)}</div>
       <button type="button" onClick={() => runtime.setComposerText("draft text")}>
         set-composer
       </button>
       <button type="button" onClick={() => setDraftRoleId("role-1")}>
         set-role
+      </button>
+      <button type="button" onClick={() => setDraftAgentEnabled(false)}>
+        disable-agent-draft
+      </button>
+      <button type="button" onClick={() => resetDraft()}>
+        reset-draft
       </button>
       <button
         type="button"
@@ -78,7 +93,47 @@ beforeEach(() => {
   runtimeAdapterMocks.repositoryConstructions = 0;
   runtimeAdapterMocks.listThreads.mockClear();
   runtimeAdapterMocks.getThread.mockClear();
+  runtimeAdapterMocks.getCreateThreadInput = undefined;
   globalThis.localStorage.clear();
+});
+
+test("new conversation draft defaults to Agent Runtime", async () => {
+  render(
+    <AppChatRuntimeProvider sessionKey="user-1">
+      <StateProbe label="chat" />
+    </AppChatRuntimeProvider>,
+  );
+
+  await waitFor(() => expect(runtimeAdapterMocks.listThreads).toHaveBeenCalledTimes(1));
+  expect(screen.getByTestId("draft-agent-enabled")).toHaveTextContent("true");
+});
+
+test("new conversation thread creation input selects Agent Runtime", async () => {
+  render(
+    <AppChatRuntimeProvider sessionKey="user-1">
+      <StateProbe label="chat" />
+    </AppChatRuntimeProvider>,
+  );
+
+  await waitFor(() => expect(runtimeAdapterMocks.listThreads).toHaveBeenCalledTimes(1));
+  expect(runtimeAdapterMocks.getCreateThreadInput?.()).toEqual(
+    expect.objectContaining({ agentEnabled: true }),
+  );
+});
+
+test("resetting to a new conversation restores the Agent Runtime default", async () => {
+  render(
+    <AppChatRuntimeProvider sessionKey="user-1">
+      <StateProbe label="chat" />
+    </AppChatRuntimeProvider>,
+  );
+
+  await waitFor(() => expect(runtimeAdapterMocks.listThreads).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole("button", { name: "disable-agent-draft" }));
+  expect(screen.getByTestId("draft-agent-enabled")).toHaveTextContent("false");
+
+  fireEvent.click(screen.getByRole("button", { name: "reset-draft" }));
+  expect(screen.getByTestId("draft-agent-enabled")).toHaveTextContent("true");
 });
 
 test("desktop integration preserves runtime and business drafts for the same session", async () => {

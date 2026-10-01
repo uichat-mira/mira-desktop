@@ -1,7 +1,7 @@
 ---
 status: current
 owner: chat
-last_verified: 2026-08-01
+last_verified: 2026-10-01
 layer: raw-source
 module: Chat
 feature: UChat
@@ -133,12 +133,13 @@ Thread detail
 ```text
 activeThreadId = null
 composer draft exists
+draft agentEnabled = true
 no database Thread yet
 ```
 
-第一次发送时才通过 Repository 创建 Thread。
+单纯进入 Welcome 不会预创建数据库 Thread。首次发送会通过 Repository 按当前 draft metadata（包括默认的 `agentEnabled=true`）创建 Thread；若用户在发送前执行需要持久 Thread 的显式操作（例如绑定 Workspace），Thread 可以由该操作提前创建。Sidebar 的“新对话”会 reset draft，并恢复同一个 Agent 默认值。
 
-这避免在用户只打开 Welcome 页面时制造空历史记录。
+这避免仅打开 Welcome 页面就制造空历史记录。已有 Thread hydration 后继续使用自己的持久化 metadata；Welcome 默认值不会改写历史 Thread。
 
 ## 7. Composer
 

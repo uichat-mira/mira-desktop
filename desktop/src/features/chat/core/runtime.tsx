@@ -256,7 +256,7 @@ function AppChatRuntimeScope({
     null,
   );
   const [draftRoleId, setDraftRoleId] = useState<string | null>(null);
-  const [draftAgentEnabled, setDraftAgentEnabled] = useState(false);
+  const [draftAgentEnabled, setDraftAgentEnabled] = useState(true);
   const [draftTtsEnabled, setDraftTtsEnabled] = useState(false);
   const [draftImageEnabled, setDraftImageEnabled] = useState(false);
   const [draftWorkspaceId, setDraftWorkspaceId] = useState<string | null>(null);
@@ -290,7 +290,7 @@ function AppChatRuntimeScope({
         setDraftWorkspaceId(null);
         setDraftKnowledgeBaseId(null);
         setDraftRoleId(null);
-        setDraftAgentEnabled(false);
+        setDraftAgentEnabled(true);
         setDraftTtsEnabled(false);
         setDraftImageEnabled(false);
       },
