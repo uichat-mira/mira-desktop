@@ -10,8 +10,7 @@ import {
   materializeAgentTaskFileAttachments,
 } from "@/services/chat-file-context.service.js";
 import { persistAgentAssistantState } from "./resume";
-import { conversationWorkdirService } from "@/services/conversation-workdir.service.js";
-import { registerConversationWorkdirOutputs } from "./conversation-artifact-registration";
+import { registerAgentWorkspaceOutputs } from "./workspace-artifact-registration";
 import {
   finishAgentRunControl,
   startAgentRunControlLease,
@@ -62,10 +61,6 @@ export const createAndRunAgent = async (
     assistantParentId?: string | null;
   },
 ) => {
-  const conversationWorkdir = conversationWorkdirService.ensure({
-    threadId: input.threadId,
-    userId: input.userId,
-  });
   const workspaceRoot = input.workspaceRoot.trim();
   if (!workspaceRoot) {
     throw new Error("Agent workspace root is required");
@@ -121,8 +116,7 @@ export const createAndRunAgent = async (
       knowledgeBaseId: input.knowledgeBaseId,
       intentConfig: input.intentConfig,
       workspaceRoot,
-      conversationWorkdir,
-      conversationWorkdirOutputs: input.conversationWorkdirOutputs,
+      workspaceOutputs: input.workspaceOutputs,
       requestedToolGroupIds: input.requestedToolGroupIds,
     },
   });
@@ -138,12 +132,11 @@ export const createAndRunAgent = async (
     const output = await runAgentRuntime({
       ...input,
       workspaceRoot,
-      conversationWorkdir,
       requestContextMessages,
       runId: run.id,
       runControlLeaseId: runControl.leaseId,
       goal,
-      conversationWorkdirOutputs: input.conversationWorkdirOutputs,
+      workspaceOutputs: input.workspaceOutputs,
       approvedInvocations: [],
       onExecutionNode: async (event) => {
         const current = agentRunStore.get(run.id);
@@ -166,10 +159,10 @@ export const createAndRunAgent = async (
     }
 
     const outputDeclarations =
-      output.conversationWorkdirOutputs ?? input.conversationWorkdirOutputs;
+      output.workspaceOutputs ?? input.workspaceOutputs;
     const conversationArtifacts =
       output.status === "completed"
-        ? registerConversationWorkdirOutputs({
+        ? registerAgentWorkspaceOutputs({
             threadId: input.threadId,
             userId: input.userId,
             declarations: outputDeclarations,
