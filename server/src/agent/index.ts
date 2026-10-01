@@ -165,6 +165,7 @@ export const createAndRunAgent = async (
         ? registerAgentWorkspaceOutputs({
             threadId: input.threadId,
             userId: input.userId,
+            sourceRootPath: workspaceRoot,
             declarations: outputDeclarations,
           })
         : [];
