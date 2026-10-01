@@ -33,7 +33,7 @@ import type {
   AgentToolCallRequest,
   AgentToolExecutionResult,
   AgentToolExposureState,
-  ConversationWorkdirOutputDeclaration,
+  AgentWorkspaceOutputDeclaration,
   CurrentTaskFrame,
   CurrentTaskFrameConfirmedObject,
   PlannerObservationContext,
@@ -76,7 +76,7 @@ export interface AgentNodeState {
   knowledgeBaseId?: string | null;
   intentConfig?: AgentIntentEmbeddingConfig;
   workspaceRoot?: string | null;
-  conversationWorkdirOutputs?: ConversationWorkdirOutputDeclaration[];
+  workspaceOutputs?: AgentWorkspaceOutputDeclaration[];
   requestedToolGroupIds?: string[];
   toolIntent?: ToolIntentResult;
   toolExposure?: AgentToolExposureState;

@@ -7,14 +7,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.join(__dirname, "..");
 const serverRoot = path.join(projectRoot, ".artifacts", "server-bundle");
-const stagedNode = path.join(projectRoot, ".artifacts", "node-runtime", "node.exe");
+const stagedNodeBinary = process.platform === "win32" ? "node.exe" : "node";
+const stagedNode = path.join(
+  projectRoot,
+  ".artifacts",
+  "node-runtime",
+  stagedNodeBinary,
+);
 const stagedServerEntry = path.join(serverRoot, "server.cjs");
-
-if (process.platform !== "win32") {
-  throw new Error(
-    `Staged server runtime smoke requires Windows; current platform is ${process.platform}.`,
-  );
-}
 
 for (const [label, targetPath] of [
   ["staged Node runtime", stagedNode],

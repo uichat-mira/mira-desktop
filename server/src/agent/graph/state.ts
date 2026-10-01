@@ -17,7 +17,7 @@ import type {
   AgentRetrievalEvidence,
   AgentSchemaReplanDiagnostics,
   AgentToolExposureState,
-  ConversationWorkdirOutputDeclaration,
+  AgentWorkspaceOutputDeclaration,
 } from "../types";
 import type { AgentRuntimeCheckpoint } from "../runtime-checkpoint";
 import type { EmitAgentExecutionNode } from "../node-runtime";
@@ -40,7 +40,7 @@ export const AgentGraphStateAnnotation = Annotation.Root({
   knowledgeBaseId: Annotation<string | null | undefined>,
   intentConfig: Annotation<AgentIntentEmbeddingConfig | undefined>,
   workspaceRoot: Annotation<string | null | undefined>,
-  conversationWorkdirOutputs: Annotation<ConversationWorkdirOutputDeclaration[] | undefined>,
+  workspaceOutputs: Annotation<AgentWorkspaceOutputDeclaration[] | undefined>,
   requestedToolGroupIds: Annotation<string[] | undefined>,
   toolIntent: Annotation<ToolIntentResult | undefined>,
   toolExposure: Annotation<AgentToolExposureState | undefined>,
@@ -143,8 +143,8 @@ export const createInitialAgentGraphState = (
     knowledgeBaseId: input.knowledgeBaseId,
     intentConfig: input.intentConfig,
     workspaceRoot: input.workspaceRoot,
-    conversationWorkdirOutputs:
-      checkpointInput.conversationWorkdirOutputs ?? input.conversationWorkdirOutputs,
+    workspaceOutputs:
+      checkpointInput.workspaceOutputs ?? input.workspaceOutputs,
     requestedToolGroupIds: input.requestedToolGroupIds,
     toolIntent: undefined,
     observations: checkpointInput.observations ?? [],

@@ -18,9 +18,15 @@ import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import { conversationArtifacts } from "@/db/schema.js";
-import { threadRepository, userRepository } from "@/db/repositories/index.js";
+import {
+  agentRunRepository,
+  chatWorkspaceRepository,
+  threadRepository,
+  userRepository,
+} from "@/db/repositories/index.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { conversationArtifactService } from "@/services/conversation-artifact.service.js";
+import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
 import { readConversationArtifact } from "@/services/conversation-artifact-read.service.js";
 import { createAndRunAgent } from "../index.js";
 import { agentRunStore } from "../run-store.js";
@@ -28,7 +34,6 @@ import type { AgentGraphOutput } from "../types.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 let dbPath = "";
-let workspaceRoot = "";
 
 const output = (): AgentGraphOutput => ({
   answer: "done",
@@ -56,12 +61,6 @@ const initializeTestDatabase = () => {
 beforeEach(() => {
   initializeTestDatabase();
   agentRunStore.clear();
-  // createAndRunAgent fails closed without an explicitly resolved workspace root.
-  workspaceRoot = createTimestampedTestArtifactPath(
-    "workspace",
-    `conversation-artifact-workspace-${process.pid}-${Date.now()}`,
-  );
-  fs.mkdirSync(workspaceRoot, { recursive: true });
 });
 
 afterEach(() => {
@@ -73,10 +72,6 @@ afterEach(() => {
     fs.rmSync(`${dbPath}${suffix}`, { force: true });
   }
   dbPath = "";
-  if (workspaceRoot) {
-    fs.rmSync(workspaceRoot, { recursive: true, force: true });
-    workspaceRoot = "";
-  }
   mocks.runAgentRuntime.mockReset();
 });
 
@@ -89,22 +84,22 @@ test("registers explicit final runtime output and reads it after reload", async 
   const thread = threadRepository.create({ userId: user.id, title: "runtime artifact" });
 
   mocks.runAgentRuntime.mockImplementation(async (input) => {
-    assert.ok(input.conversationWorkdir);
+    assert.ok(input.workspaceRoot);
     fs.writeFileSync(
-      path.join(input.conversationWorkdir.rootPath, "final.txt"),
+      path.join(input.workspaceRoot, "final.txt"),
       "final payload",
     );
     fs.writeFileSync(
-      path.join(input.conversationWorkdir.rootPath, "temporary.tmp"),
+      path.join(input.workspaceRoot, "temporary.tmp"),
       "temporary payload",
     );
     fs.writeFileSync(
-      path.join(input.conversationWorkdir.rootPath, "summary.txt"),
+      path.join(input.workspaceRoot, "summary.txt"),
       "summary payload",
     );
     return {
       ...output(),
-      conversationWorkdirOutputs: [
+      workspaceOutputs: [
         { sourceRelativePath: "temporary.tmp", lifecycle: "temporary" },
         { sourceRelativePath: "final.txt", lifecycle: "final", mimeType: "text/plain" },
         { sourceRelativePath: "summary.txt", lifecycle: "final", mimeType: "text/plain" },
@@ -115,7 +110,10 @@ test("registers explicit final runtime output and reads it after reload", async 
   const result = await createAndRunAgent({
     threadId: thread.id,
     userId: user.id,
-    workspaceRoot,
+    workspaceRoot: privateAgentWorkspaceService.ensure({
+      threadId: thread.id,
+      userId: user.id,
+    }),
     goalText: "produce a report",
     messages: [
       {
@@ -137,6 +135,14 @@ test("registers explicit final runtime output and reads it after reload", async 
     getDb().select().from(conversationArtifacts).all().length,
     2,
   );
+  assert.equal(result.run.runtimeInput?.workspaceRoot?.endsWith(thread.id), true);
+  assert.equal(
+    Boolean(
+      result.run.runtimeInput &&
+        "conversationWorkdir" in result.run.runtimeInput,
+    ),
+    false,
+  );
 
   agentRunStore.clear();
   resetDatabaseClients();
@@ -145,6 +151,16 @@ test("registers explicit final runtime output and reads it after reload", async 
   initializeKnowledgeBaseDatabase();
   initializeRoleDatabase();
   initializeThreadDatabase();
+
+  const reloadedRun = agentRunRepository.get(result.run.id);
+  assert.equal(reloadedRun?.runtimeInput?.workspaceRoot?.endsWith(thread.id), true);
+  assert.equal(
+    Boolean(
+      reloadedRun?.runtimeInput &&
+        "conversationWorkdir" in reloadedRun.runtimeInput,
+    ),
+    false,
+  );
 
   const readBack = readConversationArtifact({
     id: reference.id,
@@ -163,6 +179,84 @@ test("registers explicit final runtime output and reads it after reload", async 
   );
 });
 
+test("registers final output against the AgentRun frozen explicit Workspace root", async () => {
+  const user = userRepository.create({
+    username: `artifact-explicit-frozen-${Date.now()}`,
+    passwordHash: "x",
+    role: "user",
+  });
+  const thread = threadRepository.create({
+    userId: user.id,
+    title: "frozen explicit artifact",
+  });
+  const explicitRootA = path.join(
+    path.dirname(dbPath),
+    `explicit-a-${crypto.randomUUID()}`,
+  );
+  const explicitRootB = path.join(
+    path.dirname(dbPath),
+    `explicit-b-${crypto.randomUUID()}`,
+  );
+  fs.mkdirSync(explicitRootA, { recursive: true });
+  fs.mkdirSync(explicitRootB, { recursive: true });
+
+  const workspace = chatWorkspaceRepository.create({
+    userId: user.id,
+    name: "Explicit",
+    rootPath: explicitRootA,
+    status: "active",
+  });
+  threadRepository.updateById(thread.id, { workspaceId: workspace.id });
+
+  mocks.runAgentRuntime.mockImplementation(async (input) => {
+    assert.equal(input.workspaceRoot, explicitRootA);
+    fs.writeFileSync(path.join(explicitRootA, "final.txt"), "frozen-root");
+    chatWorkspaceRepository.updateById(workspace.id, {
+      rootPath: explicitRootB,
+    });
+    return {
+      ...output(),
+      workspaceOutputs: [
+        { sourceRelativePath: "final.txt", lifecycle: "final" },
+      ],
+    };
+  });
+
+  try {
+    const result = await createAndRunAgent({
+      threadId: thread.id,
+      userId: user.id,
+      workspaceRoot: explicitRootA,
+      goalText: "produce a stable artifact",
+      messages: [
+        {
+          role: "user",
+          content: "produce a stable artifact",
+          parts: [{ type: "text", text: "produce a stable artifact" }],
+        },
+      ],
+    });
+
+    const reference = result.output.conversationArtifacts?.[0];
+    assert.ok(reference);
+    assert.equal(
+      chatWorkspaceRepository.findById(workspace.id, user.id)?.rootPath,
+      explicitRootB,
+    );
+
+    const resolved = conversationArtifactService.resolve({
+      id: reference.id,
+      threadId: thread.id,
+      userId: user.id,
+    });
+    assert.equal(resolved.absolutePath, path.join(fs.realpathSync(explicitRootA), "final.txt"));
+    assert.equal(fs.readFileSync(resolved.absolutePath, "utf8"), "frozen-root");
+  } finally {
+    fs.rmSync(explicitRootA, { recursive: true, force: true });
+    fs.rmSync(explicitRootB, { recursive: true, force: true });
+  }
+});
+
 test("does not promote temporary runtime output", async () => {
   const user = userRepository.create({
     username: `artifact-runtime-temp-${Date.now()}`,
@@ -171,11 +265,11 @@ test("does not promote temporary runtime output", async () => {
   });
   const thread = threadRepository.create({ userId: user.id, title: "runtime temporary" });
   mocks.runAgentRuntime.mockImplementation(async (input) => {
-    assert.ok(input.conversationWorkdir);
-    fs.writeFileSync(path.join(input.conversationWorkdir.rootPath, "temporary.tmp"), "tmp");
+    assert.ok(input.workspaceRoot);
+    fs.writeFileSync(path.join(input.workspaceRoot, "temporary.tmp"), "tmp");
     return {
       ...output(),
-      conversationWorkdirOutputs: [
+      workspaceOutputs: [
         { sourceRelativePath: "temporary.tmp", lifecycle: "temporary" },
       ],
     };
@@ -184,7 +278,10 @@ test("does not promote temporary runtime output", async () => {
   const result = await createAndRunAgent({
     threadId: thread.id,
     userId: user.id,
-    workspaceRoot,
+    workspaceRoot: privateAgentWorkspaceService.ensure({
+      threadId: thread.id,
+      userId: user.id,
+    }),
     goalText: "temporary work",
     messages: [{ role: "user", content: "temporary work", parts: [{ type: "text", text: "temporary work" }] }],
   });
@@ -201,11 +298,11 @@ test("registers multiple final runtime outputs atomically", async () => {
   });
   const thread = threadRepository.create({ userId: user.id, title: "runtime batch" });
   mocks.runAgentRuntime.mockImplementation(async (input) => {
-    assert.ok(input.conversationWorkdir);
-    fs.writeFileSync(path.join(input.conversationWorkdir.rootPath, "first.txt"), "first");
+    assert.ok(input.workspaceRoot);
+    fs.writeFileSync(path.join(input.workspaceRoot, "first.txt"), "first");
     return {
       ...output(),
-      conversationWorkdirOutputs: [
+      workspaceOutputs: [
         { sourceRelativePath: "first.txt", lifecycle: "final" },
         { sourceRelativePath: "missing.txt", lifecycle: "final" },
       ],
@@ -217,7 +314,10 @@ test("registers multiple final runtime outputs atomically", async () => {
       createAndRunAgent({
         threadId: thread.id,
         userId: user.id,
-        workspaceRoot,
+        workspaceRoot: privateAgentWorkspaceService.ensure({
+          threadId: thread.id,
+          userId: user.id,
+        }),
         goalText: "batch output",
         messages: [{ role: "user", content: "batch output", parts: [{ type: "text", text: "batch output" }] }],
       }),

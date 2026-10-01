@@ -1,0 +1,26 @@
+{
+  "version": "mira-desktop-opencode-routing/v1",
+  "roles": {
+    "routine": {
+      "enabled": true,
+      "provider": "opencode-go",
+      "model": "minimax-m3",
+      "variant": "none",
+      "credentialEnv": "OPENCODE_GO_API_KEY"
+    },
+    "fallback": {
+      "enabled": false,
+      "provider": "opencode-go",
+      "model": "deepseek-v4-flash",
+      "variant": "none",
+      "credentialEnv": "OPENCODE_GO_API_KEY"
+    },
+    "escalation": {
+      "enabled": false,
+      "provider": "opencode-go",
+      "model": "deepseek-v4-pro",
+      "variant": "none",
+      "credentialEnv": "OPENCODE_GO_API_KEY"
+    }
+  }
+}

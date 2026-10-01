@@ -12,6 +12,13 @@ const outputDir = path.join(projectRoot, ".artifacts", "server-bundle");
 const outputNodeModules = path.join(outputDir, "node_modules");
 const pnpmStore = path.join(projectRoot, "node_modules", ".pnpm");
 const pnpmVirtualNodeModules = path.join(pnpmStore, "node_modules");
+const targetPlatform = process.platform;
+const targetArch = process.arch;
+const nodePtyPrebuildName = `${targetPlatform}-${targetArch}`;
+const sharpPlatformPackage = `@img/sharp-${targetPlatform}-${targetArch}`;
+const sharpLibvipsPackage = `@img/sharp-libvips-${targetPlatform}-${targetArch}`;
+const sqliteVecPlatform = targetPlatform === "win32" ? "windows" : targetPlatform;
+const sqliteVecPlatformPackage = `sqlite-vec-${sqliteVecPlatform}-${targetArch}`;
 
 function readPackageJson(packageDir) {
   return JSON.parse(
@@ -156,7 +163,7 @@ function pruneNodePtyRuntime() {
   const packageRoot = path.join(outputNodeModules, "node-pty");
   const prebuildsRoot = path.join(packageRoot, "prebuilds");
   for (const entry of fs.readdirSync(prebuildsRoot, { withFileTypes: true })) {
-    if (entry.isDirectory() && entry.name !== "win32-x64") {
+    if (entry.isDirectory() && entry.name !== nodePtyPrebuildName) {
       fs.rmSync(path.join(prebuildsRoot, entry.name), { recursive: true, force: true });
     }
   }
@@ -165,12 +172,12 @@ function pruneNodePtyRuntime() {
     fs.rmSync(path.join(packageRoot, directory), { recursive: true, force: true });
   }
 
-  for (const entry of fs.readdirSync(path.join(prebuildsRoot, "win32-x64"))) {
+  for (const entry of fs.readdirSync(path.join(prebuildsRoot, nodePtyPrebuildName))) {
     if (entry.endsWith(".pdb")) {
-      fs.rmSync(path.join(prebuildsRoot, "win32-x64", entry), { force: true });
+      fs.rmSync(path.join(prebuildsRoot, nodePtyPrebuildName, entry), { force: true });
     }
   }
-  console.log("Pruned node-pty to the Windows x64 runtime files");
+  console.log(`Pruned node-pty to the ${nodePtyPrebuildName} runtime files`);
 }
 
 function writeBackendPackageJson() {
@@ -241,9 +248,12 @@ build({
     copyPackage("detect-libc");
     copyPackage("semver");
     copyPackage("@img/colour");
-    copyPackage("@img/sharp-win32-x64");
+    copyPackage(sharpPlatformPackage);
+    if (targetPlatform === "darwin" || targetPlatform === "linux") {
+      copyPackage(sharpLibvipsPackage);
+    }
     copyPackage("sqlite-vec");
-    copyPackage("sqlite-vec-windows-x64");
+    copyPackage(sqliteVecPlatformPackage);
     copyPackageTree("node-pty");
     pruneNodePtyRuntime();
     copyPackage("bindings");

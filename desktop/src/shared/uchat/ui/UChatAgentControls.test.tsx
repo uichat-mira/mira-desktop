@@ -22,8 +22,9 @@ test("UChatAgentModeControl toggles the UChat Agent mode", () => {
     />,
   );
 
-  const button = screen.getByRole("button", { name: "Enable Agent" });
+  const button = screen.getByRole("button", { name: "Return to Agent" });
   assert.equal(button.hasAttribute("disabled"), false);
+  assert.ok(screen.getByText("Compatibility Chat"));
   fireEvent.click(button);
   assert.equal(onToggle.mock.calls.length, 1);
 });
@@ -41,7 +42,7 @@ test("UChatAgentModeControl preserves the workspace availability reason", () => 
     />,
   );
 
-  const button = screen.getByRole("button", { name: "Enable Agent" });
+  const button = screen.getByRole("button", { name: "Return to Agent" });
   assert.equal(button.hasAttribute("disabled"), true);
   assert.equal(button.title, "Bind a workspace before using Agent.");
   fireEvent.click(button);

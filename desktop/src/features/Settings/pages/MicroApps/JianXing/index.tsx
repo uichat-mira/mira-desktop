@@ -572,7 +572,7 @@ export default function JianXingPage() {
           <Badge variant={nativeHostInstalled ? "success" : nativeHostRepairNeeded ? "warning" : "neutral"}>{nativeHostStatusLabel}</Badge>
         </div>
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-          <Button size="xs" variant="outline" onClick={() => void handleDownloadExtension()} disabled={extensionDownloadLoading}>
+          <Button size="xs" variant="outline" onClick={() => void handleDownloadExtension()} disabled={extensionDownloadLoading || nativeHostChecking || nativeHostStatus?.status === "unsupported"}>
             <Download className="h-4 w-4" />{extensionDownloadLoading ? t("settings.microApps.jianXing.connection.downloading") : t("settings.microApps.jianXing.connection.download")}
           </Button>
           <Button size="xs" variant="outline" onClick={() => void handleInstallNativeHost()} disabled={nativeHostLoading || nativeHostChecking || nativeHostStatus?.status === "unsupported"}>

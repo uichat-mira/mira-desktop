@@ -351,7 +351,12 @@ async function startBackend() {
 
   const backendPath = path.join(process.resourcesPath, "server", "server.cjs");
   const cwd = path.join(process.resourcesPath, "server");
-  const bundledNodePath = path.join(process.resourcesPath, "node-runtime", "node.exe");
+  const bundledNodeBinary = process.platform === "win32" ? "node.exe" : "node";
+  const bundledNodePath = path.join(
+    process.resourcesPath,
+    "node-runtime",
+    bundledNodeBinary,
+  );
   const localModelResourceRoot = path.join(process.resourcesPath, "model-packs");
   const localOnnxWasmRoot = path.join(
     process.resourcesPath,

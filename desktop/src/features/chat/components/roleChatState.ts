@@ -29,6 +29,14 @@ export const resolveChatMediaSettings = ({
     : welcomeSettings.imageEnabled,
 });
 
+export const shouldShowRoleImageAction = ({
+  roleId,
+  knowledgeBaseId,
+}: {
+  roleId: string | null;
+  knowledgeBaseId: string | null;
+}) => Boolean(roleId && !knowledgeBaseId);
+
 export const resolveActiveRoleId = ({
   hasPersistedThread,
   persistedRoleId,

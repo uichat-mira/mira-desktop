@@ -1244,47 +1244,13 @@ export const threadsRelations = relations(threads, ({ many, one }) => ({
 export type Thread = typeof threads.$inferSelect;
 export type NewThread = typeof threads.$inferInsert;
 
-export const conversationWorkdirs = sqliteTable(
-  "conversation_workdirs",
-  {
-    id: text("id")
-      .primaryKey()
-      .default(sql`(lower(hex(randomblob(16))))`),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    rootPath: text("root_path").notNull(),
-    createdAt: text("created_at")
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text("updated_at")
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => ({
-    threadIdIdx: uniqueIndex("idx_conversation_workdirs_thread_id").on(
-      table.threadId,
-    ),
-    userIdIdx: index("idx_conversation_workdirs_user_id").on(table.userId),
-    rootPathIdx: uniqueIndex("idx_conversation_workdirs_root_path").on(
-      table.rootPath,
-    ),
-  }),
-);
-
-export type ConversationWorkdir = typeof conversationWorkdirs.$inferSelect;
-export type NewConversationWorkdir = typeof conversationWorkdirs.$inferInsert;
-
 export const conversationArtifacts = sqliteTable(
   "conversation_artifacts",
   {
     id: text("id").primaryKey(),
     threadId: text("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
     userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    workdirId: text("workdir_id").notNull().references(() => conversationWorkdirs.id, { onDelete: "cascade" }),
+    sourceRootPath: text("source_root_path").notNull(),
     sourceRelativePath: text("source_relative_path").notNull(),
     lifecycle: text("lifecycle", { enum: ["temporary", "final"] as const }).notNull(),
     mimeType: text("mime_type"),
@@ -1293,7 +1259,7 @@ export const conversationArtifacts = sqliteTable(
   },
   (table) => ({
     threadIdx: index("idx_conversation_artifacts_thread_id").on(table.threadId),
-    workdirIdx: index("idx_conversation_artifacts_workdir_id").on(table.workdirId),
+    sourceRootIdx: index("idx_conversation_artifacts_source_root_path").on(table.sourceRootPath),
   }),
 );
 

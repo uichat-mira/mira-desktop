@@ -40,6 +40,7 @@ import {
   formatRoleReplyingLabel,
   resolveActiveRoleId,
   resolveRoleAvatarSrc,
+  shouldShowRoleImageAction,
   upsertRoleSummary,
 } from "./roleChatState";
 import { isValidWorkspaceRootPath } from "../core/runtimePolicies";
@@ -567,7 +568,10 @@ export default function UChatThread() {
       message.error(`${t("chat.thread.media.imageFailed")}: ${detail}`);
     }
   };
-  const showImageAction = Boolean(activeRoleId && !hasKnowledgeBase && !isAgentEnabled);
+  const showImageAction = shouldShowRoleImageAction({
+    roleId: activeRoleId,
+    knowledgeBaseId: activeKnowledgeBaseId ?? null,
+  });
 
   return (
     <>

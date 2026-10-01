@@ -502,13 +502,7 @@ export interface PlannerObservationContext {
   };
 }
 
-export interface ConversationWorkdirReference {
-  id: string;
-  threadId: string;
-  rootPath: string;
-}
-
-export interface ConversationWorkdirOutputDeclaration {
+export interface AgentWorkspaceOutputDeclaration {
   sourceRelativePath: string;
   lifecycle: "temporary" | "final";
   mimeType?: string | null;
@@ -549,8 +543,7 @@ export interface AgentRun {
     | "knowledgeBaseId"
     | "intentConfig"
     | "workspaceRoot"
-    | "conversationWorkdir"
-    | "conversationWorkdirOutputs"
+    | "workspaceOutputs"
     | "requestedToolGroupIds"
   >;
   createdAt: string;
@@ -572,8 +565,7 @@ export interface AgentRunStore {
       | "knowledgeBaseId"
       | "intentConfig"
       | "workspaceRoot"
-      | "conversationWorkdir"
-      | "conversationWorkdirOutputs"
+      | "workspaceOutputs"
       | "requestedToolGroupIds"
     >;
   }): AgentRun;
@@ -611,8 +603,7 @@ export interface AgentGraphInput {
   knowledgeBaseId?: string | null;
   intentConfig?: AgentIntentEmbeddingConfig;
   workspaceRoot?: string | null;
-  conversationWorkdir?: ConversationWorkdirReference;
-  conversationWorkdirOutputs?: ConversationWorkdirOutputDeclaration[];
+  workspaceOutputs?: AgentWorkspaceOutputDeclaration[];
   requestedToolGroupIds?: string[];
   approvedInvocations?: AgentApprovedInvocation[];
   policyDecision?: AgentPolicyDecision;
@@ -647,7 +638,7 @@ export interface AgentGraphOutput {
   selectedToolId?: string;
   pendingToolCall?: AgentToolCallRequest;
   approvedInvocations?: AgentApprovedInvocation[];
-  conversationWorkdirOutputs?: ConversationWorkdirOutputDeclaration[];
+  workspaceOutputs?: AgentWorkspaceOutputDeclaration[];
   conversationArtifacts?: ConversationArtifactReference[];
   lastToolExecution?: AgentToolExecutionResult;
   currentTaskFrame?: CurrentTaskFrame;

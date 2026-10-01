@@ -358,8 +358,16 @@ test("UChatThreadView calls onAgentSend when the Agent button is clicked", () =>
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Run in Agent mode" }));
+  assert.equal(i18n.t("chat.thread.actions.send"), "Send");
+  const submit = screen.getByRole("button", {
+    name: "Send",
+  });
+  fireEvent.click(submit);
   assert.equal(onAgentSend.mock.calls.length, 1);
+  assert.equal(
+    screen.queryByRole("button", { name: i18n.t("chat.thread.agent.run") }),
+    null,
+  );
 });
 
 test("UChatThreadView renders Agent mode through the composer tools slot", () => {
@@ -393,7 +401,7 @@ test("UChatThreadView renders Agent mode through the composer tools slot", () =>
     />,
   );
 
-  const toggle = screen.getByRole("button", { name: "Enable Agent" });
+  const toggle = screen.getByRole("button", { name: "Return to Agent" });
   const additionalTool = screen.getByText("Additional composer tool");
   const composerSurface = screen.getByRole("textbox").parentElement;
   assert.ok(composerSurface);
@@ -438,7 +446,7 @@ test("UChatThreadView disables send arrow when Agent is enabled but workspace is
   );
 
   const button = screen.getByRole("button", {
-    name: "Run in Agent mode",
+    name: i18n.t("chat.thread.actions.send"),
   });
   assert.equal(button.hasAttribute("disabled"), true);
   fireEvent.click(button);
@@ -483,7 +491,7 @@ test("UChatThreadView keeps normal send enabled when Agent toggle is off", () =>
   );
 
   const button = screen.getByRole("button", {
-    name: "chat.thread.actions.send",
+    name: i18n.t("chat.thread.actions.send"),
   });
   assert.equal(button.hasAttribute("disabled"), false);
   fireEvent.click(button);
