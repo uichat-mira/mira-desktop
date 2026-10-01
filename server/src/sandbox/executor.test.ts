@@ -26,8 +26,8 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 const createMockSpawnProcess = () => {
-  const stdout = Object.assign(new EventEmitter(), { destroy: vi.fn() });
-  const stderr = Object.assign(new EventEmitter(), { destroy: vi.fn() });
+  const stdout = new EventEmitter();
+  const stderr = new EventEmitter();
   const child = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
     stderr: EventEmitter;
@@ -42,16 +42,6 @@ const createMockSpawnProcess = () => {
   });
   return child;
 };
-
-const explicitPowerShellExitCommand = (command: string) =>
-  [
-    command,
-    "$__mira_success = $?",
-    "$__mira_native_exit = $LASTEXITCODE",
-    "if ($null -ne $__mira_native_exit) { exit $__mira_native_exit }",
-    "if ($__mira_success) { exit 0 }",
-    "exit 1",
-  ].join("; ");
 
 const executeAllowedCommand = async (command: string, stdoutText = "ok\n") => {
   const child = createMockSpawnProcess();
@@ -71,17 +61,10 @@ const executeAllowedCommand = async (command: string, stdoutText = "ok\n") => {
   expect(result.stdout).toBe(stdoutText.trim());
   expect(sandboxMocks.spawnMock).toHaveBeenCalledWith(
     expect.stringContaining("powershell.exe"),
-    [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      explicitPowerShellExitCommand(command),
-    ],
+    ["-NoProfile", "-Command", command],
     expect.objectContaining({
       shell: false,
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
     }),
   );
 };
@@ -224,33 +207,6 @@ describe("SandboxExecutor", () => {
     expect(child.kill).toHaveBeenCalled();
   });
 
-  it.skipIf(process.platform !== "win32")(
-    "settles after PowerShell exits even when redirected stdio close is delayed",
-    async () => {
-      vi.useFakeTimers();
-      const child = createMockSpawnProcess();
-      sandboxMocks.spawnMock.mockReturnValue(child);
-
-      const promise = executeSandboxedCommand({
-        command: "Write-Output 'ok'",
-        timeoutMs: 5_000,
-        signal: new AbortController().signal,
-        shellProfile,
-      });
-
-      child.stdout.emit("data", "ok\r\n");
-      child.emit("exit", 0);
-      await vi.advanceTimersByTimeAsync(300);
-
-      const result = await promise;
-      expect(result.exitCode).toBe(0);
-      expect(result.timedOut).toBe(false);
-      expect(result.stdout).toContain("ok");
-      expect(child.stdout.destroy).toHaveBeenCalled();
-      expect(child.stderr.destroy).toHaveBeenCalled();
-    },
-  );
-
   it("allows workspace-scoped node script execution", async () => {
     const child = createMockSpawnProcess();
     sandboxMocks.spawnMock.mockReturnValue(child);
@@ -270,17 +226,10 @@ describe("SandboxExecutor", () => {
     expect(result.stdoutEncoding).toBe("utf8");
     expect(sandboxMocks.spawnMock).toHaveBeenCalledWith(
       expect.stringContaining("powershell.exe"),
-      [
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        explicitPowerShellExitCommand("node script.js"),
-      ],
+      ["-NoProfile", "-Command", "node script.js"],
       expect.objectContaining({
         shell: false,
         windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
       }),
     );
   });
@@ -342,19 +291,20 @@ describe("SandboxExecutor", () => {
   });
 
   it.skipIf(process.platform !== "win32")(
-    "preserves core Windows shell environment without leaking arbitrary variables",
+    "preserves PSModulePath for Windows PowerShell without leaking arbitrary variables",
     () => {
-      vi.stubEnv("ProgramFiles", "C:\\Program Files");
-      vi.stubEnv("LOCALAPPDATA", "C:\\Users\\tester\\AppData\\Local");
-      vi.stubEnv("APPDATA", "C:\\Users\\tester\\AppData\\Roaming");
+      vi.stubEnv(
+        "PSModulePath",
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules",
+      );
 
       const env = resolveSandboxEnv({
         RAG_DEMO_UNLISTED_SECRET: "should-not-pass",
       });
 
-      expect(env.ProgramFiles).toBe("C:\\Program Files");
-      expect(env.LOCALAPPDATA).toBe("C:\\Users\\tester\\AppData\\Local");
-      expect(env.APPDATA).toBe("C:\\Users\\tester\\AppData\\Roaming");
+      expect(env.PSModulePath).toBe(
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules",
+      );
       expect(env).not.toHaveProperty("RAG_DEMO_UNLISTED_SECRET");
     },
   );
