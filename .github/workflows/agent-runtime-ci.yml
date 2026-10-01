@@ -101,6 +101,7 @@ jobs:
           pnpm --filter @ui-chat-mira/server test --
           src/services/agent-workspace.service.test.ts
           src/services/conversation-artifact.service.test.ts
+          src/agent/__tests__/persistence.test.ts
           src/agent/__tests__/conversation-artifact-integration.test.ts
           src/db/thread-workspace-retirement.test.ts
           --maxWorkers=1
