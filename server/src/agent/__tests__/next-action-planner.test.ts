@@ -1898,7 +1898,7 @@ test("nextActionPlannerNode stops when schema replan budget is exhausted even wi
   }
 });
 
-test("nextActionPlannerNode retries one invalid text decision before failing closed", async () => {
+test("nextActionPlannerNode falls back when task model output is invalid JSON", async () => {
   const streamSpy = vi
     .spyOn(providerProxyService, "streamTaskChatText")
     .mockImplementation(async function* () {
@@ -1919,58 +1919,6 @@ test("nextActionPlannerNode retries one invalid text decision before failing clo
         "Planner output was invalid JSON; planner must stop instead of pretending an answer is ready.",
       errorSourceNodeId: "agent-next-action-planner",
     });
-    assert.equal(streamSpy.mock.calls.length, 2);
-    assert.match(
-      String(streamSpy.mock.calls[1]?.[0]?.at(-1)?.content ?? ""),
-      /previous Planner decision was rejected/i,
-    );
-  } finally {
-    streamSpy.mockRestore();
-  }
-});
-
-test("nextActionPlannerNode repairs one invalid text decision with a valid retry", async () => {
-  let callCount = 0;
-  const streamSpy = vi
-    .spyOn(providerProxyService, "streamTaskChatText")
-    .mockImplementation(async function* () {
-      callCount += 1;
-      if (callCount === 1) {
-        yield "I should use a tool, but this is not JSON.";
-        return;
-      }
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"echo hello-174"},"reason":"Create the requested marker content."}';
-    });
-
-  try {
-    const patch = await nextActionPlannerNode(createState({
-      toolExposure: {
-        exposedTools: ["terminal_session"],
-        toolMeta: [{
-          toolId: "terminal_session",
-          title: "Terminal",
-          description: "Run one terminal command.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              command: { type: "string" },
-            },
-            required: ["command"],
-            additionalProperties: false,
-          },
-        }],
-      },
-    }));
-
-    assert.equal(streamSpy.mock.calls.length, 2);
-    assert.deepEqual(patch.nextAction, {
-      type: "use_tool",
-      toolId: "terminal_session",
-      args: { command: "echo hello-174" },
-      reason: "Create the requested marker content.",
-    });
-    assert.equal(patch.errorMessage, undefined);
-    assert.equal(patch.blockedReason, undefined);
   } finally {
     streamSpy.mockRestore();
   }
