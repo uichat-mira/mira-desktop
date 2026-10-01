@@ -456,6 +456,19 @@ export const threadService = {
     return conversationWorkdirService.get(threadId, userId)?.rootPath ?? null;
   },
 
+  ensureEffectiveAgentWorkspaceRoot(threadId: string, userId: number): string | null {
+    const thread = threadRepository.findById(threadId, userId);
+    if (!thread) {
+      return null;
+    }
+
+    if (thread.workspaceId) {
+      return this.getThreadWorkspaceRoot(threadId, userId);
+    }
+
+    return conversationWorkdirService.ensure({ threadId, userId }).rootPath;
+  },
+
   createChatWorkspace(input: CreateChatWorkspaceInput): ChatWorkspaceResponse {
     const name = input.name.trim();
     if (!name) {
