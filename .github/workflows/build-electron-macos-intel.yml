@@ -57,13 +57,13 @@ jobs:
       - name: Verify DMG output
         shell: bash
         run: |
-          mapfile -t dmgs < <(find release -type f -name '*.dmg' -print)
-          if [ "${#dmgs[@]}" -eq 0 ]; then
+          dmg_count=$(find release -type f -name '*.dmg' -print | wc -l | tr -d ' ')
+          if [ "$dmg_count" -eq 0 ]; then
             echo 'No macOS DMG was produced.' >&2
             exit 1
           fi
           printf 'Intel macOS DMG(s):\n'
-          printf ' - %s\n' "${dmgs[@]}"
+          find release -type f -name '*.dmg' -print
 
       - name: Upload Intel macOS artifacts
         uses: actions/upload-artifact@v4

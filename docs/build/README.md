@@ -408,16 +408,16 @@ server/build.js
 
 `server.cjs` 由 esbuild 打包。`better-sqlite3`、`sqlite-vec` 和 `node-pty` 等 native 包不进入 bundle，而是复制到 `node_modules/`。
 
-当前 native module 复制逻辑是 Windows-first：
+当前 native module 复制逻辑按构建宿主的 `platform-arch` 选择：
 
 - `better-sqlite3`
-- `sqlite-vec`
-- `sqlite-vec-windows-x64`
-- `node-pty`（只保留 Windows x64 runtime，构建时执行加载校验）
+- `@img/sharp-<platform>-<arch>`（Darwin / Linux 同时复制对应 libvips 包）
+- `sqlite-vec` + 对应平台包（Windows 将 Node 的 `win32` 映射为包名使用的 `windows`）
+- `node-pty/prebuilds/<platform>-<arch>`
 - `bindings`
 - `file-uri-to-path`
 
-如果未来支持 macOS / Linux release，需要把平台 native 包选择从硬编码改为按目标平台解析。
+Windows x64 与 Darwin x64 均已有 staged runtime 证据；Darwin arm64 仍需独立 release/payload 验证，不能由 x64 结果代替。
 
 ## 测试报告入包规则
 
@@ -704,18 +704,22 @@ pnpm package:electron:win
 
 ## 当前平台边界
 
-当前 release 构建按 Windows 桌面环境维护。
+正式 Release Factory V2、Tauri 发布和 R2 当前版本分发仍以 Windows x64 为正式合同。
 
-已知 Windows-first 假设：
+Electron 另有一条独立的 Intel macOS CI / GitHub Release 路径：
 
-- Electron backend runtime 默认使用 `node.exe`。
-- Tauri backend runtime 默认使用 `node.exe`。
-- server bundle 固定复制 `sqlite-vec-windows-x64`。
-- 根命令只暴露 `package:electron:win` 和 `package:tauri:win`。
-- `build-dist.js` 当前只接受 `win/windows/mac/macos`，未知平台会失败。
-- `build-tauri-dist.js` 当前只允许在 Windows 上执行。
+- GitHub-hosted `macos-15-intel` runner 上执行 `node scripts/build-dist.js mac`；
+- server native module、bundled Node 22.23.1 与 staged runtime smoke 按 `darwin-x64` 真实验证；
+- `dev/test/prod` 保存短期 Actions DMG artifact；
+- `v*` tag 把 Intel DMG 追加到 GitHub Release；
+- Intel DMG 当前**未做 Developer ID 签名与公证**，也**不上传 R2**；
+- 这条 Intel 兼容性 lane 不改变 canonical macOS 首发目标 `darwin-arm64`，不能替代后续 arm64 release/payload 证据。
 
-在完成 macOS / Linux 适配前，非 Windows release 应被视为未支持，不要静默产出不完整包。
+其余边界：
+
+- Tauri backend/runtime 与打包脚本仍是 Windows-only；
+- 根命令目前仍只暴露 `package:electron:win` / `package:tauri:win`，macOS CI 直接调用 `build-dist.js mac`；
+- `build-dist.js` 只接受 `win/windows/mac/macos`，未知平台直接失败。
 
 ## 改造优先级
 
