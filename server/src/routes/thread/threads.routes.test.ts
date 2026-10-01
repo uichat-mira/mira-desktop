@@ -40,6 +40,83 @@ afterAll(() => {
   }
 });
 
+test("POST /threads defaults omitted agentEnabled to the Agent Runtime", async () => {
+  const app = Fastify({
+    logger: getLoggerConfig(),
+    serializerOpts: { encoding: "utf8" },
+  });
+  app.setErrorHandler(sendRouteError);
+  await app.register(threadRoute);
+
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const token = createAccessToken({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/threads",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    payload: {},
+  });
+
+  assert.equal(response.statusCode, 200, response.body);
+  const thread = response.json().data as { id: string; agentEnabled: boolean };
+  assert.equal(thread.agentEnabled, true);
+  assert.ok(privateAgentWorkspaceService.get(thread.id, user.id));
+
+  privateAgentWorkspaceService.cleanup({ threadId: thread.id, userId: user.id });
+  await app.close();
+});
+
+test("POST /threads preserves an explicit legacy agentEnabled=false request", async () => {
+  const app = Fastify({
+    logger: getLoggerConfig(),
+    serializerOpts: { encoding: "utf8" },
+  });
+  app.setErrorHandler(sendRouteError);
+  await app.register(threadRoute);
+
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const token = createAccessToken({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/threads",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    payload: { agentEnabled: false },
+  });
+
+  assert.equal(response.statusCode, 200, response.body);
+  const thread = response.json().data as { id: string; agentEnabled: boolean };
+  assert.equal(thread.agentEnabled, false);
+  assert.equal(privateAgentWorkspaceService.get(thread.id, user.id), null);
+
+  await app.close();
+});
+
 test("PATCH /threads/:id returns 200 when unbinding knowledgeBaseId to null", async () => {
   const app = Fastify({
     logger: getLoggerConfig(),
