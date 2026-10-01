@@ -65,10 +65,14 @@ export const createAndRunAgent = async (
     threadId: input.threadId,
     userId: input.userId,
   });
+  const workspaceRoot =
+    typeof input.workspaceRoot === "string" && input.workspaceRoot.trim()
+      ? input.workspaceRoot
+      : conversationWorkdir.rootPath;
 
   const materializedAttachments = await materializeAgentTaskFileAttachments({
     messages: input.messages,
-    workspaceRoot: input.workspaceRoot,
+    workspaceRoot,
   });
   const attachmentGoalContext = buildAgentAttachmentGoalContext(
     materializedAttachments,
@@ -115,7 +119,7 @@ export const createAndRunAgent = async (
       params: input.params,
       knowledgeBaseId: input.knowledgeBaseId,
       intentConfig: input.intentConfig,
-      workspaceRoot: input.workspaceRoot,
+      workspaceRoot,
       conversationWorkdir,
       conversationWorkdirOutputs: input.conversationWorkdirOutputs,
       requestedToolGroupIds: input.requestedToolGroupIds,
@@ -132,6 +136,7 @@ export const createAndRunAgent = async (
 
     const output = await runAgentRuntime({
       ...input,
+      workspaceRoot,
       conversationWorkdir,
       requestContextMessages,
       runId: run.id,
