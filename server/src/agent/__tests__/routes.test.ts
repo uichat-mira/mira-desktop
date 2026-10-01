@@ -65,11 +65,7 @@ describe("agent routes", () => {
       status: "waiting_approval",
       runtimeInput: {
         messages: [],
-        conversationWorkdir: {
-          id: "workdir-1",
-          threadId: "thread-1",
-          rootPath: "/host-private/conversation-workdirs/thread-1",
-        },
+        workspaceRoot: "/host-private/conversation-workdirs/user-1/thread-1",
       },
       pendingApproval: {
         id: "approval-1",

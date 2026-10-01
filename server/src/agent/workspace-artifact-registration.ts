@@ -4,17 +4,22 @@ import {
   type ConversationArtifactReference,
 } from "@/services/conversation-artifact.service.js";
 import { getSqlite } from "@/db/index.js";
-import type { ConversationWorkdirOutputDeclaration } from "./types.js";
+import type { AgentWorkspaceOutputDeclaration } from "./types.js";
 
 /**
  * Registers only outputs explicitly declared as final by the Agent runtime.
- * Workdir files are never discovered or promoted implicitly.
+ * Workspace files are never discovered or promoted implicitly.
+ *
+ * sourceRootPath is the exact workspace root frozen by the AgentRun that
+ * produced the output. Artifact read-back must never resolve against whatever
+ * Workspace the thread happens to use later.
  */
-export const registerConversationWorkdirOutputs = (input: {
+export const registerAgentWorkspaceOutputs = (input: {
+  runId: string;
   threadId: string;
   userId: number;
-  storageRoot?: string;
-  declarations?: ConversationWorkdirOutputDeclaration[];
+  sourceRootPath: string;
+  declarations?: AgentWorkspaceOutputDeclaration[];
 }): ConversationArtifactReference[] => {
   const registerBatch = getSqlite().transaction(() => {
     const declarations = input.declarations ?? [];
@@ -29,20 +34,19 @@ export const registerConversationWorkdirOutputs = (input: {
       ) {
         throw new ConversationArtifactError(
           "invalid_source",
-          "Conversation Workdir output declaration is invalid",
+          "Agent workspace output declaration is invalid",
         );
       }
 
-      if (declaration.lifecycle === "temporary") {
-        continue;
-      }
+      if (declaration.lifecycle === "temporary") continue;
 
       artifacts.push(
         conversationArtifactService.register({
           threadId: input.threadId,
           userId: input.userId,
-          storageRoot: input.storageRoot,
+          sourceRootPath: input.sourceRootPath,
           sourceRelativePath: declaration.sourceRelativePath,
+          agentRunId: input.runId,
           lifecycle: "final",
           mimeType: declaration.mimeType,
         }),

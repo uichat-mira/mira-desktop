@@ -75,15 +75,17 @@ export function UChatThreadListSidebar() {
   );
 
   useEffect(() => {
-    const nextGroups = workspaces.map<WorkspaceGroup>((workspace) => ({
-      id: workspace.id,
-      name: workspace.name,
-      rootPath: workspace.rootPath,
-      isDefault: workspace.isDefault,
-      threads: [...threads]
-        .filter((thread) => thread.workspaceId === workspace.id)
-        .sort(sortByUpdatedAtDesc),
-    }));
+    const nextGroups = workspaces
+      .filter((workspace) => !workspace.isDefault)
+      .map<WorkspaceGroup>((workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
+        rootPath: workspace.rootPath,
+        isDefault: workspace.isDefault,
+        threads: [...threads]
+          .filter((thread) => thread.workspaceId === workspace.id)
+          .sort(sortByUpdatedAtDesc),
+      }));
     setWorkspaceGroups(nextGroups);
   }, [threads, workspaces]);
 

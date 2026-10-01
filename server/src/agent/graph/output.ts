@@ -35,7 +35,7 @@ export const mapGraphStateToOutput = (
       state.pendingApproval?.toolId,
     pendingToolCall: state.pendingToolCall,
     approvedInvocations: state.approvedInvocations,
-    conversationWorkdirOutputs: state.conversationWorkdirOutputs,
+    workspaceOutputs: state.workspaceOutputs,
     lastToolExecution: state.lastToolExecution,
     currentTaskFrame: state.currentTaskFrame,
     finalizationPacket: state.finalizationPacket,

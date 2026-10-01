@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { agentGraph } from "./graph";
 import { agentRunStore } from "./run-store";
 import { getAgentRunById } from "./run-read";
@@ -10,16 +12,12 @@ import type {
 } from "./types";
 import { persistAssistantMessage } from "@/routes/proxy-provider/message-persistence";
 import { threadService } from "@/services/thread.service";
-import {
-  ConversationWorkdirError,
-  conversationWorkdirService,
-} from "@/services/conversation-workdir.service.js";
 import type { AssistantExecutionNodeEvent } from "@/services/chat-stream-events";
 import {
   finishAgentRunControl,
   startAgentRunControlLease,
 } from "./run-control";
-import { registerConversationWorkdirOutputs } from "./conversation-artifact-registration";
+import { registerAgentWorkspaceOutputs } from "./workspace-artifact-registration";
 import type { ConversationArtifactReference } from "@/services/conversation-artifact.service.js";
 import { getAgentRuntimeCheckpoint } from "./runtime-checkpoint";
 
@@ -257,10 +255,121 @@ export const persistAgentAssistantState = (input: {
   });
 };
 
+type ApprovalResumeWorkspaceErrorCode =
+  | "missing_frozen_workspace_root"
+  | "workspace_root_missing"
+  | "workspace_root_linked"
+  | "workspace_root_invalid"
+  | "workspace_root_unavailable";
+
+class ApprovalResumeWorkspaceError extends Error {
+  readonly code: ApprovalResumeWorkspaceErrorCode;
+
+  constructor(code: ApprovalResumeWorkspaceErrorCode, message: string) {
+    super(message);
+    this.name = "ApprovalResumeWorkspaceError";
+    this.code = code;
+  }
+}
+
+const comparableWorkspaceRoot = (value: string) => {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+};
+
+const toApprovalResumeWorkspaceError = (
+  workspaceRoot: string,
+  runId: string,
+  error: unknown,
+) => {
+  if (error instanceof ApprovalResumeWorkspaceError) {
+    return error;
+  }
+
+  if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+    return new ApprovalResumeWorkspaceError(
+      "workspace_root_missing",
+      `Agent workspace root is missing: ${workspaceRoot}`,
+    );
+  }
+
+  return new ApprovalResumeWorkspaceError(
+    "workspace_root_unavailable",
+    `Agent workspace root is unavailable for resume: ${runId}`,
+  );
+};
+
+const assertFrozenWorkspaceRootAvailable = (
+  workspaceRoot: string,
+  runId: string,
+) => {
+  if (!workspaceRoot) {
+    throw new ApprovalResumeWorkspaceError(
+      "missing_frozen_workspace_root",
+      `AgentRun missing frozen workspace root: ${runId}`,
+    );
+  }
+
+  try {
+    const stat = fs.lstatSync(workspaceRoot);
+    if (stat.isSymbolicLink()) {
+      throw new ApprovalResumeWorkspaceError(
+        "workspace_root_linked",
+        `Agent workspace root cannot be a symbolic link or junction: ${workspaceRoot}`,
+      );
+    }
+    if (!stat.isDirectory()) {
+      throw new ApprovalResumeWorkspaceError(
+        "workspace_root_invalid",
+        `Agent workspace root is not a directory: ${workspaceRoot}`,
+      );
+    }
+
+    const realRoot = fs.realpathSync(workspaceRoot);
+    if (
+      comparableWorkspaceRoot(realRoot) !==
+      comparableWorkspaceRoot(workspaceRoot)
+    ) {
+      throw new ApprovalResumeWorkspaceError(
+        "workspace_root_linked",
+        `Agent workspace root cannot traverse a symbolic link or junction: ${workspaceRoot}`,
+      );
+    }
+  } catch (error) {
+    throw toApprovalResumeWorkspaceError(workspaceRoot, runId, error);
+  }
+};
+
+const persistApprovalResumeWorkspaceFailure = (input: {
+  run: AgentRun;
+  pendingApproval: AgentApprovalRequest;
+  error: ApprovalResumeWorkspaceError;
+}) => {
+  persistAgentAssistantState({
+    run: input.run,
+    status: "waiting_approval",
+    content: "工作空间无法恢复，审批仍保留，请修复工作空间后重试。",
+    pendingApproval: input.pendingApproval,
+    errorMessage: input.error.message,
+    errorSourceNodeId: "agent-resume-workspace",
+    executionNodes: [
+      toAgentErrorExecutionNode({
+        runId: input.run.id,
+        nodeId: "agent-resume-workspace",
+        label: "恢复工作空间",
+        summary: "工作空间无法恢复，审批仍保留",
+        details: {
+          code: input.error.code,
+          errorMessage: input.error.message,
+        },
+      }),
+    ],
+  });
+};
+
 type PreparedApprovedAgentRunResume = {
   run: AgentRun;
   runtimeInput: NonNullable<AgentRun["runtimeInput"]>;
-  conversationWorkdir: NonNullable<AgentRun["runtimeInput"]>["conversationWorkdir"];
   pendingApproval: AgentApprovalRequest;
   pendingToolCall: AgentToolCallRequest;
   approvedInvocations: AgentApprovedInvocation[];
@@ -329,20 +438,32 @@ const prepareApprovedAgentRunResume = (
     pendingApproval,
     pendingToolCall,
   });
-  const conversationWorkdir = runtimeInput.conversationWorkdir
-    ? conversationWorkdirService.reopen({
-        threadId: run.threadId,
-        userId: run.userId,
-        reference: runtimeInput.conversationWorkdir,
-      })
-    : undefined;
+  const workspaceRoot =
+    typeof runtimeInput.workspaceRoot === "string"
+      ? runtimeInput.workspaceRoot.trim()
+      : "";
+  try {
+    assertFrozenWorkspaceRootAvailable(workspaceRoot, runId);
+  } catch (error) {
+    const workspaceError =
+      error instanceof ApprovalResumeWorkspaceError
+        ? error
+        : toApprovalResumeWorkspaceError(workspaceRoot, runId, error);
+    persistApprovalResumeWorkspaceFailure({
+      run,
+      pendingApproval,
+      error: workspaceError,
+    });
+    throw workspaceError;
+  }
+
   const checkpoint = getAgentRuntimeCheckpoint(runtimeInput);
-  const conversationWorkdirOutputs =
-    runtimeInput.conversationWorkdirOutputs ?? checkpoint?.conversationWorkdirOutputs;
+  const workspaceOutputs =
+    runtimeInput.workspaceOutputs ?? checkpoint?.workspaceOutputs;
   const resumedRuntimeInput = {
     ...runtimeInput,
-    ...(conversationWorkdir ? { conversationWorkdir } : {}),
-    ...(conversationWorkdirOutputs ? { conversationWorkdirOutputs } : {}),
+    workspaceRoot,
+    ...(workspaceOutputs ? { workspaceOutputs } : {}),
   };
   const approvedInvocations = [
     ...(run.approvedInvocations ?? []),
@@ -377,7 +498,6 @@ const prepareApprovedAgentRunResume = (
   return {
     run: runningRun,
     runtimeInput: resumedRuntimeInput,
-    conversationWorkdir,
     pendingApproval,
     pendingToolCall,
     approvedInvocations,
@@ -426,8 +546,7 @@ const executePreparedApprovedAgentRunResume = async (
     knowledgeBaseId: runtimeInput.knowledgeBaseId,
     intentConfig: runtimeInput.intentConfig,
     workspaceRoot: runtimeInput.workspaceRoot,
-    conversationWorkdir: prepared.conversationWorkdir,
-    conversationWorkdirOutputs: runtimeInput.conversationWorkdirOutputs,
+    workspaceOutputs: runtimeInput.workspaceOutputs,
     approvedInvocations,
     // Compatibility input only; createInitialAgentGraphState does not store or read it.
     selectedToolId: pendingToolCall.toolId,
@@ -449,13 +568,15 @@ const executePreparedApprovedAgentRunResume = async (
   }
 
   const outputDeclarations =
-    output.conversationWorkdirOutputs ??
-    runtimeInput.conversationWorkdirOutputs;
+    output.workspaceOutputs ??
+    runtimeInput.workspaceOutputs;
   const conversationArtifacts =
     output.status === "completed"
-      ? registerConversationWorkdirOutputs({
+      ? registerAgentWorkspaceOutputs({
+          runId: run.id,
           threadId: run.threadId,
           userId: run.userId,
+          sourceRootPath: runtimeInput.workspaceRoot!,
           declarations: outputDeclarations,
         })
       : [];
@@ -588,28 +709,6 @@ export const scheduleApprovedAgentRunResume = (runId: string) => {
       persistRunningState: true,
     });
   } catch (error) {
-    if (error instanceof ConversationWorkdirError) {
-      const run = getAgentRunById(runId);
-      if (run) {
-        persistAgentAssistantState({
-          run,
-          status: "waiting_approval",
-          content: "工作目录无法恢复，审批仍保留，请修复工作目录后重试。",
-          pendingApproval: run.pendingApproval,
-          errorMessage: error.message,
-          errorSourceNodeId: "agent-resume-workdir",
-          executionNodes: [
-            toAgentErrorExecutionNode({
-              runId,
-              nodeId: "agent-resume-workdir",
-              label: "恢复工作目录",
-              summary: "工作目录恢复失败，未开始恢复执行",
-              details: { code: error.code, errorMessage: error.message },
-            }),
-          ],
-        });
-      }
-    }
     throw error;
   }
 

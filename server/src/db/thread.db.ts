@@ -1,3 +1,4 @@
+import path from "node:path";
 import { getSqlite } from "@/db";
 import { applySqliteConnectionPragmas } from "@/db/init-utils";
 import { hasSqliteColumn, hasSqliteTable } from "@/db/sqlite-utils";
@@ -33,15 +34,6 @@ const createThreadTables = () => {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS conversation_workdirs (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      root_path TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
@@ -59,14 +51,11 @@ const createThreadTables = () => {
     CREATE INDEX IF NOT EXISTS idx_threads_workspace_id ON threads(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_threads_status ON threads(status);
     CREATE INDEX IF NOT EXISTS idx_threads_updated_at ON threads(updated_at);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_workdirs_thread_id ON conversation_workdirs(thread_id);
-    CREATE INDEX IF NOT EXISTS idx_conversation_workdirs_user_id ON conversation_workdirs(user_id);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_workdirs_root_path ON conversation_workdirs(root_path);
     CREATE TABLE IF NOT EXISTS conversation_artifacts (
       id TEXT PRIMARY KEY,
       thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      workdir_id TEXT NOT NULL REFERENCES conversation_workdirs(id) ON DELETE CASCADE,
+      source_root_path TEXT NOT NULL,
       source_relative_path TEXT NOT NULL,
       lifecycle TEXT NOT NULL CHECK (lifecycle IN ('temporary', 'final')),
       mime_type TEXT,
@@ -74,10 +63,234 @@ const createThreadTables = () => {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_thread_id ON conversation_artifacts(thread_id);
-    CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_workdir_id ON conversation_artifacts(workdir_id);
     CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
   `);
+};
+
+
+const migrateConversationArtifactsOffWorkdirIdentity = () => {
+  const sqlite = getSqlite();
+  if (!hasSqliteTable(sqlite, "conversation_artifacts")) return;
+
+  const hasSourceRoot = hasSqliteColumn(
+    sqlite,
+    "conversation_artifacts",
+    "source_root_path",
+  );
+  const hasWorkdirId = hasSqliteColumn(
+    sqlite,
+    "conversation_artifacts",
+    "workdir_id",
+  );
+
+  if (hasSourceRoot && !hasWorkdirId) return;
+  if (!hasWorkdirId) {
+    throw new Error(
+      "conversation_artifacts has neither source_root_path nor legacy workdir_id",
+    );
+  }
+  if (!hasSqliteTable(sqlite, "conversation_workdirs")) {
+    throw new Error(
+      "Legacy conversation artifacts require conversation_workdirs for source-root migration",
+    );
+  }
+
+  const unresolved = sqlite
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM conversation_artifacts AS artifact
+      LEFT JOIN conversation_workdirs AS workdir
+        ON workdir.id = artifact.workdir_id
+      WHERE workdir.root_path IS NULL OR workdir.root_path = ''
+    `)
+    .get() as { count: number };
+  if (unresolved.count > 0) {
+    throw new Error(
+      `Cannot migrate ${unresolved.count} conversation artifact(s) without a stable source root`,
+    );
+  }
+
+  sqlite.exec("PRAGMA foreign_keys = OFF");
+  sqlite.exec("BEGIN");
+  try {
+    sqlite.exec(
+      "ALTER TABLE conversation_artifacts RENAME TO conversation_artifacts_workdir_legacy",
+    );
+    sqlite.exec(`
+      CREATE TABLE conversation_artifacts (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        source_root_path TEXT NOT NULL,
+        source_relative_path TEXT NOT NULL,
+        lifecycle TEXT NOT NULL CHECK (lifecycle IN ('temporary', 'final')),
+        mime_type TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    sqlite.exec(`
+      INSERT INTO conversation_artifacts (
+        id,
+        thread_id,
+        user_id,
+        source_root_path,
+        source_relative_path,
+        lifecycle,
+        mime_type,
+        created_at,
+        updated_at
+      )
+      SELECT
+        artifact.id,
+        artifact.thread_id,
+        artifact.user_id,
+        workdir.root_path,
+        artifact.source_relative_path,
+        artifact.lifecycle,
+        artifact.mime_type,
+        artifact.created_at,
+        artifact.updated_at
+      FROM conversation_artifacts_workdir_legacy AS artifact
+      JOIN conversation_workdirs AS workdir
+        ON workdir.id = artifact.workdir_id;
+    `);
+    sqlite.exec(`
+      DROP TABLE conversation_artifacts_workdir_legacy;
+      CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_thread_id
+        ON conversation_artifacts(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_source_root_path
+        ON conversation_artifacts(source_root_path);
+    `);
+    sqlite.exec("COMMIT");
+  } catch (error) {
+    sqlite.exec("ROLLBACK");
+    throw error;
+  } finally {
+    sqlite.exec("PRAGMA foreign_keys = ON");
+  }
+};
+
+const migrateAgentRunWorkspaceRuntimeInput = () => {
+  const sqlite = getSqlite();
+  if (!hasSqliteTable(sqlite, "agent_runs")) return;
+
+  const rows = sqlite
+    .prepare(
+      "SELECT id, runtime_input_json FROM agent_runs WHERE runtime_input_json IS NOT NULL",
+    )
+    .all() as Array<{ id: string; runtime_input_json: string }>;
+
+  const samePath = (left: string, right: string) => {
+    const normalize = (value: string) => {
+      const resolved = path.resolve(value);
+      return process.platform === "win32"
+        ? resolved.toLowerCase()
+        : resolved;
+    };
+    return normalize(left) === normalize(right);
+  };
+
+  const update = sqlite.prepare(
+    "UPDATE agent_runs SET runtime_input_json = ?, updated_at = datetime('now') WHERE id = ?",
+  );
+
+  for (const row of rows) {
+    let runtimeInput: Record<string, unknown>;
+    try {
+      runtimeInput = JSON.parse(row.runtime_input_json) as Record<string, unknown>;
+    } catch {
+      throw new Error(
+        `AgentRun ${row.id} has invalid runtime_input_json; refusing workspace migration`,
+      );
+    }
+
+    let changed = false;
+    const legacyWorkdir =
+      runtimeInput.conversationWorkdir &&
+      typeof runtimeInput.conversationWorkdir === "object" &&
+      !Array.isArray(runtimeInput.conversationWorkdir)
+        ? (runtimeInput.conversationWorkdir as Record<string, unknown>)
+        : undefined;
+    const legacyRoot =
+      typeof legacyWorkdir?.rootPath === "string"
+        ? legacyWorkdir.rootPath.trim()
+        : "";
+    const workspaceRoot =
+      typeof runtimeInput.workspaceRoot === "string"
+        ? runtimeInput.workspaceRoot.trim()
+        : "";
+
+    if (!workspaceRoot && legacyRoot) {
+      runtimeInput.workspaceRoot = legacyRoot;
+      changed = true;
+    } else if (workspaceRoot && legacyRoot && samePath(workspaceRoot, legacyRoot)) {
+      // Same physical root, only the duplicate identity is being removed.
+    }
+
+    if ("conversationWorkdir" in runtimeInput) {
+      delete runtimeInput.conversationWorkdir;
+      changed = true;
+    }
+
+    if (
+      !("workspaceOutputs" in runtimeInput) &&
+      Array.isArray(runtimeInput.conversationWorkdirOutputs)
+    ) {
+      runtimeInput.workspaceOutputs = runtimeInput.conversationWorkdirOutputs;
+      changed = true;
+    }
+    if ("conversationWorkdirOutputs" in runtimeInput) {
+      delete runtimeInput.conversationWorkdirOutputs;
+      changed = true;
+    }
+
+    const checkpoint =
+      runtimeInput.checkpoint &&
+      typeof runtimeInput.checkpoint === "object" &&
+      !Array.isArray(runtimeInput.checkpoint)
+        ? (runtimeInput.checkpoint as Record<string, unknown>)
+        : undefined;
+    if (checkpoint) {
+      if (
+        !("workspaceOutputs" in checkpoint) &&
+        Array.isArray(checkpoint.conversationWorkdirOutputs)
+      ) {
+        checkpoint.workspaceOutputs = checkpoint.conversationWorkdirOutputs;
+        changed = true;
+      }
+      if ("conversationWorkdirOutputs" in checkpoint) {
+        delete checkpoint.conversationWorkdirOutputs;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      update.run(JSON.stringify(runtimeInput), row.id);
+    }
+  }
+};
+
+const retireConversationWorkdirTable = () => {
+  const sqlite = getSqlite();
+  if (!hasSqliteTable(sqlite, "conversation_workdirs")) return;
+  sqlite.exec("DROP TABLE conversation_workdirs");
+};
+
+const ensureConversationArtifactIndexes = () => {
+  const sqlite = getSqlite();
+  if (!hasSqliteTable(sqlite, "conversation_artifacts")) return;
+  sqlite.exec(
+    "CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_thread_id ON conversation_artifacts(thread_id)",
+  );
+  if (
+    hasSqliteColumn(sqlite, "conversation_artifacts", "source_root_path")
+  ) {
+    sqlite.exec(
+      "CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_source_root_path ON conversation_artifacts(source_root_path)",
+    );
+  }
 };
 
 const createAgentRunTables = () => {
@@ -553,6 +766,8 @@ export const initializeThreadDatabase = () => {
 
     rebuildThreadsTableForWorkspaceSupport();
     createThreadTables();
+    migrateConversationArtifactsOffWorkdirIdentity();
+    ensureConversationArtifactIndexes();
     rebuildMessagesTableForThreadSupport();
     ensureThreadWorkspaceColumn();
     ensureThreadKnowledgeBaseColumn();
@@ -564,6 +779,8 @@ export const initializeThreadDatabase = () => {
     createAgentRunTables();
     ensureAgentRunExecutionStateColumns();
     ensureAgentRunMessageLinkColumns();
+    migrateAgentRunWorkspaceRuntimeInput();
+    retireConversationWorkdirTable();
   } catch (error) {
     console.error("Failed to initialize thread database:", error);
     throw error;
@@ -573,9 +790,10 @@ export const initializeThreadDatabase = () => {
 export const getThreadDatabaseHealth = () => ({
   hasChatWorkspacesTable: hasSqliteTable(getSqlite(), "chat_workspaces"),
   hasThreadsTable: hasSqliteTable(getSqlite(), "threads"),
-  hasConversationWorkdirsTable: hasSqliteTable(
+  hasConversationArtifactSourceRootPathColumn: hasSqliteColumn(
     getSqlite(),
-    "conversation_workdirs",
+    "conversation_artifacts",
+    "source_root_path",
   ),
   hasMessagesTable: hasSqliteTable(getSqlite(), "messages"),
   hasAgentRunsTable: hasSqliteTable(getSqlite(), "agent_runs"),

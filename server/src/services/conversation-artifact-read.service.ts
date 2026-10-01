@@ -8,7 +8,6 @@ export const readConversationArtifact = (input: {
   id: string;
   threadId: string;
   userId: number;
-  storageRoot?: string;
 }): { reference: ConversationArtifactReference; contents: Buffer } => {
   const resolved = conversationArtifactService.resolve(input);
   return {

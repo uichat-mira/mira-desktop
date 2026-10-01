@@ -15,7 +15,7 @@ import {
   userRepository,
 } from "@/db/repositories";
 import { threadService } from "./thread.service.js";
-import { conversationWorkdirService } from "./conversation-workdir.service.js";
+import { privateAgentWorkspaceService } from "./agent-workspace.service.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 
 const testDbPath = createTimestampedTestArtifactPath("db", "rag-demo-thread-service", ".sqlite");
@@ -343,8 +343,8 @@ test("unbound Agent threads resolve stable isolated private workspaces", () => {
 
   assert.equal(first.workspaceId, null);
   assert.equal(second.workspaceId, null);
-  assert.ok(conversationWorkdirService.get(first.id, user.id));
-  assert.ok(conversationWorkdirService.get(second.id, user.id));
+  assert.ok(privateAgentWorkspaceService.get(first.id, user.id));
+  assert.ok(privateAgentWorkspaceService.get(second.id, user.id));
 
   const firstRoot = threadService.getEffectiveAgentWorkspaceRoot(first.id, user.id);
   const firstRootAgain = threadService.getEffectiveAgentWorkspaceRoot(first.id, user.id);
@@ -367,17 +367,17 @@ test("unbound Agent threads resolve stable isolated private workspaces", () => {
     userId: user.id,
     title: "Plain then Agent",
   });
-  assert.equal(conversationWorkdirService.get(plain.id, user.id), null);
+  assert.equal(privateAgentWorkspaceService.get(plain.id, user.id), null);
   assert.equal(
     threadService.getEffectiveAgentWorkspaceRoot(plain.id, user.id),
     null,
   );
-  assert.equal(conversationWorkdirService.get(plain.id, user.id), null);
+  assert.equal(privateAgentWorkspaceService.get(plain.id, user.id), null);
   const activated = threadService.updateThread(plain.id, user.id, {
     agentEnabled: true,
   });
   assert.equal(activated?.workspaceId, null);
-  assert.ok(conversationWorkdirService.get(plain.id, user.id));
+  assert.ok(privateAgentWorkspaceService.get(plain.id, user.id));
 });
 
 test("createMessage uses lineage.parentId for branch pruning", () => {
