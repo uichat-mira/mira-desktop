@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { test, vi } from "vitest";
+import fs from "node:fs";
+import { afterAll, beforeAll, test, vi } from "vitest";
 import { agentGraph } from "../graph";
 import { resumeApprovedAgentRun } from "../resume";
 import { agentRunStore } from "../run-store";
@@ -7,6 +8,30 @@ import { createInvocationInputHash } from "../approval-fingerprint";
 import { createAgentGoal } from "../nodes/index";
 import * as messagePersistenceModule from "@/routes/proxy-provider/message-persistence";
 import { threadService } from "@/services/thread.service";
+import { createTimestampedTestArtifactPath } from "@/test-support/artifacts";
+
+const resumeWorkspaceRoot = createTimestampedTestArtifactPath(
+  "workspace",
+  "agent-resume",
+);
+
+beforeAll(() => {
+  fs.mkdirSync(resumeWorkspaceRoot, { recursive: true });
+});
+
+afterAll(() => {
+  fs.rmSync(resumeWorkspaceRoot, { recursive: true, force: true });
+});
+
+const withoutEmittedAt = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutEmittedAt);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== "emittedAt")
+      .map(([key, entry]) => [key, withoutEmittedAt(entry)]),
+  );
+};
 
 test("resumeApprovedAgentRun resumes a pending run and keeps approval state", async () => {
   const approvedInput = { query: "hello" };
@@ -26,6 +51,7 @@ test("resumeApprovedAgentRun resumes a pending run and keeps approval state", as
         },
       ],
       params: {},
+      workspaceRoot: resumeWorkspaceRoot,
     },
   });
 
@@ -139,7 +165,7 @@ test("resumeApprovedAgentRun resumes a pending run and keeps approval state", as
     assert.equal(result.run?.pendingToolCall, undefined);
     assert.equal(result.run?.contextBudget?.policy, "task-chat");
     assert.equal(persistAssistantMessageSpy.mock.calls.length, 1);
-    assert.deepEqual(persistAssistantMessageSpy.mock.calls[0]?.[0], {
+    assert.deepEqual(withoutEmittedAt(persistAssistantMessageSpy.mock.calls[0]?.[0]), {
       threadId: "thread-1",
       userId: 1,
       assistantMessageId: "assistant-1",
@@ -212,6 +238,7 @@ test("resumeApprovedAgentRun updates assistant message when run returns waiting 
         },
       ],
       params: {},
+      workspaceRoot: resumeWorkspaceRoot,
     },
   });
 
@@ -290,7 +317,7 @@ test("resumeApprovedAgentRun updates assistant message when run returns waiting 
     assert.equal(result.run?.status, "waiting_approval");
     assert.equal(result.run?.selectedToolId, "terminal_session");
     assert.equal(persistAssistantMessageSpy.mock.calls.length, 1);
-    assert.deepEqual(persistAssistantMessageSpy.mock.calls[0]?.[0], {
+    assert.deepEqual(withoutEmittedAt(persistAssistantMessageSpy.mock.calls[0]?.[0]), {
       threadId: "thread-1",
       userId: 1,
       assistantMessageId: "assistant-1",
@@ -373,6 +400,7 @@ test("resumeApprovedAgentRun updates assistant message when resumed run fails", 
         },
       ],
       params: {},
+      workspaceRoot: resumeWorkspaceRoot,
     },
   });
 
@@ -442,7 +470,7 @@ test("resumeApprovedAgentRun updates assistant message when resumed run fails", 
     assert.equal(result.run?.status, "failed");
     assert.equal(result.run?.selectedToolId, "web-search");
     assert.equal(persistAssistantMessageSpy.mock.calls.length, 1);
-    assert.deepEqual(persistAssistantMessageSpy.mock.calls[0]?.[0], {
+    assert.deepEqual(withoutEmittedAt(persistAssistantMessageSpy.mock.calls[0]?.[0]), {
       threadId: "thread-1",
       userId: 1,
       assistantMessageId: "assistant-1",
@@ -579,7 +607,7 @@ test("resumeApprovedAgentRun blocks execution when approval toolCallId does not 
       /approved toolCallId pending-other does not match frozen pendingToolCall\.id pending-actual/i,
     );
     assert.equal(persistAssistantMessageSpy.mock.calls.length, 1);
-    assert.deepEqual(persistAssistantMessageSpy.mock.calls[0]?.[0], {
+    assert.deepEqual(withoutEmittedAt(persistAssistantMessageSpy.mock.calls[0]?.[0]), {
       threadId: "thread-1",
       userId: 1,
       assistantMessageId: "assistant-mismatch-1",
@@ -723,7 +751,7 @@ test("resumeApprovedAgentRun keeps a legacy root-relative workspace path and can
         },
       ],
       params: {},
-      workspaceRoot: "D:\\CODEX_TEST_FOLDER_ALT",
+      workspaceRoot: resumeWorkspaceRoot,
     },
   });
 
@@ -761,7 +789,7 @@ test("resumeApprovedAgentRun keeps a legacy root-relative workspace path and can
       status: "frozen",
       createdAt: "2026-07-05T00:00:00.000Z",
     });
-    assert.equal(input.workspaceRoot, "D:\\CODEX_TEST_FOLDER_ALT");
+    assert.equal(input.workspaceRoot, resumeWorkspaceRoot);
     return {
       answer: "deleted",
       observations: [],

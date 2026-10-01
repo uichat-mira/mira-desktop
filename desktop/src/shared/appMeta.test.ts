@@ -11,6 +11,17 @@ describe("appPackageMeta", () => {
     expect(appPackageMeta.homepageUrl).toBe(packageJson.homepage);
   });
 
+  it("uses the canonical public Mira domain", () => {
+    expect(packageJson.homepage).toBe("https://mira.tomz.io");
+    expect(
+      packageJson.appMeta?.links.find((item) => item.label === "官方文档"),
+    ).toEqual({
+      label: "官方文档",
+      value: "https://mira.tomz.io",
+      href: "https://mira.tomz.io",
+    });
+  });
+
   it("prefers appMeta.displayName over displayName", () => {
     const expected =
       packageJson.appMeta?.displayName ??

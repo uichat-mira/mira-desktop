@@ -117,15 +117,20 @@ describe("Skill conversation flow", () => {
       ],
     });
 
+    // requiredAction/question are read-only compatibility fields for sessions
+    // created before structured interruptions replaced Skill-authored
+    // questions, so the live contract is the interruption requirement itself.
     expect(result.directive).toMatchObject({
       skillId: "fertility-assessment",
       phase: "collecting",
       flowCompleted: false,
       round: 0,
       maxRounds: 10,
-      requiredAction: "ask_user",
     });
-    expect(result.directive.question).toContain("记得多少说多少");
+    expect(result.directive.interruption?.reason).toBe("missing_requirement");
+    const requirement = result.directive.interruption?.requirements?.[0];
+    expect(requirement?.kind).toBe("user_input");
+    expect(requirement?.userPrompt ?? "").not.toBe("");
     expect(result.session.round).toBe(0);
   });
 

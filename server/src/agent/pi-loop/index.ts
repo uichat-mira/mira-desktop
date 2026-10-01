@@ -13,6 +13,7 @@ import {
   toolNode,
 } from "../nodes/index";
 import { GENERIC_TASK_DELEGATE_TOOL_ID } from "../delegation/contract.js";
+import { isAgentRunCancellationRequested } from "../run-control";
 import { mapGraphStateToOutput } from "../graph/output";
 import {
   createInitialAgentGraphState,
@@ -147,6 +148,21 @@ const runStep = async (input: {
   state: AgentGraphStateType;
   emit?: EmitAgentExecutionNode;
 }) => {
+  if (
+    input.traceNodeName !== "error" &&
+    isAgentRunCancellationRequested(
+      input.state.runId,
+      input.state.runControlLeaseId,
+    )
+  ) {
+    mergeStatePatch(input.state, {
+      errorMessage: "Agent run was cancelled.",
+      errorSourceNodeId: "run-control",
+      terminalReason: "cancelled",
+    });
+    return;
+  }
+
   try {
     const patch = await runWithAgentNodeSpan({
       nodeName: input.traceNodeName,

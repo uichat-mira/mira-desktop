@@ -66,6 +66,7 @@ Tauri 当前额外存在以下阻塞：
 | Shared artifacts | 强制构建 `.exe` Native Host、Windows Terminal Runtime、Windows Piper | 是当前最大总阻塞，不应绕过 |
 | Backend bundle | `sharp-win32-x64`、`sqlite-vec-windows-x64`、`node-pty/win32-x64` 写死 | macOS 包即使启动，也无法加载关键 native module |
 | Terminal Runtime | PowerShell 下载与解压，Node/MinGit/uv/rg 均为 Windows x64 | 需按 `platform-arch` 建锁文件和 manifest |
+| Computer Use 浏览器运行时 | 托管 Chromium 配置按平台分发（win32 → win64、darwin/arm64 → mac-arm64），darwin 系统浏览器探测 Chrome/Edge，托管记录按平台布局校验 | darwin-arm64 开发态已验证；darwin x64 / linux 无托管包配置仅可用系统浏览器；staged payload 链路（P4/P5）未覆盖 |
 | Terminal Harness | 已有 POSIX shell profile、POSIX process group、UTF-8 | 业务执行层已具备较好跨平台基础 |
 | Piper | 只准备 `piper_windows_amd64.zip` 与 `piper.exe` | 首期需 feature gate；后续补 macOS arm64 runtime |
 | Browser Native Messaging | `.exe` launcher + Windows Registry | macOS 需独立 launcher 与 Chrome manifest 安装路径 |
@@ -91,6 +92,7 @@ Tauri 当前额外存在以下阻塞：
 - `pnpm smoke:electron:chat:mac` 已从 Sidebar 创建含空格和中文的自定义 Workspace，并通过鉴权 API 核对名称和根路径已持久化；同轮继续通过登录、Composer、普通附件上传、后端落盘与退出清理。
 - `pnpm check` 已能执行，但在 `server/src/services/remote-relay-connector.service.ts:515` 因 Fetch `RequestInit.body` 与 `Buffer<ArrayBufferLike>` 类型不兼容而失败；该既有类型问题不属于依赖安装本身；
 - 当前核查环境没有 Cargo，因此 Tauri macOS 编译尚未验证。
+- Computer Use 浏览器运行时平台缺口已按 [T123](../project-control/tasks/microapp_T123-computer-use-browser-runtime-platformization.md) 修复并实机验证：托管 Chromium 配置按平台分发（win32 → win64、darwin/arm64 → mac-arm64，版本 152.0.7948.0），darwin 探测 `/Applications` 下的 Chrome/Edge，托管记录按当前平台布局校验；`darwin-arm64` 实机用 playwright-core 真实启动托管 Chrome for Testing 与系统 Chrome 均成功，错误安装的 win64 记录被判无效并回落系统浏览器；runtime 定向测试 16 项通过。
 
 Cargo 仍属于核查环境缺口；`remote-relay-connector` 类型错误是当前基线缺陷，不在本轮 macOS 开发态改造中顺带修复。Tauri 工具链只在 Phase 6 前要求补齐。
 
@@ -159,6 +161,7 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 - [x] 修复 macOS Agent Chat 绑定 Workspace 路由测试，并验证根路径传入 Agent runtime。
 - [x] 通过真实 Electron UI 创建自定义 macOS Workspace，并用鉴权 API 验证持久化结果。
 - [x] 合并前复核 Windows 开发、打包、Native Host、release 与 CI 敏感路径无 Mac 差异；Windows 原有命令合同测试保持通过。
+- [x] 修复 Computer Use 浏览器运行时 Windows-only 缺口（T123）：托管 Chromium 配置按平台分发、darwin 系统浏览器探测、托管元数据平台一致性校验、macOS 解压权限恢复；本机错误安装的 win64 托管运行时已清理。
 
 ### 当前进行项
 

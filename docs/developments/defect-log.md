@@ -196,3 +196,47 @@ Related:
 - 补 Provider 配置保存/刷新回填测试；
 - 补聊天侧复用当前服务商尺寸配置的回归测试；
 - 单独建立修复任务后再关闭本技术债。
+
+## 2026-09-08
+
+### macOS 下 Computer Use 浏览器会话创建失败（表现为 "Playwright 调用不起来"）
+
+- Layer: runtime / microapp / computer-use / managed browser
+- Status: Confirmed
+- Severity: High for macOS computer-use browser scenarios
+
+现象：
+
+- macOS 上创建 Computer Use 浏览器会话失败
+- 错误为 `browserType.launch: Failed to launch: Error: spawn .../managed/chromium-152.0.7948.0/chrome-win64/chrome.exe EACCES`
+- 用户感知为 Playwright 无法调用
+
+已确认边界：
+
+- 这不是 Playwright 模块加载问题：`playwright-core@1.61.1` 按 `server/src/microapps/computer-use/executor/playwright.ts` 的加载路径在 macOS 上可正常解析并取得 `chromium.launch`
+- 这不是 Electron / preload / IPC 边界问题
+- 这是 computer-use 浏览器运行时层的平台缺口，共三处：
+  - `DEFAULT_MANAGED_CHROMIUM_CONFIG` 只固定了 win64 的 chrome-for-testing 包
+  - `createDefaultSystemBrowserPaths()` 只探测 Windows 的 chrome.exe / msedge.exe
+  - `inspectManagedRuntime()` 不校验记录与当前平台可执行文件相对路径的一致性
+- 本机 `server/.artifacts/computer-use/runtime/managed/` 存在 2026-08-29 安装的 win64 托管包，`chrome.exe` 实测为 `PE32+ executable (GUI) x86-64, for MS Windows`，通过现有元数据校验被判 ready，但 macOS 无法执行
+- Playwright 自带 Chromium 同样不可用：本机缓存只有 1148/1234 版本，当前 `playwright-core@1.61.1` 需要 1228（备用路径，与本缺陷无直接因果关系）
+
+影响：
+
+- macOS 上 Computer Use 浏览器会话、browser tools、Debugger 浏览器闭环全部不可用
+- 即使清掉错误的托管安装，系统浏览器探测也找不到本机已安装的 `/Applications/Google Chrome.app`
+- Windows 行为不受影响
+
+已完成进展：
+
+- 已定位运行时层三处平台缺口并完成最小复现（模块加载正常、托管启动 EACCES、自带 Chromium 版本不匹配）
+- 已登记修复任务卡：[microapp_T123](../project-control/tasks/microapp_T123-computer-use-browser-runtime-platformization.md)
+- 已登记运行时合同变更决策：[TD-T118-01](../project-control/decisions/TD-T118-01-computer-use-browser-runtime-platform-gap.md)
+- T123 已实施并通过验证：托管 Chromium 配置按平台分发（win64 / mac-arm64，mac sha256 来自真实下载计算）、darwin 系统浏览器探测、托管元数据平台一致性校验、macOS 解压权限恢复；定向测试 16 项通过，`darwin-arm64` 实机以 playwright-core 真实启动托管 Chrome for Testing 152.0.7948.0 与系统 Chrome 均成功
+- 本机错误安装的 win64 托管运行时已清理（`server/.artifacts/computer-use/runtime/managed/`）
+
+下一步：
+
+- Windows 侧未实机复测，仅合同级回归（配置值与探测路径不变 + 测试覆盖）；Windows 实机复测在下一轮 Windows 任务包中顺带完成
+- darwin x64 / linux 托管包配置保持显式缺失（按 TD-T118-01），出现平台需求时再立项

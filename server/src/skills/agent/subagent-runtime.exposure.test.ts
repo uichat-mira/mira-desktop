@@ -191,6 +191,22 @@ describe("prepareSubAgent GitHub exposure", () => {
     expect(prepared.missingCapabilities).toEqual([]);
   });
 
+  it("preserves the parent AgentRun cancellation signal in subAgent execution", () => {
+    registerGitHubTools();
+    const controller = new AbortController();
+
+    const prepared = prepareSubAgent({
+      goal: "Inspect dangjingtao/uichat-mira",
+      skillContext: createGitHubSkillContext("built-in"),
+      exposedHarnessToolIds: [],
+      signal: controller.signal,
+    });
+
+    expect(prepared.execution.signal).toBe(controller.signal);
+    controller.abort();
+    expect(prepared.execution.signal?.aborted).toBe(true);
+  });
+
   it("adds the resource reader only when the active Skill actually has resources", () => {
     registerGitHubTools();
 
@@ -264,7 +280,7 @@ describe("prepareSubAgent GitHub exposure", () => {
   });
 });
 
-describe("Ark Plan provider-visible schemas", () => {
+describe("provider-visible tool schema projection", () => {
   const composedSchema = {
     oneOf: [
       {
@@ -284,7 +300,7 @@ describe("Ark Plan provider-visible schemas", () => {
     ],
   };
 
-  it("projects composition only for Ark Plan while preserving every variant field", () => {
+  it("projects a top-level composition into a type:object schema while preserving every variant field", () => {
     expect(
       projectPiProviderVisibleToolSchema({
         schema: composedSchema,
@@ -314,7 +330,7 @@ describe("Ark Plan provider-visible schemas", () => {
     ).toBe(composedSchema);
   });
 
-  it("retains GitHub write fields in the Ark-only compatibility projection", () => {
+  it("retains GitHub write fields in the compatibility projection", () => {
     const projected = projectPiProviderVisibleToolSchema({
       schema: githubRepositoryTool.definition.inputSchema,
       projectComplexToolSchemas: true,

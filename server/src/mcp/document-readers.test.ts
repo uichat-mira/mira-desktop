@@ -10,12 +10,17 @@ import {
   readStructuredDocument,
 } from "./document-readers.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
+import {
+  hasPdfTextTooling,
+  hasPythonOfficeTooling,
+  resolveExternalToolingPython,
+} from "@/test-support/external-tooling.js";
 
 const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-document-readers");
 
 const createDocx = (filePath: string, text: string) => {
   execFileSync(
-    "python",
+    resolveExternalToolingPython(),
     [
       "-c",
       [
@@ -95,7 +100,7 @@ describe("document readers", () => {
     expect(result.metadata.binary).toBe(true);
   });
 
-  it("uses structured readers for office documents", async () => {
+  it.skipIf(!hasPythonOfficeTooling())("uses structured readers for office documents", async () => {
     const docxPath = path.join(tempRoot, "sample.docx");
     createDocx(docxPath, "Hello Docx");
 
@@ -104,20 +109,23 @@ describe("document readers", () => {
     const sheet = XLSX.utils.aoa_to_sheet([["Name", "Value"], ["A", "1"]]);
     XLSX.utils.book_append_sheet(workbook, sheet, "Sheet1");
     XLSX.writeFile(workbook, xlsxPath);
-    const pdfPath = path.join(tempRoot, "sample.pdf");
-    createPdf(pdfPath, "Hello Pdf");
 
     const docxResult = await readStructuredDocument(createHarnessEnvironmentSnapshot(), docxPath);
     expect(docxResult.text).toContain("Hello Docx");
     expect(docxResult.metadata.readerStrategy).toBe("docx-cli-extract");
 
-    const pdfResult = await readStructuredDocument(createHarnessEnvironmentSnapshot(), pdfPath);
-    expect(pdfResult.text).toContain("Hello Pdf");
-    expect(pdfResult.metadata.readerStrategy).toBe("pdf-cli-extract");
-
     const xlsxResult = await readStructuredDocument(createHarnessEnvironmentSnapshot(), xlsxPath);
     expect(xlsxResult.text).toContain("Sheet Sheet1");
     expect(xlsxResult.metadata.readerStrategy).toBe("xlsx-cli-extract");
+  });
+
+  it.skipIf(!hasPdfTextTooling())("uses the PDF CLI reader when pdftotext is available", async () => {
+    const pdfPath = path.join(tempRoot, "sample.pdf");
+    createPdf(pdfPath, "Hello Pdf");
+
+    const pdfResult = await readStructuredDocument(createHarnessEnvironmentSnapshot(), pdfPath);
+    expect(pdfResult.text).toContain("Hello Pdf");
+    expect(pdfResult.metadata.readerStrategy).toBe("pdf-cli-extract");
   });
 
   it("lists directory entries with stable ordering and metadata", () => {

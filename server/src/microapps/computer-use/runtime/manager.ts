@@ -9,7 +9,7 @@ import type {
   BrowserRuntimeStatus,
   ManagedChromiumConfig,
 } from "./types.js";
-import { DEFAULT_MANAGED_CHROMIUM_CONFIG } from "./types.js";
+import { resolveManagedChromiumConfig } from "./types.js";
 
 const METADATA_FILE = "managed-chromium.json";
 
@@ -57,7 +57,7 @@ const isSafeRelativePath = (relativePath: string) => {
   return !relativePath.split(/[\\/]+/).some((segment) => segment === "..");
 };
 
-const createDefaultSystemBrowserPaths = () => {
+const createWindowsSystemBrowserPaths = () => {
   const programFiles = process.env.PROGRAMFILES ?? "C:\\Program Files";
   const programFilesX86 =
     process.env["PROGRAMFILES(X86)"] ?? "C:\\Program Files (x86)";
@@ -124,6 +124,37 @@ const createDefaultSystemBrowserPaths = () => {
   ];
 };
 
+export const createDefaultSystemBrowserPaths = (
+  platform: NodeJS.Platform = process.platform,
+): NonNullable<BrowserRuntimeManagerOptions["systemBrowserPaths"]> => {
+  if (platform === "darwin") {
+    return [
+      {
+        channel: "chrome" as const,
+        executablePath:
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        version: "system-detected",
+      },
+      {
+        channel: "edge" as const,
+        executablePath:
+          "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        version: "system-detected",
+      },
+    ];
+  }
+  if (platform === "win32") {
+    return createWindowsSystemBrowserPaths();
+  }
+  return [];
+};
+
+// zip external attributes 的高 16 位是 unix mode+type；DOS 打包的 zip 高位为 0。
+const unixModeFromZipAttr = (attr: number | undefined) => {
+  if (typeof attr !== "number" || !Number.isFinite(attr)) return 0;
+  return (attr >>> 16) & 0o777;
+};
+
 export class ComputerUseRuntimeManager {
   private readonly storageRoot: string;
   private readonly managedRoot: string;
@@ -131,7 +162,9 @@ export class ComputerUseRuntimeManager {
   private readonly metadataPath: string;
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => Date;
-  private readonly managedRuntimeConfig: ManagedChromiumConfig;
+  private readonly platform: NodeJS.Platform;
+  private readonly arch: string;
+  private readonly managedRuntimeConfig: ManagedChromiumConfig | undefined;
   private readonly systemBrowserPaths: BrowserRuntimeManagerOptions["systemBrowserPaths"];
   private readonly archiveEntriesReader: NonNullable<
     BrowserRuntimeManagerOptions["archiveEntriesReader"]
@@ -144,16 +177,27 @@ export class ComputerUseRuntimeManager {
     this.metadataPath = path.join(this.managedRoot, METADATA_FILE);
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.now = options.now ?? (() => new Date());
+    this.platform = options.platform ?? process.platform;
+    this.arch = options.arch ?? process.arch;
     this.managedRuntimeConfig =
-      options.managedRuntimeConfig ?? DEFAULT_MANAGED_CHROMIUM_CONFIG;
+      options.managedRuntimeConfig ??
+      resolveManagedChromiumConfig({
+        platform: this.platform,
+        arch: this.arch,
+      });
     this.systemBrowserPaths =
-      options.systemBrowserPaths ?? createDefaultSystemBrowserPaths();
+      options.systemBrowserPaths ?? createDefaultSystemBrowserPaths(this.platform);
     this.archiveEntriesReader =
       options.archiveEntriesReader ??
       ((archiveFilePath) => new AdmZip(archiveFilePath).getEntries());
   }
 
   inspectManagedRuntime(): BrowserRuntimeRecord | null {
+    const config = this.managedRuntimeConfig;
+    if (!config) {
+      return null;
+    }
+
     if (!fs.existsSync(this.metadataPath)) {
       return null;
     }
@@ -165,18 +209,21 @@ export class ComputerUseRuntimeManager {
       return null;
     }
 
-    const expectedRoot = path.join(
+    // 记录的可执行文件必须与当前平台的托管包布局完全一致；
+    // 跨平台错误安装的记录（例如 macOS 上的 win64 记录）必须判无效，不得伪装 ready。
+    const expectedExecutablePath = path.join(
       this.managedRoot,
-      `chromium-${this.managedRuntimeConfig.version}`,
+      `chromium-${config.version}`,
+      config.executableRelativePath,
     );
     if (
       parsed.source !== "managed" ||
       parsed.channel !== "chromium" ||
-      parsed.version !== this.managedRuntimeConfig.version ||
+      parsed.version !== config.version ||
       parsed.archiveSha256?.toLowerCase() !==
-        this.managedRuntimeConfig.archiveSha256.toLowerCase() ||
+        config.archiveSha256.toLowerCase() ||
       !parsed.executablePath ||
-      !isWithin(expectedRoot, parsed.executablePath) ||
+      path.resolve(parsed.executablePath) !== path.resolve(expectedExecutablePath) ||
       !isRegularFile(parsed.executablePath)
     ) {
       return null;
@@ -227,8 +274,9 @@ export class ComputerUseRuntimeManager {
       status: "not_installed",
       strategy: "download",
       inspectedCandidates,
-      reason:
-        "No managed Chromium or supported system browser was found. Install managed Chromium before execution.",
+      reason: this.managedRuntimeConfig
+        ? "No managed Chromium or supported system browser was found. Install managed Chromium before execution."
+        : `Managed Chromium is not configured for this platform (${this.platform}/${this.arch}). Install a supported system browser (Chrome or Edge) to enable browser sessions.`,
     };
   }
 
@@ -237,6 +285,11 @@ export class ComputerUseRuntimeManager {
     options?: { force?: boolean },
   ): Promise<BrowserRuntimeRecord> {
     const config = this.managedRuntimeConfig;
+    if (!config) {
+      throw new Error(
+        `Managed Chromium is not configured for this platform (${this.platform}/${this.arch}). Cannot install a managed browser runtime.`,
+      );
+    }
     if (
       request &&
       (request.version !== config.version ||
@@ -292,6 +345,11 @@ export class ComputerUseRuntimeManager {
       }
 
       ensureDir(partialRoot);
+      const applyUnixMode = (targetPath: string, mode: number) => {
+        // 仅非 Windows 平台应用 zip 内 unix 权限；Windows 下 chmod 无对应语义。
+        if (this.platform === "win32" || mode === 0) return;
+        fs.chmodSync(targetPath, mode);
+      };
       for (const entry of this.archiveEntriesReader(archiveFilePath)) {
         const normalizedEntryName = entry.entryName.replace(/\\/g, "/");
         if (
@@ -302,17 +360,24 @@ export class ComputerUseRuntimeManager {
         }
 
         const targetPath = resolveInsideRoot(partialRoot, normalizedEntryName);
+        const unixMode = unixModeFromZipAttr(entry.attr);
         if (entry.isDirectory) {
           ensureDir(targetPath);
+          applyUnixMode(targetPath, unixMode);
           continue;
         }
         ensureDir(path.dirname(targetPath));
         fs.writeFileSync(targetPath, entry.getData());
+        applyUnixMode(targetPath, unixMode);
       }
 
       const executablePath = path.join(partialRoot, config.executableRelativePath);
       if (!isWithin(partialRoot, executablePath) || !isRegularFile(executablePath)) {
         throw new Error("Browser runtime executable was not found after extraction.");
+      }
+      // 非 Windows 平台兜底确保主程序可执行，否则后续 launch 会以 EACCES 失败。
+      if (this.platform !== "win32") {
+        fs.chmodSync(executablePath, 0o755);
       }
 
       fs.rmSync(installRoot, { recursive: true, force: true });

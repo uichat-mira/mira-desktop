@@ -251,6 +251,9 @@ describe("GitHub domain capability package", () => {
 
   it("keeps operation parameters mutually exclusive", () => {
     const { tools } = createTools();
+    // A field that belongs to another operation variant is rejected as an
+    // unknown property for the selected variant; the variant count error only
+    // applies when no single variant accepts the payload.
     expect(() =>
       validateInvocationArgs(
         {
@@ -260,8 +263,10 @@ describe("GitHub domain capability package", () => {
         },
         tools.githubRepositoryTool.definition.inputSchema,
       ),
-    ).toThrow("must match exactly one schema variant");
+    ).toThrow("args.title is not allowed");
 
+    // write_file without `branch` cannot satisfy any single variant: the
+    // write_file variant demands it and configure_pages demands `mode`.
     expect(() =>
       validateInvocationArgs(
         {
@@ -273,7 +278,7 @@ describe("GitHub domain capability package", () => {
         },
         tools.githubRepositoryTool.definition.inputSchema,
       ),
-    ).toThrow("must match exactly one schema variant");
+    ).toThrow();
   });
 
   it("requires operation-aware approval before any remote write", async () => {

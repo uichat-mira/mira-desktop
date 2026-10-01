@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { executeSandboxedCommand } from "./executor.js";
+import { executeSandboxedCommand, resolveSandboxEnv } from "./executor.js";
 import { clearWorkspaceSelection } from "@/mcp/workspace.js";
 import { getTestArtifactDir } from "@/test-support/artifacts.js";
 
@@ -80,6 +80,7 @@ describe("SandboxExecutor", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     delete process.env.UI_CHAT_WORKSPACE_ROOT;
     clearWorkspaceSelection();
     vi.restoreAllMocks();
@@ -288,6 +289,25 @@ describe("SandboxExecutor", () => {
     ).rejects.toThrow("cwd must be a relative workspace directory without parent traversal");
     expect(sandboxMocks.spawnMock).not.toHaveBeenCalled();
   });
+
+  it.skipIf(process.platform !== "win32")(
+    "preserves PSModulePath for Windows PowerShell without leaking arbitrary variables",
+    () => {
+      vi.stubEnv(
+        "PSModulePath",
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules",
+      );
+
+      const env = resolveSandboxEnv({
+        RAG_DEMO_UNLISTED_SECRET: "should-not-pass",
+      });
+
+      expect(env.PSModulePath).toBe(
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules",
+      );
+      expect(env).not.toHaveProperty("RAG_DEMO_UNLISTED_SECRET");
+    },
+  );
 
   it("filters env overrides to the sandbox allowlist", async () => {
     const child = createMockSpawnProcess();

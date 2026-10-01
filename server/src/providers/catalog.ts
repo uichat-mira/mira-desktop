@@ -23,6 +23,10 @@ export type ProviderEmbeddingAdapter =
   | "none";
 export type ProviderRerankAdapter = "openai-compatible" | "none";
 export type ProviderImageAdapter = "openai-images" | "none";
+export type PlannerStructuredOutputAdapter =
+  | "none"
+  | "ollama-json-schema"
+  | "ark-json-schema";
 
 export interface ProviderCapabilitySummary {
   syncAdapter: ProviderSyncAdapter;
@@ -42,6 +46,7 @@ export interface ProviderDefinition {
   embeddingAdapter: ProviderEmbeddingAdapter;
   rerankAdapter: ProviderRerankAdapter;
   imageAdapter: ProviderImageAdapter;
+  plannerStructuredOutputAdapter: PlannerStructuredOutputAdapter;
   supportedRoles?: ModelType[];
   callableModelIdPrefix?: string;
 }
@@ -59,6 +64,7 @@ export const PROVIDER_DEFINITIONS = {
     embeddingAdapter: "ollama",
     rerankAdapter: "none",
     imageAdapter: "none",
+    plannerStructuredOutputAdapter: "ollama-json-schema",
   },
   lmstudio: {
     code: "lmstudio",
@@ -69,6 +75,7 @@ export const PROVIDER_DEFINITIONS = {
     embeddingAdapter: "openai-compatible",
     rerankAdapter: "none",
     imageAdapter: "none",
+    plannerStructuredOutputAdapter: "none",
   },
   openai: {
     code: "openai",
@@ -79,6 +86,7 @@ export const PROVIDER_DEFINITIONS = {
     embeddingAdapter: "openai-compatible",
     rerankAdapter: "none",
     imageAdapter: "openai-images",
+    plannerStructuredOutputAdapter: "none",
   },
   google: {
     code: "google",
@@ -89,6 +97,7 @@ export const PROVIDER_DEFINITIONS = {
     embeddingAdapter: "openai-compatible",
     rerankAdapter: "none",
     imageAdapter: "none",
+    plannerStructuredOutputAdapter: "none",
   },
   cloudflare: {
     code: "cloudflare",
@@ -100,6 +109,7 @@ export const PROVIDER_DEFINITIONS = {
     embeddingAdapter: "cloudflare",
     rerankAdapter: "none",
     imageAdapter: "none",
+    plannerStructuredOutputAdapter: "none",
     callableModelIdPrefix: "@cf/",
   },
   volcengine: {
@@ -111,6 +121,7 @@ export const PROVIDER_DEFINITIONS = {
     embeddingAdapter: "openai-compatible",
     rerankAdapter: "openai-compatible",
     imageAdapter: "openai-images",
+    plannerStructuredOutputAdapter: "none",
   },
   "volcengine-code-plan": {
     code: "volcengine-code-plan",
@@ -121,6 +132,7 @@ export const PROVIDER_DEFINITIONS = {
     embeddingAdapter: "none",
     rerankAdapter: "none",
     imageAdapter: "none",
+    plannerStructuredOutputAdapter: "ark-json-schema",
     supportedRoles: ["llm", "task", "agentTask", "evaluation"],
   },
   "volcengine-agent-plan": {
@@ -132,6 +144,7 @@ export const PROVIDER_DEFINITIONS = {
     embeddingAdapter: "none",
     rerankAdapter: "none",
     imageAdapter: "none",
+    plannerStructuredOutputAdapter: "ark-json-schema",
     supportedRoles: ["llm", "task", "agentTask", "evaluation"],
   },
   "openai-compatible-custom": {
@@ -143,6 +156,7 @@ export const PROVIDER_DEFINITIONS = {
     embeddingAdapter: "openai-compatible",
     rerankAdapter: "openai-compatible",
     imageAdapter: "openai-images",
+    plannerStructuredOutputAdapter: "none",
   },
 } satisfies Record<ProviderTemplateCode, ProviderDefinition>;
 
@@ -201,6 +215,11 @@ export const getProviderDisplayName = (providerCode: ProviderCode) =>
 
 export const getProviderDefaultBaseUrl = (providerCode: ProviderCode) =>
   getProviderDefinition(providerCode).defaultBaseUrl;
+
+export const getPlannerStructuredOutputAdapter = (
+  templateCode: ProviderTemplateCode,
+): PlannerStructuredOutputAdapter =>
+  getProviderTemplateDefinition(templateCode).plannerStructuredOutputAdapter;
 
 export const getProviderCapabilities = (
   providerCode: ProviderTemplateCode,

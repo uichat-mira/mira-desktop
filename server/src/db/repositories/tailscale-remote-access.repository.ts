@@ -8,6 +8,10 @@ export const REMOTE_DEVICE_SCOPES = [
   "agent:read",
   "agent:approve",
   "agent:control",
+  "tools:read",
+  "tools:invoke",
+  "tools:approve",
+  "tools:control",
   "artifacts:read",
 ] as const;
 

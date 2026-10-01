@@ -1244,6 +1244,28 @@ export const threadsRelations = relations(threads, ({ many, one }) => ({
 export type Thread = typeof threads.$inferSelect;
 export type NewThread = typeof threads.$inferInsert;
 
+export const conversationArtifacts = sqliteTable(
+  "conversation_artifacts",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    sourceRootPath: text("source_root_path").notNull(),
+    sourceRelativePath: text("source_relative_path").notNull(),
+    lifecycle: text("lifecycle", { enum: ["temporary", "final"] as const }).notNull(),
+    mimeType: text("mime_type"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => ({
+    threadIdx: index("idx_conversation_artifacts_thread_id").on(table.threadId),
+    sourceRootIdx: index("idx_conversation_artifacts_source_root_path").on(table.sourceRootPath),
+  }),
+);
+
+export type ConversationArtifact = typeof conversationArtifacts.$inferSelect;
+export type NewConversationArtifact = typeof conversationArtifacts.$inferInsert;
+
 export const chatWorkspacesRelations = relations(
   chatWorkspaces,
   ({ many, one }) => ({

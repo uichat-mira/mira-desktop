@@ -1,7 +1,7 @@
 ---
 status: current
 owner: chat / runtime
-last_verified: 2026-08-01
+last_verified: 2026-10-01
 layer: wiki
 module: Chat
 feature: ChatRuntimeTruth
@@ -86,9 +86,15 @@ Chat Workspace 保存数据库 id、userId、名称、rootPath、状态和时间
 
 `workspaceId` 是数据库 id，不是文件系统路径。实际路径在 `chat_workspaces.root_path`。
 
-Agent Thread 必须有 Workspace。启用 Agent 时若没有显式选择，backend 会复用或创建名为 `Mira BASE` 的默认 Workspace，并绑定当前 Harness workspace root。
+Agent Thread 可以显式绑定 ChatWorkspace，也可以保持 `workspaceId = null`。
 
-普通 Chat Thread 可以不绑定 Workspace。
+- 有显式 `workspaceId`：Agent / Tool 使用对应 ChatWorkspace 的 `rootPath`；
+- 没有显式 `workspaceId`：Agent 使用当前对话自己的私有执行 namespace，不自动绑定共享 `Mira BASE`；
+- 私有 namespace 是 Runtime 内部执行空间，不进入 ChatWorkspace 列表、Picker 或侧栏分组。
+
+未绑定 Agent 使用 deterministic private workspace root；`conversation-workdirs` 仅保留为兼容既有本地文件的磁盘目录名，不再存在独立 `Conversation Workdir` 数据库/runtime identity。AgentRun 只冻结 `workspaceRoot`，Artifact 只冻结创建时的 `sourceRootPath + sourceRelativePath`。
+
+普通 Chat Thread 仍可以不绑定 Workspace。
 
 ### 2.2 `Thread`
 
@@ -114,10 +120,10 @@ updatedAt
 
 | 字段 | 当前作用 |
 | --- | --- |
-| `workspaceId` | Agent / Tool 的默认执行空间 |
+| `workspaceId` | 用户显式选择的 ChatWorkspace；Agent 为 null 时改用对话私有执行 namespace |
 | `knowledgeBaseId` | 非 Agent 时选择 RAG；Agent 时作为检索输入 |
 | `roleId` | 注入 Role prompt；在 Normal / Agent persisted path 合并数值生成参数 |
-| `agentEnabled` | 选择 Agent Chat |
+| `agentEnabled` | 持久化 Thread 的执行路径选择；Desktop 新对话 draft 默认 `true`，历史 Thread 已持久化的 `false` 继续保留 legacy Normal/RAG compatibility |
 | `ttsEnabled` | Assistant 成功后异步生成语音 |
 | `imageEnabled` | 满足条件时 Assistant 成功后异步生成图片 |
 | `contextSummary` | 作为 request-only system context 注入 |
@@ -198,7 +204,9 @@ Core 不认识 Mira route、Provider、Knowledge Base、Role、TTS、Image 或 A
 activeThreadId = null
 ```
 
-第一条真实发送才创建数据库 Thread。打开欢迎页不制造空历史。
+Desktop Welcome draft 的 `agentEnabled` 默认是 `true`。单纯进入 Welcome 不会预创建数据库 Thread；首次发送会按当前 draft 创建 Thread 并写入该选择。若用户在发送前执行了需要持久 Thread 的显式操作（例如绑定 Workspace），Thread 可由该操作提前创建。重新进入“新对话”会恢复 Agent 默认值。
+
+已有 Thread 不跟随 Welcome 默认值重写；其执行路径继续由持久化的 `agentEnabled` 决定，因此历史 `agentEnabled=false` Thread 仍保留 Normal/RAG compatibility。
 
 ## 4. 三条发送路径
 
@@ -397,6 +405,25 @@ Image part 保持图片输入协议；具体模型能否理解图片由 concrete
 - 上传完成但未发送或从 Composer 移除：没有 attachment delete API，文件残留；
 - Message / Thread 删除 helper 只处理 File part，不处理普通 Image attachment；
 - 没有统一 asset reference table、引用计数或周期 GC。
+
+## 8.1 默认 Agent 的前台表达
+
+Desktop 新对话默认进入 Agent Runtime，但当前 UI 不把主发送动作呈现为另一种特殊提交：Agent-enabled 与 Compatibility Chat 都使用普通“发送”语义。
+
+Agent toggle 在 E05A 阶段仍保留，作用是 compatibility escape hatch：
+
+- `agentEnabled=true`：默认 Agent Runtime，保留 Skill / Toolkit composer 能力；
+- `agentEnabled=false`：显式显示 Compatibility Chat，继续保留历史 Normal / legacy RAG 行为；
+- E05A 不迁移已有 `agentEnabled=false` Thread，也不删除 legacy route。
+
+这层兼容存在是为了阶段收口，不是长期产品目标；删除条件由 E05B 决定。
+
+Role 手动图片生成入口不再依赖 `agentEnabled`。它与自动图片后处理使用同一真实资格边界：
+
+```text
+roleId exists
++ no knowledgeBaseId
+```
 
 ## 9. TTS 与图片后处理
 

@@ -156,6 +156,8 @@ export type SkillAgentExecutionInput = {
   turnId?: string;
   approvedInvocations?: SkillAgentApprovedInvocation[];
   checkpoint?: SkillAgentCheckpoint;
+  /** Parent AgentRun cancellation boundary, propagated into subAgent tool execution. */
+  signal?: AbortSignal;
   onRuntimeEvent?: (event: SubAgentRuntimeEvent) => Promise<void> | void;
 };
 

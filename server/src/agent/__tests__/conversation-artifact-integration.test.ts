@@ -1,0 +1,327 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, beforeEach, test, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  runAgentRuntime: vi.fn(),
+}));
+
+vi.mock("../runtime", () => ({
+  runAgentRuntime: mocks.runAgentRuntime,
+}));
+
+import { getDb, resetDatabaseClients } from "@/db/index.js";
+import { initializeAuthDatabase } from "@/db/auth.db";
+import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
+import { initializeModelConfigDatabase } from "@/db/model-config.db";
+import { initializeRoleDatabase } from "@/db/role.db";
+import { initializeThreadDatabase } from "@/db/thread.db";
+import { conversationArtifacts } from "@/db/schema.js";
+import {
+  agentRunRepository,
+  chatWorkspaceRepository,
+  threadRepository,
+  userRepository,
+} from "@/db/repositories/index.js";
+import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
+import { conversationArtifactService } from "@/services/conversation-artifact.service.js";
+import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
+import { readConversationArtifact } from "@/services/conversation-artifact-read.service.js";
+import { createAndRunAgent } from "../index.js";
+import { agentRunStore } from "../run-store.js";
+import type { AgentGraphOutput } from "../types.js";
+
+const originalDatabaseUrl = process.env.DATABASE_URL;
+let dbPath = "";
+
+const output = (): AgentGraphOutput => ({
+  answer: "done",
+  observations: [],
+  evidence: { observations: [], toolExecutions: [], retrievals: [] },
+  retrievedChunks: [],
+  status: "completed",
+});
+
+const initializeTestDatabase = () => {
+  dbPath = createTimestampedTestArtifactPath(
+    "db",
+    `conversation-artifact-integration-${process.pid}-${Date.now()}`,
+    ".sqlite",
+  );
+  process.env.DATABASE_URL = `file:${dbPath}`;
+  resetDatabaseClients();
+  initializeAuthDatabase();
+  initializeModelConfigDatabase();
+  initializeKnowledgeBaseDatabase();
+  initializeRoleDatabase();
+  initializeThreadDatabase();
+};
+
+beforeEach(() => {
+  initializeTestDatabase();
+  agentRunStore.clear();
+});
+
+afterEach(() => {
+  agentRunStore.clear();
+  resetDatabaseClients();
+  if (originalDatabaseUrl) process.env.DATABASE_URL = originalDatabaseUrl;
+  else delete process.env.DATABASE_URL;
+  for (const suffix of ["", "-wal", "-shm"]) {
+    fs.rmSync(`${dbPath}${suffix}`, { force: true });
+  }
+  dbPath = "";
+  mocks.runAgentRuntime.mockReset();
+});
+
+test("registers explicit final runtime output and reads it after reload", async () => {
+  const user = userRepository.create({
+    username: `artifact-runtime-${Date.now()}`,
+    passwordHash: "x",
+    role: "user",
+  });
+  const thread = threadRepository.create({ userId: user.id, title: "runtime artifact" });
+
+  mocks.runAgentRuntime.mockImplementation(async (input) => {
+    assert.ok(input.workspaceRoot);
+    fs.writeFileSync(
+      path.join(input.workspaceRoot, "final.txt"),
+      "final payload",
+    );
+    fs.writeFileSync(
+      path.join(input.workspaceRoot, "temporary.tmp"),
+      "temporary payload",
+    );
+    fs.writeFileSync(
+      path.join(input.workspaceRoot, "summary.txt"),
+      "summary payload",
+    );
+    return {
+      ...output(),
+      workspaceOutputs: [
+        { sourceRelativePath: "temporary.tmp", lifecycle: "temporary" },
+        { sourceRelativePath: "final.txt", lifecycle: "final", mimeType: "text/plain" },
+        { sourceRelativePath: "summary.txt", lifecycle: "final", mimeType: "text/plain" },
+      ],
+    };
+  });
+
+  const result = await createAndRunAgent({
+    threadId: thread.id,
+    userId: user.id,
+    workspaceRoot: privateAgentWorkspaceService.ensure({
+      threadId: thread.id,
+      userId: user.id,
+    }),
+    goalText: "produce a report",
+    messages: [
+      {
+        role: "user",
+        content: "produce a report",
+        parts: [{ type: "text", text: "produce a report" }],
+      },
+    ],
+  });
+
+  assert.equal(result.output.conversationArtifacts?.length, 2);
+  const reference = result.output.conversationArtifacts?.find(
+    (artifact) => artifact.sourceRelativePath === "final.txt",
+  );
+  assert.ok(reference);
+  assert.equal(reference.sourceRelativePath, "final.txt");
+  assert.equal("absolutePath" in reference, false);
+  assert.equal(
+    getDb().select().from(conversationArtifacts).all().length,
+    2,
+  );
+  assert.equal(result.run.runtimeInput?.workspaceRoot?.endsWith(thread.id), true);
+  assert.equal(
+    Boolean(
+      result.run.runtimeInput &&
+        "conversationWorkdir" in result.run.runtimeInput,
+    ),
+    false,
+  );
+
+  agentRunStore.clear();
+  resetDatabaseClients();
+  initializeAuthDatabase();
+  initializeModelConfigDatabase();
+  initializeKnowledgeBaseDatabase();
+  initializeRoleDatabase();
+  initializeThreadDatabase();
+
+  const reloadedRun = agentRunRepository.get(result.run.id);
+  assert.equal(reloadedRun?.runtimeInput?.workspaceRoot?.endsWith(thread.id), true);
+  assert.equal(
+    Boolean(
+      reloadedRun?.runtimeInput &&
+        "conversationWorkdir" in reloadedRun.runtimeInput,
+    ),
+    false,
+  );
+
+  const readBack = readConversationArtifact({
+    id: reference.id,
+    threadId: thread.id,
+    userId: user.id,
+  });
+  assert.deepEqual(readBack.reference, reference);
+  assert.equal(readBack.contents.toString(), "final payload");
+  assert.equal(
+    conversationArtifactService.resolve({
+      id: reference.id,
+      threadId: thread.id,
+      userId: user.id,
+    }).reference.id,
+    reference.id,
+  );
+});
+
+test("registers final output against the AgentRun frozen explicit Workspace root", async () => {
+  const user = userRepository.create({
+    username: `artifact-explicit-frozen-${Date.now()}`,
+    passwordHash: "x",
+    role: "user",
+  });
+  const thread = threadRepository.create({
+    userId: user.id,
+    title: "frozen explicit artifact",
+  });
+  const explicitRootA = path.join(
+    path.dirname(dbPath),
+    `explicit-a-${crypto.randomUUID()}`,
+  );
+  const explicitRootB = path.join(
+    path.dirname(dbPath),
+    `explicit-b-${crypto.randomUUID()}`,
+  );
+  fs.mkdirSync(explicitRootA, { recursive: true });
+  fs.mkdirSync(explicitRootB, { recursive: true });
+
+  const workspace = chatWorkspaceRepository.create({
+    userId: user.id,
+    name: "Explicit",
+    rootPath: explicitRootA,
+    status: "active",
+  });
+  threadRepository.updateById(thread.id, { workspaceId: workspace.id });
+
+  mocks.runAgentRuntime.mockImplementation(async (input) => {
+    assert.equal(input.workspaceRoot, explicitRootA);
+    fs.writeFileSync(path.join(explicitRootA, "final.txt"), "frozen-root");
+    chatWorkspaceRepository.updateById(workspace.id, {
+      rootPath: explicitRootB,
+    });
+    return {
+      ...output(),
+      workspaceOutputs: [
+        { sourceRelativePath: "final.txt", lifecycle: "final" },
+      ],
+    };
+  });
+
+  try {
+    const result = await createAndRunAgent({
+      threadId: thread.id,
+      userId: user.id,
+      workspaceRoot: explicitRootA,
+      goalText: "produce a stable artifact",
+      messages: [
+        {
+          role: "user",
+          content: "produce a stable artifact",
+          parts: [{ type: "text", text: "produce a stable artifact" }],
+        },
+      ],
+    });
+
+    const reference = result.output.conversationArtifacts?.[0];
+    assert.ok(reference);
+    assert.equal(
+      chatWorkspaceRepository.findById(workspace.id, user.id)?.rootPath,
+      explicitRootB,
+    );
+
+    const resolved = conversationArtifactService.resolve({
+      id: reference.id,
+      threadId: thread.id,
+      userId: user.id,
+    });
+    assert.equal(resolved.absolutePath, path.join(fs.realpathSync(explicitRootA), "final.txt"));
+    assert.equal(fs.readFileSync(resolved.absolutePath, "utf8"), "frozen-root");
+  } finally {
+    fs.rmSync(explicitRootA, { recursive: true, force: true });
+    fs.rmSync(explicitRootB, { recursive: true, force: true });
+  }
+});
+
+test("does not promote temporary runtime output", async () => {
+  const user = userRepository.create({
+    username: `artifact-runtime-temp-${Date.now()}`,
+    passwordHash: "x",
+    role: "user",
+  });
+  const thread = threadRepository.create({ userId: user.id, title: "runtime temporary" });
+  mocks.runAgentRuntime.mockImplementation(async (input) => {
+    assert.ok(input.workspaceRoot);
+    fs.writeFileSync(path.join(input.workspaceRoot, "temporary.tmp"), "tmp");
+    return {
+      ...output(),
+      workspaceOutputs: [
+        { sourceRelativePath: "temporary.tmp", lifecycle: "temporary" },
+      ],
+    };
+  });
+
+  const result = await createAndRunAgent({
+    threadId: thread.id,
+    userId: user.id,
+    workspaceRoot: privateAgentWorkspaceService.ensure({
+      threadId: thread.id,
+      userId: user.id,
+    }),
+    goalText: "temporary work",
+    messages: [{ role: "user", content: "temporary work", parts: [{ type: "text", text: "temporary work" }] }],
+  });
+
+  assert.equal(result.output.conversationArtifacts, undefined);
+  assert.equal(getDb().select().from(conversationArtifacts).all().length, 0);
+});
+
+test("registers multiple final runtime outputs atomically", async () => {
+  const user = userRepository.create({
+    username: `artifact-runtime-batch-${Date.now()}`,
+    passwordHash: "x",
+    role: "user",
+  });
+  const thread = threadRepository.create({ userId: user.id, title: "runtime batch" });
+  mocks.runAgentRuntime.mockImplementation(async (input) => {
+    assert.ok(input.workspaceRoot);
+    fs.writeFileSync(path.join(input.workspaceRoot, "first.txt"), "first");
+    return {
+      ...output(),
+      workspaceOutputs: [
+        { sourceRelativePath: "first.txt", lifecycle: "final" },
+        { sourceRelativePath: "missing.txt", lifecycle: "final" },
+      ],
+    };
+  });
+
+  await assert.rejects(
+    () =>
+      createAndRunAgent({
+        threadId: thread.id,
+        userId: user.id,
+        workspaceRoot: privateAgentWorkspaceService.ensure({
+          threadId: thread.id,
+          userId: user.id,
+        }),
+        goalText: "batch output",
+        messages: [{ role: "user", content: "batch output", parts: [{ type: "text", text: "batch output" }] }],
+      }),
+    /Artifact source is missing/,
+  );
+  assert.equal(getDb().select().from(conversationArtifacts).all().length, 0);
+});

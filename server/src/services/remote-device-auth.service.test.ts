@@ -12,7 +12,13 @@ const device: RemoteDeviceRecord = {
   platform: "android",
   publicKey: null,
   tokenHash: "hash",
-  permissions: ["threads:read", "messages:write", "agent:approve"],
+  permissions: [
+    "threads:read",
+    "messages:write",
+    "agent:approve",
+    "tools:read",
+    "tools:approve",
+  ],
   createdAt: "2026-08-01T00:00:00.000Z",
   lastSeenAt: null,
 };
@@ -58,6 +64,24 @@ describe("remote device route gateway", () => {
         "/threads/thread-1/media/media-1/content",
       ),
     ).toBe("artifacts:read");
+    expect(getRequiredRemoteScope("GET", "/remote/v1/tools")).toBe(
+      "tools:read",
+    );
+    expect(
+      getRequiredRemoteScope("POST", "/remote/v1/tool-invocations/stream"),
+    ).toBe("tools:invoke");
+    expect(
+      getRequiredRemoteScope(
+        "POST",
+        "/remote/v1/tool-invocations/inv-1/approval",
+      ),
+    ).toBe("tools:approve");
+    expect(
+      getRequiredRemoteScope(
+        "POST",
+        "/remote/v1/tool-invocations/inv-1/cancel",
+      ),
+    ).toBe("tools:control");
   });
 
   it("rejects nearby but unadvertised write routes", () => {
@@ -72,6 +96,12 @@ describe("remote device route gateway", () => {
     expect(getRequiredRemoteScope("GET", "/attachments/file-1")).toBeNull();
     expect(getRequiredRemoteScope("GET", "/roles")).toBeNull();
     expect(
+      getRequiredRemoteScope("POST", "/remote/v1/tool-invocations"),
+    ).toBeNull();
+    expect(
+      getRequiredRemoteScope("GET", "/remote/v1/tool-invocations/inv-1"),
+    ).toBeNull();
+    expect(
       getRequiredRemoteScope(
         "POST",
         "/remote/v1/workspaces/workspace-1/threads",
@@ -85,5 +115,9 @@ describe("remote device route gateway", () => {
     expect(remoteDeviceHasScope(device, "messages:write")).toBe(true);
     expect(remoteDeviceHasScope(device, "messages:read")).toBe(false);
     expect(remoteDeviceHasScope(device, "agent:control")).toBe(false);
+    expect(remoteDeviceHasScope(device, "tools:read")).toBe(true);
+    expect(remoteDeviceHasScope(device, "tools:invoke")).toBe(false);
+    expect(remoteDeviceHasScope(device, "tools:approve")).toBe(true);
+    expect(remoteDeviceHasScope(device, "tools:control")).toBe(false);
   });
 });

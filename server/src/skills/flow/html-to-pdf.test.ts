@@ -39,7 +39,10 @@ describe("prepareHtmlForVivliostyle", () => {
   });
 });
 
-describe("Vivliostyle Windows runtime", () => {
+// Vivliostyle resolution here is specified against the Windows packaged
+// layout (.local-runtimes / .artifacts plus .cmd shims). On POSIX hosts the
+// same Windows paths cannot resolve, so this suite is Windows-only.
+describe.skipIf(process.platform !== "win32")("Vivliostyle Windows runtime", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();

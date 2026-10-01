@@ -9,6 +9,7 @@ import type {
 import type { SkillContext } from "@/skills/context/types.js";
 import { resolveSubAgentExecutionProfile } from "@/skills/agent/profiles.js";
 import { runSubAgent } from "@/skills/agent/subagent-runtime.js";
+import { getAgentRunSignal } from "../run-control.js";
 import type {
   SubAgentApprovedInvocation,
   SubAgentCheckpoint,
@@ -347,6 +348,7 @@ export const forkedSkillAgentNode = async (
     threadId: state.threadId,
     approvedInvocations: getReplayApprovedInvocations(state),
     checkpoint,
+    signal: getAgentRunSignal(state.runId, state.runControlLeaseId),
     onRuntimeEvent: (event) =>
       safelyPublishSubAgentRuntimeEvent({
         parentRunId: state.runId,

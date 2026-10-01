@@ -8,6 +8,22 @@ canonical_source: uichat-mira-mobile@dev:docs/remote-access/remote-connection-ca
 canonical_source_branch: dev
 ---
 
+## Current Connection Reliability Truth (2026-09-05)
+
+- A Relay WebSocket that stays idle for roughly 3-4 hours can be closed by an
+  intermediary (Cloudflare edge, carrier NAT, router, or mobile network).
+- The current Desktop host connector has reconnect logic but no application
+  keepalive. This is a known reliability defect, not pairing behavior.
+- The first remediation is a native WebSocket ping from Desktop every 30
+  seconds while the host socket is open. It must be stopped on close, stop, and
+  restart.
+- Mobile must validate and recover its Relay connection when the app returns
+  from background. JavaScript timers are not a guaranteed background keepalive.
+- No business heartbeat frame is added to Relay V1 in this remediation; the
+  native WebSocket control ping keeps the transport contract unchanged.
+- Cloudflare end-to-end idle and background smoke remains required evidence;
+  `/health` only proves the Worker HTTP route is reachable.
+
 # Mira Remote Relay Transport V1
 
 > **Normative source:** the Mobile `dev` branch document at

@@ -68,6 +68,15 @@ const SAFE_ENV_ALLOWLIST = [
   "TERM",
 ] as const;
 
+const WINDOWS_SAFE_ENV_ALLOWLIST = [
+  "PSModulePath",
+] as const;
+
+const getSafeEnvAllowlist = () =>
+  process.platform === "win32"
+    ? [...SAFE_ENV_ALLOWLIST, ...WINDOWS_SAFE_ENV_ALLOWLIST]
+    : [...SAFE_ENV_ALLOWLIST];
+
 const toCombinedOutput = (stdout: string, stderr: string) =>
   [stdout, stderr].filter(Boolean).join("\n").trimEnd();
 
@@ -102,7 +111,7 @@ export const resolveSandboxCwd = (cwd?: string) => {
 };
 
 const findAllowedEnvKey = (inputKey: string) =>
-  SAFE_ENV_ALLOWLIST.find((allowedKey) =>
+  getSafeEnvAllowlist().find((allowedKey) =>
     process.platform === "win32"
       ? allowedKey.toLowerCase() === inputKey.toLowerCase()
       : allowedKey === inputKey,
@@ -125,7 +134,7 @@ const findProcessEnvValue = (inputKey: string) => {
 
 export const resolveSandboxEnv = (overrides?: Record<string, string>) => {
   const base = Object.fromEntries(
-    SAFE_ENV_ALLOWLIST.flatMap((key) => {
+    getSafeEnvAllowlist().flatMap((key) => {
       const value = findProcessEnvValue(key);
       return typeof value === "string" ? [[key, value]] : [];
     }),

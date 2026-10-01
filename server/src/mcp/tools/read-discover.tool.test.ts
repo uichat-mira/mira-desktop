@@ -45,7 +45,14 @@ describe("read_discover tool", () => {
     expect(result.result).not.toHaveProperty("source");
     const matches = (result.result as { matches: Array<{ preview?: string }> }).matches;
     expect(matches.every((match) => (match.preview?.length ?? 0) <= 120)).toBe(true);
-    expect(result.result).toMatchObject({ returnedCount: 2, hasMore: false, truncated: false });
+    // read_discover locate intentionally dispatches searchMode="path", so
+    // only the fast-glob path provider participates. The single guide.md
+    // fixture must therefore produce exactly one candidate on every host.
+    expect(result.result).toMatchObject({
+      returnedCount: 1,
+      hasMore: false,
+      truncated: false,
+    });
   });
 
   it("reports truncation when list results exceed maxResults", async () => {

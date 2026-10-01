@@ -10,10 +10,12 @@ const mockedApis = vi.hoisted(() => ({
   modalConfirmMock: vi.fn(),
   createChatWorkspaceMock: vi.fn(),
   deleteChatWorkspaceMock: vi.fn(),
+  listChatWorkspacesMock: vi.fn(),
   runtimeArchiveThreadMock: vi.fn(),
   runtimeDeleteThreadMock: vi.fn(),
   runtimeSetActiveThreadIdMock: vi.fn(),
   resetDraftMock: vi.fn(),
+  navigateMock: vi.fn(),
   desktopPlatform: "win32",
 }));
 
@@ -34,6 +36,10 @@ const mockSidebarState = {
     deleteThread: true,
   },
 } as const;
+
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => mockedApis.navigateMock,
+}));
 
 vi.mock("@/features/chat/core/runtime", () => ({
   useChatRuntime: () => ({
@@ -58,7 +64,7 @@ vi.mock("@/features/chat/core/runtime", () => ({
 }));
 
 vi.mock("@/shared/api/thread", () => ({
-  listChatWorkspaces: async () => [],
+  listChatWorkspaces: mockedApis.listChatWorkspacesMock,
   createChatWorkspace: mockedApis.createChatWorkspaceMock,
   deleteChatWorkspace: mockedApis.deleteChatWorkspaceMock,
 }));
@@ -91,18 +97,25 @@ vi.mock("@/shared/ui", async () => {
 vi.mock("@/shared/uchat/ui", () => ({
   UChatSidebarView: ({
     sidebarEntries = [],
+    workspaceGroups = [],
     onSidebarEntryClick,
     onCreateWorkspace,
     onDeleteWorkspace,
     onDeleteThread,
   }: {
     sidebarEntries?: Array<{ id: string; label: string }>;
+    workspaceGroups?: Array<{ id: string; name: string }>;
     onSidebarEntryClick?: (entry: { id: string; label: string }) => void | Promise<void>;
     onCreateWorkspace?: () => void | Promise<void>;
     onDeleteWorkspace?: (workspaceId: string) => void | Promise<void>;
     onDeleteThread?: (threadId: string) => void | Promise<void>;
   }) => (
     <div>
+      {workspaceGroups.map((workspace) => (
+        <span key={workspace.id} data-testid="workspace-group">
+          {workspace.name}
+        </span>
+      ))}
       {sidebarEntries.map((entry) => (
         <button
           key={entry.id}
@@ -173,7 +186,44 @@ void i18n.use(initReactI18next).init({
 describe("UChatThreadListSidebar", () => {
   beforeEach(() => {
     mockedApis.createChatWorkspaceMock.mockReset();
+    mockedApis.listChatWorkspacesMock.mockReset();
+    mockedApis.listChatWorkspacesMock.mockResolvedValue([]);
+    mockedApis.navigateMock.mockReset();
     mockedApis.desktopPlatform = "win32";
+  });
+
+  it("hides Mira BASE from workspace groups even when legacy data lacks isDefault", async () => {
+    mockedApis.listChatWorkspacesMock.mockResolvedValue([
+      {
+        id: "workspace-default",
+        name: "Mira BASE",
+        rootPath: "C:\\Users\\tester\\Documents\\UIChat Mira\\Default Workspace",
+        isDefault: false,
+        status: "active",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "workspace-project",
+        name: "Project Alpha",
+        rootPath: "D:\\Project Alpha",
+        isDefault: false,
+        status: "active",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <UChatThreadListSidebar />
+      </I18nextProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Project Alpha")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Mira BASE")).not.toBeInTheDocument();
   });
 
   it("shows confirmation before deleting a thread", async () => {
@@ -271,6 +321,17 @@ describe("UChatThreadListSidebar", () => {
     await user.click(screen.getByRole("button", { name: "Chat Search" }));
 
     expect(screen.getByTestId("sidebar-tools-modal")).toHaveTextContent("search");
+  });
+
+  it("keeps app integrations out of the chat sidebar entries", () => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <UChatThreadListSidebar />
+      </I18nextProvider>,
+    );
+
+    expect(screen.queryByRole("button", { name: "淬行" })).not.toBeInTheDocument();
+    expect(mockedApis.navigateMock).not.toHaveBeenCalled();
   });
 
   it("shows inline validation for invalid workspace root paths", async () => {

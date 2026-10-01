@@ -4,6 +4,7 @@ import {
   getEmbeddingInvocationUrl,
   providerProxyService,
 } from "./index.js";
+import { __streamNormalizerTestUtils } from "./stream-normalizer.js";
 import type { ProviderResolution } from "./types.js";
 
 test("getEmbeddingInvocationUrl reports Cloudflare native run endpoint", () => {
@@ -119,4 +120,26 @@ test("createPersistedChatStream emits execution node events before the final ans
   assert.notEqual(firstExecutionNodeIndex, -1);
   assert.notEqual(textDeltaIndex, -1);
   assert.ok(firstExecutionNodeIndex < textDeltaIndex);
+});
+
+test("chat stream filters think blocks even when tags span deltas", () => {
+  const filter = new __streamNormalizerTestUtils.ThinkTagFilter();
+  const visible = [
+    ...filter.push("before <thi"),
+    ...filter.push("nk>private reasoning"),
+    ...filter.push("</think> after"),
+    ...filter.finish(),
+  ].join("");
+
+  assert.equal(visible, "before  after");
+});
+
+test("chat stream preserves ordinary text and think-tag attributes", () => {
+  const filter = new __streamNormalizerTestUtils.ThinkTagFilter();
+  const visible = [
+    ...filter.push("<think type=\"hidden\">secret</think>Answer"),
+    ...filter.finish(),
+  ].join("");
+
+  assert.equal(visible, "Answer");
 });

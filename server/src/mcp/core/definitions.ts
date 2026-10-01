@@ -224,6 +224,8 @@ export interface McpInvocationRecord {
   toolId: string;
   status: McpInvocationStatus;
   args: Record<string, unknown>;
+  inputHash?: string;
+  userId?: number;
   traceId?: string;
   result?: unknown;
   evidence?: McpToolEvidence;

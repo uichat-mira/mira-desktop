@@ -1,63 +1,73 @@
-# Mira Desktop 分支规范
-
-本仓库遵循 Mira Organization 的统一环境模型。组织级规范以 `uichat-mira/.github` 为准；本文件只记录 Desktop 的仓库级落地方式。
+# Mira GitHub 分支规范
 
 ## 分支职责
 
 | 分支 | 用途 | 允许进入方式 |
 | --- | --- | --- |
-| `prod` | 生产分支 | `test` 或紧急 `hotfix/*` 通过 Pull Request 合入 |
-| `test` | 测试 / 验收分支 | `dev` 或紧急 `hotfix/*` 通过 Pull Request 合入 |
-| `dev` | 日常集成分支 | 工作分支通过 Pull Request 合入 |
-| `feat/*` | 新功能开发，从 `dev` 创建 | 完成后 Pull Request 到 `dev` |
-| `fix/*` | 普通缺陷修复，从 `dev` 创建 | 完成后 Pull Request 到 `dev` |
-| `hotfix/*` | 生产紧急修复，从 `prod` 创建 | 可直接 Pull Request 到 `prod`，随后回灌 `test` / `dev` |
+| `prod` | 生产发布分支，只保存已经验证可发布的版本 | 仅允许 `test` 或紧急 `hotfix/*` 通过 Pull Request 合入 |
+| `test` | 测试、验收、发布候选分支 | 仅允许 `dev` 或紧急 `hotfix/*` 通过 Pull Request 合入 |
+| `dev` | 日常集成分支，汇总已完成的功能开发 | 接收功能、修复、重构等工作分支的 Pull Request |
+| `feature/*` | 新功能开发分支，从 `dev` 创建 | 完成后 Pull Request 到 `dev` |
+| `fix/*` | 普通缺陷修复分支，从 `dev` 创建 | 完成后 Pull Request 到 `dev` |
+| `hotfix/*` | 生产紧急修复分支，从 `prod` 创建 | 先 Pull Request 到 `prod`，随后同步到 `test` 和 `dev` |
 
 标准流转：
 
 ```text
-feat/* → dev → test → prod
+feature/* → dev → test → prod
 ```
 
-历史 `feature/*` 分支仍兼容，不要求为了命名规范批量重命名；新功能默认使用 `feat/*`。
+禁止跳级：普通功能不得直接进入 `test` 或 `prod`。
 
-## Pull Request
+## 分支命名
 
-- 普通功能不得跳过 `dev` / `test` 直接进入 `prod`。
-- PR 应说明目标、影响范围、验证结果和风险。
-- `dev → test` 是一次明确的测试候选提升。
-- `test → prod` 必须说明发布内容、风险和回滚方式。
-- `hotfix/*` 只用于确实需要绕过正常提升节奏的生产紧急修复。
-
-## 构建与发布语义
+统一使用小写英文、数字、点、短横线或下划线：
 
 ```text
-PR → dev/test/prod  → 轻量检查
-
-dev push  → Desktop 分支包 → Actions artifacts
-test push → Desktop 分支包 → Actions artifacts
-prod push → Desktop 分支包 → Actions artifacts + R2 mira/latest/
-
-v* tag → Release Factory V2 → GitHub Release + R2 mira/latest/
+feature/github-dashboard
+fix/cdp-send-confirmation
+refactor/agent-planner
+perf/rag-index
+chore/github-branch-governance
 ```
 
-`prod` 发布和 `v*` tag 发布是两个独立入口；`prod` 不隐式创建版本标签。
+## Pull Request 要求
 
-## 默认分支
+### 合入 `dev`
 
-当前 GitHub default branch 为 `prod`。
+- 必须来自工作分支，不直接向 `dev` 推送开发提交。
+- 描述变更目标、影响范围、验证结果和潜在风险。
+- CI 必须通过。
+- 合并前处理完未解决的审查意见。
 
-默认分支只影响仓库打开、默认 PR base、clone 后默认 checkout 等 GitHub 使用体验，**不定义环境语义**。环境语义始终由 `dev / test / prod` 及对应 workflow 决定。
+### `dev` 合入 `test`
 
-`main` 为历史/中性分支，不承担环境或发布职责；除非另有明确治理决定，不因卫生清理而删除。
+- 作为一次明确的测试候选提升。
+- 写明本次包含的功能、修复和已知问题。
+- 不在 `test` 上继续开发功能；测试发现的问题回到 `fix/*` 修复。
 
-## 保护规则
+### `test` 合入 `prod`
 
-生产分支建议由 GitHub Rulesets / Branch protection 保证：
+- 必须完成验收与发布检查。
+- 必须提供发布说明、风险说明和回滚方案。
+- `prod` 禁止直接推送、强制推送和删除。
 
-- 禁止 force push
-- 禁止删除
-- 通过 Pull Request 合入
-- 必要 CI / 对话解决后再合并
+## `prod` 推荐保护规则
 
-具体规则以 GitHub 当前有效 ruleset 为事实来源，不以本文件代替实际配置。
+在 GitHub Rulesets 或 Branch protection rule 中为 `prod` 启用：
+
+- Require a pull request before merging
+- Require at least 1 approval
+- Dismiss stale approvals when new commits are pushed
+- Require conversation resolution before merging
+- Require status checks to pass before merging
+- Require branches to be up to date before merging
+- Block force pushes
+- Restrict deletions
+- Do not allow bypassing the above settings（管理员也遵守）
+
+允许的 PR 来源：`test`、`hotfix/*`。
+
+## `main` 处理
+
+`main` 视为旧分支，不再承担日常开发或生产发布职责。完成 `prod` 保护规则配置并确认发布流程稳定后，再决定将默认分支切换为 `dev` 或 `prod`；切换前不要删除 `main`。

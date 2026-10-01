@@ -2,15 +2,28 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs";
 import { beforeEach, afterEach, test, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  commitTurnToMemory: vi.fn(),
+}));
+
+vi.mock("@/memory/runtime.js", () => ({
+  memoryService: {
+    commitTurn: mocks.commitTurnToMemory,
+  },
+}));
+
 import { initializeAuthDatabase } from "@/db/auth.db";
 import { resetDatabaseClients } from "@/db/index";
 import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
 import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
-import { getSqlite } from "@/db/index";
+import { getDb, getSqlite } from "@/db/index";
+import { conversationArtifacts } from "@/db/schema.js";
 import { hasSqliteColumn } from "@/db/sqlite-utils";
 import { threadService } from "@/services/thread.service";
+import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
 import { configureAgentRunPersistence, agentRunStore } from "../run-store";
 import { agentRunRepository } from "@/db/repositories/agent-run.repository";
 import { createAgentGoal } from "../nodes/index";
@@ -54,6 +67,7 @@ const setupDb = () => {
 
 beforeEach(() => {
   agentRunStore.clear();
+  mocks.commitTurnToMemory.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -78,6 +92,7 @@ afterEach(() => {
     }
   }
   activeDbPath = null;
+  mocks.commitTurnToMemory.mockReset();
 });
 
 const createPersistedWaitingApprovalRun = (options?: {
@@ -90,6 +105,14 @@ const createPersistedWaitingApprovalRun = (options?: {
     userId: 1,
     title: "agent persistence",
   });
+  const workspaceRoot =
+    options?.withRuntimeInput === false
+      ? undefined
+      : privateAgentWorkspaceService.ensure({
+          threadId: thread.id,
+          userId: 1,
+          storageRoot: path.dirname(dbPath),
+        });
   const goal = createAgentGoal("answer the user");
   const run = agentRunStore.create({
     threadId: thread.id,
@@ -109,6 +132,7 @@ const createPersistedWaitingApprovalRun = (options?: {
               },
             ],
             params: {},
+            workspaceRoot,
           },
         }),
   });
@@ -233,6 +257,101 @@ test("resumeApprovedAgentRun can continue from repository after in-memory state 
   } finally {
     runSpy.mockRestore();
   }
+});
+
+test("resumeApprovedAgentRun reuses the frozen Agent workspace root after reload", async () => {
+  const run = createPersistedWaitingApprovalRun();
+  threadService.createMessage(run.threadId, 1, {
+    id: "user-persisted-1",
+    role: "user",
+    content: "hello",
+    parts: [{ type: "text", text: "hello" }],
+  });
+  threadService.createMessage(run.threadId, 1, {
+    id: "assistant-persisted-1",
+    parentId: "user-persisted-1",
+    role: "assistant",
+    content: "等待审批",
+    parts: [{ type: "text", text: "等待审批" }],
+    metadata: { agent: { status: "waiting_approval", runId: run.id } },
+  });
+
+  const runSpy = vi.spyOn(agentGraph, "run").mockResolvedValue({
+    answer: "done",
+    observations: [],
+    evidence: { observations: [], toolExecutions: [], retrievals: [] },
+    retrievedChunks: [],
+    status: "completed",
+  } as never);
+  try {
+    await resumeApprovedAgentRun(run.id);
+    const resumedInput = runSpy.mock.calls[0]?.[0];
+    assert.equal(
+      resumedInput?.workspaceRoot,
+      getAgentRunById(run.id)?.runtimeInput?.workspaceRoot,
+    );
+  } finally {
+    runSpy.mockRestore();
+  }
+});
+
+test("synchronous approval resume finalizes failed when final artifact registration fails", async () => {
+  const run = createPersistedWaitingApprovalRun();
+  const persisted = getAgentRunById(run.id);
+  const rootPath = persisted?.runtimeInput?.workspaceRoot;
+  assert.ok(rootPath);
+  fs.writeFileSync(path.join(rootPath, "first.txt"), "first");
+  agentRunStore.update(run.id, {
+    runtimeInput: {
+      ...persisted?.runtimeInput,
+      workspaceOutputs: [
+        { sourceRelativePath: "first.txt", lifecycle: "final" },
+        { sourceRelativePath: "missing.txt", lifecycle: "final" },
+      ],
+    },
+  });
+
+  const runSpy = vi.spyOn(agentGraph, "run").mockResolvedValue({
+    answer: "done",
+    observations: [],
+    evidence: { observations: [], toolExecutions: [], retrievals: [] },
+    retrievedChunks: [],
+    status: "completed",
+    workspaceOutputs: [
+      { sourceRelativePath: "first.txt", lifecycle: "final" },
+      { sourceRelativePath: "missing.txt", lifecycle: "final" },
+    ],
+  } as never);
+
+  try {
+    await assert.rejects(
+      () => resumeApprovedAgentRun(run.id),
+      /Artifact source is missing/,
+    );
+    assert.equal(getAgentRunById(run.id)?.status, "failed");
+    assert.equal(getDb().select().from(conversationArtifacts).all().length, 0);
+  } finally {
+    runSpy.mockRestore();
+  }
+});
+
+test("resumeApprovedAgentRun fails closed when the persisted workspace root is missing", async () => {
+  const run = createPersistedWaitingApprovalRun();
+  const persisted = getAgentRunById(run.id);
+  const rootPath = persisted?.runtimeInput?.workspaceRoot;
+  assert.ok(rootPath);
+  fs.rmSync(rootPath, { recursive: true, force: true });
+
+  await assert.rejects(
+    () => resumeApprovedAgentRun(run.id),
+    /Agent workspace root is missing/,
+  );
+
+  agentRunStore.clear();
+  const reloaded = getAgentRunById(run.id);
+  assert.equal(reloaded?.status, "waiting_approval");
+  assert.equal(reloaded?.pendingApproval?.id, "approval-1");
+  assert.equal(reloaded?.pendingToolCall?.id, "pending-1");
 });
 
 test("resumeApprovedAgentRun fails hard when persisted run misses runtime input", async () => {

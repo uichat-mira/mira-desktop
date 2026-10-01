@@ -45,6 +45,9 @@ const isArkPlanProvider = (providerTemplateCode: string) =>
   providerTemplateCode === "volcengine-code-plan" ||
   providerTemplateCode === "volcengine-agent-plan";
 
+const isOpenAiCompatibleProvider = (chatAdapter: string) =>
+  chatAdapter === "openai-compatible";
+
 const resolvePiModel = (): {
   model: PiModel;
   apiKey: string;
@@ -67,7 +70,14 @@ const resolvePiModel = (): {
     8_192,
   );
 
-  const projectComplexToolSchemas = isArkPlanProvider(resolved.providerTemplateCode);
+  // Every OpenAI-compatible endpoint requires a function `parameters` schema
+  // whose top level is `type: "object"`. Governed domain tools such as
+  // read_discover declare a top-level `oneOf`, so the projection must run for
+  // any OpenAI-compatible provider, not only Ark Plan. Sending the raw
+  // composition surfaces as a provider 500 ("got type: null") and leaves the
+  // subAgent with an empty completion envelope.
+  const projectComplexToolSchemas = isOpenAiCompatibleProvider(provider.chatAdapter);
+  const isArkPlan = isArkPlanProvider(resolved.providerTemplateCode);
   const model = {
     id: resolved.model,
     name: resolved.model,
@@ -84,7 +94,7 @@ const resolvePiModel = (): {
     },
     contextWindow,
     maxTokens,
-    ...(projectComplexToolSchemas
+    ...(isArkPlan
       ? {
           // Ark Plan rejects the JSON Schema composition used by governed
           // domain tools. Runtime validation remains on the Harness binding.
@@ -359,6 +369,33 @@ const buildTrace = (input: {
   events: input.ledger.getEvents(),
 });
 
+const combineAbortSignals = (
+  primary?: AbortSignal,
+  secondary?: AbortSignal,
+): { signal?: AbortSignal; cleanup: () => void } => {
+  const signals = [primary, secondary].filter(
+    (signal): signal is AbortSignal => Boolean(signal),
+  );
+  if (signals.length === 0) return { signal: undefined, cleanup: () => undefined };
+  if (signals.length === 1) return { signal: signals[0], cleanup: () => undefined };
+
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort();
+      break;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      for (const signal of signals) signal.removeEventListener("abort", abort);
+    },
+  };
+};
+
 const executeBinding = async (input: {
   binding: SkillAgentToolBinding;
   toolCallId: string;
@@ -440,6 +477,7 @@ const toPiTool = (input: {
   toolCalls: string[];
   ledger: Ledger;
   projectComplexToolSchemas: boolean;
+  parentSignal?: AbortSignal;
 }): AgentTool<any> => ({
   name: input.binding.id,
   label: input.binding.label,
@@ -450,19 +488,24 @@ const toPiTool = (input: {
   }) as any,
   executionMode: "sequential",
   execute: async (toolCallId, params, signal) => {
-    const { toolResult } = await executeBinding({
-      binding: input.binding,
-      toolCallId,
-      args: (params ?? {}) as Record<string, unknown>,
-      signal,
-      evidence: input.evidence,
-      artifacts: input.artifacts,
-      requirements: input.requirements,
-      toolCalls: input.toolCalls,
-      recordToolCall: true,
-      ledger: input.ledger,
-    });
-    return toolResult;
+    const combined = combineAbortSignals(input.parentSignal, signal);
+    try {
+      const { toolResult } = await executeBinding({
+        binding: input.binding,
+        toolCallId,
+        args: (params ?? {}) as Record<string, unknown>,
+        signal: combined.signal,
+        evidence: input.evidence,
+        artifacts: input.artifacts,
+        requirements: input.requirements,
+        toolCalls: input.toolCalls,
+        recordToolCall: true,
+        ledger: input.ledger,
+      });
+      return toolResult;
+    } finally {
+      combined.cleanup();
+    }
   },
 });
 
@@ -675,6 +718,7 @@ export const runPiSkillAgent = async (input: {
         toolCalls,
         ledger,
         projectComplexToolSchemas,
+        parentSignal: input.execution.signal,
       }),
     ),
   );
@@ -777,6 +821,7 @@ export const runPiSkillAgent = async (input: {
         recordToolCall: false,
         ledger,
         resumedFromApproval: true,
+        signal: input.execution.signal,
       });
       if (resumed.executed.requirement || resumed.executed.terminate) {
         return failResult({
@@ -823,6 +868,18 @@ export const runPiSkillAgent = async (input: {
       currentJudgement: "已读取当前 Skill 说明书，正在把用户目标转换为本次执行顺序。",
       currentAction: "梳理任务目标与可用能力",
       nextAction: "按说明书选择所需资源或工具",
+    });
+  }
+
+  if (input.execution.signal?.aborted) {
+    return failResult({
+      skillId: primary.id,
+      error: new Error("Parent AgentRun was cancelled before subAgent execution."),
+      recoverable: true,
+      evidence,
+      artifacts,
+      toolCalls,
+      ledger,
     });
   }
 

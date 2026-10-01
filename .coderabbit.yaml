@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+inheritance: true
+
+reviews:
+  auto_review:
+    base_branches:
+      - "dev"
+
+  path_instructions:
+    - path: ".github/workflows/**"
+      instructions: |
+        Review CI, release, permissions, and trusted/untrusted execution boundaries.
+        - Preserve the repository branch flow and do not weaken required validation.
+        - Treat pull_request_target and other trusted-context workflows as security-sensitive: PR-head code must not gain trusted credentials or execution authority.
+        - Flag changes that can publish, sign, release, or mutate repository state without the intended gate.
+
+    - path: "desktop/src/**"
+      instructions: |
+        Review the React renderer and desktop UI against the repository runtime boundary.
+        - Renderer code must not gain direct Node/native capability; use the existing host/preload abstractions.
+        - Check user-visible loading, error, empty, disabled, selected, and cancellation states when changed.
+        - Prefer existing shared UI components and semantic design tokens where they already cover the need.
+
+    - path: "desktop/src/shared/ui/**"
+      instructions: |
+        Treat shared UI as a public component contract.
+        - Preserve existing props, default behavior, refs/events, accessibility, theme behavior, and className composition unless the change explicitly updates the contract.
+        - When a shared component or design rule changes, check whether COMPONENTS.md or ui-design-guidelines-tailwind.md must change with it.
+        - Keep business logic out of the shared UI layer.
+
+    - path: "electron/**"
+      instructions: |
+        Review Electron main/preload/IPC and process lifecycle boundaries.
+        - Keep preload exposure minimal and typed; renderer code must not receive raw Node capability.
+        - Check window, child-process, listener, startup/shutdown, error, and cleanup behavior for leaks or duplicate registration.
+        - Treat approval, file-write, terminal-control, and outbound-data boundary changes as high risk.
+
+    - path: "tauri/**"
+      instructions: |
+        Review Tauri host/runtime behavior and platform-specific boundaries.
+        - Keep runtime configuration and host capabilities consistent with the repository's documented architecture.
+        - Do not assume Electron behavior proves Tauri behavior; flag unsupported parity claims.
+        - Check native capability, process lifecycle, resource cleanup, and packaging-impacting changes carefully.
+
+    - path: "server/**"
+      instructions: |
+        Review Fastify, SQLite, persistence, Agent runtime, and backend contracts.
+        - Do not allow silent fallback, swallowed failures, or success states that hide failed work.
+        - For persistence changes, check transactionality, migration/data semantics, concurrency, containment, and cleanup behavior.
+        - Preserve the Agent execution boundary Planner -> Normalize -> Policy -> ToolNode -> Evidence -> Planner; selectedToolId or capabilityIntent must not bypass pendingToolCall, Policy, or ToolNode.
+        - Keep waiting_approval, recoverable, terminal, cancellation, and max-iteration semantics distinct.
+
+    - path: "scripts/**"
+      instructions: |
+        Review build, packaging, release, and developer scripts for cross-platform behavior.
+        - Check path handling, exit codes, error propagation, idempotency, cleanup, and generated/staged artifact contracts.
+        - Do not introduce hardcoded local-machine paths or silent fallback.
+        - Preserve the existing release-retention and packaging boundaries when those scripts are touched.
+
+    - path: "packages/**"
+      instructions: |
+        Treat packages as workspace-owned modules with cross-package contracts.
+        - Check whether exports, runtime assumptions, build outputs, or dependency changes affect another workspace package.
+        - Avoid duplicating root/runtime configuration inside a package when an existing shared source of truth already owns it.
+
+    - path: "package.json"
+      instructions: |
+        Treat root scripts and dependencies as workspace-wide behavior.
+        - Check command topology, package filters, runtime/build assumptions, and dependency changes for effects across Electron, Tauri, renderer, server, and workspace packages.
+        - Do not infer that a script change is local merely because only package.json changed.
+
+    - path: "pnpm-workspace.yaml"
+      instructions: |
+        Treat workspace membership as a repository-wide contract.
+        - Check additions, removals, and glob changes for package discovery, build, typecheck, release, and dependency-resolution effects.
+
+    - path: "runtime.config.cjs"
+      instructions: |
+        Treat runtime.config.cjs as the source of truth for runtime/network configuration.
+        - Check backend host/port, development proxy, packaged runtime, Electron/Tauri, and docs-site consumers for consistency.
+        - Do not duplicate numeric host/port assumptions elsewhere or broaden backend binding unintentionally.

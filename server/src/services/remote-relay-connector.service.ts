@@ -17,6 +17,8 @@ const TOKEN_MAX_LENGTH = 512;
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
+const KEEPALIVE_INTERVAL_MS = 30_000;
+const KEEPALIVE_TIMEOUT_MS = 45_000;
 
 const BLOCKED_REQUEST_HEADERS = new Set([
   "connection",
@@ -73,6 +75,8 @@ type RelaySocketCloseEvent = { code?: number; reason?: string };
 type RelaySocket = {
   readonly readyState: number;
   send(data: string): void;
+  ping(): void;
+  on(event: "pong", listener: () => void): void;
   close(code?: number, reason?: string): void;
   addEventListener(
     type: "open",
@@ -239,6 +243,7 @@ export class RemoteRelayConnectorService {
   private currentConfig: RemoteRelayConnectorConfig | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+  private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectAttempt = 0;
   private connectedAt: string | null = null;
   private lastError: string | null = null;
@@ -387,6 +392,7 @@ export class RemoteRelayConnectorService {
     socket.addEventListener("close", (event) => {
       if (!this.isCurrent(socket, generation)) return;
       this.stopHandshakeTimer();
+      this.stopKeepaliveTimer();
       this.socket = null;
       this.connectedAt = null;
       this.abortAllRequests();
@@ -425,6 +431,7 @@ export class RemoteRelayConnectorService {
       this.connectedAt = new Date().toISOString();
       this.lastError = null;
       this.reconnectAttempt = 0;
+      this.startKeepalive(socket, generation);
       return;
     }
 
@@ -667,8 +674,50 @@ export class RemoteRelayConnectorService {
     this.handshakeTimer = null;
   }
 
+  private startKeepalive(socket: RelaySocket, generation: number) {
+    this.stopKeepaliveTimer();
+    let lastPongAt = Date.now();
+    socket.on("pong", () => {
+      if (this.isCurrent(socket, generation)) lastPongAt = Date.now();
+    });
+    this.keepaliveTimer = setInterval(() => {
+      if (!this.isCurrent(socket, generation) || this.state !== "connected") {
+        this.stopKeepaliveTimer();
+        return;
+      }
+      if (Date.now() - lastPongAt > KEEPALIVE_TIMEOUT_MS) {
+        this.lastError = "Mira Relay keepalive timed out";
+        try {
+          socket.close(1001, "Relay keepalive timeout");
+        } catch {
+          // Close failures are handled by the reconnect path.
+        }
+        return;
+      }
+      try {
+        socket.ping();
+      } catch (error) {
+        this.lastError =
+          error instanceof Error ? error.message : "Mira Relay keepalive failed";
+        try {
+          socket.close(1001, "Relay keepalive failed");
+        } catch {
+          // Close failures are handled by the reconnect path.
+        }
+      }
+    }, KEEPALIVE_INTERVAL_MS);
+    this.keepaliveTimer.unref?.();
+  }
+
+  private stopKeepaliveTimer() {
+    if (!this.keepaliveTimer) return;
+    clearInterval(this.keepaliveTimer);
+    this.keepaliveTimer = null;
+  }
+
   private stopTimers() {
     this.stopHandshakeTimer();
+    this.stopKeepaliveTimer();
     if (!this.reconnectTimer) return;
     clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;

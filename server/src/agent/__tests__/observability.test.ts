@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test, vi } from "vitest";
+import { afterEach, beforeEach, test, vi } from "vitest";
 import * as harnessInvocations from "@/harness/invocations";
 import * as registry from "@/harness/registry";
 import { contextBudgetService } from "@/services/context-budget/index";
@@ -100,45 +100,48 @@ const makeToolIntentResult = (input: {
     blockedCapabilityIds: [],
   },});
 
-vi.spyOn(contextBudgetService, "pack").mockImplementation((input) => {
-  const messages = [
-    ...(input.sections.prefaceMessages ?? []),
-    ...(input.sections.instructionMessages ?? []),
-    ...((input.sections.payloads ?? []).flatMap((payload) => payload.messages)),
-    ...(input.sections.historyMessages ?? []),
-    input.sections.latestUserMessage,
-  ];
+beforeEach(() => {
+  vi.spyOn(contextBudgetService, "pack").mockImplementation((input) => {
+    const messages = [
+      ...(input.sections.prefaceMessages ?? []),
+      ...(input.sections.instructionMessages ?? []),
+      ...((input.sections.payloads ?? []).flatMap((payload) => payload.messages)),
+      ...(input.sections.historyMessages ?? []),
+      input.sections.latestUserMessage,
+    ];
 
-  return {
-    messages,
-    payloads: [],
-    audit: {
-      policy: input.policy,
-      model: "test-model",
+    return {
+      messages,
+      payloads: [],
+      audit: {
+        policy: input.policy,
+        model: "test-model",
+        providerCode: "test-provider",
+        modelContextTokens: 8192,
+        reservedOutputTokens: 1024,
+        maxInputTokens: 7168,
+        totalEstimatedTokensBefore: 0,
+        totalEstimatedTokensAfter: 0,
+        sections: [],
+        warnings: [],
+      },
+    };
+  });
+
+  vi.spyOn(providerProxyService, "describeChatInvocation").mockImplementation(
+    (_requestedProvider, messages) => ({
+      operation: "chat",
       providerCode: "test-provider",
-      modelContextTokens: 8192,
-      reservedOutputTokens: 1024,
-      maxInputTokens: 7168,
-      totalEstimatedTokensBefore: 0,
-      totalEstimatedTokensAfter: 0,
-      sections: [],
-      warnings: [],
-    },
-  };
+      requestedProvider: "default",
+      resolvedProvider: "default",
+      model: "test-model",
+      modelConfigId: "test-model-config",
+      messageCount: messages.length,
+      messagesPreview: [],
+    }),
+  );
 });
 
-vi.spyOn(providerProxyService, "describeChatInvocation").mockImplementation(
-  (_requestedProvider, messages) => ({
-    operation: "chat",
-    providerCode: "test-provider",
-    requestedProvider: "default",
-    resolvedProvider: "default",
-    model: "test-model",
-    modelConfigId: "test-model-config",
-    messageCount: messages.length,
-    messagesPreview: [],
-  }),
-);
 
 afterEach(async () => {
   delete process.env.AGENT_TRACE_PHOENIX;
@@ -147,7 +150,7 @@ afterEach(async () => {
   delete process.env.AGENT_TRACE_PROJECT;
   __setAgentTraceSinkForTests(undefined);
   await __resetAgentTracingForTests();
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 test("agentGraph tracing stays disabled by default", async () => {

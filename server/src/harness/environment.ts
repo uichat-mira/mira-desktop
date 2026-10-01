@@ -193,7 +193,10 @@ const defaultTerminalCapabilities: McpExecutionEnvironment["terminal"]["capabili
   },
 ];
 
-const defaultTerminalShellProfile: McpExecutionEnvironment["terminal"]["shellProfile"] =
+// Resolved per snapshot instead of once at module load so the platform is read
+// at call time. Import-time evaluation froze the first host's shell profile for
+// the whole process, which made platform-dependent behavior untestable.
+const createDefaultTerminalShellProfile = (): McpExecutionEnvironment["terminal"]["shellProfile"] =>
   process.platform === "win32"
     ? {
         shell: resolveWindowsShellExecutable(),
@@ -248,7 +251,7 @@ export const createHarnessEnvironmentSnapshot = (
       capabilities:
         overrides.terminal?.capabilities?.map((capability) => ({ ...capability })) ??
         defaultTerminalCapabilities.map((capability) => ({ ...capability })),
-      shellProfile: overrides.terminal?.shellProfile ?? { ...defaultTerminalShellProfile },
+      shellProfile: overrides.terminal?.shellProfile ?? createDefaultTerminalShellProfile(),
     },
     ...(overrides.toolConfig ? { toolConfig: overrides.toolConfig } : {}),
   };

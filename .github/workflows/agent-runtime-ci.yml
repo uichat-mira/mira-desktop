@@ -7,6 +7,12 @@ on:
     paths:
       - "server/src/agent/**"
       - "server/src/skills/agent/**"
+      - "server/src/services/agent-workspace.service.ts"
+      - "server/src/services/agent-workspace.service.test.ts"
+      - "server/src/services/conversation-artifact.service.ts"
+      - "server/src/services/conversation-artifact.service.test.ts"
+      - "server/src/db/thread.db.ts"
+      - "server/src/db/schema.ts"
       - "server/package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/agent-runtime-ci.yml"
@@ -75,10 +81,31 @@ jobs:
           src/agent/__tests__/pi-agent-loop-runtime.test.ts
           src/agent/__tests__/pi-loop-semantic-compat.test.ts
           src/agent/__tests__/unbounded-agent-iterations.test.ts
+          src/services/agent-workspace.service.test.ts
           --maxWorkers=1
           --fileParallelism=false
           --reporter=json
           --outputFile=delegated-task-test-report.json
+
+      - name: Run Agent workspace regressions
+        run: >-
+          pnpm --filter @ui-chat-mira/server test --
+          src/services/thread.service.test.ts
+          src/routes/proxy-provider/chat.routes.test.ts
+          --testNamePattern="getThreadWorkspaceRoot resolves a bound thread workspace path|unbound Agent threads resolve stable isolated private workspaces|POST /proxy/chat/default passes bound thread workspaceRoot into createAndRunAgent|POST /proxy/chat/default fails closed when an explicit Agent workspace has no root|POST /proxy/chat/default routes knowledge-bound agent sends through AgentRun instead of the legacy RAG branch|POST /proxy/chat/default injects agent execution environment into request-only context"
+          --maxWorkers=1
+          --fileParallelism=false
+
+      - name: Run Agent workspace ownership migration regressions
+        run: >-
+          pnpm --filter @ui-chat-mira/server test --
+          src/services/agent-workspace.service.test.ts
+          src/services/conversation-artifact.service.test.ts
+          src/agent/__tests__/persistence.test.ts
+          src/agent/__tests__/conversation-artifact-integration.test.ts
+          src/db/thread-workspace-retirement.test.ts
+          --maxWorkers=1
+          --fileParallelism=false
 
       - name: Upload delegated-task regression report
         if: always()

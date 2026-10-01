@@ -48,8 +48,15 @@ describe("fertility report content policy", () => {
     ]);
     expect(governed.missingEvidence).toHaveLength(1);
     expect(governed.actions.selfCare).toEqual(["整理既往周期记录"]);
-    expect(governed.actions.discussWithClinician).toHaveLength(2);
-    expect(governed.actions.discussWithClinician.every((item) => item.includes("就诊时可询问"))).toBe(true);
+    // Clinical self-care items and existing clinician actions are merged and
+    // reframed as questions, so the policy never issues a direct instruction.
+    expect(governed.actions.discussWithClinician.length).toBeGreaterThan(0);
+    expect(
+      governed.actions.discussWithClinician.every((item) => item.includes("就诊时可询问")),
+    ).toBe(true);
+    expect(
+      governed.actions.discussWithClinician.some((item) => item.includes("辅酶Q10")),
+    ).toBe(true);
     expect(governed.interpretation).not.toContain("双刺激方案");
     expect(governed.interpretation).not.toContain("提高成功率");
   });

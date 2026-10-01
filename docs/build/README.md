@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: build
-Last verified: 2026-07-22
+Last verified: 2026-10-02
 Layer: raw-source
 Module: Build
 Feature: Packaging
@@ -65,35 +65,50 @@ pnpm version:sync
 
 ## GitHub Actions 发布流程
 
-当前唯一的桌面发布工作流是 `.github/workflows/build-desktop.yml`。
+桌面构建分为三个入口：
 
-触发条件：`main`、`master`、`dev` 分支 push；`v*` 标签 push；GitHub Actions 手动运行；以及面向 `main`、`master` 的 Pull Request。
+- `.github/workflows/build-desktop.yml`：Windows 环境分支包与 Windows prod R2 发布。
+- `.github/workflows/build-macos-intel.yml`：Intel macOS 环境分支包与 macOS prod R2 发布；与 Windows workflow 独立并行。
+- `.github/workflows/release-production.yml`：`v*` 标签正式发布；Windows 重型校验和打包由 `release-factory-v2.yml` 执行，并行调用 Intel macOS reusable build。
 
-Windows 构建分为两个独立 job，并行执行：
+当前触发规则：
 
-1. Electron job 安装根 workspace 依赖和 `mira-clipper-ext` 的 npm 依赖，执行扩展签名配置、类型检查、本地模型准备和 `node scripts/build-dist.js win`。
-2. Tauri job 安装 Rust，执行同样的扩展签名、类型检查和本地模型准备，再执行 `pnpm package:tauri:win`。
-3. 两个 job 都成功后，标签构建才进入 Release job。
-
-GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
-
-| 平台 | Release 资产 |
+| 事件 | 行为 |
 | --- | --- |
-| Electron | `*Setup*.exe`、对应 `.exe.blockmap` |
-| Tauri | `msi/*.msi`、`nsis/*setup.exe` |
-| GitHub 自动生成 | Source code (`.zip`、`.tar.gz`) |
+| Pull Request → `dev/test/prod` | 轻量检查，不执行完整桌面打包 |
+| push → `dev` | Windows workflow 构建 Electron / Tauri；独立 macOS workflow 构建 Intel DMG。macOS dev 构建跳过重复 release test-report 生成，二者互不等待 |
+| push → `test` | Windows workflow 构建 Electron / Tauri；独立 macOS workflow 构建 Intel DMG。macOS test 构建跳过重复 release test-report 生成，二者互不等待 |
+| push → `prod` | Windows 与 Intel macOS 使用独立 workflow 完整构建；Windows 安装包同步 R2 `mira/latest/`，Intel macOS DMG 独立同步 `mira/macos-intel/latest/`，两条发布链互不阻塞 |
+| push → `v*` tag | Release Factory 完整校验 Windows 产物；并行构建 Intel macOS DMG。GitHub Release 保存 Windows + Intel macOS 资产；R2 分别更新 Windows `mira/latest/` 与 Intel macOS `mira/macos-intel/latest/` |
 
-上传到 GitHub Release 前，artifact 会被展平并加上来源前缀，避免 Electron 和 Tauri 同名文件冲突。Actions artifact 只保留 3 天；GitHub Release 负责保存历史版本。
+Windows 分支构建仍由 Electron 与 Tauri 两个独立 job 并行执行；Intel macOS 已拆到独立 workflow，因此其长耗时不会延长 Windows `Build Desktop Apps` workflow。GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
+
+| 平台 | 分支包 / Release 资产 |
+| --- | --- |
+| Electron Windows | `*Setup*.exe`、对应 `.exe.blockmap` |
+| Tauri Windows | `msi/*.msi`、`nsis/*setup.exe` |
+| Electron macOS Intel | `*.dmg`、对应 `.dmg.blockmap`；当前未签名，仅作为 Intel 兼容性 / 内部发板资产 |
+| GitHub 自动生成 | Source code (`.zip`、`.tar.gz`，仅 GitHub Release) |
+
+Actions artifact 为短期构建产物；GitHub Release 保存标签版本历史。
 
 ### Cloudflare R2 当前版本分发
 
-标签构建的 Release job 还会把同一批四个桌面安装文件上传到 Cloudflare R2：
+R2 当前按平台拆分 latest 前缀，避免 Intel macOS 的慢构建阻塞 Windows 发布，也避免多个 job 对同一目录执行 `sync --delete` 时互相删除产物：
 
 ```text
-mira/latest/
+mira/latest/                 # Windows Electron + Tauri
+mira/macos-intel/latest/     # Intel macOS Electron DMG
 ```
 
-R2 只作为当前版本分发源，不保存历史 Release。每次成功发布使用 `--delete` 同步并覆盖 `latest`，旧的 `mira/previous/` 会先清理。R2 所需 GitHub Secrets 为：
+两套前缀都由以下成功事件更新：
+
+1. `prod` 分支对应平台构建成功；
+2. `v*` 标签对应平台正式发布成功。
+
+在 `prod` 分支上，Windows 发布只依赖 Windows Electron / Tauri，Intel macOS R2 发布只依赖 Intel macOS 构建，因此两条链互不阻塞。`v*` 标签下，Windows Release/R2 仍不等待 Mac；Mac 在自身构建完成后等待现有 GitHub Release 建立，再追加 DMG 并更新独立 Mac R2 前缀。两套 R2 路径各自使用 `--delete` 维护本平台 latest。R2 不承担历史版本保存职责，标签历史仍由 GitHub Release 保存。
+
+R2 所需 GitHub Secrets 为：
 
 ```text
 R2_ACCOUNT_ID
@@ -103,7 +118,7 @@ R2_BUCKET
 R2_PUBLIC_BASE_URL
 ```
 
-R2 公开地址格式为 `${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`。只有 `v*` 标签构建会创建 GitHub Release 并上传 R2；普通分支构建只验证打包流程并保存短期 Actions artifacts。
+Windows R2 公开地址格式为 `${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`；Intel macOS 地址格式为 `${R2_PUBLIC_BASE_URL}/mira/macos-intel/latest/<asset-name>`。两套 latest 各自使用 `--delete` 同步。旧的 Windows `mira/previous/` 仍会在 Windows 发布前清理。
 
 ## 本地模型资源
 
@@ -395,16 +410,16 @@ server/build.js
 
 `server.cjs` 由 esbuild 打包。`better-sqlite3`、`sqlite-vec` 和 `node-pty` 等 native 包不进入 bundle，而是复制到 `node_modules/`。
 
-当前 native module 复制逻辑是 Windows-first：
+当前 native module 复制逻辑按构建宿主的 `platform-arch` 选择：
 
 - `better-sqlite3`
-- `sqlite-vec`
-- `sqlite-vec-windows-x64`
-- `node-pty`（只保留 Windows x64 runtime，构建时执行加载校验）
+- `@img/sharp-<platform>-<arch>`（Darwin / Linux 同时复制对应 libvips 包）
+- `sqlite-vec` + 对应平台包（Windows 将 Node 的 `win32` 映射为包名使用的 `windows`）
+- `node-pty/prebuilds/<platform>-<arch>`
 - `bindings`
 - `file-uri-to-path`
 
-如果未来支持 macOS / Linux release，需要把平台 native 包选择从硬编码改为按目标平台解析。
+Windows x64 与 Darwin x64 均已有 staged runtime 证据；Darwin arm64 仍需独立 release/payload 验证，不能由 x64 结果代替。
 
 ## 测试报告入包规则
 
@@ -691,18 +706,22 @@ pnpm package:electron:win
 
 ## 当前平台边界
 
-当前 release 构建按 Windows 桌面环境维护。
+正式 Release Factory V2 与 Tauri 发布仍以 Windows x64 为正式合同；R2 的 Windows 主分发前缀保持 `mira/latest/`，Intel macOS 兼容性包使用独立 `mira/macos-intel/latest/`。
 
-已知 Windows-first 假设：
+Electron 另有一条独立的 Intel macOS CI / GitHub Release 路径：
 
-- Electron backend runtime 默认使用 `node.exe`。
-- Tauri backend runtime 默认使用 `node.exe`。
-- server bundle 固定复制 `sqlite-vec-windows-x64`。
-- 根命令只暴露 `package:electron:win` 和 `package:tauri:win`。
-- `build-dist.js` 当前只接受 `win/windows/mac/macos`，未知平台会失败。
-- `build-tauri-dist.js` 当前只允许在 Windows 上执行。
+- GitHub-hosted `macos-15-intel` runner 上执行 `node scripts/build-dist.js mac`；
+- server native module、bundled Node 22.23.1 与 staged runtime smoke 按 `darwin-x64` 真实验证；
+- `dev/test/prod` 保存短期 Actions DMG artifact；其中 `dev/test` 为降低重复 CI 成本跳过 release test-report 重生成，`prod` 保持完整打包；
+- `v*` tag 使用完整 Intel macOS 打包并把 DMG 追加到 GitHub Release；
+- Intel DMG 当前**未做 Developer ID 签名与公证**；成功的 `prod` / `v*` 构建会同步到独立 R2 前缀 `mira/macos-intel/latest/`；
+- 这条 Intel 兼容性 lane 不改变 canonical macOS 首发目标 `darwin-arm64`，不能替代后续 arm64 release/payload 证据。
 
-在完成 macOS / Linux 适配前，非 Windows release 应被视为未支持，不要静默产出不完整包。
+其余边界：
+
+- Tauri backend/runtime 与打包脚本仍是 Windows-only；
+- 根命令目前仍只暴露 `package:electron:win` / `package:tauri:win`，macOS CI 直接调用 `build-dist.js mac`；
+- `build-dist.js` 只接受 `win/windows/mac/macos`，未知平台直接失败。
 
 ## 改造优先级
 

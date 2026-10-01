@@ -1127,6 +1127,45 @@ test("nextActionPlannerNode returns retrieve action from task model JSON", async
   }
 });
 
+test("nextActionPlannerNode consumes the native structured value through the typed adapter", async () => {
+  const nativeStream = Object.assign(
+    (async function* () {
+      yield "not-json-text";
+    })(),
+    {
+      getOutputKind: () => "native" as const,
+      getStructuredOutput: () => ({
+        type: "retrieve",
+        reason: "Native schema selected repository evidence.",
+        query: "README",
+        toolId: null,
+        args: null,
+        question: null,
+        completionProof: [],
+        unresolvedGaps: [],
+        planPatch: { addItems: [], completeIds: [] },
+      }),
+    },
+  );
+  const streamSpy = vi
+    .spyOn(providerProxyService, "streamTaskChatText")
+    .mockReturnValue(nativeStream);
+
+  try {
+    const patch = await nextActionPlannerNode(createState());
+    assert.deepEqual(patch, {
+      nextAction: {
+        type: "retrieve",
+        query: "README",
+        reason: "Native schema selected repository evidence.",
+      },
+    });
+    assert.equal(streamSpy.mock.calls.length, 1);
+  } finally {
+    streamSpy.mockRestore();
+  }
+});
+
 test("nextActionPlannerNode returns use_tool action when toolId is exposed", async () => {
   const streamSpy = vi
     .spyOn(providerProxyService, "streamTaskChatText")

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { afterAll, test } from "vitest";
 import { initializeAuthDatabase } from "@/db/auth.db";
 import { getSqlite } from "@/db/index.js";
@@ -14,6 +15,7 @@ import {
   userRepository,
 } from "@/db/repositories";
 import { threadService } from "./thread.service.js";
+import { privateAgentWorkspaceService } from "./agent-workspace.service.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 
 const testDbPath = createTimestampedTestArtifactPath("db", "rag-demo-thread-service", ".sqlite");
@@ -310,6 +312,72 @@ test("getThreadWorkspaceRoot resolves a bound thread workspace path", () => {
     threadService.getThreadWorkspaceRoot(thread.id, user.id),
     workspaceRoot,
   );
+  assert.equal(
+    threadService.getEffectiveAgentWorkspaceRoot(thread.id, user.id),
+    workspaceRoot,
+  );
+
+  const cleared = threadService.updateThread(thread.id, user.id, {
+    workspaceId: null,
+  });
+  assert.equal(cleared?.workspaceId, null);
+});
+
+test("unbound Agent threads resolve stable isolated private workspaces", () => {
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const first = threadService.createThread({
+    userId: user.id,
+    title: "Private Agent A",
+    agentEnabled: true,
+  });
+  const second = threadService.createThread({
+    userId: user.id,
+    title: "Private Agent B",
+    agentEnabled: true,
+  });
+
+  assert.equal(first.workspaceId, null);
+  assert.equal(second.workspaceId, null);
+  assert.ok(privateAgentWorkspaceService.get(first.id, user.id));
+  assert.ok(privateAgentWorkspaceService.get(second.id, user.id));
+
+  const firstRoot = threadService.getEffectiveAgentWorkspaceRoot(first.id, user.id);
+  const firstRootAgain = threadService.getEffectiveAgentWorkspaceRoot(first.id, user.id);
+  const secondRoot = threadService.getEffectiveAgentWorkspaceRoot(second.id, user.id);
+
+  assert.ok(firstRoot);
+  assert.ok(secondRoot);
+  assert.equal(firstRootAgain, firstRoot);
+  assert.notEqual(secondRoot, firstRoot);
+  assert.equal(path.basename(firstRoot), first.id);
+  assert.match(path.basename(firstRoot), /^[a-f0-9]{32}$/);
+
+  const storageRoot = path.resolve(path.dirname(testDbPath));
+  const relative = path.relative(storageRoot, firstRoot);
+  assert.ok(relative);
+  assert.equal(relative.startsWith(".."), false);
+  assert.equal(path.isAbsolute(relative), false);
+
+  const plain = threadService.createThread({
+    userId: user.id,
+    title: "Plain then Agent",
+  });
+  assert.equal(privateAgentWorkspaceService.get(plain.id, user.id), null);
+  assert.equal(
+    threadService.getEffectiveAgentWorkspaceRoot(plain.id, user.id),
+    null,
+  );
+  assert.equal(privateAgentWorkspaceService.get(plain.id, user.id), null);
+  const activated = threadService.updateThread(plain.id, user.id, {
+    agentEnabled: true,
+  });
+  assert.equal(activated?.workspaceId, null);
+  assert.ok(privateAgentWorkspaceService.get(plain.id, user.id));
 });
 
 test("createMessage uses lineage.parentId for branch pruning", () => {
@@ -352,6 +420,100 @@ test("createMessage uses lineage.parentId for branch pruning", () => {
   const nextThread = threadService.getThreadById(thread.id, user.id);
   assert.ok(nextThread);
   assert.equal(nextThread.messages.some((message) => message.id === assistant.id), false);
+});
+
+test("updating a durable Agent message can preserve newer descendants", () => {
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id });
+
+  const userOne = threadService.createMessage(thread.id, user.id, {
+    id: `user-${crypto.randomUUID()}`,
+    role: "user",
+    content: "first turn",
+    parts: [{ type: "text", text: "first turn" }],
+  });
+  const durableAssistant = threadService.createMessage(thread.id, user.id, {
+    id: `assistant-${crypto.randomUUID()}`,
+    parentId: userOne.id,
+    role: "assistant",
+    content: "Agent 正在运行…",
+    parts: [{ type: "text", text: "Agent 正在运行…" }],
+  });
+  const userTwo = threadService.createMessage(thread.id, user.id, {
+    id: `user-${crypto.randomUUID()}`,
+    parentId: durableAssistant.id,
+    role: "user",
+    content: "second turn",
+    parts: [{ type: "text", text: "second turn" }],
+  });
+
+  threadService.createMessage(thread.id, user.id, {
+    id: durableAssistant.id,
+    parentId: userOne.id,
+    role: "assistant",
+    content: "Agent 已完成。",
+    parts: [{ type: "text", text: "Agent 已完成。" }],
+    preserveDescendants: true,
+  });
+
+  const detail = threadService.getThreadById(thread.id, user.id);
+  assert.ok(detail);
+  assert.equal(detail.messages.some((message) => message.id === userTwo.id), true);
+  assert.equal(
+    detail.messages.find((message) => message.id === durableAssistant.id)?.content,
+    "Agent 已完成。",
+  );
+});
+
+test("recreating a missing durable Agent message still prunes stale descendants", () => {
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id });
+
+  const parent = threadService.createMessage(thread.id, user.id, {
+    id: `user-${crypto.randomUUID()}`,
+    role: "user",
+    content: "first turn",
+    parts: [{ type: "text", text: "first turn" }],
+  });
+  const staleAssistant = threadService.createMessage(thread.id, user.id, {
+    id: `assistant-${crypto.randomUUID()}`,
+    parentId: parent.id,
+    role: "assistant",
+    content: "stale branch",
+    parts: [{ type: "text", text: "stale branch" }],
+  });
+  const staleUser = threadService.createMessage(thread.id, user.id, {
+    id: `user-${crypto.randomUUID()}`,
+    parentId: staleAssistant.id,
+    role: "user",
+    content: "stale descendant",
+    parts: [{ type: "text", text: "stale descendant" }],
+  });
+
+  const recreated = threadService.createMessage(thread.id, user.id, {
+    id: `assistant-${crypto.randomUUID()}`,
+    parentId: parent.id,
+    role: "assistant",
+    content: "Agent 正在运行…",
+    parts: [{ type: "text", text: "Agent 正在运行…" }],
+    preserveDescendants: true,
+  });
+
+  const detail = threadService.getThreadById(thread.id, user.id);
+  assert.ok(detail);
+  assert.equal(detail.messages.some((message) => message.id === staleAssistant.id), false);
+  assert.equal(detail.messages.some((message) => message.id === staleUser.id), false);
+  assert.equal(detail.messages.some((message) => message.id === recreated.id), true);
 });
 
 test("thread service list and detail views surface canonical parts and summaries", () => {

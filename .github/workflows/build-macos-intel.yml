@@ -1,0 +1,103 @@
+name: Build macOS Intel
+
+on:
+  push:
+    branches: [dev, test, prod]
+  pull_request:
+    branches: [dev, test, prod]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos-intel:
+    name: Build Electron (macOS Intel)
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/build-electron-macos-intel.yml
+    with:
+      skip_release_tests: ${{ github.ref_name != 'prod' }}
+
+  publish-prod-r2:
+    name: Publish prod macOS Intel package to Cloudflare R2
+    needs: build-macos-intel
+    if: github.ref == 'refs/heads/prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download Intel macOS package
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-macos-intel-${{ github.sha }}
+          path: release-assets/macos-intel
+
+      - name: Prepare macOS Intel R2 assets
+        shell: bash
+        run: |
+          mkdir -p dist
+          find release-assets/macos-intel -type f \( -name '*.dmg' -o -name '*.dmg.blockmap' \) -print0 |
+            while IFS= read -r -d '' file; do
+              filename=$(basename "$file")
+              cp "$file" "dist/macos-intel_${filename}"
+            done
+          test -n "$(find dist -maxdepth 1 -type f -print -quit)"
+          ls -lah dist/
+
+      - name: Validate R2 secrets
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        shell: bash
+        run: |
+          missing=0
+          for name in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ACCOUNT_ID R2_BUCKET R2_PUBLIC_BASE_URL; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required release secret: ${name}"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+
+      - name: Upload macOS Intel package to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_RETRY_MODE: standard
+          AWS_MAX_ATTEMPTS: 5
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        shell: bash
+        run: |
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          latest_prefix="mira/macos-intel/latest"
+
+          for attempt in 1 2 3; do
+            if aws s3 sync dist/ "s3://${R2_BUCKET}/${latest_prefix}/" \
+              --delete \
+              --endpoint-url "$endpoint" \
+              --only-show-errors; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "macOS Intel R2 upload failed after ${attempt} attempts." >&2
+              exit 1
+            fi
+
+            sleep $((attempt * 10))
+          done
+
+          public_base="${R2_PUBLIC_BASE_URL%/}"
+          {
+            echo '### Cloudflare R2 — macOS Intel'
+            echo "Uploaded prod macOS Intel assets to: ${public_base}/${latest_prefix}/"
+            echo 'Retention: latest successful prod/tag macOS Intel publish wins'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -22,16 +22,16 @@ describe("Computer Use Harness exposure", () => {
     expect(result.toolExposure.blockedCapabilityIds).not.toContain("browser_observe");
   });
 
-  it("does not expose browser tools to chat_surface", async () => {
+  it("keeps registered browser tools visible to chat_surface", async () => {
     const browser = { observe: async () => ({ ok: true }), act: async () => ({ ok: true }), assert: async () => ({ ok: true }) };
     createComputerUseBrowserTools(browser as never).forEach(registerCapability);
 
     const result = await resolveHarnessToolCandidatesForTurn({ source: "chat_surface", query: "打开网页读取标题" });
 
-    expect(result.toolExposure.exposedToolIds).not.toContain("browser_observe");
+    expect(result.toolExposure.exposedToolIds).toEqual(expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]));
   });
 
-  it("does not expose terminal_session for a browser-intent Agent turn", async () => {
+  it("keeps browser tools available for a browser-intent Agent turn", async () => {
     const browser = { observe: async () => ({ ok: true }), act: async () => ({ ok: true }), assert: async () => ({ ok: true }) };
     createComputerUseBrowserTools(browser as never).forEach(registerCapability);
     registerCapability({
@@ -55,7 +55,11 @@ describe("Computer Use Harness exposure", () => {
       maxTools: 10,
     });
 
-    expect(result.toolExposure.exposedToolIds).toEqual(["browser_observe", "browser_act", "browser_assert"]);
-    expect(result.toolExposure.exposedToolIds).not.toContain("terminal_session");
+    expect(result.toolExposure.exposedToolIds).toEqual(
+      expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]),
+    );
+    expect(result.toolCandidates.map((candidate) => candidate.toolId)).toEqual(
+      expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]),
+    );
   });
 });

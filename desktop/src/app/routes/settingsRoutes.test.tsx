@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import {
   createMemoryRouter,
   MemoryRouter,
-  Outlet,
   RouterProvider,
 } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -20,52 +19,16 @@ vi.mock("react-i18next", async (importOriginal) => {
   };
 });
 
-vi.mock("@/features/Settings/pages/About/index", () => ({
-  default: () => null,
-}));
 vi.mock("@/features/Settings/pages/General/index", () => ({
   default: () => null,
 }));
 vi.mock("@/features/Settings/pages/Personalization/index", () => ({
   default: () => <div data-testid="personalization-page">personalization-page</div>,
 }));
-vi.mock("@/features/Settings/pages/TailscaleRemoteAccess/index", () => ({
-  default: () => <div data-testid="tailscale-remote-access-page">tailscale-remote-access-page</div>,
-}));
 vi.mock("@/features/Settings/pages/Account/index", () => ({
   default: () => null,
 }));
-vi.mock("@/features/Settings/pages/KnowledgeBase/pages/index", () => ({
-  default: () => null,
-}));
-vi.mock("@/features/Settings/pages/KnowledgeBase/pages/Add", () => ({
-  default: () => null,
-}));
-vi.mock("@/features/Settings/pages/KnowledgeBase/pages/Detail", () => ({
-  default: () => null,
-}));
 vi.mock("@/features/Settings/pages/ModelSetting", () => ({
-  default: () => null,
-}));
-vi.mock("@/features/Settings/pages/Evaluation/New", () => ({
-  default: () => <div data-testid="evaluation-new-page">evaluation-new-page</div>,
-}));
-vi.mock("@/features/Settings/pages/Evaluation/Center", () => ({
-  default: () => <div data-testid="evaluation-center-page">evaluation-center-page</div>,
-}));
-vi.mock("@/features/Settings/pages/Development/index", () => ({
-  default: () => <Outlet />,
-}));
-vi.mock("@/features/Settings/pages/Development/pages/Logs", () => ({
-  default: () => null,
-}));
-vi.mock("@/features/Settings/pages/Development/pages/Database", () => ({
-  default: () => null,
-}));
-vi.mock("@/features/Settings/pages/Development/pages/ClientTests", () => ({
-  default: () => null,
-}));
-vi.mock("@/features/Settings/pages/Development/pages/ServerTests", () => ({
   default: () => null,
 }));
 vi.mock("@/features/Settings/pages/Tools/index", () => ({
@@ -125,16 +88,6 @@ describe("settings routes", () => {
     expect(settingsRoutes.some((route) => route.path === "integrations")).toBe(true);
   });
 
-  it("includes the logs subpage under /settings/development", () => {
-    const developmentRoute = settingsRoutes.find(
-      (route) => route.path === "development",
-    );
-
-    expect(
-      developmentRoute?.children?.some((route) => route.path === "logs"),
-    ).toBe(true);
-  });
-
   it("includes mcp route in navigation items", () => {
     render(
       <MemoryRouter>
@@ -174,58 +127,6 @@ describe("settings routes", () => {
     expect(screen.getByTestId("personalization-page")).toBeInTheDocument();
   });
 
-  it("includes Tailscale remote access in the general group and mounts its page", () => {
-    render(
-      <MemoryRouter>
-        <NavigationProbe />
-      </MemoryRouter>,
-    );
-
-    expect(
-      screen.getByText(
-        "settings.navigation.tailscaleRemoteAccess:/settings/tailscale-remote-access:general:30:exact:false",
-      ),
-    ).toBeInTheDocument();
-
-    const router = createMemoryRouter(
-      [{ path: "/settings", children: settingsRoutes }],
-      { initialEntries: ["/settings/tailscale-remote-access"] },
-    );
-
-    render(<RouterProvider router={router} />);
-    expect(
-      screen.getByTestId("tailscale-remote-access-page"),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps the development route as the only development sidebar navigation item", () => {
-    render(
-      <MemoryRouter>
-        <NavigationProbe />
-      </MemoryRouter>,
-    );
-
-    expect(
-      screen.getByText("settings.navigation.development:/settings/development:other:10:prefix:false"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "settings.navigation.developmentLogs:/settings/development/logs",
-      ),
-    ).not.toBeInTheDocument();
-  });
-
-  it("marks knowledge base navigation as prefix-matched for deep pages", () => {
-    render(
-      <MemoryRouter>
-        <NavigationProbe />
-      </MemoryRouter>,
-    );
-
-    expect(
-      screen.getByText("settings.navigation.knowledgeBase:/settings/knowledge-base:knowledge:10:prefix:true"),
-    ).toBeInTheDocument();
-  });
 
   it("includes micro apps route in navigation items", () => {
     render(
@@ -278,44 +179,6 @@ describe("settings routes", () => {
     expect(screen.getByTestId("news-hub-page")).toBeInTheDocument();
   });
 
-  it("mounts the current evaluation center and workbench entry points", () => {
-    const centerRouter = createMemoryRouter(
-      [{ path: "/settings", children: settingsRoutes }],
-      { initialEntries: ["/settings/evaluation/center"] },
-    );
-    const center = render(<RouterProvider router={centerRouter} />);
-
-    expect(screen.getByTestId("evaluation-center-page")).toBeInTheDocument();
-    center.unmount();
-
-    const workbenchRouter = createMemoryRouter(
-      [{ path: "/settings", children: settingsRoutes }],
-      { initialEntries: ["/settings/evaluation/center/new"] },
-    );
-    render(<RouterProvider router={workbenchRouter} />);
-
-    expect(screen.getByTestId("evaluation-new-page")).toBeInTheDocument();
-  });
-
-  it("redirects the former development base information page to About", async () => {
-    const router = createMemoryRouter(
-      [
-        {
-          path: "/settings",
-          children: settingsRoutes,
-        },
-      ],
-      {
-        initialEntries: ["/settings/development/base-information"],
-      },
-    );
-
-    render(<RouterProvider router={router} />);
-
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/settings/about");
-    });
-  });
 
   it("mounts the Notion micro app at /settings/micro-apps/notion", () => {
     const router = createMemoryRouter(

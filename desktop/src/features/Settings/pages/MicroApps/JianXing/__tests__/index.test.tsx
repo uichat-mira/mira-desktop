@@ -21,6 +21,8 @@ vi.mock("react-i18next", () => ({
       "settings.microApps.jianXing.connection.extensionConnected": "扩展已连接",
       "settings.microApps.jianXing.connection.waitingExtension": "等待扩展",
       "settings.microApps.jianXing.connection.disconnected": "未连接",
+      "settings.microApps.jianXing.connection.download": "下载插件",
+      "settings.microApps.jianXing.connection.nativeUnavailable": "Native 不可用",
       "settings.microApps.jianXing.connection.authorize": "浏览器扩展授权",
       "settings.microApps.jianXing.auth.title": "浏览器扩展授权",
       "settings.microApps.jianXing.fields.operation": "操作方式",
@@ -102,6 +104,21 @@ vi.mock("@/shared/platform/desktopRuntime", async (importOriginal) => ({
 }));
 
 describe("JianXingPage", () => {
+  it("disables extension download when the desktop runtime reports Native Messaging unsupported", async () => {
+    const { getNativeMessagingHostStatus } = await import("@/shared/platform/desktopRuntime");
+    vi.mocked(getNativeMessagingHostStatus).mockResolvedValueOnce({
+      status: "unsupported",
+      installed: false,
+      reason: "Native Messaging 当前仅支持 Windows",
+    });
+
+    render(<JianXingPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "下载插件" })).toBeDisabled();
+    });
+  });
+
   it("keeps connection controls above the JianXing and clipper tabs", async () => {
     render(<JianXingPage />);
 

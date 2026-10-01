@@ -6,8 +6,29 @@ import {
   resolveActiveRoleId,
   resolveChatMediaSettings,
   resolveRoleAvatarSrc,
+  shouldShowRoleImageAction,
   upsertRoleSummary,
 } from "./roleChatState";
+
+test("Role image action is available for Agent conversations when no Knowledge Base is bound", () => {
+  assert.equal(
+    shouldShowRoleImageAction({
+      roleId: "role-1",
+      knowledgeBaseId: null,
+    }),
+    true,
+  );
+});
+
+test("Role image action stays hidden when a Knowledge Base is bound", () => {
+  assert.equal(
+    shouldShowRoleImageAction({
+      roleId: "role-1",
+      knowledgeBaseId: "kb-1",
+    }),
+    false,
+  );
+});
 
 test("resolveChatMediaSettings keeps persisted image state when RAG hides the control", () => {
   assert.deepEqual(resolveChatMediaSettings({

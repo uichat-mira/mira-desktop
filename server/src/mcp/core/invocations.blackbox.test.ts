@@ -272,13 +272,26 @@ describe("harness invocation boundary blackbox", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  // Windows drive-letter and UNC targets are only absolute paths on Windows.
+  // On POSIX hosts they are ordinary relative filenames that legitimately
+  // resolve inside the workspace root, so the escape contract cannot apply.
   it.each([
     "D:\\outside.txt",
     "C:\\outside.txt",
     "\\\\server\\share\\file.txt",
+  ])("H6 blocks external path %s", async (targetPath) => {
+    if (process.platform !== "win32") return;
+    await assertExternalPathIsBlocked(targetPath);
+  });
+
+  it.each([
     "../outside.txt",
     "..\\outside.txt",
   ])("H6 blocks external path %s", async (targetPath) => {
+    await assertExternalPathIsBlocked(targetPath);
+  });
+
+  async function assertExternalPathIsBlocked(targetPath: string) {
     const execute = vi.fn(() => ({
       result: { ok: true },
     }));
@@ -324,7 +337,7 @@ describe("harness invocation boundary blackbox", () => {
       "blackbox_external_path_guard requests targetPath outside the current workspace root.",
     );
     expect(execute).not.toHaveBeenCalled();
-  });
+  }
 
   it("H7 exposes invocation events, artifacts, result and trace records", async () => {
     registerBlackboxTool({

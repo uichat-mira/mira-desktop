@@ -286,7 +286,7 @@ describe("CodeGraph Studio service", () => {
 
     expect(started.report.runtime.processAlive).toBe(true);
     expect(healthy.report.status).toBe("ready");
-    expect(listCapabilityDefinitions().map((item) => item.id)).not.toContain("codebase_explore");
+    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     await service.saveConfig({
       agentCapabilityEnabled: true,
@@ -309,8 +309,8 @@ describe("CodeGraph Studio service", () => {
     expect(disabledReport.runtime.processAlive).toBe(true);
     expect(disabledReport.capability.available).toBe(false);
     expect(disabledReport.capability.registered).toBe(false);
-    expect(disabledReport.config.capabilityRegistered).toBe(false);
-    expect(listCapabilityDefinitions().map((item) => item.id)).not.toContain("codebase_explore");
+    expect(disabledReport.config.capabilityRegistered).toBe(true);
+    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
   });
 
   it("stops the old manager on runtime config changes and keeps capability unavailable until an explicit restart", async () => {
@@ -363,8 +363,8 @@ describe("CodeGraph Studio service", () => {
     expect(changedReport.runtime.processAlive).toBe(false);
     expect(changedReport.capability.available).toBe(false);
     expect(changedReport.capability.registered).toBe(false);
-    expect(changedReport.config.capabilityRegistered).toBe(false);
-    expect(listCapabilityDefinitions().map((item) => item.id)).not.toContain("codebase_explore");
+    expect(changedReport.config.capabilityRegistered).toBe(true);
+    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     const currentContext = service.getManagedCapabilityContext(caseWorkspaceRoot);
     expect(currentContext.ok).toBe(false);
@@ -418,7 +418,7 @@ describe("CodeGraph Studio service", () => {
     });
 
     await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(listCapabilityDefinitions().map((item) => item.id)).not.toContain("codebase_explore");
+    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
     expect(service.getManagedCapabilityContext(caseWorkspaceRoot).ok).toBe(false);
 
     await savePromise;
@@ -426,6 +426,7 @@ describe("CodeGraph Studio service", () => {
     const afterSaveReport = await service.getReport();
     expect(afterSaveReport.runtime.processAlive).toBe(false);
     expect(afterSaveReport.capability.registered).toBe(false);
+    expect(afterSaveReport.config.capabilityRegistered).toBe(true);
 
     const beforeRestartStartupCount = fs.existsSync(startupArgsLogPath)
       ? fs
@@ -551,11 +552,12 @@ describe("CodeGraph Studio service", () => {
     const stopPromise = service.stop();
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    expect(listCapabilityDefinitions().map((item) => item.id)).not.toContain("codebase_explore");
+    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
     expect(service.getManagedCapabilityContext(caseWorkspaceRoot).ok).toBe(false);
 
     const stopResult = await stopPromise;
     expect(stopResult.report.capability.registered).toBe(false);
+    expect(stopResult.report.config.capabilityRegistered).toBe(true);
     expect(stopResult.report.runtime.processAlive).toBe(false);
   });
 
@@ -612,8 +614,8 @@ describe("CodeGraph Studio service", () => {
     const afterExitReport = await service.getReport();
     expect(afterExitReport.runtime.processAlive).toBe(false);
     expect(afterExitReport.capability.registered).toBe(false);
-    expect(afterExitReport.config.capabilityRegistered).toBe(false);
-    expect(listCapabilityDefinitions().map((item) => item.id)).not.toContain("codebase_explore");
+    expect(afterExitReport.config.capabilityRegistered).toBe(true);
+    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     const afterExitContext = service.getManagedCapabilityContext(caseWorkspaceRoot);
     expect(afterExitContext.ok).toBe(false);

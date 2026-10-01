@@ -113,5 +113,16 @@ test("production routes place home, chat, dashboard, and settings below one appl
 
   expect(applicationStateRoute).toBeDefined();
   expect(applicationStateRoute?.children?.map((route) => route.path ?? "index"))
-    .toEqual(["index", "chat", "dashboard", "settings"]);
+    .toEqual([
+      "index",
+      "forge",
+      "dashboard",
+      "remote-access",
+      "knowledge-base",
+      "evaluation",
+      "about",
+      "development",
+      "chat",
+      "settings",
+    ]);
 });

@@ -188,12 +188,14 @@ describe("UChatThread", () => {
     composerTextState.value = "hello";
   });
 
-  test("welcome state can run agent after workspace is bound", async () => {
+  test("welcome state can run agent without an explicit workspace", async () => {
+    draftWorkspaceState.value = null;
+
     await act(async () => {
       render(<UChatThread />);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Run in Agent mode" }));
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("chat.thread.actions.send") }));
 
     await waitFor(() => {
       assert.equal(sendMock.mock.calls.length, 1);
@@ -207,14 +209,14 @@ describe("UChatThread", () => {
     await act(async () => {
       render(<UChatThread />);
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run in Agent mode" }));
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("chat.thread.actions.send") }));
 
     await waitFor(() => assert.equal(sendMock.mock.calls.length, 1));
     assert.deepEqual(setComposerTextMock.mock.calls[0], ["请使用 $xlsx 分析"]);
     assert.deepEqual(sendMock.mock.calls[0]?.[0], { agentEnabled: true });
   });
 
-  test("agent button is disabled in welcome state when workspace is missing", async () => {
+  test("agent toggle stays available in welcome state when workspace is missing", async () => {
     draftWorkspaceState.value = null;
     draftAgentEnabledState.value = false;
 
@@ -222,12 +224,13 @@ describe("UChatThread", () => {
       render(<UChatThread />);
     });
 
-    const button = screen.getByRole("button", { name: "Enable Agent" });
-    assert.equal(button.hasAttribute("disabled"), true);
+    const button = screen.getByRole("button", { name: "Return to Agent" });
+    assert.equal(button.hasAttribute("disabled"), false);
 
     fireEvent.click(button);
-    assert.equal(sendMock.mock.calls.length, 0);
-    assert.equal(setDraftAgentEnabledMock.mock.calls.length, 0);
+    await waitFor(() => {
+      assert.deepEqual(setDraftAgentEnabledMock.mock.calls[0], [true]);
+    });
     assert.equal(messageErrorMock.mock.calls.length, 0);
   });
 
@@ -239,7 +242,7 @@ describe("UChatThread", () => {
       render(<UChatThread />);
     });
 
-    const button = screen.getByRole("button", { name: "Enable Agent" });
+    const button = screen.getByRole("button", { name: "Return to Agent" });
     assert.equal(button.hasAttribute("disabled"), false);
     fireEvent.click(button);
 
@@ -255,7 +258,7 @@ describe("UChatThread", () => {
       render(<UChatThread />);
     });
 
-    const button = screen.getByRole("button", { name: "chat.thread.actions.send" });
+    const button = screen.getByRole("button", { name: i18n.t("chat.thread.actions.send") });
     assert.equal(button.hasAttribute("disabled"), false);
     fireEvent.click(button);
 
@@ -299,6 +302,55 @@ describe("UChatThread", () => {
     });
 
     assert.ok(screen.getByText(i18n.t("chat.thread.agent.running")));
+    assert.ok(
+      screen.getByRole("button", {
+        name: i18n.t("chat.thread.composer.cancelGeneration"),
+      }),
+    );
+    assert.equal(
+      screen.queryByRole("button", { name: i18n.t("chat.thread.actions.send") }),
+      null,
+    );
+  });
+
+  test("keeps Role image action available when Agent is enabled and no Knowledge Base is bound", async () => {
+    runtimeSelectorState.activeThreadId = "thread-1";
+    runtimeSelectorState.threads = [
+      {
+        id: "thread-1",
+        title: "Role Thread",
+        workspaceId: null,
+        createdAt: "2025-01-01T00:00:00.000Z",
+        updatedAt: "2025-01-01T00:00:00.000Z",
+        metadata: {
+          agentEnabled: true,
+          roleId: "role-1",
+          knowledgeBaseId: null,
+        },
+        messages: [
+          {
+            id: "assistant-1",
+            threadId: "thread-1",
+            role: "assistant",
+            parts: [{ type: "text", text: "A cinematic portrait." }],
+            createdAt: "2025-01-01T00:00:01.000Z",
+            parentId: "user-1",
+            status: "complete",
+            metadata: {},
+          },
+        ],
+      },
+    ];
+
+    await act(async () => {
+      render(<UChatThread />);
+    });
+
+    assert.ok(
+      screen.getByRole("button", {
+        name: i18n.t("chat.thread.media.generateImage"),
+      }),
+    );
   });
 
   test("keeps another thread editable while a different thread is running", async () => {
@@ -328,11 +380,11 @@ describe("UChatThread", () => {
     fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
     assert.equal(sendMock.mock.calls.length, 0);
     const sendButton = screen.getByRole("button", {
-      name: "chat.thread.actions.send",
+      name: i18n.t("chat.thread.actions.send"),
     });
     assert.equal(sendButton.hasAttribute("disabled"), true);
     assert.equal(
-      screen.queryByRole("button", { name: "chat.thread.composer.cancelGeneration" }),
+      screen.queryByRole("button", { name: i18n.t("chat.thread.composer.cancelGeneration") }),
       null,
     );
   });

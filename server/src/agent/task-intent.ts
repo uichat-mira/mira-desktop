@@ -104,8 +104,11 @@ export const normalizeTaskTargetPath = (
       lowerValue === normalizedWorkspace ||
       lowerValue.startsWith(`${normalizedWorkspace}/`)
     ) {
+      // Both operands are Windows paths here, so the relative form must be
+      // computed with the win32 resolver; the host `path` module would treat
+      // "D:\\..." as a relative POSIX filename on non-Windows hosts.
       const relativePath = path
-        .relative(workspaceRoot, trimmed)
+        .win32.relative(workspaceRoot, trimmed)
         .replaceAll("\\", "/")
         .replace(/^\.\/+/, "");
       return relativePath.toLowerCase();

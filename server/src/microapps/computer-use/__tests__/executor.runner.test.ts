@@ -122,7 +122,25 @@ describe("runComputerUseActions", () => {
     expect(fs.existsSync(result.captures[0]!)).toBe(true);
   });
 
-  it("blocks capture paths that escape the configured artifact root", async () => {
+  // "..\\" is only a traversal on Windows; on POSIX it is a literal filename
+  // that legitimately resolves inside the artifact root, so it is asserted
+  // only where it actually escapes.
+  it.each(["../outside.png", "/etc/passwd"])(
+    "blocks capture paths that escape the configured artifact root: %s",
+    async (artifactPath) => {
+      const { launcher } = createLauncher();
+
+      await expect(
+        runComputerUseActions(
+          [{ kind: "capture", artifactPath }],
+          { launcher, artifactRoot },
+        ),
+      ).rejects.toThrow(/artifactRoot/);
+    },
+  );
+
+  it("blocks windows-style traversal on Windows hosts", async () => {
+    if (process.platform !== "win32") return;
     const { launcher } = createLauncher();
 
     await expect(

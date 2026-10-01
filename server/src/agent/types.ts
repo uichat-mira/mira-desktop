@@ -4,6 +4,7 @@ import type { RetrievedChunk } from "@/services/rag-nodes";
 import type { ContextBudgetAudit } from "@/services/context-budget/index";
 import type { SandboxOutputEncoding } from "@/harness/sandbox/contract";
 import type { McpInvocationFailureCode, McpToolDefinition, McpToolEvidence } from "@/mcp/core/definitions";
+import type { ConversationArtifactReference } from "@/services/conversation-artifact.service";
 import type {
   AgentIntentEmbeddingConfig,
   ToolIntentResult,
@@ -501,6 +502,12 @@ export interface PlannerObservationContext {
   };
 }
 
+export interface AgentWorkspaceOutputDeclaration {
+  sourceRelativePath: string;
+  lifecycle: "temporary" | "final";
+  mimeType?: string | null;
+}
+
 export interface AgentRun {
   id: string;
   threadId: string;
@@ -536,6 +543,7 @@ export interface AgentRun {
     | "knowledgeBaseId"
     | "intentConfig"
     | "workspaceRoot"
+    | "workspaceOutputs"
     | "requestedToolGroupIds"
   >;
   createdAt: string;
@@ -557,6 +565,7 @@ export interface AgentRunStore {
       | "knowledgeBaseId"
       | "intentConfig"
       | "workspaceRoot"
+      | "workspaceOutputs"
       | "requestedToolGroupIds"
     >;
   }): AgentRun;
@@ -584,6 +593,7 @@ export interface AgentRunStore {
 
 export interface AgentGraphInput {
   runId: string;
+  runControlLeaseId?: string;
   threadId: string;
   userId: number;
   goal: AgentGoal;
@@ -593,6 +603,7 @@ export interface AgentGraphInput {
   knowledgeBaseId?: string | null;
   intentConfig?: AgentIntentEmbeddingConfig;
   workspaceRoot?: string | null;
+  workspaceOutputs?: AgentWorkspaceOutputDeclaration[];
   requestedToolGroupIds?: string[];
   approvedInvocations?: AgentApprovedInvocation[];
   policyDecision?: AgentPolicyDecision;
@@ -627,6 +638,8 @@ export interface AgentGraphOutput {
   selectedToolId?: string;
   pendingToolCall?: AgentToolCallRequest;
   approvedInvocations?: AgentApprovedInvocation[];
+  workspaceOutputs?: AgentWorkspaceOutputDeclaration[];
+  conversationArtifacts?: ConversationArtifactReference[];
   lastToolExecution?: AgentToolExecutionResult;
   currentTaskFrame?: CurrentTaskFrame;
   finalizationPacket?: AgentFinalizationPacket;

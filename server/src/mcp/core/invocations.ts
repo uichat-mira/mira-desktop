@@ -135,6 +135,98 @@ export const resolveInvocationApproval = (input: {
   return record;
 };
 
+export const claimInvocationApproval = (input: {
+  invocationId: string;
+  userId?: number;
+  reason?: string;
+}) => {
+  const record = getInvocation(input.invocationId);
+  if (!record) throw new Error(`Invocation was not found: ${input.invocationId}`);
+  if (
+    record.status !== "awaiting_approval" ||
+    record.approval?.resolution
+  ) {
+    throw new Error(
+      `Invocation approval is no longer available: ${input.invocationId}`,
+    );
+  }
+  if (
+    typeof input.userId === "number" &&
+    record.userId !== input.userId
+  ) {
+    throw new Error(`Invocation was not found: ${input.invocationId}`);
+  }
+
+  const resolvedAt = new Date().toISOString();
+  record.status = "running";
+  delete record.finishedAt;
+  record.approval = {
+    ...(record.approval ?? { required: true, reason: "Approval required." }),
+    resolution: {
+      decision: "approved",
+      resolvedAt,
+      reason: input.reason,
+    },
+  };
+  delete record.error;
+  invocationMap.set(record.id, record);
+  persistComputerUseInvocation(record);
+  return record;
+};
+
+export const finalizeClaimedInvocationApproval = (input: {
+  invocationId: string;
+  resolutionInvocationId?: string;
+  status: "completed" | "failed" | "cancelled";
+  reason?: string;
+}) => {
+  const record = getInvocation(input.invocationId);
+  if (
+    !record ||
+    record.status !== "running" ||
+    record.approval?.resolution?.decision !== "approved"
+  ) {
+    throw new Error(
+      `Invocation approval claim is not active: ${input.invocationId}`,
+    );
+  }
+
+  const finishedAt = new Date().toISOString();
+  record.status = input.status;
+  record.finishedAt = finishedAt;
+  record.approval = {
+    ...(record.approval ?? { required: true, reason: "Approval required." }),
+    resolution: {
+      ...record.approval!.resolution!,
+      resolutionInvocationId: input.resolutionInvocationId,
+      reason: input.reason ?? record.approval!.resolution!.reason,
+    },
+  };
+  record.result = { approvalResolution: record.approval.resolution };
+  if (input.status === "completed") {
+    delete record.error;
+  } else {
+    record.error = {
+      message:
+        input.reason ??
+        (input.status === "cancelled"
+          ? "Approved invocation was cancelled."
+          : "Approved invocation failed."),
+      failureCode:
+        input.status === "cancelled" ? "cancelled" : "tool_runtime_failed",
+    };
+  }
+  invocationMap.set(record.id, record);
+  persistComputerUseInvocation(record);
+  appendEvent(record.id, {
+    type: "invocation:finish",
+    status: record.status,
+    at: finishedAt,
+    invocationId: record.id,
+  });
+  return record;
+};
+
 export const clearInvocations = () => {
   invocationMap.clear();
   invocationEvents.clear();
@@ -205,6 +297,8 @@ export const executeInvocation = async (
     args: tool.definition.source === "external"
       ? redactExternalMcpValue(args) as Record<string, unknown>
       : args,
+    inputHash,
+    ...(typeof input.userId === "number" ? { userId: input.userId } : {}),
     artifacts,
     traceId: trace.traceId,
     ...(input.threadId ? { threadId: input.threadId } : {}),
@@ -238,6 +332,10 @@ export const executeInvocation = async (
   });
 
   try {
+    if (signal.aborted) {
+      throw new Error("Invocation cancelled before execution");
+    }
+
     const approvalDecision = evaluateInvocationApproval({
       definition: tool.definition,
       args,

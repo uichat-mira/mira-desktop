@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { agentGraph } from "./graph";
 import { agentRunStore } from "./run-store";
 import { getAgentRunById } from "./run-read";
@@ -11,6 +13,13 @@ import type {
 import { persistAssistantMessage } from "@/routes/proxy-provider/message-persistence";
 import { threadService } from "@/services/thread.service";
 import type { AssistantExecutionNodeEvent } from "@/services/chat-stream-events";
+import {
+  finishAgentRunControl,
+  startAgentRunControlLease,
+} from "./run-control";
+import { registerAgentWorkspaceOutputs } from "./workspace-artifact-registration";
+import type { ConversationArtifactReference } from "@/services/conversation-artifact.service.js";
+import { getAgentRuntimeCheckpoint } from "./runtime-checkpoint";
 
 const buildAssistantMetadata = (input: {
   runId: string;
@@ -21,7 +30,8 @@ const buildAssistantMetadata = (input: {
     | "failed"
     | "blocked"
     | "waiting_approval"
-    | "waiting_user";
+    | "waiting_user"
+    | "cancelled";
   pendingApproval?: {
     id: string;
     stepId: string;
@@ -36,6 +46,7 @@ const buildAssistantMetadata = (input: {
   terminalReason?: string;
   errorMessage?: string;
   errorSourceNodeId?: string;
+  conversationArtifacts?: ConversationArtifactReference[];
 }) => ({
   agent: {
     status: input.status,
@@ -65,6 +76,9 @@ const buildAssistantMetadata = (input: {
       ? {
           errorSourceNodeId: input.errorSourceNodeId,
         }
+      : {}),
+    ...(input.conversationArtifacts?.length
+      ? { conversationArtifacts: input.conversationArtifacts }
       : {}),
   },
 });
@@ -190,13 +204,15 @@ export const persistAgentAssistantState = (input: {
     | "failed"
     | "blocked"
     | "waiting_approval"
-    | "waiting_user";
+    | "waiting_user"
+    | "cancelled";
   content: string;
   pendingApproval?: AgentApprovalRequest;
   blockedReason?: string;
   terminalReason?: string;
   errorMessage?: string;
   errorSourceNodeId?: string;
+  conversationArtifacts?: ConversationArtifactReference[];
   executionNodes?: AssistantExecutionNodeEvent[];
 }) => {
   if (
@@ -234,7 +250,120 @@ export const persistAgentAssistantState = (input: {
       terminalReason: input.terminalReason,
       errorMessage: input.errorMessage,
       errorSourceNodeId: input.errorSourceNodeId,
+      conversationArtifacts: input.conversationArtifacts,
     }),
+  });
+};
+
+type ApprovalResumeWorkspaceErrorCode =
+  | "missing_frozen_workspace_root"
+  | "workspace_root_missing"
+  | "workspace_root_linked"
+  | "workspace_root_invalid"
+  | "workspace_root_unavailable";
+
+class ApprovalResumeWorkspaceError extends Error {
+  readonly code: ApprovalResumeWorkspaceErrorCode;
+
+  constructor(code: ApprovalResumeWorkspaceErrorCode, message: string) {
+    super(message);
+    this.name = "ApprovalResumeWorkspaceError";
+    this.code = code;
+  }
+}
+
+const comparableWorkspaceRoot = (value: string) => {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+};
+
+const toApprovalResumeWorkspaceError = (
+  workspaceRoot: string,
+  runId: string,
+  error: unknown,
+) => {
+  if (error instanceof ApprovalResumeWorkspaceError) {
+    return error;
+  }
+
+  if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+    return new ApprovalResumeWorkspaceError(
+      "workspace_root_missing",
+      `Agent workspace root is missing: ${workspaceRoot}`,
+    );
+  }
+
+  return new ApprovalResumeWorkspaceError(
+    "workspace_root_unavailable",
+    `Agent workspace root is unavailable for resume: ${runId}`,
+  );
+};
+
+const assertFrozenWorkspaceRootAvailable = (
+  workspaceRoot: string,
+  runId: string,
+) => {
+  if (!workspaceRoot) {
+    throw new ApprovalResumeWorkspaceError(
+      "missing_frozen_workspace_root",
+      `AgentRun missing frozen workspace root: ${runId}`,
+    );
+  }
+
+  try {
+    const stat = fs.lstatSync(workspaceRoot);
+    if (stat.isSymbolicLink()) {
+      throw new ApprovalResumeWorkspaceError(
+        "workspace_root_linked",
+        `Agent workspace root cannot be a symbolic link or junction: ${workspaceRoot}`,
+      );
+    }
+    if (!stat.isDirectory()) {
+      throw new ApprovalResumeWorkspaceError(
+        "workspace_root_invalid",
+        `Agent workspace root is not a directory: ${workspaceRoot}`,
+      );
+    }
+
+    const realRoot = fs.realpathSync(workspaceRoot);
+    if (
+      comparableWorkspaceRoot(realRoot) !==
+      comparableWorkspaceRoot(workspaceRoot)
+    ) {
+      throw new ApprovalResumeWorkspaceError(
+        "workspace_root_linked",
+        `Agent workspace root cannot traverse a symbolic link or junction: ${workspaceRoot}`,
+      );
+    }
+  } catch (error) {
+    throw toApprovalResumeWorkspaceError(workspaceRoot, runId, error);
+  }
+};
+
+const persistApprovalResumeWorkspaceFailure = (input: {
+  run: AgentRun;
+  pendingApproval: AgentApprovalRequest;
+  error: ApprovalResumeWorkspaceError;
+}) => {
+  persistAgentAssistantState({
+    run: input.run,
+    status: "waiting_approval",
+    content: "工作空间无法恢复，审批仍保留，请修复工作空间后重试。",
+    pendingApproval: input.pendingApproval,
+    errorMessage: input.error.message,
+    errorSourceNodeId: "agent-resume-workspace",
+    executionNodes: [
+      toAgentErrorExecutionNode({
+        runId: input.run.id,
+        nodeId: "agent-resume-workspace",
+        label: "恢复工作空间",
+        summary: "工作空间无法恢复，审批仍保留",
+        details: {
+          code: input.error.code,
+          errorMessage: input.error.message,
+        },
+      }),
+    ],
   });
 };
 
@@ -309,6 +438,33 @@ const prepareApprovedAgentRunResume = (
     pendingApproval,
     pendingToolCall,
   });
+  const workspaceRoot =
+    typeof runtimeInput.workspaceRoot === "string"
+      ? runtimeInput.workspaceRoot.trim()
+      : "";
+  try {
+    assertFrozenWorkspaceRootAvailable(workspaceRoot, runId);
+  } catch (error) {
+    const workspaceError =
+      error instanceof ApprovalResumeWorkspaceError
+        ? error
+        : toApprovalResumeWorkspaceError(workspaceRoot, runId, error);
+    persistApprovalResumeWorkspaceFailure({
+      run,
+      pendingApproval,
+      error: workspaceError,
+    });
+    throw workspaceError;
+  }
+
+  const checkpoint = getAgentRuntimeCheckpoint(runtimeInput);
+  const workspaceOutputs =
+    runtimeInput.workspaceOutputs ?? checkpoint?.workspaceOutputs;
+  const resumedRuntimeInput = {
+    ...runtimeInput,
+    workspaceRoot,
+    ...(workspaceOutputs ? { workspaceOutputs } : {}),
+  };
   const approvedInvocations = [
     ...(run.approvedInvocations ?? []),
     approvedInvocation,
@@ -321,6 +477,7 @@ const prepareApprovedAgentRunResume = (
     // Compatibility field only; graph execution still uses pendingToolCall.
     selectedToolId: pendingToolCall.toolId,
     pendingToolCall,
+    runtimeInput: resumedRuntimeInput,
   });
   const resumeExecutionNode = toAgentResumeExecutionNode({
     runId,
@@ -340,7 +497,7 @@ const prepareApprovedAgentRunResume = (
 
   return {
     run: runningRun,
-    runtimeInput,
+    runtimeInput: resumedRuntimeInput,
     pendingApproval,
     pendingToolCall,
     approvedInvocations,
@@ -367,7 +524,10 @@ const persistIncrementalResumeNode = (
 
 const executePreparedApprovedAgentRunResume = async (
   prepared: PreparedApprovedAgentRunResume,
-  options: { persistIncrementally: boolean },
+  options: {
+    persistIncrementally: boolean;
+    runControlLeaseId: string;
+  },
 ) => {
   const { run, runtimeInput, pendingApproval, pendingToolCall, approvedInvocations } =
     prepared;
@@ -376,6 +536,7 @@ const executePreparedApprovedAgentRunResume = async (
   ];
   const output = await agentGraph.run({
     runId: run.id,
+    runControlLeaseId: options.runControlLeaseId,
     threadId: run.threadId,
     userId: run.userId,
     goal: run.goal,
@@ -385,6 +546,7 @@ const executePreparedApprovedAgentRunResume = async (
     knowledgeBaseId: runtimeInput.knowledgeBaseId,
     intentConfig: runtimeInput.intentConfig,
     workspaceRoot: runtimeInput.workspaceRoot,
+    workspaceOutputs: runtimeInput.workspaceOutputs,
     approvedInvocations,
     // Compatibility input only; createInitialAgentGraphState does not store or read it.
     selectedToolId: pendingToolCall.toolId,
@@ -397,10 +559,6 @@ const executePreparedApprovedAgentRunResume = async (
     },
   });
 
-  for (const observation of output.observations) {
-    agentRunStore.addObservation(run.id, observation);
-  }
-
   const currentRun = getAgentRunById(run.id);
   if (currentRun?.status === "cancelled") {
     return {
@@ -409,25 +567,47 @@ const executePreparedApprovedAgentRunResume = async (
     };
   }
 
+  const outputDeclarations =
+    output.workspaceOutputs ??
+    runtimeInput.workspaceOutputs;
+  const conversationArtifacts =
+    output.status === "completed"
+      ? registerAgentWorkspaceOutputs({
+          runId: run.id,
+          threadId: run.threadId,
+          userId: run.userId,
+          sourceRootPath: runtimeInput.workspaceRoot!,
+          declarations: outputDeclarations,
+        })
+      : [];
+  const outputWithArtifacts = conversationArtifacts.length
+    ? { ...output, conversationArtifacts }
+    : output;
+
+  for (const observation of outputWithArtifacts.observations) {
+    agentRunStore.addObservation(run.id, observation);
+  }
+
   agentRunStore.complete(run.id, {
-    status: output.status,
-    contextBudget: output.contextBudget,
-    blockedReason: output.blockedReason,
-    terminalReason: output.terminalReason,
-    finalizationPacket: output.finalizationPacket,
-    approvedInvocations: output.approvedInvocations ?? approvedInvocations,
+    status: outputWithArtifacts.status,
+    contextBudget: outputWithArtifacts.contextBudget,
+    blockedReason: outputWithArtifacts.blockedReason,
+    terminalReason: outputWithArtifacts.terminalReason,
+    finalizationPacket: outputWithArtifacts.finalizationPacket,
+    approvedInvocations:
+      outputWithArtifacts.approvedInvocations ?? approvedInvocations,
     // Resume output follows the same compatibility rule: no execution may be
     // derived from selectedToolId.
     selectedToolId:
-      output.selectedToolId ??
-      output.pendingApproval?.toolId ??
+      outputWithArtifacts.selectedToolId ??
+      outputWithArtifacts.pendingApproval?.toolId ??
       pendingApproval.toolId,
-    pendingToolCall: output.pendingToolCall,
-    lastToolExecution: output.lastToolExecution,
-    ...(output.pendingApproval
-      ? { pendingApproval: output.pendingApproval }
+    pendingToolCall: outputWithArtifacts.pendingToolCall,
+    lastToolExecution: outputWithArtifacts.lastToolExecution,
+    ...(outputWithArtifacts.pendingApproval
+      ? { pendingApproval: outputWithArtifacts.pendingApproval }
       : { pendingApproval: undefined }),
-    ...(output.status === "completed"
+    ...(outputWithArtifacts.status === "completed"
       ? { pendingApproval: undefined }
       : {}),
   });
@@ -437,20 +617,21 @@ const executePreparedApprovedAgentRunResume = async (
   if (nextRun) {
     persistAgentAssistantState({
       run: nextRun,
-      status: output.status,
-      content: output.answer,
-      pendingApproval: output.pendingApproval,
-      blockedReason: output.blockedReason,
-      terminalReason: output.terminalReason,
-      errorMessage: output.errorMessage,
-      errorSourceNodeId: output.errorSourceNodeId,
+      status: outputWithArtifacts.status,
+      content: outputWithArtifacts.answer,
+      pendingApproval: outputWithArtifacts.pendingApproval,
+      blockedReason: outputWithArtifacts.blockedReason,
+      terminalReason: outputWithArtifacts.terminalReason,
+      errorMessage: outputWithArtifacts.errorMessage,
+      errorSourceNodeId: outputWithArtifacts.errorSourceNodeId,
+      conversationArtifacts: outputWithArtifacts.conversationArtifacts,
       executionNodes: resumedExecutionNodes,
     });
   }
 
   return {
     run: nextRun,
-    output,
+    output: outputWithArtifacts,
   };
 };
 
@@ -503,9 +684,18 @@ export const resumeApprovedAgentRun = async (runId: string) => {
   const prepared = prepareApprovedAgentRunResume(runId, {
     persistRunningState: false,
   });
-  return executePreparedApprovedAgentRunResume(prepared, {
-    persistIncrementally: false,
-  });
+  const runControl = startAgentRunControlLease(runId);
+  try {
+    return await executePreparedApprovedAgentRunResume(prepared, {
+      persistIncrementally: false,
+      runControlLeaseId: runControl.leaseId,
+    });
+  } catch (error) {
+    failScheduledApprovedAgentRunResume(prepared, error);
+    throw error;
+  } finally {
+    finishAgentRunControl(runId, runControl.leaseId);
+  }
 };
 
 /**
@@ -513,16 +703,27 @@ export const resumeApprovedAgentRun = async (runId: string) => {
  * synchronously moved to `running`; execution continues in the next microtask.
  */
 export const scheduleApprovedAgentRunResume = (runId: string) => {
-  const prepared = prepareApprovedAgentRunResume(runId, {
-    persistRunningState: true,
-  });
+  let prepared: PreparedApprovedAgentRunResume;
+  try {
+    prepared = prepareApprovedAgentRunResume(runId, {
+      persistRunningState: true,
+    });
+  } catch (error) {
+    throw error;
+  }
 
+  const runControl = startAgentRunControlLease(runId);
   queueMicrotask(() => {
     void executePreparedApprovedAgentRunResume(prepared, {
       persistIncrementally: true,
-    }).catch((error) => {
-      failScheduledApprovedAgentRunResume(prepared, error);
-    });
+      runControlLeaseId: runControl.leaseId,
+    })
+      .catch((error) => {
+        failScheduledApprovedAgentRunResume(prepared, error);
+      })
+      .finally(() => {
+        finishAgentRunControl(runId, runControl.leaseId);
+      });
   });
 
   return prepared.run;

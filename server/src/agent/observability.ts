@@ -633,6 +633,8 @@ export const flushAgentTracing = async () => {
 
 export const shutdownAgentTracing = async () => {
   await tracingProvider?.shutdown();
+  trace.disable();
+  context.disable();
   tracingProvider = null;
   tracingInitialized = false;
   tracingEnabled = false;

@@ -16,21 +16,36 @@ type ListenerMap = {
   message: Array<(event: { data: unknown }) => void>;
   error: Array<() => void>;
   close: Array<(event: { code?: number; reason?: string }) => void>;
+  pong: Array<() => void>;
 };
 
 class FakeRelaySocket {
   readyState = 0;
   sent: string[] = [];
+  pingCalls = 0;
+  autoPong = true;
   closeCalls: Array<{ code?: number; reason?: string }> = [];
   private listeners: ListenerMap = {
     open: [],
     message: [],
     error: [],
     close: [],
+    pong: [],
   };
 
   send(data: string) {
     this.sent.push(data);
+  }
+
+  ping() {
+    this.pingCalls += 1;
+    if (this.autoPong) {
+      for (const listener of this.listeners.pong) listener();
+    }
+  }
+
+  on(type: "pong", listener: () => void) {
+    this.listeners[type].push(listener);
   }
 
   close(code?: number, reason?: string) {
@@ -170,6 +185,54 @@ describe("RemoteRelayConnectorService", () => {
       reconnectAttempt: 0,
     });
     service.stop();
+  });
+
+  it("keeps an authenticated host socket alive with native WebSocket pings", () => {
+    vi.useFakeTimers();
+    try {
+      const socket = new FakeRelaySocket();
+      const service = new RemoteRelayConnectorService(
+        validConfig,
+        (() => socket) as RelaySocketFactory,
+        fetch,
+        "http://127.0.0.1:8787",
+      );
+
+      connectHost(service, socket);
+      vi.advanceTimersByTime(90_000);
+
+      expect(socket.pingCalls).toBe(3);
+      service.stop();
+      vi.advanceTimersByTime(90_000);
+      expect(socket.pingCalls).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reconnects when Relay stops acknowledging keepalive pings", () => {
+    vi.useFakeTimers();
+    try {
+      const socket = new FakeRelaySocket();
+      socket.autoPong = false;
+      const service = new RemoteRelayConnectorService(
+        validConfig,
+        (() => socket) as RelaySocketFactory,
+        fetch,
+        "http://127.0.0.1:8787",
+      );
+
+      connectHost(service, socket);
+      vi.advanceTimersByTime(60_000);
+
+      expect(socket.closeCalls.at(-1)).toMatchObject({
+        code: 1001,
+        reason: "Relay keepalive timeout",
+      });
+      service.stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("forwards an authenticated local request and streams response bytes", async () => {

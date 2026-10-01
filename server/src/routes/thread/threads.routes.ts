@@ -201,13 +201,17 @@ export const registerThreadRoutes = async (app: FastifyInstance) => {
         (total, file) => total + file.previousSize,
         0,
       );
+      const cleanupMessage =
+        threadResult.failedThreads > 0 || threadResult.failedAgentWorkspaces > 0
+          ? "Conversation cleanup completed with failures; user Workspaces were not changed"
+          : "Conversations, private Agent workspaces, server logs, and media cleaned; user Workspaces were not changed";
       return success(
         {
           ...threadResult,
           clearedLogBytes,
           media: mediaResult,
         },
-        "Conversations, workspaces, server logs, and media cleaned",
+        cleanupMessage,
       );
     }),
   );

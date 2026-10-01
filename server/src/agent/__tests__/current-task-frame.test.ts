@@ -116,6 +116,20 @@ test("createInitialAgentGraphState keeps globalGoal stable while currentGoal fol
 });
 
 test("prepareContextNode keeps the initialized currentTaskFrame unchanged", async () => {
+  const readOpen = makeToolDefinition("read_open");
+  const matcherSpy = vi
+    .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
+    .mockResolvedValue({
+      query: "inspect docs",
+      topCandidates: [],
+      toolCandidates: [],
+      toolExposure: {
+        exposedToolIds: ["read_open"],
+        exposedDefinitions: [readOpen],
+        reason: ["matched read_open"],
+      },
+      exposureReasons: ["matched read_open"],
+    });
   const initialState = createInitialAgentGraphState({
     runId: "run-1",
     threadId: "thread-1",
@@ -138,36 +152,40 @@ test("prepareContextNode keeps the initialized currentTaskFrame unchanged", asyn
     knowledgeBaseId: "kb-1",
   });
 
-  const patch = await prepareContextNode(
-    createBaseState({
-      workspaceRoot: "D:\\workspace\\rag-demo",
-      knowledgeBaseId: "kb-1",
-      currentTaskFrame: initialState.currentTaskFrame,
-    }),
-  );
+  try {
+    const patch = await prepareContextNode(
+      createBaseState({
+        workspaceRoot: "D:\\workspace\\rag-demo",
+        knowledgeBaseId: "kb-1",
+        currentTaskFrame: initialState.currentTaskFrame,
+      }),
+    );
 
-  assert.equal(patch.toolIntent?.query, "inspect docs");
-  assert.deepEqual(initialState.currentTaskFrame, {
-    globalGoal: "inspect docs",
-    currentGoal: "inspect docs",
-    currentSubtask: "Prepare context and determine the next action.",
-    currentBlocker: undefined,
-    confirmedObjects: [
-      {
-        type: "file",
-        id: "D:\\workspace\\rag-demo",
-        label: "D:\\workspace\\rag-demo",
-        confidence: 1,
-      },
-      {
-        type: "knowledge",
-        id: "kb-1",
-        label: "kb-1",
-        confidence: 1,
-      },
-    ],
-    completionCriteria: ["inspect docs", "report findings"],
-  });
+    assert.equal(patch.toolIntent?.query, "inspect docs");
+    assert.deepEqual(initialState.currentTaskFrame, {
+      globalGoal: "inspect docs",
+      currentGoal: "inspect docs",
+      currentSubtask: "Prepare context and determine the next action.",
+      currentBlocker: undefined,
+      confirmedObjects: [
+        {
+          type: "file",
+          id: "D:\\workspace\\rag-demo",
+          label: "D:\\workspace\\rag-demo",
+          confidence: 1,
+        },
+        {
+          type: "knowledge",
+          id: "kb-1",
+          label: "kb-1",
+          confidence: 1,
+        },
+      ],
+      completionCriteria: ["inspect docs", "report findings"],
+    });
+  } finally {
+    matcherSpy.mockRestore();
+  }
 });
 
 test("prepareContextNode initializes runtime toolExposure independently from toolIntent diagnostics", async () => {

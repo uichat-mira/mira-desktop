@@ -1,7 +1,7 @@
 ---
 status: current
 owner: docs
-last_verified: 2026-07-31
+last_verified: 2026-09-19
 layer: schema
 module: Docs
 feature: DocsSystem
@@ -61,11 +61,11 @@ related:
 - 有代码或验证依据；
 - 区分 settled contract 与已知实现偏差。
 
-### 施工与验证
+### 历史施工与验证证据
 
-正在推进的 checklist、workboard、ledger、implementation notes 和验收记录。
+旧 checklist、task card、workboard、ledger、review 与验收记录作为工程历史和证据保留。
 
-它们说明“正在做什么”，不自动等于产品已经具备什么。
+它们不再拥有当前 work-item 状态；当前任务契约与结果以 GitHub Issue 为准，管理位置以 Project Status 为准。
 
 ### 方案与实验
 
@@ -113,7 +113,9 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[microapp/README]]：MicroApps Hub、Integration binding、Studio 与领域 Runtime 入口；
 - [[chat/README]]：Chat 与 Agent UI 入口；
 - [[platform/tauri]]：Tauri 平台路径；
-- [[platform/macos-implementation-phases]]：macOS 支持缺口、改造进度与验收门槛（Proposed，不代表当前已支持）。
+- [[platform/macos-implementation-phases]]：macOS 支持缺口、改造进度与验收门槛（Proposed，不代表当前已支持）；
+- [[platform/macos-electron-build-exploration]]：macOS Electron 构建独立探索（Intel 优先，research，不代表当前已支持）；
+- [[platform/macos-electron-build-plan]]：macOS Electron 构建分层验证规划表（Intel 优先，plan，不代表当前已支持）。
 
 ## Provider 文档引用规则
 
@@ -298,7 +300,7 @@ Agent Tool / Skill access
 - 状态冲突时 Historical / Superseded 优先于 current doc type；
 - 缺状态不会自动进入“先读这里”；
 - 当前文档超过 90 天未核验会被标记；
-- `project-control/` 是施工与决策记录区，不是产品说明书；
+- `project-control/` 是历史施工、决策与验收证据区，不是当前项目管理台账，也不是产品说明书；
 - 文档路径不代表可信度，生命周期与验证证据才代表可信度；
 - Current 文档发现实现漂移时，必须显式记录，而不是静默改写合同。
 

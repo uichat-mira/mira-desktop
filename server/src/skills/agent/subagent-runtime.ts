@@ -153,6 +153,7 @@ export const materializeSkillScriptResource = async (input: {
   uri: string;
   content: string;
   workspaceRoot: string;
+  signal?: AbortSignal;
 }) => {
   const workspacePath = resolveScriptResourceRelativePath({
     skillId: input.skillId,
@@ -162,7 +163,17 @@ export const materializeSkillScriptResource = async (input: {
   await runWithWorkspaceRootOverride(input.workspaceRoot, async () => {
     const targetPath = resolveWorkspaceWritePath(workspacePath);
     ensureParentDir(targetPath);
-    await fs.writeFile(targetPath, input.content, "utf8");
+    try {
+      await fs.writeFile(targetPath, input.content, {
+        encoding: "utf8",
+        signal: input.signal,
+      });
+    } catch (error) {
+      if (input.signal?.aborted) {
+        await fs.rm(targetPath, { force: true }).catch(() => undefined);
+      }
+      throw error;
+    }
   });
 
   return workspacePath;
@@ -188,7 +199,10 @@ const createSkillResourceTool = (input: {
       },
     },
   },
-  execute: async (args) => {
+  execute: async (args, signal) => {
+    if (signal?.aborted) {
+      throw new Error("subAgent resource execution was cancelled.");
+    }
     const requested = typeof args.uri === "string" ? args.uri : "";
     const resolution = resolveSkillResourceRequest({
       skillId: input.skillId,
@@ -206,6 +220,9 @@ const createSkillResourceTool = (input: {
         skillId: input.skillId,
         uri: resolution.uri,
       });
+      if (signal?.aborted) {
+        throw new Error("subAgent resource execution was cancelled.");
+      }
 
       if (loaded.kind === "script") {
         if (!input.workspaceRoot) {
@@ -223,6 +240,7 @@ const createSkillResourceTool = (input: {
           uri: loaded.uri,
           content: loaded.content,
           workspaceRoot: input.workspaceRoot,
+          signal,
         });
         return {
           result: {
@@ -340,6 +358,7 @@ type PrepareSubAgentInput = {
   turnId?: string;
   approvedInvocations?: SubAgentApprovedInvocation[];
   checkpoint?: SubAgentCheckpoint;
+  signal?: AbortSignal;
   onRuntimeEvent?: (event: SubAgentRuntimeEvent) => Promise<void> | void;
 };
 
@@ -434,6 +453,7 @@ export const prepareSubAgent = (input: PrepareSubAgentInput) => {
     turnId: input.turnId,
     approvedInvocations: input.approvedInvocations,
     checkpoint: input.checkpoint,
+    signal: input.signal,
     onRuntimeEvent: input.onRuntimeEvent,
   };
 

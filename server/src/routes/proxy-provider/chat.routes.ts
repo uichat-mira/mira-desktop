@@ -76,6 +76,17 @@ const resolveThreadWorkspaceRoot = (
   return threadService.getThreadWorkspaceRoot(threadId, userId);
 };
 
+const resolveAgentWorkspaceRoot = (
+  threadId: string | undefined,
+  userId: number | undefined,
+) => {
+  if (typeof threadId !== "string" || !userId) {
+    return null;
+  }
+
+  return threadService.getEffectiveAgentWorkspaceRoot(threadId, userId);
+};
+
 const collectThreadRequestContext = (
   threadId: string | undefined,
   userId: number | undefined,
@@ -97,7 +108,9 @@ const collectThreadRequestContext = (
   }
 
   const harnessEnvironment = getHarnessEnvironmentSnapshot();
-  const threadWorkspaceRoot = resolveThreadWorkspaceRoot(threadId, userId);
+  const threadWorkspaceRoot = options.agentEnabled
+    ? resolveAgentWorkspaceRoot(threadId, userId)
+    : resolveThreadWorkspaceRoot(threadId, userId);
   const toolSurface = resolveChatToolSurface({
     agentEnabled:
       typeof options.agentEnabled === "boolean"
@@ -112,8 +125,12 @@ const collectThreadRequestContext = (
         platform: process.platform,
         shellFamily: harnessEnvironment.terminal.shellProfile.shellFamily,
         shellExecutable: harnessEnvironment.terminal.shellProfile.shell,
-        workspaceRoot: threadWorkspaceRoot ?? harnessEnvironment.workspace.rootPath,
-        cwd: threadWorkspaceRoot ?? harnessEnvironment.workspace.rootPath,
+        workspaceRoot: options.agentEnabled
+          ? threadWorkspaceRoot
+          : threadWorkspaceRoot ?? harnessEnvironment.workspace.rootPath,
+        cwd: options.agentEnabled
+          ? threadWorkspaceRoot
+          : threadWorkspaceRoot ?? harnessEnvironment.workspace.rootPath,
         availableTools: toolSurface.map((tool) => tool.id),
       },
     },
@@ -243,7 +260,12 @@ const sendPersistedDefaultChatStream = ({
   knowledgeBaseId?: string | null;
   preludeChunks?: string[];
 }) => {
-  const workspaceRoot = resolveThreadWorkspaceRoot(threadId, authUserId);
+  const workspaceRoot = agentEnabled
+    ? resolveAgentWorkspaceRoot(threadId, authUserId)
+    : resolveThreadWorkspaceRoot(threadId, authUserId);
+  if (agentEnabled && !workspaceRoot) {
+    throw badRequest("Agent workspace is unavailable");
+  }
   const { latestUserMessageId, latestUserMessage } = persistVisibleUserMessage({
     threadId,
     userId: authUserId,
@@ -266,6 +288,10 @@ const sendPersistedDefaultChatStream = ({
       ...(preludeChunks ? { preludeChunks } : {}),
       executeFullAnswer: async ({ emitToolEvent, emitExecutionNode }) => {
         if (agentEnabled) {
+          const resolvedAgentWorkspaceRoot = workspaceRoot;
+          if (!resolvedAgentWorkspaceRoot) {
+            throw new Error("Agent workspace is unavailable");
+          }
           const goalText = latestUserMessage.content.trim();
           const { run, output } = await createAndRunAgent({
             threadId,
@@ -277,7 +303,7 @@ const sendPersistedDefaultChatStream = ({
             requestContextMessages,
             params,
             knowledgeBaseId,
-            workspaceRoot,
+            workspaceRoot: resolvedAgentWorkspaceRoot,
             requestedToolGroupIds,
             onExecutionNode: emitExecutionNode,
           });
@@ -300,6 +326,13 @@ const sendPersistedDefaultChatStream = ({
             },
           };
 
+          if (run.status === "cancelled") {
+            return {
+              answer: "Agent 运行已取消。",
+              isFinal: true,
+            };
+          }
+
           if (output.pendingApproval) {
             return {
               answer: "等待审批",
@@ -307,8 +340,18 @@ const sendPersistedDefaultChatStream = ({
             };
           }
 
+          const durableAnswer =
+            output.answer.trim() ||
+            (output.status === "waiting_user"
+              ? "Agent 正在等待你的输入。"
+              : output.status === "failed"
+                ? "Agent 运行失败。"
+                : output.status === "blocked"
+                  ? "Agent 已阻断，请检查运行状态。"
+                  : "Agent 已完成。");
+
           return {
-            answer: output.answer,
+            answer: durableAnswer,
             isFinal: true,
           };
         }
@@ -335,14 +378,16 @@ const sendPersistedDefaultChatStream = ({
           return;
         }
 
-        persistAssistantMessage({
-          threadId,
-          userId: authUserId,
-          assistantMessageId,
-          parentId: latestUserMessageId,
-          content: answer,
-          ...(agentAssistantMetadata ? { metadata: agentAssistantMetadata } : {}),
-        });
+        if (!agentEnabled) {
+          persistAssistantMessage({
+            threadId,
+            userId: authUserId,
+            assistantMessageId,
+            parentId: latestUserMessageId,
+            content: answer,
+            ...(agentAssistantMetadata ? { metadata: agentAssistantMetadata } : {}),
+          });
+        }
 
         void (async () => {
           try {
@@ -446,6 +491,15 @@ export const registerProxyProviderChatRoutes = async (
           typeof request.body.agentEnabled === "boolean"
             ? request.body.agentEnabled
             : resolveThreadAgentEnabled(threadId, authUser?.id);
+        if (agentEnabled && typeof threadId === "string" && authUser) {
+          const workspaceRoot = threadService.ensureEffectiveAgentWorkspaceRoot(
+            threadId,
+            authUser.id,
+          );
+          if (!workspaceRoot) {
+            throw badRequest("Agent workspace is unavailable");
+          }
+        }
         const requestContextContext = collectThreadRequestContext(
           threadId,
           authUser?.id,

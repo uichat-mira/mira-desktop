@@ -9,10 +9,13 @@ import {
 } from "@/services/provider-proxy.message-protocol.js";
 import { toUserMessageMetadata } from "./rag-message-metadata.js";
 
+const THINK_TAG_REGEX = /<think\b[^>]*>[\s\S]*?<\/think\s*>/gi;
+
 const cleanGeneratedTitle = (title: string) =>
   title
+    .replace(THINK_TAG_REGEX, "")
     .trim()
-    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+    .replace(/^["'""''"]+|["'""''"]+$/g, "")
     .slice(0, 50);
 
 const trimTitleFallback = (title: string) => cleanGeneratedTitle(title).slice(0, 20);
@@ -223,6 +226,13 @@ export const persistAssistantMessage = ({
     return;
   }
 
+  const agentMetadata =
+    metadata?.agent &&
+    typeof metadata.agent === "object" &&
+    !Array.isArray(metadata.agent)
+      ? metadata.agent
+      : undefined;
+
   const persisted = threadService.createMessage(threadId, userId, {
     id: assistantMessageId,
     parentId,
@@ -230,6 +240,7 @@ export const persistAssistantMessage = ({
     content: normalizedContent,
     parts: normalizedParts,
     metadata,
+    ...(agentMetadata ? { preserveDescendants: true } : {}),
   });
 
   if (shouldCommitTurnToMemory(metadata) && parentId) {

@@ -217,6 +217,49 @@ export const getRequiredRemoteScope = (
 
   if (
     normalizedMethod === "GET" &&
+    parts.length === 3 &&
+    parts[0] === "remote" &&
+    parts[1] === "v1" &&
+    parts[2] === "tools"
+  ) {
+    return "tools:read";
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    parts.length === 4 &&
+    parts[0] === "remote" &&
+    parts[1] === "v1" &&
+    parts[2] === "tool-invocations" &&
+    parts[3] === "stream"
+  ) {
+    return "tools:invoke";
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    parts.length === 5 &&
+    parts[0] === "remote" &&
+    parts[1] === "v1" &&
+    parts[2] === "tool-invocations" &&
+    parts[4] === "approval"
+  ) {
+    return "tools:approve";
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    parts.length === 5 &&
+    parts[0] === "remote" &&
+    parts[1] === "v1" &&
+    parts[2] === "tool-invocations" &&
+    parts[4] === "cancel"
+  ) {
+    return "tools:control";
+  }
+
+  if (
+    normalizedMethod === "GET" &&
     parts.length === 5 &&
     parts[0] === "threads" &&
     parts[2] === "media" &&

@@ -181,7 +181,8 @@ const makeToolIntentResult = (
     exposedDefinitions: definitions,
     reason: [],
     blockedCapabilityIds: [],
-  },});
+  },
+});
 
 const setupToolExposure = (
   query: string,
@@ -236,6 +237,36 @@ const getLatestAssistantMessage = (threadId: string, userId: number) => {
   const assistantMessages =
     thread?.messages.filter((message) => message.role === "assistant") ?? [];
   return assistantMessages.at(-1);
+};
+
+// Approval schedules the resume, so the terminal state is observed by polling
+// the run instead of being returned by the approve response itself.
+const waitForAgentRunStatus = async (input: {
+  app: Awaited<ReturnType<typeof createAuthedApp>>;
+  token: string;
+  runId: string;
+  expectedStatus: string;
+  timeoutMs?: number;
+}): Promise<void> => {
+  const timeoutMs = input.timeoutMs ?? 5_000;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const response = await input.app.inject({
+      method: "GET",
+      url: `/agent/runs/${input.runId}`,
+      headers: { authorization: `Bearer ${input.token}` },
+    });
+    if (response.statusCode === 200) {
+      const body = response.json() as { data?: { status?: string } };
+      if (body.data?.status === input.expectedStatus) {
+        return;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(
+    `Agent run ${input.runId} did not reach status ${input.expectedStatus} within ${timeoutMs}ms`,
+  );
 };
 
 const sendAgentChat = async (input: {
@@ -340,7 +371,7 @@ describe("chat route approval resume smoke", () => {
         yield '{"type":"use_tool","toolId":"read_list","args":{"path":"/workspace"},"reason":"Need the workspace listing."}';
       })
       .mockImplementationOnce(async function* () {
-        yield '{"type":"answer","reason":"The workspace listing is sufficient."}';
+        yield '{"type":"answer","reason":"The workspace listing is sufficient.","completionProof":[{"criterion":"Report the current workspace listing to the user.","evidenceRefs":[]}],"unresolvedGaps":[]}';
       });
     const executeSpy = vi
       .spyOn(harnessInvocations, "executeHarnessInvocation")
@@ -420,7 +451,12 @@ describe("chat route approval resume smoke", () => {
         yield '{"type":"use_tool","toolId":"workspace_mutation","args":{"operation":"delete","targetPath":"/ONLY_ALT_WORKSPACE.txt"},"reason":"Need to delete the file."}';
       })
       .mockImplementationOnce(async function* () {
-        yield '{"type":"answer","reason":"The approved mutation is complete."}';
+        yield '{"type":"answer","reason":"The approved mutation is complete.","completionProof":[{"criterion":"The approved delete mutation ran exactly once.","evidenceRefs":[]}],"unresolvedGaps":[]}';
+      })
+      // The approved resume replans once more before it can answer, so keep a
+      // terminal answer available instead of letting the stub run dry.
+      .mockImplementation(async function* () {
+        yield '{"type":"answer","reason":"The approved mutation is complete.","completionProof":[{"criterion":"The approved delete mutation ran exactly once.","evidenceRefs":[]}],"unresolvedGaps":[]}';
       });
     const executeSpy = vi
       .spyOn(harnessInvocations, "executeHarnessInvocation")
@@ -480,8 +516,17 @@ describe("chat route approval resume smoke", () => {
     const approveData = approveResponse.json() as {
       data: { status: string; pendingApproval?: unknown };
     };
-    assert.equal(approveData.data.status, "completed");
+    // Approval schedules the resume instead of running it inline, so the route
+    // hands back the already-transitioned run. Assert the scheduling contract
+    // first, then wait for the scheduled run to reach its terminal state.
+    assert.equal(approveData.data.status, "running");
     assert.equal(approveData.data.pendingApproval, undefined);
+    await waitForAgentRunStatus({
+      app,
+      token,
+      runId: waitingAgent?.runId ?? "",
+      expectedStatus: "completed",
+    });
     assert.equal(executeSpy.mock.calls.length, 1);
     assert.equal(executeSpy.mock.calls[0]?.[0]?.toolId, "workspace_mutation");
     assert.deepEqual(executeSpy.mock.calls[0]?.[0]?.args, {
@@ -613,11 +658,13 @@ describe("chat route approval resume smoke", () => {
     const { user, thread, token } = createUserThread();
 
     setupToolExposure("打开一个不存在的文件。", [readOpenTool()]);
-    vi.spyOn(providerProxyService, "streamTaskChatText").mockImplementation(
-      async function* () {
+    vi.spyOn(providerProxyService, "streamTaskChatText")
+      .mockImplementationOnce(async function* () {
         yield '{"type":"use_tool","toolId":"read_open","args":{"path":"missing.md"},"reason":"Need the file content."}';
-      },
-    );
+      })
+      .mockImplementationOnce(async function* () {
+        yield '{"type":"answer","reason":"The read failed, so the file cannot be confirmed.","completionProof":[{"criterion":"Report that the requested file could not be opened.","evidenceRefs":[]}],"unresolvedGaps":[]}';
+      });
     vi.spyOn(harnessInvocations, "executeHarnessInvocation").mockResolvedValue({
       id: "invocation-s5-read-open-failed",
       toolId: "read_open",
@@ -709,11 +756,25 @@ describe("chat route approval resume smoke", () => {
 
       assert.equal(response.statusCode, 200, response.body);
       assert.match(response.body, /protocol mismatch/i);
-      assert.match(response.body, /"finishReason":"error"/);
+      // A terminal tool failure is not a transport failure: the stream still
+      // completes, and the answer is the guarded failure text rather than a
+      // fabricated success. The important guarantee is that the persisted
+      // message records the failure instead of claiming a completed answer.
+      assert.match(response.body, /"finishReason":"stop"/);
+      assert.match(response.body, /Agent 运行失败。/);
       assert.equal(generateSpy.mock.calls.length, 0);
 
       const assistantMessage = getLatestAssistantMessage(thread.id, user.id);
-      assert.equal(assistantMessage, undefined);
+      assert.ok(assistantMessage);
+      // The persisted content carries the real failure reason, not a fabricated success.
+      assert.match(assistantMessage?.content ?? "", /protocol mismatch/i);
+      const agentMetadata = (
+        assistantMessage?.metadata as
+        | { agent?: { status?: string; errorMessage?: string } }
+        | undefined
+      )?.agent;
+      assert.equal(agentMetadata?.status, "failed");
+      assert.match(agentMetadata?.errorMessage ?? "", /protocol mismatch/i);
 
       await app.close();
     },
