@@ -43,6 +43,9 @@ jobs:
       - name: Type check
         run: pnpm check
 
+      - name: "Run #198 canonical thread default regression"
+        run: pnpm --filter @ui-chat-mira/server test -- src/routes/thread/threads.routes.test.ts --testNamePattern='POST /threads defaults omitted agentEnabled to the Agent Runtime|POST /threads preserves an explicit legacy agentEnabled=false request'
+
   build-electron:
     name: Build Electron (${{ matrix.platform }})
     if: github.event_name != 'pull_request' && contains(fromJSON('["dev","test","prod"]'), github.ref_name)
