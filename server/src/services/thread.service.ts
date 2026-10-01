@@ -443,6 +443,19 @@ export const threadService = {
     return workspace?.rootPath ?? null;
   },
 
+  getEffectiveAgentWorkspaceRoot(threadId: string, userId: number): string | null {
+    const thread = threadRepository.findById(threadId, userId);
+    if (!thread) {
+      return null;
+    }
+
+    if (thread.workspaceId) {
+      return this.getThreadWorkspaceRoot(threadId, userId);
+    }
+
+    return conversationWorkdirService.ensure({ threadId, userId }).rootPath;
+  },
+
   createChatWorkspace(input: CreateChatWorkspaceInput): ChatWorkspaceResponse {
     const name = input.name.trim();
     if (!name) {
@@ -536,13 +549,10 @@ export const threadService = {
   },
 
   createThread(input: CreateThreadInput): ThreadResponse {
-    let workspaceId = input.workspaceId?.trim();
+    const workspaceId = input.workspaceId?.trim();
     const knowledgeBaseId = input.knowledgeBaseId?.trim();
     const roleId = input.roleId?.trim();
     const agentEnabled = input.agentEnabled;
-    if (agentEnabled === true && !workspaceId) {
-      workspaceId = this.ensureDefaultChatWorkspace(input.userId).id;
-    }
     const ttsEnabled = input.ttsEnabled;
     const imageEnabled = input.imageEnabled;
     const contextSummary = input.contextSummary?.trim();
@@ -623,10 +633,7 @@ export const threadService = {
       updateData.workspaceId = workspaceId;
     }
     if (input.workspaceId === null) {
-      updateData.workspaceId =
-        input.agentEnabled === true || (input.agentEnabled === undefined && existing.agentEnabled)
-          ? this.ensureDefaultChatWorkspace(userId).id
-          : null;
+      updateData.workspaceId = null;
     }
     if (typeof input.knowledgeBaseId === "string") {
       const knowledgeBaseId = input.knowledgeBaseId.trim();
