@@ -117,6 +117,44 @@ test("POST /threads preserves an explicit legacy agentEnabled=false request", as
   await app.close();
 });
 
+test("POST /threads preserves an explicit legacy agentEnabled=null request", async () => {
+  const app = Fastify({
+    logger: getLoggerConfig(),
+    serializerOpts: { encoding: "utf8" },
+  });
+  app.setErrorHandler(sendRouteError);
+  await app.register(threadRoute);
+
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const token = createAccessToken({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/threads",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    payload: { agentEnabled: null },
+  });
+
+  assert.equal(response.statusCode, 200, response.body);
+  const thread = response.json().data as { id: string; agentEnabled: boolean };
+  assert.equal(thread.agentEnabled, false);
+  assert.equal(privateAgentWorkspaceService.get(thread.id, user.id), null);
+
+  await app.close();
+});
+
 test("PATCH /threads/:id returns 200 when unbinding knowledgeBaseId to null", async () => {
   const app = Fastify({
     logger: getLoggerConfig(),
