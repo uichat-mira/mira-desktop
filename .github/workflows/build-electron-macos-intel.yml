@@ -40,6 +40,14 @@ jobs:
           restore-keys: |
             macos-intel-electron-
 
+      - name: Cache local model sources
+        uses: actions/cache@v4
+        with:
+          path: .local-models/raw
+          key: macos-intel-local-models-v1-${{ hashFiles('scripts/prepare-local-model-packs.mjs') }}
+          restore-keys: |
+            macos-intel-local-models-v1-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -49,10 +57,16 @@ jobs:
       - name: Type check
         run: pnpm check
 
+      - name: Prepare cached local model sources
+        run: pnpm prepare:local-model-packs
+        env:
+          LOCAL_MODEL_PACK_RAW_ROOT: .local-models/raw
+          LOCAL_MODEL_ALLOW_NETWORK: '1'
+
       - name: Build unsigned Intel DMG
         run: node scripts/build-dist.js mac
         env:
-          LOCAL_MODEL_ALLOW_NETWORK: '1'
+          LOCAL_MODEL_RAW_ROOT: .local-models/raw
           RELEASE_KEEP_COUNT: 3
 
       - name: Verify DMG output
