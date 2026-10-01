@@ -21,6 +21,7 @@ import { conversationArtifacts } from "@/db/schema.js";
 import { threadRepository, userRepository } from "@/db/repositories/index.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { conversationArtifactService } from "@/services/conversation-artifact.service.js";
+import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
 import { readConversationArtifact } from "@/services/conversation-artifact-read.service.js";
 import { createAndRunAgent } from "../index.js";
 import { agentRunStore } from "../run-store.js";
@@ -78,22 +79,22 @@ test("registers explicit final runtime output and reads it after reload", async 
   const thread = threadRepository.create({ userId: user.id, title: "runtime artifact" });
 
   mocks.runAgentRuntime.mockImplementation(async (input) => {
-    assert.ok(input.conversationWorkdir);
+    assert.ok(input.workspaceRoot);
     fs.writeFileSync(
-      path.join(input.conversationWorkdir.rootPath, "final.txt"),
+      path.join(input.workspaceRoot, "final.txt"),
       "final payload",
     );
     fs.writeFileSync(
-      path.join(input.conversationWorkdir.rootPath, "temporary.tmp"),
+      path.join(input.workspaceRoot, "temporary.tmp"),
       "temporary payload",
     );
     fs.writeFileSync(
-      path.join(input.conversationWorkdir.rootPath, "summary.txt"),
+      path.join(input.workspaceRoot, "summary.txt"),
       "summary payload",
     );
     return {
       ...output(),
-      conversationWorkdirOutputs: [
+      workspaceOutputs: [
         { sourceRelativePath: "temporary.tmp", lifecycle: "temporary" },
         { sourceRelativePath: "final.txt", lifecycle: "final", mimeType: "text/plain" },
         { sourceRelativePath: "summary.txt", lifecycle: "final", mimeType: "text/plain" },
@@ -104,6 +105,10 @@ test("registers explicit final runtime output and reads it after reload", async 
   const result = await createAndRunAgent({
     threadId: thread.id,
     userId: user.id,
+    workspaceRoot: privateAgentWorkspaceService.ensure({
+      threadId: thread.id,
+      userId: user.id,
+    }),
     goalText: "produce a report",
     messages: [
       {
@@ -159,11 +164,11 @@ test("does not promote temporary runtime output", async () => {
   });
   const thread = threadRepository.create({ userId: user.id, title: "runtime temporary" });
   mocks.runAgentRuntime.mockImplementation(async (input) => {
-    assert.ok(input.conversationWorkdir);
-    fs.writeFileSync(path.join(input.conversationWorkdir.rootPath, "temporary.tmp"), "tmp");
+    assert.ok(input.workspaceRoot);
+    fs.writeFileSync(path.join(input.workspaceRoot, "temporary.tmp"), "tmp");
     return {
       ...output(),
-      conversationWorkdirOutputs: [
+      workspaceOutputs: [
         { sourceRelativePath: "temporary.tmp", lifecycle: "temporary" },
       ],
     };
@@ -172,6 +177,10 @@ test("does not promote temporary runtime output", async () => {
   const result = await createAndRunAgent({
     threadId: thread.id,
     userId: user.id,
+    workspaceRoot: privateAgentWorkspaceService.ensure({
+      threadId: thread.id,
+      userId: user.id,
+    }),
     goalText: "temporary work",
     messages: [{ role: "user", content: "temporary work", parts: [{ type: "text", text: "temporary work" }] }],
   });
@@ -188,11 +197,11 @@ test("registers multiple final runtime outputs atomically", async () => {
   });
   const thread = threadRepository.create({ userId: user.id, title: "runtime batch" });
   mocks.runAgentRuntime.mockImplementation(async (input) => {
-    assert.ok(input.conversationWorkdir);
-    fs.writeFileSync(path.join(input.conversationWorkdir.rootPath, "first.txt"), "first");
+    assert.ok(input.workspaceRoot);
+    fs.writeFileSync(path.join(input.workspaceRoot, "first.txt"), "first");
     return {
       ...output(),
-      conversationWorkdirOutputs: [
+      workspaceOutputs: [
         { sourceRelativePath: "first.txt", lifecycle: "final" },
         { sourceRelativePath: "missing.txt", lifecycle: "final" },
       ],
