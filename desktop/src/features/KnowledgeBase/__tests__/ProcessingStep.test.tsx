@@ -7,6 +7,7 @@ import ProcessingStep from "../components/add/ProcessingStep";
 const navigate = vi.fn();
 
 vi.mock("react-router-dom", () => ({
+  useLocation: () => ({ pathname: "/knowledge-base/add" }),
   useNavigate: () => navigate,
 }));
 
