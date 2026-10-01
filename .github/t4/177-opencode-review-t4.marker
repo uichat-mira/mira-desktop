@@ -1,5 +1,0 @@
-Mira Desktop #177 OpenCode T4 harness
-target_pr=181
-target_head=cbd897c2e3a1d15bbbd44fea09926150aeebb8d1
-runner_blob=a8173bfae50550a23f1dd2d9ae2dd50c26974a4b
-remove_after_t4=true
