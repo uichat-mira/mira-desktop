@@ -10,16 +10,12 @@ import type {
 } from "./types";
 import { persistAssistantMessage } from "@/routes/proxy-provider/message-persistence";
 import { threadService } from "@/services/thread.service";
-import {
-  ConversationWorkdirError,
-  conversationWorkdirService,
-} from "@/services/conversation-workdir.service.js";
 import type { AssistantExecutionNodeEvent } from "@/services/chat-stream-events";
 import {
   finishAgentRunControl,
   startAgentRunControlLease,
 } from "./run-control";
-import { registerConversationWorkdirOutputs } from "./conversation-artifact-registration";
+import { registerAgentWorkspaceOutputs } from "./workspace-artifact-registration";
 import type { ConversationArtifactReference } from "@/services/conversation-artifact.service.js";
 import { getAgentRuntimeCheckpoint } from "./runtime-checkpoint";
 
@@ -260,7 +256,6 @@ export const persistAgentAssistantState = (input: {
 type PreparedApprovedAgentRunResume = {
   run: AgentRun;
   runtimeInput: NonNullable<AgentRun["runtimeInput"]>;
-  conversationWorkdir: NonNullable<AgentRun["runtimeInput"]>["conversationWorkdir"];
   pendingApproval: AgentApprovalRequest;
   pendingToolCall: AgentToolCallRequest;
   approvedInvocations: AgentApprovedInvocation[];
@@ -329,20 +324,23 @@ const prepareApprovedAgentRunResume = (
     pendingApproval,
     pendingToolCall,
   });
-  const conversationWorkdir = runtimeInput.conversationWorkdir
-    ? conversationWorkdirService.reopen({
-        threadId: run.threadId,
-        userId: run.userId,
-        reference: runtimeInput.conversationWorkdir,
-      })
-    : undefined;
+  const workspaceRoot =
+    typeof runtimeInput.workspaceRoot === "string"
+      ? runtimeInput.workspaceRoot.trim()
+      : "";
+  if (!workspaceRoot) {
+    throw new Error(
+      `AgentRun missing frozen workspace root: ${runId}`,
+    );
+  }
+
   const checkpoint = getAgentRuntimeCheckpoint(runtimeInput);
-  const conversationWorkdirOutputs =
-    runtimeInput.conversationWorkdirOutputs ?? checkpoint?.conversationWorkdirOutputs;
+  const workspaceOutputs =
+    runtimeInput.workspaceOutputs ?? checkpoint?.workspaceOutputs;
   const resumedRuntimeInput = {
     ...runtimeInput,
-    ...(conversationWorkdir ? { conversationWorkdir } : {}),
-    ...(conversationWorkdirOutputs ? { conversationWorkdirOutputs } : {}),
+    workspaceRoot,
+    ...(workspaceOutputs ? { workspaceOutputs } : {}),
   };
   const approvedInvocations = [
     ...(run.approvedInvocations ?? []),
@@ -377,7 +375,6 @@ const prepareApprovedAgentRunResume = (
   return {
     run: runningRun,
     runtimeInput: resumedRuntimeInput,
-    conversationWorkdir,
     pendingApproval,
     pendingToolCall,
     approvedInvocations,
@@ -426,8 +423,7 @@ const executePreparedApprovedAgentRunResume = async (
     knowledgeBaseId: runtimeInput.knowledgeBaseId,
     intentConfig: runtimeInput.intentConfig,
     workspaceRoot: runtimeInput.workspaceRoot,
-    conversationWorkdir: prepared.conversationWorkdir,
-    conversationWorkdirOutputs: runtimeInput.conversationWorkdirOutputs,
+    workspaceOutputs: runtimeInput.workspaceOutputs,
     approvedInvocations,
     // Compatibility input only; createInitialAgentGraphState does not store or read it.
     selectedToolId: pendingToolCall.toolId,
@@ -449,13 +445,14 @@ const executePreparedApprovedAgentRunResume = async (
   }
 
   const outputDeclarations =
-    output.conversationWorkdirOutputs ??
-    runtimeInput.conversationWorkdirOutputs;
+    output.workspaceOutputs ??
+    runtimeInput.workspaceOutputs;
   const conversationArtifacts =
     output.status === "completed"
-      ? registerConversationWorkdirOutputs({
+      ? registerAgentWorkspaceOutputs({
           threadId: run.threadId,
           userId: run.userId,
+          sourceRootPath: runtimeInput.workspaceRoot!,
           declarations: outputDeclarations,
         })
       : [];
@@ -588,28 +585,6 @@ export const scheduleApprovedAgentRunResume = (runId: string) => {
       persistRunningState: true,
     });
   } catch (error) {
-    if (error instanceof ConversationWorkdirError) {
-      const run = getAgentRunById(runId);
-      if (run) {
-        persistAgentAssistantState({
-          run,
-          status: "waiting_approval",
-          content: "工作目录无法恢复，审批仍保留，请修复工作目录后重试。",
-          pendingApproval: run.pendingApproval,
-          errorMessage: error.message,
-          errorSourceNodeId: "agent-resume-workdir",
-          executionNodes: [
-            toAgentErrorExecutionNode({
-              runId,
-              nodeId: "agent-resume-workdir",
-              label: "恢复工作目录",
-              summary: "工作目录恢复失败，未开始恢复执行",
-              details: { code: error.code, errorMessage: error.message },
-            }),
-          ],
-        });
-      }
-    }
     throw error;
   }
 
