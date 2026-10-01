@@ -59,7 +59,9 @@ export function UChatAgentModeControl({
       }
     >
       <Bot className="h-3.5 w-3.5" />
-      <span>Agent</span>
+      <span>
+        {enabled ? "Agent" : t("chat.thread.agent.compatibilityLabel")}
+      </span>
     </button>
   );
 }
