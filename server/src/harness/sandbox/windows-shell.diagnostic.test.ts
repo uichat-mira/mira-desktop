@@ -245,6 +245,20 @@ describe.skipIf(process.platform !== "win32")("Windows sandbox shell diagnostics
       (result) => !result.timedOut && result.exitCode === 0,
     );
 
+    console.log(
+      "[windows-shell-diagnostic] candidate-results",
+      JSON.stringify(
+        candidateResults.map(({ label, timedOut, exitSeen, closeSeen, exitCode, error }) => ({
+          label,
+          timedOut,
+          exitSeen,
+          closeSeen,
+          exitCode,
+          error,
+        })),
+      ),
+    );
+
     assert.equal(candidateRecovered, true, JSON.stringify(report, null, 2));
   }, 20_000);
 });
