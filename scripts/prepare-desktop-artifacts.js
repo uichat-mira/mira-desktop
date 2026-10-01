@@ -64,6 +64,7 @@ const skipTests =
   process.env.UICHAT_MIRA_SKIP_TESTS === "1" ||
   process.env.UICHAT_MIRA_SKIP_TESTS === "true" ||
   process.argv.includes("--notest");
+const isWindowsHost = process.platform === "win32";
 
 function removeDir(targetPath, label) {
   if (!fs.existsSync(targetPath)) {
@@ -111,17 +112,23 @@ function copyTestResults(sourceDir, destinationDir, label) {
 
 console.log("Preparing shared desktop artifacts...");
 
-execSync("npm run prod", {
-  cwd: path.join(projectRoot, "mira-clipper-ext"),
-  stdio: "inherit",
-  env: process.env,
-});
+if (isWindowsHost) {
+  execSync("npm run prod", {
+    cwd: path.join(projectRoot, "mira-clipper-ext"),
+    stdio: "inherit",
+    env: process.env,
+  });
 
-execSync("npm run native:build", {
-  cwd: path.join(projectRoot, "mira-clipper-ext"),
-  stdio: "inherit",
-  env: process.env,
-});
+  execSync("npm run native:build", {
+    cwd: path.join(projectRoot, "mira-clipper-ext"),
+    stdio: "inherit",
+    env: process.env,
+  });
+} else {
+  console.warn(
+    `[desktop-artifacts] Skipping browser extension packaging and Native Messaging host build on ${process.platform}: the CRX signing key is a CI-only secret and the Native Host launcher is Windows-only. Browser Native Messaging is explicitly unavailable on this platform.`,
+  );
+}
 
 removeDir(legacyServerArtifactsRoot, "legacy staged server bundle");
 
@@ -162,13 +169,20 @@ if (skipTests) {
 
 execSync("pnpm internal:build:desktop", { cwd: projectRoot, stdio: "inherit" });
 execSync("pnpm internal:build:server", { cwd: projectRoot, stdio: "inherit" });
-execSync("pnpm prepare:terminal-runtime", { cwd: projectRoot, stdio: "inherit" });
-execSync("node scripts/smoke-staged-server-runtime.mjs", {
-  cwd: projectRoot,
-  stdio: "inherit",
-  env: process.env,
-});
-execSync("pnpm prepare:piper-runtime", { cwd: projectRoot, stdio: "inherit" });
+
+if (isWindowsHost) {
+  execSync("pnpm prepare:terminal-runtime", { cwd: projectRoot, stdio: "inherit" });
+  execSync("node scripts/smoke-staged-server-runtime.mjs", {
+    cwd: projectRoot,
+    stdio: "inherit",
+    env: process.env,
+  });
+  execSync("pnpm prepare:piper-runtime", { cwd: projectRoot, stdio: "inherit" });
+} else {
+  console.warn(
+    `[desktop-artifacts] Skipping Terminal Dev Runtime, staged server runtime smoke, and Piper runtime on ${process.platform}: these are Windows-only payloads. Terminal Dev Runtime and Piper are explicitly unavailable on this platform.`,
+  );
+}
 
 if (!fs.existsSync(serverBundleArtifactsRoot)) {
   throw new Error(`Missing server bundle: ${serverBundleArtifactsRoot}`);
@@ -196,27 +210,34 @@ copyPath(
   runtimeConfigArtifactsPath,
   "runtime config",
 );
-copyPath(
-  path.join(
-    projectRoot,
-    "mira-clipper-ext",
-    "dist",
-    "prod",
-    "Chujie.crx",
-  ),
-  path.join(browserExtensionArtifactsRoot, "Chujie.crx"),
-  "production browser extension",
-);
-copyPath(
-  path.join(projectRoot, "mira-clipper-ext", "dist", "native", "MiraWebBridgeHost.exe"),
-  path.join(browserExtensionArtifactsRoot, "native", "MiraWebBridgeHost.exe"),
-  "production Native Messaging host",
-);
-copyPath(
-  path.join(projectRoot, "mira-clipper-ext", "dist", "native", "host.mjs"),
-  path.join(browserExtensionArtifactsRoot, "native", "host.mjs"),
-  "production Native Messaging host script",
-);
+if (isWindowsHost) {
+  copyPath(
+    path.join(
+      projectRoot,
+      "mira-clipper-ext",
+      "dist",
+      "prod",
+      "Chujie.crx",
+    ),
+    path.join(browserExtensionArtifactsRoot, "Chujie.crx"),
+    "production browser extension",
+  );
+  copyPath(
+    path.join(projectRoot, "mira-clipper-ext", "dist", "native", "MiraWebBridgeHost.exe"),
+    path.join(browserExtensionArtifactsRoot, "native", "MiraWebBridgeHost.exe"),
+    "production Native Messaging host",
+  );
+  copyPath(
+    path.join(projectRoot, "mira-clipper-ext", "dist", "native", "host.mjs"),
+    path.join(browserExtensionArtifactsRoot, "native", "host.mjs"),
+    "production Native Messaging host script",
+  );
+} else {
+  fs.mkdirSync(browserExtensionArtifactsRoot, { recursive: true });
+  console.warn(
+    `[desktop-artifacts] Staged an empty browser-extension directory on ${process.platform} so the packaged resource layout stays complete; browser extension and Native Messaging host are explicitly unavailable on this platform.`,
+  );
+}
 
 removeDir(electronArtifactsRoot, "old staged Electron app");
 fs.mkdirSync(electronArtifactsRoot, { recursive: true });
@@ -266,15 +287,21 @@ copyPath(
   path.join(electronArtifactsRoot, "browser-extension"),
   "staged browser extension",
 );
-stageTerminalDevRuntime({
-  artifactsRoot,
-  destinationRoot: electronArtifactsRoot,
-});
-copyPath(
-  piperRuntimeArtifactsRoot,
-  path.join(electronArtifactsRoot, "micro-apps", "tts", "piper"),
-  "staged Piper runtime",
-);
+if (isWindowsHost) {
+  stageTerminalDevRuntime({
+    artifactsRoot,
+    destinationRoot: electronArtifactsRoot,
+  });
+  copyPath(
+    piperRuntimeArtifactsRoot,
+    path.join(electronArtifactsRoot, "micro-apps", "tts", "piper"),
+    "staged Piper runtime",
+  );
+} else {
+  console.warn(
+    `[desktop-artifacts] Skipped staging Terminal Dev Runtime and Piper runtime into the Electron app on ${process.platform}: both are Windows-only payloads.`,
+  );
+}
 fs.mkdirSync(path.join(electronArtifactsRoot, "model-packs"), { recursive: true });
 fs.mkdirSync(path.join(electronArtifactsRoot, "model-runtime"), { recursive: true });
 if (fs.existsSync(localModelDistRoot)) {
