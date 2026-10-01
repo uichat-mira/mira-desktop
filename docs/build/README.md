@@ -77,8 +77,8 @@ pnpm version:sync
 | Pull Request → `dev/test/prod` | 轻量检查，不执行完整桌面打包 |
 | push → `dev` | 构建 Windows Electron / Tauri 与 Intel macOS Electron 分支包，保存 Actions artifacts |
 | push → `test` | 构建 Windows Electron / Tauri 与 Intel macOS Electron 分支包，保存 Actions artifacts |
-| push → `prod` | 构建 Windows Electron / Tauri 与 Intel macOS Electron 分支包；仅 Windows 安装包同步 R2 `mira/latest/` |
-| push → `v*` tag | Release Factory 完整校验 Windows 产物；并行构建 Intel macOS DMG。GitHub Release 保存 Windows + Intel macOS 资产，R2 仍只同步 Windows 资产 |
+| push → `prod` | 构建 Windows Electron / Tauri 与 Intel macOS Electron 分支包；Windows 安装包同步 R2 `mira/latest/`，Intel macOS DMG 独立同步 `mira/macos-intel/latest/` |
+| push → `v*` tag | Release Factory 完整校验 Windows 产物；并行构建 Intel macOS DMG。GitHub Release 保存 Windows + Intel macOS 资产；R2 分别更新 Windows `mira/latest/` 与 Intel macOS `mira/macos-intel/latest/` |
 
 Windows 分支构建仍由 Electron 与 Tauri 两个独立 job 并行执行。GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
 
@@ -93,18 +93,19 @@ Actions artifact 为短期构建产物；GitHub Release 保存标签版本历史
 
 ### Cloudflare R2 当前版本分发
 
-R2 作为当前 **Windows** 版本分发源；Intel macOS DMG 暂不上传 R2，只保存在 GitHub Release：
+R2 当前按平台拆分 latest 前缀，避免 Intel macOS 的慢构建阻塞 Windows 发布，也避免多个 job 对同一目录执行 `sync --delete` 时互相删除产物：
 
 ```text
-mira/latest/
+mira/latest/                 # Windows Electron + Tauri
+mira/macos-intel/latest/     # Intel macOS Electron DMG
 ```
 
-以下两种成功事件都会覆盖同一 `mira/latest/`：
+两套前缀都由以下成功事件更新：
 
-1. `prod` 分支构建成功；
-2. `v*` 标签正式发布成功。
+1. `prod` 分支对应平台构建成功；
+2. `v*` 标签对应平台正式发布成功。
 
-因此 `mira/latest/` 表示**最近一次成功的 prod/tag 发布结果**，不承担历史版本保存职责。标签历史由 GitHub Release 保存。
+Windows 发布只依赖 Windows Electron / Tauri；Intel macOS R2 发布只依赖 Intel macOS 构建。两条链互不阻塞，且各自使用 `--delete` 维护本平台的 latest 目录。R2 不承担历史版本保存职责，标签历史仍由 GitHub Release 保存。
 
 R2 所需 GitHub Secrets 为：
 
@@ -116,7 +117,7 @@ R2_BUCKET
 R2_PUBLIC_BASE_URL
 ```
 
-R2 公开地址格式为 `${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`。每次发布使用 `--delete` 同步并覆盖 `latest`，旧的 `mira/previous/` 会先清理。
+Windows R2 公开地址格式为 `${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`；Intel macOS 地址格式为 `${R2_PUBLIC_BASE_URL}/mira/macos-intel/latest/<asset-name>`。两套 latest 各自使用 `--delete` 同步。旧的 Windows `mira/previous/` 仍会在 Windows 发布前清理。
 
 ## 本地模型资源
 
@@ -704,7 +705,7 @@ pnpm package:electron:win
 
 ## 当前平台边界
 
-正式 Release Factory V2、Tauri 发布和 R2 当前版本分发仍以 Windows x64 为正式合同。
+正式 Release Factory V2 与 Tauri 发布仍以 Windows x64 为正式合同；R2 的 Windows 主分发前缀保持 `mira/latest/`，Intel macOS 兼容性包使用独立 `mira/macos-intel/latest/`。
 
 Electron 另有一条独立的 Intel macOS CI / GitHub Release 路径：
 
@@ -712,7 +713,7 @@ Electron 另有一条独立的 Intel macOS CI / GitHub Release 路径：
 - server native module、bundled Node 22.23.1 与 staged runtime smoke 按 `darwin-x64` 真实验证；
 - `dev/test/prod` 保存短期 Actions DMG artifact；
 - `v*` tag 把 Intel DMG 追加到 GitHub Release；
-- Intel DMG 当前**未做 Developer ID 签名与公证**，也**不上传 R2**；
+- Intel DMG 当前**未做 Developer ID 签名与公证**；成功的 `prod` / `v*` 构建会同步到独立 R2 前缀 `mira/macos-intel/latest/`；
 - 这条 Intel 兼容性 lane 不改变 canonical macOS 首发目标 `darwin-arm64`，不能替代后续 arm64 release/payload 证据。
 
 其余边界：
