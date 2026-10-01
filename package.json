@@ -79,7 +79,7 @@
     "smoke:local-model-runtime": "node scripts/smoke-local-model-runtime.mjs",
     "eval:local-model-runtime": "node scripts/eval-local-model-runtime.mjs",
     "check:forge-cutover": "node scripts/check-forge-cutover.mjs",
-    "check:ai-review-runner": "node --test scripts/ai-review/opencode-review-runner.test.mjs"
+    "check:ai-review-runner": "node --test scripts/ai-review/opencode-review-routing.test.mjs scripts/ai-review/opencode-review-runner.test.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
