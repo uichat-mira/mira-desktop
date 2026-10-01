@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 
 import { test } from "vitest";
 
 import { CodebaseExploreWrapper } from "../codebase-explore-wrapper.js";
 import { resolveManagedCodeGraphLaunchSpec } from "../managed-jsonrpc-session.js";
+import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 
 test("CodebaseExploreWrapper can normalize real codegraph_explore text output", async () => {
   const wrapper = new CodebaseExploreWrapper({
@@ -96,13 +98,36 @@ Found 2 symbols across 1 file.
 });
 
 test.skipIf(process.platform !== "win32")("resolveManagedCodeGraphLaunchSpec resolves Windows npm shims to node plus npm-shim.js", () => {
-  const spec = resolveManagedCodeGraphLaunchSpec(
-    path.join("C:\\Program Files\\nodejs", "codegraph.cmd"),
-    ["serve", "--mcp"],
+  const installRoot = createTimestampedTestArtifactPath(
+    "workspace",
+    "codegraph-windows-shim",
   );
+  const shimPath = path.join(
+    installRoot,
+    "node_modules",
+    "@colbymchenry",
+    "codegraph",
+    "npm-shim.js",
+  );
+  const launcherPath = path.join(installRoot, "codegraph.cmd");
+  const bundledNodePath = path.join(installRoot, "node.exe");
 
-  assert.equal(path.basename(spec.command).toLowerCase(), "node.exe");
-  assert.equal(spec.args[0]?.includes("npm-shim.js"), true);
-  assert.equal(spec.args[1], "serve");
-  assert.equal(spec.args[2], "--mcp");
+  fs.mkdirSync(path.dirname(shimPath), { recursive: true });
+  fs.writeFileSync(launcherPath, "@echo off\r\n", "utf8");
+  fs.writeFileSync(shimPath, "// fixture\n", "utf8");
+  fs.writeFileSync(bundledNodePath, "", "utf8");
+
+  try {
+    const spec = resolveManagedCodeGraphLaunchSpec(
+      launcherPath,
+      ["serve", "--mcp"],
+    );
+
+    assert.equal(path.resolve(spec.command), path.resolve(bundledNodePath));
+    assert.equal(path.resolve(spec.args[0] ?? ""), path.resolve(shimPath));
+    assert.equal(spec.args[1], "serve");
+    assert.equal(spec.args[2], "--mcp");
+  } finally {
+    fs.rmSync(installRoot, { recursive: true, force: true });
+  }
 });
