@@ -953,6 +953,64 @@ test("POST /proxy/chat/default passes bound thread workspaceRoot into createAndR
   }
 });
 
+test("POST /proxy/chat/default fails closed when an explicit Agent workspace has no root", async () => {
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const workspace = threadService.createChatWorkspace({
+    userId: user.id,
+    name: "Unavailable Workspace",
+    rootPath: os.platform() === "win32" ? "D:\\unavailable-root" : "/tmp/unavailable-root",
+  });
+  threadService.updateChatWorkspace(workspace.id, user.id, { rootPath: null });
+  const thread = threadService.createThread({
+    userId: user.id,
+    title: "Unavailable Agent workspace",
+    agentEnabled: true,
+    workspaceId: workspace.id,
+  });
+  const token = createAccessToken({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+  });
+  const app = await createAuthedApp(user);
+  const createAndRunAgentSpy = vi.spyOn(agentModule, "createAndRunAgent");
+
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/proxy/chat/default",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      payload: {
+        id: thread.id,
+        messageId: "user-agent-workspace-missing-root",
+        agentEnabled: true,
+        messages: [
+          {
+            id: "user-agent-workspace-missing-root",
+            role: "user",
+            parts: [{ type: "text", text: "看看当前 workspace" }],
+          },
+        ],
+      },
+    });
+
+    assert.equal(response.statusCode, 400, response.body);
+    assert.match(response.body, /Agent workspace is unavailable/);
+    assert.equal(createAndRunAgentSpy.mock.calls.length, 0);
+  } finally {
+    createAndRunAgentSpy.mockRestore();
+    await app.close();
+  }
+});
+
 test("POST /proxy/chat/default persists agent metadata on completed agent responses", async () => {
   const user = userRepository.create({
     username: `user-${crypto.randomUUID()}`,
