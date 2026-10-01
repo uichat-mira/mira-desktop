@@ -214,6 +214,30 @@ describe.skipIf(process.platform !== "win32")("Windows sandbox shell diagnostics
       ),
     );
 
+    const originalSafeKeys = [
+      "PATH",
+      "PATHEXT",
+      "SystemRoot",
+      "WINDIR",
+      "ComSpec",
+      "TEMP",
+      "TMP",
+      "HOME",
+      "USERPROFILE",
+      "LANG",
+      "TERM",
+    ];
+    const originalSafePlusPsModulePath = await runAsyncProbe({
+      label: "candidate-original-safe-plus-psmodulepath",
+      shell,
+      args: baseArgs,
+      env: {
+        ...resolveFullEnvEntries(originalSafeKeys),
+        ...resolveFullEnvEntries(["PSModulePath"]),
+      },
+      closeStdin: true,
+    });
+
     const report = {
       shell,
       sandboxEnvKeys: Object.keys(sandboxEnv).sort(),
@@ -241,21 +265,23 @@ describe.skipIf(process.platform !== "win32")("Windows sandbox shell diagnostics
       candidateResults,
     };
 
-    const candidateRecovered = candidateResults.some(
-      (result) => !result.timedOut && result.exitCode === 0,
-    );
+    const candidateRecovered =
+      !originalSafePlusPsModulePath.timedOut &&
+      originalSafePlusPsModulePath.exitCode === 0;
 
     console.log(
       "[windows-shell-diagnostic] candidate-results",
       JSON.stringify(
-        candidateResults.map(({ label, timedOut, exitSeen, closeSeen, exitCode, error }) => ({
-          label,
-          timedOut,
-          exitSeen,
-          closeSeen,
-          exitCode,
-          error,
-        })),
+        [...candidateResults, originalSafePlusPsModulePath].map(
+          ({ label, timedOut, exitSeen, closeSeen, exitCode, error }) => ({
+            label,
+            timedOut,
+            exitSeen,
+            closeSeen,
+            exitCode,
+            error,
+          }),
+        ),
       ),
     );
 
