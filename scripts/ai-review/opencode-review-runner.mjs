@@ -200,7 +200,7 @@ function structuredOutputFrom(result) {
   if (info?.error?.name === "StructuredOutputError") {
     throw new Error("structured_output_failed");
   }
-  const output = info?.structured_output;
+  const output = info?.structured ?? info?.structured_output;
   if (!output || typeof output !== "object" || Array.isArray(output)) {
     throw new Error("structured_output_missing");
   }
@@ -284,7 +284,7 @@ export async function executeOpenCodeReview(
         format: {
           type: "json_schema",
           schema: MIRA_REVIEW_SCHEMA,
-          retryCount: 2,
+          retryCount: 0,
         },
       },
     });
