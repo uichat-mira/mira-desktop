@@ -158,6 +158,19 @@ attachments[]
 
 当前同一 Runtime 只允许一个发送任务。其他 Thread 可以编辑 Draft，但发送继续禁用。
 
+### 7.1 默认 Agent 与兼容退路
+
+E05A 当前产品口径：
+
+- 新 Conversation 的 draft 默认 `agentEnabled=true`；
+- 主发送按钮始终表达为普通“发送”，不再把默认路径描述成“以智能体模式运行”；
+- Agent 开关暂时保留，作为历史 non-Agent / legacy RAG 的兼容退路；
+- 关闭后 UI 显式标记为 Compatibility Chat / 兼容 Chat，且不会改写历史 Thread；
+- Skill / Toolkit mention editor 与候选只在 Agent-enabled Conversation 中出现；
+- Role 手动生图入口的资格只看“已绑定 Role 且未绑定 Knowledge Base”，不再因为 Agent 已启用而隐藏。
+
+这是一阶段收口合同，不代表 legacy Normal/RAG 已退役。真正删除兼容路径属于 E05B。
+
 ## 8. 附件上传
 
 Attachment Driver 负责：
