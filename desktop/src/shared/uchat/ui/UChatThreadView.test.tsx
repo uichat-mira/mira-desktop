@@ -491,7 +491,7 @@ test("UChatThreadView keeps normal send enabled when Agent toggle is off", () =>
   );
 
   const button = screen.getByRole("button", {
-    name: "chat.thread.actions.send",
+    name: i18n.t("chat.thread.actions.send"),
   });
   assert.equal(button.hasAttribute("disabled"), false);
   fireEvent.click(button);
