@@ -122,12 +122,13 @@ jobs:
 
           npm install             --prefix "$runtime_dir"             --no-audit             --no-fund             --package-lock=false             opencode-ai@1.18.34             @opencode-ai/sdk@1.18.34
 
-          sdk_entry="$(
-            RUNTIME_DIR="$runtime_dir" node <<'NODE'
-          const runtime = process.env.RUNTIME_DIR;
-          process.stdout.write(require.resolve('@opencode-ai/sdk', { paths: [runtime] }));
+          cat > "$runtime_dir/resolve-sdk.mjs" <<'NODE'
+          import { fileURLToPath } from 'node:url';
+          process.stdout.write(fileURLToPath(import.meta.resolve('@opencode-ai/sdk')));
           NODE
-          )"
+
+          sdk_entry="$(node "$runtime_dir/resolve-sdk.mjs")"
+          rm -f "$runtime_dir/resolve-sdk.mjs"
 
           echo "OPENCODE_SDK_ENTRY=$sdk_entry" >> "$GITHUB_ENV"
           echo "$runtime_dir/node_modules/.bin" >> "$GITHUB_PATH"
