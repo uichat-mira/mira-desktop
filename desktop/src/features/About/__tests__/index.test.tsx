@@ -61,7 +61,7 @@ vi.mock("@/shared/api/system", () => ({
   getAppMeta: () => getAppMetaMock(),
 }));
 
-vi.mock("../../General/DevelopmentEnvironmentSuiteCard", () => ({
+vi.mock("@/features/Development/components/DevelopmentEnvironmentSuiteCard", () => ({
   default: () => (
     <div data-testid="development-environment-suite">开发环境套件</div>
   ),

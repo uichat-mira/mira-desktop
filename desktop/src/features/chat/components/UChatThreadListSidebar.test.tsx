@@ -323,18 +323,15 @@ describe("UChatThreadListSidebar", () => {
     expect(screen.getByTestId("sidebar-tools-modal")).toHaveTextContent("search");
   });
 
-  it("opens Cuixing through the app integration sidebar entry", async () => {
-    const user = userEvent.setup();
-
+  it("keeps app integrations out of the chat sidebar entries", () => {
     render(
       <I18nextProvider i18n={i18n}>
         <UChatThreadListSidebar />
       </I18nextProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "淬行" }));
-
-    expect(mockedApis.navigateMock).toHaveBeenCalledWith("/forge");
+    expect(screen.queryByRole("button", { name: "淬行" })).not.toBeInTheDocument();
+    expect(mockedApis.navigateMock).not.toHaveBeenCalled();
   });
 
   it("shows inline validation for invalid workspace root paths", async () => {

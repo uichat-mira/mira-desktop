@@ -7,6 +7,7 @@ import KnowledgeBaseDetail from "../pages/Detail";
 const navigate = vi.fn();
 
 vi.mock("react-router-dom", () => ({
+  useLocation: () => ({ pathname: "/knowledge-base/detail" }),
   useNavigate: () => navigate,
   useSearchParams: () => [
     new URLSearchParams({ id: "d1", knowledgeBaseId: "kb1" }),
@@ -62,6 +63,7 @@ describe("KnowledgeBaseDetail page", () => {
   it("shows not found when documentId is missing", async () => {
     vi.resetModules();
     vi.doMock("react-router-dom", () => ({
+      useLocation: () => ({ pathname: "/knowledge-base/detail" }),
       useNavigate: () => navigate,
       useSearchParams: () => [new URLSearchParams()],
     }));

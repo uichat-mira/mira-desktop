@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import EvaluationCenter from "../Center";
 
 vi.mock("react-router-dom", () => ({
+  useLocation: () => ({ pathname: "/evaluation/center" }),
   useNavigate: () => vi.fn(),
 }));
 

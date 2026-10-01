@@ -9,7 +9,10 @@ const api = vi.hoisted(() => ({ createEvaluationRun: vi.fn(), getEvaluationRun: 
 const messages = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }));
 const modal = vi.hoisted(() => ({ close: vi.fn(), show: vi.fn() }));
 
-vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
+vi.mock("react-router-dom", () => ({
+  useLocation: () => ({ pathname: "/evaluation/new" }),
+  useNavigate: () => navigate,
+}));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values?: Record<string, unknown>) => values ? `${key}:${JSON.stringify(values)}` : key }) }));
 vi.mock("@/shared/i18n", () => ({ getAppLanguage: () => "en-US" }));
 vi.mock("@/shared/api/evaluation", () => api);

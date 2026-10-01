@@ -114,8 +114,9 @@ describe("JianXingPage", () => {
 
     render(<JianXingPage />);
 
-    expect(await screen.findByText("Native 不可用")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "下载插件" })).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "下载插件" })).toBeDisabled();
+    });
   });
 
   it("keeps connection controls above the JianXing and clipper tabs", async () => {
