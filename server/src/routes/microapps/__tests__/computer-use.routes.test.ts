@@ -31,6 +31,8 @@ import microappsRoute, {
   type ImageGenerationRouteService,
   type MailCenterRouteService,
   type NewsHubRouteService,
+  type CodeGraphStudioRouteService,
+  type TtsRouteService,
 } from "../index.js";
 
 const testDbPath = createTimestampedTestArtifactPath(
@@ -185,6 +187,34 @@ const newsHubService: NewsHubRouteService = {
   },
 };
 
+const codeGraphStudioService: CodeGraphStudioRouteService = {
+  async getReport() {
+    return {
+      status: "stopped",
+      blockedReasons: [],
+      config: {
+        workspaceRoot: "/tmp/computer-use-routes",
+        appDataRoot: "",
+        appDataRootResolved: null,
+        logRoot: null,
+        indexRoot: null,
+        microAppEnabled: true,
+        agentCapabilityEnabled: false,
+      },
+      index: null,
+    };
+  },
+} as unknown as CodeGraphStudioRouteService;
+
+const ttsService = {
+  async getOverview() {
+    return { providers: [], recentJobs: [] };
+  },
+  getProvider() {
+    return null;
+  },
+} as unknown as TtsRouteService;
+
 const createApp = async (input: {
   computerUseService: ComputerUseRouteService;
   computerUseRuntimeService: ComputerUseRuntimeRouteService;
@@ -203,6 +233,8 @@ const createApp = async (input: {
     computerUseDebuggerService: input.computerUseDebuggerService,
     mailCenterService,
     newsHubService,
+    codeGraphStudioService,
+    ttsService,
   });
   return app;
 };

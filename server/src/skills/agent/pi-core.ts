@@ -45,6 +45,9 @@ const isArkPlanProvider = (providerTemplateCode: string) =>
   providerTemplateCode === "volcengine-code-plan" ||
   providerTemplateCode === "volcengine-agent-plan";
 
+const isOpenAiCompatibleProvider = (chatAdapter: string) =>
+  chatAdapter === "openai-compatible";
+
 const resolvePiModel = (): {
   model: PiModel;
   apiKey: string;
@@ -67,7 +70,14 @@ const resolvePiModel = (): {
     8_192,
   );
 
-  const projectComplexToolSchemas = isArkPlanProvider(resolved.providerTemplateCode);
+  // Every OpenAI-compatible endpoint requires a function `parameters` schema
+  // whose top level is `type: "object"`. Governed domain tools such as
+  // read_discover declare a top-level `oneOf`, so the projection must run for
+  // any OpenAI-compatible provider, not only Ark Plan. Sending the raw
+  // composition surfaces as a provider 500 ("got type: null") and leaves the
+  // subAgent with an empty completion envelope.
+  const projectComplexToolSchemas = isOpenAiCompatibleProvider(provider.chatAdapter);
+  const isArkPlan = isArkPlanProvider(resolved.providerTemplateCode);
   const model = {
     id: resolved.model,
     name: resolved.model,
@@ -84,7 +94,7 @@ const resolvePiModel = (): {
     },
     contextWindow,
     maxTokens,
-    ...(projectComplexToolSchemas
+    ...(isArkPlan
       ? {
           // Ark Plan rejects the JSON Schema composition used by governed
           // domain tools. Runtime validation remains on the Harness binding.

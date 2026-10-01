@@ -23,10 +23,7 @@ import { getDb, getSqlite } from "@/db/index";
 import { conversationArtifacts } from "@/db/schema.js";
 import { hasSqliteColumn } from "@/db/sqlite-utils";
 import { threadService } from "@/services/thread.service";
-import {
-  ConversationWorkdirError,
-  conversationWorkdirService,
-} from "@/services/conversation-workdir.service.js";
+import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
 import { configureAgentRunPersistence, agentRunStore } from "../run-store";
 import { agentRunRepository } from "@/db/repositories/agent-run.repository";
 import { createAgentGoal } from "../nodes/index";
@@ -100,7 +97,6 @@ afterEach(() => {
 
 const createPersistedWaitingApprovalRun = (options?: {
   withRuntimeInput?: boolean;
-  withWorkdir?: boolean;
   pendingToolCall?: Record<string, unknown>;
   pendingApproval?: Record<string, unknown>;
 }) => {
@@ -109,13 +105,14 @@ const createPersistedWaitingApprovalRun = (options?: {
     userId: 1,
     title: "agent persistence",
   });
-  const conversationWorkdir = options?.withWorkdir
-    ? conversationWorkdirService.ensure({
-        threadId: thread.id,
-        userId: 1,
-        storageRoot: path.dirname(dbPath),
-      })
-    : undefined;
+  const workspaceRoot =
+    options?.withRuntimeInput === false
+      ? undefined
+      : privateAgentWorkspaceService.ensure({
+          threadId: thread.id,
+          userId: 1,
+          storageRoot: path.dirname(dbPath),
+        });
   const goal = createAgentGoal("answer the user");
   const run = agentRunStore.create({
     threadId: thread.id,
@@ -135,7 +132,7 @@ const createPersistedWaitingApprovalRun = (options?: {
               },
             ],
             params: {},
-            ...(conversationWorkdir ? { conversationWorkdir } : {}),
+            workspaceRoot,
           },
         }),
   });
@@ -262,8 +259,8 @@ test("resumeApprovedAgentRun can continue from repository after in-memory state 
   }
 });
 
-test("resumeApprovedAgentRun reopens the persisted conversation workdir after reload", async () => {
-  const run = createPersistedWaitingApprovalRun({ withWorkdir: true });
+test("resumeApprovedAgentRun reuses the frozen Agent workspace root after reload", async () => {
+  const run = createPersistedWaitingApprovalRun();
   threadService.createMessage(run.threadId, 1, {
     id: "user-persisted-1",
     role: "user",
@@ -289,10 +286,9 @@ test("resumeApprovedAgentRun reopens the persisted conversation workdir after re
   try {
     await resumeApprovedAgentRun(run.id);
     const resumedInput = runSpy.mock.calls[0]?.[0];
-    assert.equal(resumedInput?.conversationWorkdir?.threadId, run.threadId);
     assert.equal(
-      resumedInput?.conversationWorkdir?.rootPath,
-      getAgentRunById(run.id)?.runtimeInput?.conversationWorkdir?.rootPath,
+      resumedInput?.workspaceRoot,
+      getAgentRunById(run.id)?.runtimeInput?.workspaceRoot,
     );
   } finally {
     runSpy.mockRestore();
@@ -300,15 +296,15 @@ test("resumeApprovedAgentRun reopens the persisted conversation workdir after re
 });
 
 test("synchronous approval resume finalizes failed when final artifact registration fails", async () => {
-  const run = createPersistedWaitingApprovalRun({ withWorkdir: true });
+  const run = createPersistedWaitingApprovalRun();
   const persisted = getAgentRunById(run.id);
-  const rootPath = persisted?.runtimeInput?.conversationWorkdir?.rootPath;
+  const rootPath = persisted?.runtimeInput?.workspaceRoot;
   assert.ok(rootPath);
   fs.writeFileSync(path.join(rootPath, "first.txt"), "first");
   agentRunStore.update(run.id, {
     runtimeInput: {
       ...persisted?.runtimeInput,
-      conversationWorkdirOutputs: [
+      workspaceOutputs: [
         { sourceRelativePath: "first.txt", lifecycle: "final" },
         { sourceRelativePath: "missing.txt", lifecycle: "final" },
       ],
@@ -321,7 +317,7 @@ test("synchronous approval resume finalizes failed when final artifact registrat
     evidence: { observations: [], toolExecutions: [], retrievals: [] },
     retrievedChunks: [],
     status: "completed",
-    conversationWorkdirOutputs: [
+    workspaceOutputs: [
       { sourceRelativePath: "first.txt", lifecycle: "final" },
       { sourceRelativePath: "missing.txt", lifecycle: "final" },
     ],
@@ -339,16 +335,16 @@ test("synchronous approval resume finalizes failed when final artifact registrat
   }
 });
 
-test("resumeApprovedAgentRun fails closed when the persisted workdir is missing", async () => {
-  const run = createPersistedWaitingApprovalRun({ withWorkdir: true });
+test("resumeApprovedAgentRun fails closed when the persisted workspace root is missing", async () => {
+  const run = createPersistedWaitingApprovalRun();
   const persisted = getAgentRunById(run.id);
-  const rootPath = persisted?.runtimeInput?.conversationWorkdir?.rootPath;
+  const rootPath = persisted?.runtimeInput?.workspaceRoot;
   assert.ok(rootPath);
   fs.rmSync(rootPath, { recursive: true, force: true });
 
   await assert.rejects(
     () => resumeApprovedAgentRun(run.id),
-    (error) => error instanceof ConversationWorkdirError && error.code === "missing",
+    /Agent workspace root is missing/,
   );
 
   agentRunStore.clear();

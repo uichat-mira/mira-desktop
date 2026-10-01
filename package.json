@@ -1,6 +1,6 @@
 {
   "name": "ui-chat-mira",
-  "version": "0.101.0",
+  "version": "0.102.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.12.0",
@@ -60,7 +60,7 @@
     "clean:artifacts": "node scripts/cleanup-artifacts.js",
     "check:no-db-in-index": "node scripts/check-no-db-in-index.js",
     "check:remote-relay": "tsc --noEmit -p packages/remote-relay/tsconfig.json",
-    "check": "pnpm check:forge-cutover && pnpm check:remote-relay && pnpm -r --workspace-concurrency=1 typecheck",
+    "check": "pnpm check:ai-review-runner && pnpm check:forge-cutover && pnpm check:remote-relay && pnpm -r --workspace-concurrency=1 typecheck",
     "check:tauri": "pnpm internal:prepare:tauri && cross-env CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo check --manifest-path tauri/Cargo.toml -j 1",
     "version:sync": "node scripts/sync-version.js",
     "internal:build:desktop": "pnpm --filter @ui-chat-mira/desktop build",
@@ -69,6 +69,7 @@
     "internal:prepare:tauri": "node scripts/prepare-tauri-assets.js",
     "internal:dev:tauri:services": "node scripts/tauri-dev-launcher.cjs",
     "prepare:terminal-runtime": "node scripts/prepare-terminal-runtime.mjs",
+    "prepare:node-runtime": "node scripts/prepare-node-runtime.mjs",
     "smoke:terminal-runtime": "pnpm prepare:terminal-runtime && pnpm internal:build:server && node scripts/smoke-terminal-runtime.mjs --quick",
     "smoke:terminal-runtime:staged": "pnpm prepare:terminal-runtime && pnpm internal:build:server && node scripts/smoke-terminal-runtime.mjs --full",
     "smoke:pi-skill-agent": "pnpm --filter @ui-chat-mira/server smoke:pi-skill-agent",
@@ -78,7 +79,8 @@
     "archive:local-model-packs": "node scripts/archive-local-model-packs.mjs",
     "smoke:local-model-runtime": "node scripts/smoke-local-model-runtime.mjs",
     "eval:local-model-runtime": "node scripts/eval-local-model-runtime.mjs",
-    "check:forge-cutover": "node scripts/check-forge-cutover.mjs"
+    "check:forge-cutover": "node scripts/check-forge-cutover.mjs",
+    "check:ai-review-runner": "node --test scripts/ai-review/opencode-review-routing.test.mjs scripts/ai-review/opencode-review-runner.test.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

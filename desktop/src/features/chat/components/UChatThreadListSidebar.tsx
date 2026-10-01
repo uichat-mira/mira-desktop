@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import {
   useChatRuntime,
   useChatRuntimeSelector,
@@ -32,9 +31,15 @@ type WorkspaceGroup = {
 const sortByUpdatedAtDesc = (left: { updatedAt: string }, right: { updatedAt: string }) =>
   right.updatedAt.localeCompare(left.updatedAt);
 
+const isSystemDefaultWorkspace = (
+  workspace: Pick<ChatWorkspace, "isDefault" | "name">,
+) =>
+  workspace.isDefault ||
+  workspace.name === "Default Workspace" ||
+  workspace.name === "Mira BASE";
+
 export function UChatThreadListSidebar() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const runtime = useChatRuntime();
   const { resetDraft } = useChatThreadDraftState();
   const threads = useChatRuntimeSelector((state) => state.threads);
@@ -77,22 +82,26 @@ export function UChatThreadListSidebar() {
   );
 
   useEffect(() => {
-    const nextGroups = workspaces.map<WorkspaceGroup>((workspace) => ({
-      id: workspace.id,
-      name: workspace.name,
-      rootPath: workspace.rootPath,
-      isDefault: workspace.isDefault,
-      threads: [...threads]
-        .filter((thread) => thread.workspaceId === workspace.id)
-        .sort(sortByUpdatedAtDesc),
-    }));
+    const nextGroups = workspaces
+      // Older installs may retain the reserved default workspace name while
+      // root-path drift makes the backend report isDefault=false. Keep the
+      // system default hidden until those legacy rows are normalized.
+      .filter((workspace) => !isSystemDefaultWorkspace(workspace))
+      .map<WorkspaceGroup>((workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
+        rootPath: workspace.rootPath,
+        isDefault: workspace.isDefault,
+        threads: [...threads]
+          .filter((thread) => thread.workspaceId === workspace.id)
+          .sort(sortByUpdatedAtDesc),
+      }));
     setWorkspaceGroups(nextGroups);
   }, [threads, workspaces]);
 
   const sidebarEntries = useMemo<ChatSidebarEntry[]>(
     () => [
       { id: "chat-search", label: t("chat.sidebar.tools.search") },
-      { id: "forge-open", label: "淬行", description: "Forge" },
     ],
     [t],
   );
@@ -138,9 +147,6 @@ export function UChatThreadListSidebar() {
     if (entry.id === "chat-search") {
       setToolsModalMode("search");
       return;
-    }
-    if (entry.id === "forge-open") {
-      navigate("/forge");
     }
   };
 

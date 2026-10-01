@@ -2,11 +2,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import {
+  loadReviewRoutingConfig,
+  resolveReviewRoute,
+  reviewRouteCredential,
+  reviewRouteModelRef,
+} from "./opencode-review-routing.mjs";
+
 export const OPENCODE_ENGINE = "opencode";
-export const OPENCODE_PROVIDER = "opencode-go";
-export const OPENCODE_MODEL = "minimax-m3";
-export const OPENCODE_MODEL_REF = `${OPENCODE_PROVIDER}/${OPENCODE_MODEL}`;
-export const OPENCODE_VARIANT = "none";
 
 const VERDICTS = [
   "NO_BLOCKING_FINDINGS",
@@ -179,7 +182,7 @@ export function buildReviewPrompt(pkg) {
   ].join("\n");
 }
 
-export function buildExternalSubmission(pkg, review, latencyMs) {
+export function buildExternalSubmission(pkg, route, review, latencyMs) {
   const identity = reviewPackageIdentity(pkg);
   return {
     repository: identity.repository,
@@ -187,9 +190,9 @@ export function buildExternalSubmission(pkg, review, latencyMs) {
     identity,
     execution: {
       engine: OPENCODE_ENGINE,
-      provider: OPENCODE_PROVIDER,
-      model: OPENCODE_MODEL,
-      role: "routine",
+      provider: route.provider,
+      model: route.model,
+      role: route.role,
       latencyMs: Math.max(0, Math.trunc(latencyMs)),
       review,
     },
@@ -321,6 +324,7 @@ function safeFailureReason(error) {
   if (message === "structured_output_missing") return "structured_output_missing";
   if (message === "structured_output_invalid") return "structured_output_invalid";
   if (message === "opencode_prompt_timeout") return "opencode_prompt_timeout";
+  if (message === "review_route_credential_unavailable") return message;
   if (message.startsWith("review_contract_")) return message;
   return "opencode_execution_failed";
 }
@@ -328,14 +332,15 @@ function safeFailureReason(error) {
 export async function executeOpenCodeReview(
   createOpencode,
   pkg,
+  route,
   { promptTimeoutMs = 300_000, disposeTimeoutMs = 5_000 } = {},
 ) {
   const instance = await createOpencode({
     hostname: "127.0.0.1",
     timeout: 15_000,
     config: {
-      model: OPENCODE_MODEL_REF,
-      enabled_providers: [OPENCODE_PROVIDER],
+      model: reviewRouteModelRef(route),
+      enabled_providers: [route.provider],
       share: "disabled",
       autoupdate: false,
       snapshot: false,
@@ -380,10 +385,10 @@ export async function executeOpenCodeReview(
       path: { id: sessionId },
       body: {
         model: {
-          providerID: OPENCODE_PROVIDER,
-          modelID: OPENCODE_MODEL,
+          providerID: route.provider,
+          modelID: route.model,
         },
-        variant: OPENCODE_VARIANT,
+        variant: route.variant,
         parts: [{ type: "text", text: buildReviewPrompt(pkg) }],
         format: {
           type: "json_schema",
@@ -432,13 +437,18 @@ export async function executeOpenCodeReview(
   }
 }
 
-export async function runReviewFailClosed(createOpencode, pkg, now = () => Date.now()) {
+export async function runReviewFailClosed(
+  createOpencode,
+  pkg,
+  route,
+  now = () => Date.now(),
+) {
   const startedAt = now();
   try {
-    const review = await executeOpenCodeReview(createOpencode, pkg);
+    const review = await executeOpenCodeReview(createOpencode, pkg, route);
     return {
       runner: { state: "COMPLETED" },
-      submission: buildExternalSubmission(pkg, review, now() - startedAt),
+      submission: buildExternalSubmission(pkg, route, review, now() - startedAt),
     };
   } catch (error) {
     return {
@@ -446,7 +456,7 @@ export async function runReviewFailClosed(createOpencode, pkg, now = () => Date.
         state: "REVIEW_UNAVAILABLE",
         reason: safeFailureReason(error),
       },
-      submission: buildExternalSubmission(pkg, null, now() - startedAt),
+      submission: buildExternalSubmission(pkg, route, null, now() - startedAt),
     };
   }
 }
@@ -456,25 +466,37 @@ async function main() {
   const outputPath = string(process.env.MIRA_REVIEW_OUTPUT_PATH, "MIRA_REVIEW_OUTPUT_PATH");
   const sdkEntry = process.env.OPENCODE_SDK_ENTRY?.trim();
   const githubWorkspace = string(process.env.GITHUB_WORKSPACE, "GITHUB_WORKSPACE");
-  const goKey = process.env.OPENCODE_GO_API_KEY?.trim();
 
   assertIsolatedWorkspace(process.cwd(), githubWorkspace);
 
   const pkg = JSON.parse(await readFile(packagePath, "utf8"));
+  const routing = await loadReviewRoutingConfig();
+  const route = resolveReviewRoute(routing, "routine");
+
+  let routeCredential;
+  try {
+    routeCredential = reviewRouteCredential(route);
+  } catch {
+    routeCredential = undefined;
+  }
 
   process.env.OPENCODE_DISABLE_PROJECT_CONFIG = "1";
   process.env.OPENCODE_DISABLE_CLAUDE_CODE = "1";
   process.env.OPENCODE_PURE = "1";
 
   let createOpencode = async () => {
-    throw new Error("opencode_runtime_unavailable");
+    throw new Error(
+      routeCredential
+        ? "opencode_runtime_unavailable"
+        : "review_route_credential_unavailable",
+    );
   };
 
-  if (goKey && sdkEntry) {
+  if (routeCredential && sdkEntry) {
     process.env.OPENCODE_AUTH_CONTENT = JSON.stringify({
-      [OPENCODE_PROVIDER]: { type: "api", key: goKey },
+      [route.provider]: { type: "api", key: routeCredential },
     });
-    delete process.env.OPENCODE_GO_API_KEY;
+    delete process.env[route.credentialEnv];
 
     try {
       const sdk = await import(pathToFileURL(sdkEntry).href);
@@ -485,10 +507,10 @@ async function main() {
       // runReviewFailClosed below converts runtime import failure into a null review submission.
     }
   } else {
-    delete process.env.OPENCODE_GO_API_KEY;
+    delete process.env[route.credentialEnv];
   }
 
-  const result = await runReviewFailClosed(createOpencode, pkg);
+  const result = await runReviewFailClosed(createOpencode, pkg, route);
   await writeFile(outputPath, JSON.stringify(result), { mode: 0o600 });
   console.log(`Mira OpenCode runner: ${result.runner.state}`);
 }

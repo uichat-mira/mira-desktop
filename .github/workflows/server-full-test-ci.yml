@@ -1,0 +1,109 @@
+name: Server Full Test CI
+
+# The full server suite was previously never gated on any platform, so a
+# corrupted test file and a batch of platform-bound suites could rot silently.
+# Linux and Windows both run: platform-gated suites are skipped on the host
+# that does not own them, so each job is a genuine regression gate.
+on:
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - "server/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - "tsconfig.base.json"
+      - ".github/workflows/server-full-test-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-full-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-test-linux:
+    name: Server Test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Prepare test artifact directory
+        run: mkdir -p .test-artifact
+
+      - name: Install server workspace dependencies
+        run: pnpm install --frozen-lockfile --filter @ui-chat-mira/server...
+
+      - name: Typecheck server
+        run: pnpm --filter @ui-chat-mira/server typecheck
+
+      - name: Run full server test suite
+        run: pnpm --filter @ui-chat-mira/server test
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-test-artifacts-linux
+          path: .test-artifact
+          retention-days: 7
+          if-no-files-found: ignore
+
+  server-test-windows:
+    name: Server Test (windows-2022)
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Prepare test artifact directory
+        run: mkdir .test-artifact
+
+      - name: Install server workspace dependencies
+        run: pnpm install --frozen-lockfile --filter @ui-chat-mira/server...
+
+      - name: Typecheck server
+        run: pnpm --filter @ui-chat-mira/server typecheck
+
+      - name: Run full server test suite
+        run: pnpm --filter @ui-chat-mira/server test
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-test-artifacts-windows
+          path: .test-artifact
+          retention-days: 7
+          if-no-files-found: ignore

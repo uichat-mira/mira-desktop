@@ -307,7 +307,7 @@ export interface CleanupThreadsResult {
   deletedThreads: number;
   deletedMessages: number;
   failedThreads: number;
-  failedWorkdirs: number;
+  failedAgentWorkspaces: number;
   clearedLogBytes: number;
   media: {
     attachments: { files: number; bytes: number };

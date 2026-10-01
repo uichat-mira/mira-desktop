@@ -1,186 +1,435 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, test, vi } from "vitest";
+import { afterAll, test } from "vitest";
 import { initializeAuthDatabase } from "@/db/auth.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
 import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { resetDatabaseClients } from "@/db";
-import { conversationArtifactRepository, threadRepository, userRepository } from "@/db/repositories";
-import { conversationWorkdirService, ConversationWorkdirError } from "./conversation-workdir.service.js";
-import { conversationArtifactService, ConversationArtifactError } from "./conversation-artifact.service.js";
-import { createTimestampedTestArtifactPath, getTestArtifactDir } from "@/test-support/artifacts.js";
+import {
+  agentRunRepository,
+  chatWorkspaceRepository,
+  conversationArtifactRepository,
+  threadRepository,
+  userRepository,
+} from "@/db/repositories";
+import {
+  conversationArtifactService,
+  ConversationArtifactError,
+} from "./conversation-artifact.service.js";
+import { privateAgentWorkspaceService } from "./agent-workspace.service.js";
+import {
+  createTimestampedTestArtifactPath,
+  getTestArtifactDir,
+} from "@/test-support/artifacts.js";
 
-const root = getTestArtifactDir("conversation-artifact", `${process.pid}-${Date.now()}`);
-const db = createTimestampedTestArtifactPath("db", "conversation-artifact", ".sqlite");
+const root = getTestArtifactDir(
+  "conversation-artifact",
+  `${process.pid}-${Date.now()}`,
+);
+const db = createTimestampedTestArtifactPath(
+  "db",
+  "conversation-artifact",
+  ".sqlite",
+);
+const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalDatabaseDir = process.env.UI_CHAT_DATABASE_DIR;
 process.env.DATABASE_URL = `file:${db}`;
-resetDatabaseClients(); initializeAuthDatabase(); initializeModelConfigDatabase(); initializeKnowledgeBaseDatabase(); initializeRoleDatabase(); initializeThreadDatabase();
-const user = userRepository.create({ username: `artifact-${Date.now()}`, passwordHash: "x", role: "user" });
-const thread = threadRepository.create({ userId: user.id, title: "artifact" });
-const workdir = conversationWorkdirService.ensure({ threadId: thread.id, userId: user.id, storageRoot: root });
-fs.writeFileSync(path.join(workdir.rootPath, "final.txt"), "ok");
-let registeredId = "";
+process.env.UI_CHAT_DATABASE_DIR = root;
 
-afterAll(() => { resetDatabaseClients(); fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(db, { force: true }); fs.rmSync(`${db}-wal`, { force: true }); fs.rmSync(`${db}-shm`, { force: true }); });
+resetDatabaseClients();
+initializeAuthDatabase();
+initializeModelConfigDatabase();
+initializeKnowledgeBaseDatabase();
+initializeRoleDatabase();
+initializeThreadDatabase();
 
-test("registers stable final identity and resolves after reload", () => {
-  const ref = conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath: "final.txt", lifecycle: "final", mimeType: "text/plain" });
-  registeredId = ref.id;
-  assert.equal(ref.threadId, thread.id); assert.equal(ref.workdirId, workdir.id); assert.equal(ref.lifecycle, "final");
-  resetDatabaseClients(); initializeAuthDatabase(); initializeModelConfigDatabase(); initializeKnowledgeBaseDatabase(); initializeRoleDatabase(); initializeThreadDatabase();
-  const resolved = conversationArtifactService.resolve({ id: ref.id, threadId: thread.id, userId: user.id, storageRoot: root });
-  assert.equal(resolved.reference.id, ref.id);
-  assert.equal(resolved.reference.sourceRelativePath, "final.txt");
-  assert.equal(resolved.absolutePath, path.join(workdir.rootPath, "final.txt"));
+const user = userRepository.create({
+  username: `artifact-${Date.now()}`,
+  passwordHash: "x",
+  role: "user",
+});
+const thread = threadRepository.create({
+  userId: user.id,
+  title: "artifact",
+});
+const privateRoot = privateAgentWorkspaceService.ensure({
+  threadId: thread.id,
+  userId: user.id,
+});
+fs.writeFileSync(path.join(privateRoot, "final.txt"), "ok");
+
+afterAll(() => {
+  resetDatabaseClients();
+  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+  else process.env.DATABASE_URL = originalDatabaseUrl;
+  if (originalDatabaseDir === undefined) delete process.env.UI_CHAT_DATABASE_DIR;
+  else process.env.UI_CHAT_DATABASE_DIR = originalDatabaseDir;
+  fs.rmSync(root, { recursive: true, force: true });
+  for (const suffix of ["", "-wal", "-shm"]) {
+    fs.rmSync(`${db}${suffix}`, { force: true });
+  }
 });
 
-test("rejects a persisted absolute source path during resolve", () => {
-  const absolutePath = path.join(workdir.rootPath, "persisted-absolute.txt");
-  fs.writeFileSync(absolutePath, "absolute");
-  const id = `artifact-absolute-${crypto.randomUUID()}`;
-  conversationArtifactRepository.create({
-    id,
+test("registers a private-workspace artifact with a frozen source root", () => {
+  const ref = conversationArtifactService.register({
     threadId: thread.id,
     userId: user.id,
-    workdirId: workdir.id,
-    sourceRelativePath: absolutePath,
+    sourceRootPath: privateRoot,
+    sourceRelativePath: "final.txt",
     lifecycle: "final",
     mimeType: "text/plain",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   });
 
-  assert.throws(
-    () => conversationArtifactService.resolve({ id, threadId: thread.id, userId: user.id, storageRoot: root }),
-    (error) => error instanceof ConversationArtifactError && error.code === "unsupported_absolute_path",
+  assert.equal(ref.threadId, thread.id);
+  assert.equal("sourceRootPath" in ref, false);
+  assert.equal(ref.sourceRelativePath, "final.txt");
+  const persisted = conversationArtifactRepository.findById(ref.id, user.id);
+  assert.equal(persisted?.sourceRootPath, fs.realpathSync(privateRoot));
+
+  resetDatabaseClients();
+  initializeAuthDatabase();
+  initializeModelConfigDatabase();
+  initializeKnowledgeBaseDatabase();
+  initializeRoleDatabase();
+  initializeThreadDatabase();
+
+  const resolved = conversationArtifactService.resolve({
+    id: ref.id,
+    threadId: thread.id,
+    userId: user.id,
+  });
+  assert.equal(resolved.absolutePath, path.join(privateRoot, "final.txt"));
+  assert.equal(fs.readFileSync(resolved.absolutePath, "utf8"), "ok");
+});
+
+test("read-back stays on the creation root after the thread switches Workspace", () => {
+  fs.writeFileSync(path.join(privateRoot, "stable.txt"), "private");
+  const ref = conversationArtifactService.register({
+    threadId: thread.id,
+    userId: user.id,
+    sourceRootPath: privateRoot,
+    sourceRelativePath: "stable.txt",
+    lifecycle: "final",
+  });
+
+  const explicitRoot = path.join(root, "explicit");
+  fs.mkdirSync(explicitRoot, { recursive: true });
+  fs.writeFileSync(path.join(explicitRoot, "stable.txt"), "explicit");
+  const workspace = chatWorkspaceRepository.create({
+    userId: user.id,
+    name: "Explicit",
+    rootPath: explicitRoot,
+    status: "active",
+  });
+  threadRepository.updateById(thread.id, { workspaceId: workspace.id });
+
+  const resolved = conversationArtifactService.resolve({
+    id: ref.id,
+    threadId: thread.id,
+    userId: user.id,
+  });
+  assert.equal(fs.readFileSync(resolved.absolutePath, "utf8"), "private");
+  assert.equal("sourceRootPath" in resolved.reference, false);
+});
+
+test("registers output from the thread's explicit Workspace", () => {
+  const explicitRoot = path.join(root, "explicit-register");
+  fs.mkdirSync(explicitRoot, { recursive: true });
+  fs.writeFileSync(path.join(explicitRoot, "report.txt"), "report");
+  const explicitThread = threadRepository.create({
+    userId: user.id,
+    title: "explicit",
+  });
+  const workspace = chatWorkspaceRepository.create({
+    userId: user.id,
+    name: "Explicit register",
+    rootPath: explicitRoot,
+    status: "active",
+  });
+  threadRepository.updateById(explicitThread.id, { workspaceId: workspace.id });
+
+  const ref = conversationArtifactService.register({
+    threadId: explicitThread.id,
+    userId: user.id,
+    sourceRootPath: explicitRoot,
+    sourceRelativePath: "report.txt",
+    lifecycle: "final",
+  });
+  assert.equal("sourceRootPath" in ref, false);
+  assert.equal(
+    conversationArtifactRepository.findById(ref.id, user.id)?.sourceRootPath,
+    fs.realpathSync(explicitRoot),
   );
 });
 
-test("rejects persisted traversal and malformed relative sources during resolve", () => {
-  for (const [sourceRelativePath, expectedCode] of [
-    ["../escape.txt", "path_escape"],
-    ["", "invalid_source"],
-  ] as const) {
-    const id = `artifact-invalid-${crypto.randomUUID()}`;
-    conversationArtifactRepository.create({
-      id,
-      threadId: thread.id,
-      userId: user.id,
-      workdirId: workdir.id,
-      sourceRelativePath,
-      lifecycle: "final",
-      mimeType: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+test("rejects roots that do not belong to the conversation", () => {
+  const outside = path.join(root, "outside-root");
+  fs.mkdirSync(outside, { recursive: true });
+  fs.writeFileSync(path.join(outside, "x.txt"), "x");
 
-    assert.throws(
-      () => conversationArtifactService.resolve({ id, threadId: thread.id, userId: user.id, storageRoot: root }),
-      (error) => error instanceof ConversationArtifactError && error.code === expectedCode,
-    );
-  }
+  assert.throws(
+    () =>
+      conversationArtifactService.register({
+        threadId: thread.id,
+        userId: user.id,
+        sourceRootPath: outside,
+        sourceRelativePath: "x.txt",
+        lifecycle: "final",
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "invalid_ownership",
+  );
 });
 
-test("rejects persisted non-canonical relative source identities", () => {
-  fs.mkdirSync(path.join(workdir.rootPath, "report"), { recursive: true });
-  fs.writeFileSync(path.join(workdir.rootPath, "report", "2026.txt"), "report");
-  fs.mkdirSync(path.join(workdir.rootPath, "dir"), { recursive: true });
-  fs.writeFileSync(path.join(workdir.rootPath, "dir", "file.txt"), "file");
-
-  for (const sourceRelativePath of ["report\\2026.txt", "dir//file.txt"]) {
-    const id = `artifact-non-canonical-${crypto.randomUUID()}`;
-    conversationArtifactRepository.create({
-      id,
-      threadId: thread.id,
-      userId: user.id,
-      workdirId: workdir.id,
-      sourceRelativePath,
-      lifecycle: "final",
-      mimeType: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-
+test("rejects traversal, absolute, missing, temporary, and cross-thread reads", () => {
+  for (const sourceRelativePath of [
+    "../escape.txt",
+    path.resolve(root, "absolute.txt"),
+  ]) {
     assert.throws(
-      () => conversationArtifactService.resolve({ id, threadId: thread.id, userId: user.id, storageRoot: root }),
-      (error) => error instanceof ConversationArtifactError && error.code === "invalid_source",
+      () =>
+        conversationArtifactService.register({
+          threadId: thread.id,
+          userId: user.id,
+          sourceRootPath: privateRoot,
+          sourceRelativePath,
+          lifecycle: "final",
+        }),
+      ConversationArtifactError,
     );
   }
-});
 
-test("reports a stale workdir before an invalid persisted source", () => {
-  const staleThread = threadRepository.create({ userId: user.id, title: "stale artifact workdir" });
-  const staleWorkdir = conversationWorkdirService.ensure({ threadId: staleThread.id, userId: user.id, storageRoot: root });
-  const id = `artifact-stale-${crypto.randomUUID()}`;
+  assert.throws(
+    () =>
+      conversationArtifactService.register({
+        threadId: thread.id,
+        userId: user.id,
+        sourceRootPath: privateRoot,
+        sourceRelativePath: "final.txt",
+        lifecycle: "temporary",
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "invalid_source",
+  );
+
+  assert.throws(
+    () =>
+      conversationArtifactService.register({
+        threadId: thread.id,
+        userId: user.id,
+        sourceRootPath: privateRoot,
+        sourceRelativePath: "missing.txt",
+        lifecycle: "final",
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "missing_source",
+  );
+
+  const id = `artifact-cross-${crypto.randomUUID()}`;
   conversationArtifactRepository.create({
     id,
     threadId: thread.id,
     userId: user.id,
-    workdirId: staleWorkdir.id,
-    sourceRelativePath: "../escape.txt",
+    sourceRootPath: privateRoot,
+    sourceRelativePath: "final.txt",
     lifecycle: "final",
     mimeType: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
-
+  const otherThread = threadRepository.create({
+    userId: user.id,
+    title: "other",
+  });
   assert.throws(
-    () => conversationArtifactService.resolve({ id, threadId: thread.id, userId: user.id, storageRoot: root }),
-    (error) => error instanceof ConversationArtifactError && error.code === "stale_reference",
+    () =>
+      conversationArtifactService.resolve({
+        id,
+        threadId: otherThread.id,
+        userId: user.id,
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "invalid_ownership",
   );
 });
 
-test("fails closed for temporary, traversal, absolute path, ownership and stale source", () => {
-  assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, sourceRelativePath: "tmp.txt", lifecycle: "temporary" }), (e) => e instanceof ConversationArtifactError && e.code === "invalid_source");
-  for (const sourceRelativePath of ["../escape.txt", path.resolve(root, "final.txt")]) assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, sourceRelativePath, lifecycle: "final" }), ConversationArtifactError);
-  assert.throws(() => conversationArtifactService.resolve({ id: "missing", threadId: thread.id, userId: user.id }), (e) => e instanceof ConversationArtifactError && e.code === "invalid_ownership");
-  fs.rmSync(path.join(workdir.rootPath, "final.txt"));
-  assert.throws(() => conversationArtifactService.resolve({ id: registeredId, threadId: thread.id, userId: user.id, storageRoot: root }), (e) => e instanceof ConversationArtifactError && e.code === "missing_source");
-  assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath: "missing.txt", lifecycle: "final" }), (e) => e instanceof ConversationArtifactError && e.code === "missing_source");
+test("rejects cross-user reads and stale frozen roots", () => {
+  const crossUserRef = conversationArtifactService.register({
+    threadId: thread.id,
+    userId: user.id,
+    sourceRootPath: privateRoot,
+    sourceRelativePath: "final.txt",
+    lifecycle: "final",
+  });
+  const otherUser = userRepository.create({
+    username: `artifact-other-${crypto.randomUUID()}`,
+    passwordHash: "x",
+    role: "user",
+  });
+
+  assert.throws(
+    () =>
+      conversationArtifactService.resolve({
+        id: crossUserRef.id,
+        threadId: thread.id,
+        userId: otherUser.id,
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "invalid_ownership",
+  );
+
+  const staleThread = threadRepository.create({
+    userId: user.id,
+    title: "stale-root",
+  });
+  const staleRoot = privateAgentWorkspaceService.ensure({
+    threadId: staleThread.id,
+    userId: user.id,
+  });
+  fs.writeFileSync(path.join(staleRoot, "stale.txt"), "stale");
+  const staleRef = conversationArtifactService.register({
+    threadId: staleThread.id,
+    userId: user.id,
+    sourceRootPath: staleRoot,
+    sourceRelativePath: "stale.txt",
+    lifecycle: "final",
+  });
+  fs.rmSync(staleRoot, { recursive: true, force: true });
+
+  assert.throws(
+    () =>
+      conversationArtifactService.resolve({
+        id: staleRef.id,
+        threadId: staleThread.id,
+        userId: user.id,
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "stale_reference",
+  );
 });
 
-test("allows legal filenames beginning with two dots", () => {
-  const sourceRelativePath = "..report.txt";
-  fs.writeFileSync(path.join(workdir.rootPath, sourceRelativePath), "report");
-  const ref = conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath, lifecycle: "final" });
-  assert.equal(ref.sourceRelativePath, sourceRelativePath);
-});
-
-test("preserves non-reference workdir failures during registration", () => {
-  for (const code of ["quota_exhausted", "unavailable"] as const) {
-    const reopen = vi.spyOn(conversationWorkdirService, "reopen").mockImplementationOnce(() => {
-      throw new ConversationWorkdirError(code, `simulated ${code}`);
-    });
-    assert.throws(
-      () => conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath: "..report.txt", lifecycle: "final" }),
-      (error) => error instanceof ConversationWorkdirError && error.code === code,
-    );
-    reopen.mockRestore();
-  }
-});
-
-test("fails closed when the persisted workdir is rebound to another storage root", () => {
-  const relocatedRoot = getTestArtifactDir("conversation-artifact-relocated", `${process.pid}-${Date.now()}`);
-  try {
-    assert.throws(
-      () => conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: relocatedRoot, sourceRelativePath: "new.txt", lifecycle: "final" }),
-      (e) => e instanceof ConversationArtifactError && e.code === "stale_reference",
-    );
-  } finally {
-    fs.rmSync(relocatedRoot, { recursive: true, force: true });
-  }
-});
-
-test("rejects symlinked source outside the workdir", () => {
+test("rejects a symlinked source outside the frozen root", () => {
   const outside = path.join(root, "outside.txt");
-  const linked = path.join(workdir.rootPath, "linked.txt");
+  const linked = path.join(privateRoot, "linked.txt");
   fs.writeFileSync(outside, "outside");
   try {
     fs.symlinkSync(outside, linked);
   } catch {
     return;
   }
-  assert.throws(() => conversationArtifactService.register({ threadId: thread.id, userId: user.id, storageRoot: root, sourceRelativePath: "linked.txt", lifecycle: "final" }), (e) => e instanceof ConversationArtifactError && e.code === "containment_failure");
+
+  try {
+    assert.throws(
+      () =>
+        conversationArtifactService.register({
+          threadId: thread.id,
+          userId: user.id,
+          sourceRootPath: privateRoot,
+          sourceRelativePath: "linked.txt",
+          lifecycle: "final",
+        }),
+      (error) =>
+        error instanceof ConversationArtifactError &&
+        error.code === "containment_failure",
+    );
+  } finally {
+    fs.rmSync(linked, { force: true });
+  }
 });
+
+test("AgentRun-frozen registration rejects a mismatched thread", () => {
+  const run = agentRunRepository.create({
+    threadId: thread.id,
+    userId: user.id,
+    goal: {
+      id: "artifact-frozen-root",
+      text: "artifact",
+      successCriteria: [],
+      constraints: [],
+      riskLevel: "low",
+    },
+    runtimeInput: {
+      messages: [],
+      params: {},
+      workspaceRoot: privateRoot,
+    },
+  });
+  const otherThread = threadRepository.create({
+    userId: user.id,
+    title: "artifact-other-thread",
+  });
+
+  assert.throws(
+    () =>
+      conversationArtifactService.register({
+        threadId: otherThread.id,
+        userId: user.id,
+        sourceRootPath: privateRoot,
+        sourceRelativePath: "final.txt",
+        lifecycle: "final",
+        agentRunId: run.id,
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "invalid_ownership",
+  );
+});
+
+test("rejects read-back when the frozen root itself is replaced by a link", () => {
+  const linkedThread = threadRepository.create({
+    userId: user.id,
+    title: "artifact-linked-root",
+  });
+  const linkedRoot = privateAgentWorkspaceService.ensure({
+    threadId: linkedThread.id,
+    userId: user.id,
+  });
+  fs.writeFileSync(path.join(linkedRoot, "final.txt"), "original");
+  const ref = conversationArtifactService.register({
+    threadId: linkedThread.id,
+    userId: user.id,
+    sourceRootPath: linkedRoot,
+    sourceRelativePath: "final.txt",
+    lifecycle: "final",
+  });
+
+  const replacementRoot = path.join(
+    root,
+    `artifact-root-replacement-${crypto.randomUUID()}`,
+  );
+  fs.mkdirSync(replacementRoot, { recursive: true });
+  fs.writeFileSync(path.join(replacementRoot, "final.txt"), "escaped");
+  fs.rmSync(linkedRoot, { recursive: true, force: true });
+
+  try {
+    fs.symlinkSync(
+      replacementRoot,
+      linkedRoot,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  } catch {
+    return;
+  }
+
+  assert.throws(
+    () =>
+      conversationArtifactService.resolve({
+        id: ref.id,
+        threadId: linkedThread.id,
+        userId: user.id,
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "containment_failure",
+  );
+});
+

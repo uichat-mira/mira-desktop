@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   createBatch,
+  createReviewHandoff,
   createSession,
+  integrateReviewedTask,
   registerAdapter,
   registerProject,
+  resolveReviewHandoff,
   updateTask,
 } from "./domain.js";
 import { getDispatchReadiness, validateBatchDependencies } from "./readiness.js";
@@ -68,7 +71,38 @@ describe("Forge dispatch readiness", () => {
       "dependency_not_integrated",
     );
 
-    updateTask(state, batch.id, "T001", { status: "integrated" });
+    // `integrated` is owned by guarded integration, so drive T001 through the
+    // real SHA-bound review handoff instead of patching task status directly.
+    const reviewerAdapter = registerAdapter(state, {
+      id: "reviewer-local",
+      name: "Reviewer",
+      kind: "reviewer",
+    });
+    const reviewerSession = createSession(state, {
+      id: "S-reviewer",
+      role: "reviewer",
+      adapterId: reviewerAdapter.id,
+      projectId: project.id,
+      batchId: batch.id,
+      taskId: "T001",
+    });
+    const sha = "a".repeat(40);
+    updateTask(state, batch.id, "T001", { status: "building", currentSha: sha });
+    const review = createReviewHandoff(state, {
+      projectId: project.id,
+      batchId: batch.id,
+      taskId: "T001",
+      sha,
+      reviewerSessionId: reviewerSession.id,
+    });
+    resolveReviewHandoff(state, review.id, { result: "passed", reviewedSha: sha });
+    integrateReviewedTask(state, {
+      projectId: project.id,
+      batchId: batch.id,
+      taskId: "T001",
+      expectedSha: sha,
+    });
+
     expect(getDispatchReadiness(state, batch.id).ready.map((task) => task.taskId)).toEqual([
       "T002",
       "T003",

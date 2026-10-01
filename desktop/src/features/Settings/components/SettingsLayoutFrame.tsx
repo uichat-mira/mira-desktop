@@ -1,4 +1,5 @@
 import Header from "./Header";
+import { PAGE_GUTTER_CLASS } from "@/app/Layouts/AppPageLayout";
 
 export interface SettingsLayoutFrameProps {
   miniTitle: string;
@@ -37,7 +38,7 @@ export default function SettingsLayoutFrame({
     <div
       className={`mx-auto flex h-full min-h-0 w-full flex-col overflow-hidden ${className}`}
     >
-      <div className={`shrink-0 px- ${containerClasses}`}>
+      <div className={`shrink-0 ${PAGE_GUTTER_CLASS} ${containerClasses}`}>
         <Header
           miniTitle={miniTitle}
           title={title}
@@ -55,7 +56,7 @@ export default function SettingsLayoutFrame({
         ].join(" ")}
       >
         <div
-          className={`flex flex-col px-2 pb-6 ${
+          className={`flex flex-col ${PAGE_GUTTER_CLASS} pb-6 ${
             contentMode === "flow" ? "min-h-full" : "h-full min-h-0"
           } ${containerClasses} ${contentClassName}`}
         >

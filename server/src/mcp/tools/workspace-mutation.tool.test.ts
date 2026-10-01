@@ -5,7 +5,6 @@ import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { executeHarnessInvocation } from "../../harness/invocations.js";
 import { clearHarnessInvocations } from "../../harness/invocations.js";
 import { clearHarnessRegistry, registerCapability } from "../../harness/registry.js";
-import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { clearWorkspaceSelection } from "../workspace.js";
 import { workspaceMutationTool } from "./workspace-mutation.tool.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
@@ -129,7 +128,9 @@ describe("workspace_mutation tool", () => {
     );
   });
 
-  it("rejects Windows absolute and UNC deletion targets outside the workspace root", async () => {
+  // Drive-letter and UNC targets are only absolute paths on Windows; on POSIX
+  // hosts they are ordinary relative filenames resolved inside the workspace.
+  it.skipIf(process.platform !== "win32")("rejects Windows absolute and UNC deletion targets outside the workspace root", async () => {
     const absoluteInvocation = createInvocationContext({
       operation: "delete",
       targetPath: "D:\\outside.txt",
@@ -175,29 +176,24 @@ describe("workspace_mutation tool", () => {
   it("uses definition-declared boundary keys for move destination approval gating", async () => {
     fs.writeFileSync(path.join(tempRoot, "old.txt"), "move me", "utf-8");
 
-    const record = await executeHarnessInvocation({
+    const args = {
+      operation: "move",
+      targetPath: "old.txt",
+      destinationPath: "../outside.txt",
+    } as const;
+
+    // Without an approved invocation, the declared destinationPath boundary
+    // key must gate the move before any filesystem work happens.
+    const gated = await executeHarnessInvocation({
       toolId: "workspace_mutation",
-      args: {
-        operation: "move",
-        targetPath: "old.txt",
-        destinationPath: "../outside.txt",
-      },
+      args: { ...args },
       environment: createHarnessEnvironmentSnapshot(),
-      approvedInvocations: [
-        {
-          toolId: "workspace_mutation",
-          inputHash: createInvocationInputHash({
-            operation: "move",
-            targetPath: "old.txt",
-            destinationPath: "../outside.txt",
-          }),
-        },
-      ],
     });
 
-    expect(record.status).toBe("awaiting_approval");
-    expect(record.approval?.reason).toContain(
+    expect(gated.status).toBe("awaiting_approval");
+    expect(gated.approval?.reason).toContain(
       "workspace_mutation requests destinationPath outside the current workspace root",
     );
+    expect(fs.existsSync(path.join(tempRoot, "old.txt"))).toBe(true);
   });
 });

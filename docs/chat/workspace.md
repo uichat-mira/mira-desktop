@@ -1,7 +1,7 @@
 ---
 status: current
 owner: chat / runtime / harness
-last_verified: 2026-09-18
+last_verified: 2026-10-01
 layer: wiki
 module: Chat / Tool
 feature: ChatWorkspace
@@ -18,63 +18,53 @@ related:
 
 # Chat Workspace 与默认执行空间当前合同
 
-> 本页统一 `ChatWorkspace`、`Mira BASE`、Conversation Workdir、物理目录、Harness workspace root 和受管施工目录的语义。数据库对象、文件系统目录和一次任务的施工现场不是同一个东西。
+> 本页统一 `ChatWorkspace`、`Mira BASE`、Agent effective workspace、private Agent workspace、Harness workspace root 和受管施工目录的语义。数据库对象、文件系统目录和一次任务的施工现场不是同一个东西。
 
-## 1. 五个必须分开的对象
+## 1. 六个必须分开的对象
 
 ```text
 ChatWorkspace
-  数据库中的工作空间记录
+  用户可见、持久化的工作空间记录
 
 Mira BASE
   默认 ChatWorkspace 的逻辑名称
 
+Agent effective workspace root
+  一个 AgentRun 唯一的执行根；创建 Run 时冻结进 runtimeInput.workspaceRoot
+
+Private Agent workspace
+  没有显式 ChatWorkspace 时，由 threadId/userId 确定的 Mira-managed 私有目录
+
 Harness workspace root
-  当前 Agent / Tool 执行环境使用的物理根路径
+  当前 Tool/Harness invocation 实际使用的根路径；Agent 执行时必须等于该 Run 的 effective workspace root
 
 Task staging workspace
   某次建站、构建或其他施工任务使用的受管子目录
-
-Conversation Workdir
-  Thread 唯一拥有、位于 Mira app-data 下的 Conversation 执行空间
 ```
 
-它们的关系是：
+当前 Agent workspace resolution 只有一套所有权模型：
 
 ```text
-Mira BASE (database row)
-  -> rootPath
+thread.workspaceId exists
+  -> ChatWorkspace.rootPath
+  -> AgentRun.runtimeInput.workspaceRoot
   -> Harness workspace root
-  -> optional .mira/staging/... task directories
-```
 
-但不能反向等同：
-
-```text
-Mira BASE
-!= 文件夹名称
-
-workspaceId
-!= 文件系统路径
-
-Harness workspace root
-!= 某次任务可直接污染的施工目录
-
-Conversation Workdir
-!= ChatWorkspace
-!= Harness workspace root
-```
-
-Conversation Workdir 的当前 E03-1 foundation 关系是：
-
-```text
-Thread (owner)
-  -> conversation_workdirs row
+thread.workspaceId is null
+  -> deterministic private Agent workspace
   -> <app-data>/conversation-workdirs/user-<userId>/<threadId>
-  -> AgentRun.runtimeInput.conversationWorkdir snapshot
+  -> AgentRun.runtimeInput.workspaceRoot
+  -> Harness workspace root
 ```
 
-这里的 `app-data` 使用 backend 已有的数据库数据目录边界。Workdir 路径不从 `ChatWorkspace.rootPath` 派生，因此创建 Workdir 本身不要求创建、选择或重新解释用户 Workspace。
+`conversation-workdirs` 这个目录段只为兼容既有本地文件而保留；它不再对应 `conversation_workdirs` 数据库记录，也不再产生 `workdirId`、`conversationWorkdir` 或第二套 resume identity。后续若迁移这个物理目录名，必须作为独立的数据迁移工作处理。
+
+因此：
+
+- 未显式选择 Workspace 的 Agent 不会自动绑定共享 `Mira BASE`；
+- explicit Workspace 与 private Agent workspace 二选一，任一 AgentRun 只冻结一个 `workspaceRoot`；
+- approval resume 复用 Run 创建时冻结的 `workspaceRoot`，不根据线程后来选择的 Workspace 重解释；
+- Conversation Artifact 记录创建时的 `sourceRootPath + sourceRelativePath`，不会跟随线程后来切换 Workspace。
 
 ## 2. 内置默认空间
 
@@ -176,15 +166,21 @@ snapshot reads a missing path
 
 ## 5. 默认 Workspace 的数据库语义
 
-Agent Thread 必须绑定 ChatWorkspace。启用 Agent 时若没有显式选择：
+`Mira BASE` 仍是内置默认 ChatWorkspace 的数据库记录，可用于现有 Workspace 列表和显式选择语义；它不再是 Agent 未选择 Workspace 时的自动 fallback。
+
+Agent Thread 的执行根按以下顺序解析：
 
 ```text
-ensure Mira BASE database row
-→ bind current Harness workspace root
-→ attach workspaceId to Thread
+explicit thread.workspaceId
+→ ChatWorkspace.rootPath
+
+no explicit thread.workspaceId
+→ private per-conversation effective workspace
 ```
 
-数据库记录存在只证明路径配置已经绑定，不证明：
+因此启用 Agent、发送 Agent 消息或清除显式 Workspace 都不会仅因为 Agent 模式而把 `Mira BASE.id` 自动写回 Thread。
+
+数据库 ChatWorkspace 记录存在只证明某个显式 Workspace 路径配置已经绑定，不证明：
 
 - 物理目录一定存在；
 - 目录可写；
@@ -240,31 +236,23 @@ GitHub remote operations
 
 本地模式使用用户明确的 `target.localPath`，不强制迁入 `.mira/staging`。
 
-## 8. Conversation Workdir E03-1 当前合同
+## 8. Private Agent Workspace 当前合同
 
-截至 E03-1 / #147，Conversation Workdir 的 ownership / identity / lifecycle foundation 已完成验收：
+#174 / #175 之后，Agent 不再维护独立的 Conversation Workdir 领域身份：
 
-- 一个 Thread 最多拥有一个 `conversation_workdirs` 记录；
-- 记录持有稳定 `id / threadId / userId / rootPath`；
-- 首次 AgentRun 会在 Mira app-data 下创建该 Thread 的 Workdir，并把 Workdir reference 记录进 `AgentRun.runtimeInput`；
-- 同一 Thread 后续 AgentRun 复用同一持久化 identity / rootPath；
-- restart / reload 时按持久化 identity 重新打开并校验同一个 Workdir，不静默改绑到其他目录；
-- path lookup 必须重新经过 deterministic path、realpath containment、symlink / junction 与 Windows 大小写语义校验；
-- 缺失、损坏、不可访问、identity conflict、path escape 或 quota exhausted 都 fail closed，不回退到 `ChatWorkspace`、Default Workspace 或任意 host path；
-- approval resume 必须先成功 reopen Workdir，再进入恢复执行；reopen 失败时保持 `waiting_approval` 与待审批状态；
-- Thread hard delete / history cleanup 会先清理 Conversation Workdir；cleanup 失败时保留对应 Thread 以便重试，archive / restore 不清理 Workdir；
-- Conversation Workdir 使用 per-user aggregate hard quota，默认 1 GiB，可通过 `UI_CHAT_CONVERSATION_WORKDIR_QUOTA_BYTES` 调整；
-- Workdir 不替代当前 `workspaceRoot`，也不改变现有 Tool cwd、Terminal/Edit、approval 或 host filesystem authority；
-- Workdir 不通过 Chat / Remote AgentRun projection 暴露 host-local absolute path；
-- Conversation Workdir cleanup 不删除、重解释或隐式创建用户 `ChatWorkspace`。
+- 未绑定 ChatWorkspace 的 Thread 使用 deterministic private root：`<app-data>/conversation-workdirs/user-<userId>/<threadId>`；
+- 该路径由 `threadId + userId` 直接决定，不需要额外数据库 identity；
+- 一个 AgentRun 只持有 `runtimeInput.workspaceRoot`；不存在第二个 `conversationWorkdir` snapshot；
+- approval resume 必须使用同一 Run 冻结的 `workspaceRoot`；
+- private root 继续执行 realpath containment、symlink / junction、Windows 大小写与 per-user quota 校验；当前配置名为 `UI_CHAT_PRIVATE_AGENT_WORKSPACE_QUOTA_BYTES`，旧 `UI_CHAT_CONVERSATION_WORKDIR_QUOTA_BYTES` 仅作为升级兼容读取；
+- Thread hard delete / history cleanup 只清理该 Thread 的 deterministic private root，不删除或重解释用户 ChatWorkspace；
+- explicit Workspace 始终由 `ChatWorkspace.rootPath` 负责；private root 不投影成 Workspace row、picker 项或 sidebar group；
+- 新 Conversation Artifact 以 `sourceRootPath + sourceRelativePath` 固化创建时来源；
+- 历史 Workdir-backed Artifact 在数据库初始化时把旧 `workdir_id` 迁移成稳定 `source_root_path`，随后旧 `conversation_workdirs` 表被移除；
+- 历史 AgentRun JSON 在初始化时迁移到 `workspaceRoot / workspaceOutputs`，旧 `conversationWorkdir / conversationWorkdirOutputs` 字段被删除；
+- 临时执行文件不会因为迁移而自动升级成 final Artifact。
 
-E03-1 仍故意不决定：
-
-- Workdir temporary / final output 如何转成稳定 Artifact reference；
-- Artifact 生命周期、可见性与交付语义；
-- Remote / Mobile Artifact handoff。
-
-这些属于 #148 与后续 Remote/Mobile 工作。#148 可以依赖上述 ownership / identity / lifecycle 合同，但不得重新定义 Workdir owner、deterministic path、cleanup、quota 或现有 filesystem authority。
+兼容项只剩一个：磁盘目录段仍叫 `conversation-workdirs`，原因是避免无授权地搬动既有用户文件；当前消费者是 private Agent workspace 的物理存储；移除条件是另一个明确的数据迁移能够安全搬迁全部既有目录并验证 reload/read-back。
 
 ## 9. 当前实现缺陷与本次整改边界
 

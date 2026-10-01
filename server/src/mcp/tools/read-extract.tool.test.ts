@@ -7,12 +7,16 @@ import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { clearWorkspaceSelection } from "../workspace.js";
 import { readExtractTool } from "./read-extract.tool.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
+import {
+  hasPythonOfficeTooling,
+  resolveExternalToolingPython,
+} from "@/test-support/external-tooling.js";
 
 const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-read-extract-tool");
 
 const createDocx = (filePath: string, text: string) => {
   execFileSync(
-    "python",
+    resolveExternalToolingPython(),
     [
       "-c",
       [
@@ -31,7 +35,7 @@ const createDocx = (filePath: string, text: string) => {
 
 const createPptx = (filePath: string, text: string) => {
   execFileSync(
-    "python",
+    resolveExternalToolingPython(),
     [
       "-c",
       [
@@ -92,7 +96,7 @@ describe("read_extract tool", () => {
     expect(artifacts).toHaveLength(1);
   });
 
-  it("extracts office documents through CLI-first adapters", async () => {
+  it.skipIf(!hasPythonOfficeTooling())("extracts office documents through CLI-first adapters", async () => {
     createDocx(path.join(tempRoot, "sample.docx"), "Hello Docx");
     createPptx(path.join(tempRoot, "sample.pptx"), "Hello Pptx");
 

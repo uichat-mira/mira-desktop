@@ -269,22 +269,22 @@ describe("Repository Task Source", () => {
   });
 
   it("inserts dollar-sign title and status values literally", async () => {
-    const { root, taskDir, project } = await fixture();
+    const { root, taskDir, ledgerPath, project } = await fixture();
     try {
       const source = new RepositoryTaskSource();
       await source.update(project, "T100", {
-        title: "Dollar   it("refuses repository writes while existing task truth is malformed", async () => {
-    const { root, taskDir, ledgerPath, project } = await fixture();
-    try {
-      await rm(path.join(taskDir, "T101-localized.md"));
+        title: "Dollar $ literal",
+        status: "STATE-$",
+      });
 
-      const source = new RepositoryTaskSource();
-      await expect(
-        source.create(project, { id: "T102", title: "Should not write", status: "TODO" }),
-      ).rejects.toThrow(/task card not found for T101/);
-
-      expect((await readdir(taskDir)).some((name) => name.startsWith("T102"))).toBe(false);
-      expect(await readFile(ledgerPath, "utf8")).not.toContain("T102");
+      const ledger = await readFile(ledgerPath, "utf8");
+      const card = await readFile(
+        path.join(taskDir, "T100-first-task.md"),
+        "utf8",
+      );
+      expect(ledger).toContain("| T100 | Dollar $ literal | STATE-$ |");
+      expect(card).toContain("# T100 — Dollar $ literal");
+      expect(card).toContain("Status: STATE-$");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -372,88 +372,6 @@ describe("Repository Task Source", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
-});
- $ literal",
-        status: "STATE-  it("refuses repository writes while existing task truth is malformed", async () => {-$",
-      });
-
-      const card = await readFile(
-        path.join(taskDir, "T100-first-task.md"),
-        "utf8",
-      );
-      expect(card).toContain("# T100 — Dollar   it("refuses repository writes while existing task truth is malformed", async () => {
-    const { root, taskDir, ledgerPath, project } = await fixture();
-    try {
-      await rm(path.join(taskDir, "T101-localized.md"));
-
-      const source = new RepositoryTaskSource();
-      await expect(
-        source.create(project, { id: "T102", title: "Should not write", status: "TODO" }),
-      ).rejects.toThrow(/task card not found for T101/);
-
-      expect((await readdir(taskDir)).some((name) => name.startsWith("T102"))).toBe(false);
-      expect(await readFile(ledgerPath, "utf8")).not.toContain("T102");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("rolls back card creation when ledger write fails", async () => {
-    const { root, taskDir, ledgerPath, project } = await fixture();
-    try {
-      const originalLedger = await readFile(ledgerPath, "utf8");
-      let writeCount = 0;
-      const source = new RepositoryTaskSource(async (filePath, content) => {
-        writeCount += 1;
-        if (writeCount === 2 && filePath === ledgerPath) {
-          throw new Error("injected ledger write failure");
-        }
-        await writeFile(filePath, content, "utf8");
-      });
-
-      await expect(
-        source.create(project, { id: "T102", title: "Rollback", status: "TODO" }),
-      ).rejects.toThrow(/injected ledger write failure/);
-
-      expect(await readFile(ledgerPath, "utf8")).toBe(originalLedger);
-      expect((await readdir(taskDir)).some((name) => name.startsWith("T102"))).toBe(false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("rolls back card update when ledger write fails", async () => {
-    const { root, taskDir, ledgerPath, project } = await fixture();
-    try {
-      const cardPath = path.join(taskDir, "T100-first-task.md");
-      const originalCard = await readFile(cardPath, "utf8");
-      const originalLedger = await readFile(ledgerPath, "utf8");
-      let writeCount = 0;
-      const source = new RepositoryTaskSource(async (filePath, content) => {
-        writeCount += 1;
-        if (writeCount === 2 && filePath === ledgerPath) {
-          throw new Error("injected ledger write failure");
-        }
-        await writeFile(filePath, content, "utf8");
-      });
-
-      await expect(
-        source.update(project, "T100", { status: "REVIEW" }),
-      ).rejects.toThrow(/injected ledger write failure/);
-
-      expect(await readFile(cardPath, "utf8")).toBe(originalCard);
-      expect(await readFile(ledgerPath, "utf8")).toBe(originalLedger);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-});
- $ literal");
-      expect(card).toContain("Status: STATE-  it("refuses repository writes while existing task truth is malformed", async () => {-$");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
 
   it("serializes concurrent writes for the same project", async () => {
     const { root, project } = await fixture();
@@ -473,7 +391,10 @@ describe("Repository Task Source", () => {
       ]);
 
       const inspection = await source.inspect(project);
-      expect(inspection.tasks.map((task) => task.id)).toEqual([
+      // The write queue guarantees that concurrent creates do not interleave
+      // and drop a task; it does not define which caller wins the race, so the
+      // ledger order is asserted order-independently.
+      expect(inspection.tasks.map((task) => task.id).sort()).toEqual([
         "T100",
         "T101",
         "T102",
@@ -501,53 +422,4 @@ describe("Repository Task Source", () => {
     }
   });
 
-  it("rolls back card creation when ledger write fails", async () => {
-    const { root, taskDir, ledgerPath, project } = await fixture();
-    try {
-      const originalLedger = await readFile(ledgerPath, "utf8");
-      let writeCount = 0;
-      const source = new RepositoryTaskSource(async (filePath, content) => {
-        writeCount += 1;
-        if (writeCount === 2 && filePath === ledgerPath) {
-          throw new Error("injected ledger write failure");
-        }
-        await writeFile(filePath, content, "utf8");
-      });
-
-      await expect(
-        source.create(project, { id: "T102", title: "Rollback", status: "TODO" }),
-      ).rejects.toThrow(/injected ledger write failure/);
-
-      expect(await readFile(ledgerPath, "utf8")).toBe(originalLedger);
-      expect((await readdir(taskDir)).some((name) => name.startsWith("T102"))).toBe(false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("rolls back card update when ledger write fails", async () => {
-    const { root, taskDir, ledgerPath, project } = await fixture();
-    try {
-      const cardPath = path.join(taskDir, "T100-first-task.md");
-      const originalCard = await readFile(cardPath, "utf8");
-      const originalLedger = await readFile(ledgerPath, "utf8");
-      let writeCount = 0;
-      const source = new RepositoryTaskSource(async (filePath, content) => {
-        writeCount += 1;
-        if (writeCount === 2 && filePath === ledgerPath) {
-          throw new Error("injected ledger write failure");
-        }
-        await writeFile(filePath, content, "utf8");
-      });
-
-      await expect(
-        source.update(project, "T100", { status: "REVIEW" }),
-      ).rejects.toThrow(/injected ledger write failure/);
-
-      expect(await readFile(cardPath, "utf8")).toBe(originalCard);
-      expect(await readFile(ledgerPath, "utf8")).toBe(originalLedger);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
 });

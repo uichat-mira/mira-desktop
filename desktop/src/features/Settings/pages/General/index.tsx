@@ -351,7 +351,7 @@ export default function General() {
             (total, summary) => total + summary.files,
             0,
           );
-          const failedCleanups = result.failedThreads + result.failedWorkdirs;
+          const failedCleanups = result.failedThreads + result.failedAgentWorkspaces;
           if (result.deletedThreads === 0 && failedCleanups === 0) {
             message.success(t("settings.general.cleanup.empty"));
             return;

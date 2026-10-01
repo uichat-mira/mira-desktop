@@ -5,7 +5,6 @@ import { NavLink, useLocation, type To } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useMemo } from "react";
 import { ArrowLeft } from "lucide-react";
-import { LayoutDashboard } from "lucide-react";
 import Sidebar from "../Sidebar";
 import NavItem from "@/shared/ui/NavItem";
 import Divider from "@/shared/ui/Divider";
@@ -25,12 +24,14 @@ export function WorkspaceShell({
   mainContent,
   shellClassName,
   contentClassName,
+  showSidebarHeader = true,
 }: {
   sidebarContent: ReactNode;
   showBackToChatLink: boolean;
   mainContent: ReactNode;
   shellClassName?: string;
   contentClassName?: string;
+  showSidebarHeader?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -43,7 +44,7 @@ export function WorkspaceShell({
         height: "100dvh",
       }}
     >
-      <Sidebar>
+      <Sidebar showHeader={showSidebarHeader}>
         {showBackToChatLink ? (
           <NavItem to="/chat" icon={<ArrowLeft size={16} />}>
             {t("common.actions.backToChat")}
@@ -69,7 +70,7 @@ export function WorkspaceShell({
   );
 }
 
-export function SettingsNavigation() {
+export function SettingsNavigation({ showBackToChatLink = true }: { showBackToChatLink?: boolean }) {
   const { t } = useTranslation();
   const settingsNavigationItems = useSettingsNavigationItems();
   const groupedItems = useMemo(() => {
@@ -95,13 +96,15 @@ export function SettingsNavigation() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <NavLink
-        to="/chat"
-        className="mb-3 inline-flex items-center gap-2 rounded-[10px] px-2 py-2 text-sm text-text-secondary transition-colors duration-150 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-      >
-        <ArrowLeft size={15} />
-        {t("common.actions.backToChat")}
-      </NavLink>
+      {showBackToChatLink ? (
+        <NavLink
+          to="/chat"
+          className="mb-3 inline-flex items-center gap-2 rounded-[10px] px-2 py-2 text-sm text-text-secondary transition-colors duration-150 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+        >
+          <ArrowLeft size={15} />
+          {t("common.actions.backToChat")}
+        </NavLink>
+      ) : null}
 
       <div className="stable-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {orderedGroups.map((group, index) => {
@@ -190,17 +193,6 @@ function SettingsNavigationGroup({
           </NavLink>
         );
       })}
-      {title === undefined ? (
-        <NavLink
-          to="/dashboard"
-          className={({ isActive }) =>
-            `flex items-center gap-3 rounded-[10px] px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${isActive ? "bg-surface-soft text-text-primary" : "text-text-secondary hover:bg-surface-soft hover:text-text-primary"}`
-          }
-        >
-          <LayoutDashboard size={16} className="shrink-0" />
-          <span className="truncate">{t("settings.navigation.dashboard")}</span>
-        </NavLink>
-      ) : null}
     </div>
   );
 }

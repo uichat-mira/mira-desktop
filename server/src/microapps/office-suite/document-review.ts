@@ -154,9 +154,21 @@ const appendComment = (commentsXml: string, input: {
   text: string;
   date: string;
 }) => {
+  const comment = `<w:comment w:id="${input.id}" w:author="${escapeXml(input.author)}" w:date="${input.date}"><w:p><w:r><w:t xml:space="preserve">${escapeXml(input.text)}</w:t></w:r></w:p></w:comment>`;
+
+  // Real Word templates ship an empty comments part as a self-closing
+  // <w:comments .../>, so a paired close tag is not guaranteed to exist.
+  // Convert the empty self-closing root into a container before inserting.
+  const selfClosing = /<w:comments\b([^>]*?)\/>\s*$/.exec(commentsXml);
+  if (selfClosing) {
+    return commentsXml.replace(
+      selfClosing[0],
+      `<w:comments${selfClosing[1]}>${comment}</w:comments>`,
+    );
+  }
+
   const closeIndex = commentsXml.lastIndexOf("</w:comments>");
   if (closeIndex < 0) throw new Error("Invalid DOCX comments XML");
-  const comment = `<w:comment w:id="${input.id}" w:author="${escapeXml(input.author)}" w:date="${input.date}"><w:p><w:r><w:t xml:space="preserve">${escapeXml(input.text)}</w:t></w:r></w:p></w:comment>`;
   return `${commentsXml.slice(0, closeIndex)}${comment}${commentsXml.slice(closeIndex)}`;
 };
 

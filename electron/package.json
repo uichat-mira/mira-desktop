@@ -1,10 +1,14 @@
 {
   "name": "@ui-chat-mira/electron",
-  "version": "0.101.0",
+  "version": "0.102.0",
   "private": true,
   "description": "Electron shell for UIChat Mira",
   "main": "main.cjs",
   "author": "Tomz Dang <dangjingtao@163.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uichat-mira/mira-desktop.git"
+  },
   "scripts": {
     "start": "electron .",
     "dev": "node dev-launcher.cjs",

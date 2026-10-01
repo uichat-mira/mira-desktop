@@ -11,7 +11,7 @@ import { threadContextSummaryNode } from "@/services/shared-nodes/thread-context
 import { isValidWorkspaceRootPath } from "@/services/workspace-path-validation.js";
 import { THREAD_ACCESS_ERROR_MESSAGE } from "@/utils/errors.js";
 import { chatMediaService } from "@/services/chat-media.service.js";
-import { conversationWorkdirService } from "@/services/conversation-workdir.service.js";
+import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
 import { getHarnessEnvironmentSnapshot } from "@/harness/environment.js";
 import {
   removeFileAttachmentsFromParts,
@@ -443,6 +443,32 @@ export const threadService = {
     return workspace?.rootPath ?? null;
   },
 
+  getEffectiveAgentWorkspaceRoot(threadId: string, userId: number): string | null {
+    const thread = threadRepository.findById(threadId, userId);
+    if (!thread) {
+      return null;
+    }
+
+    if (thread.workspaceId) {
+      return this.getThreadWorkspaceRoot(threadId, userId);
+    }
+
+    return privateAgentWorkspaceService.get(threadId, userId);
+  },
+
+  ensureEffectiveAgentWorkspaceRoot(threadId: string, userId: number): string | null {
+    const thread = threadRepository.findById(threadId, userId);
+    if (!thread) {
+      return null;
+    }
+
+    if (thread.workspaceId) {
+      return this.getThreadWorkspaceRoot(threadId, userId);
+    }
+
+    return privateAgentWorkspaceService.ensure({ threadId, userId });
+  },
+
   createChatWorkspace(input: CreateChatWorkspaceInput): ChatWorkspaceResponse {
     const name = input.name.trim();
     if (!name) {
@@ -536,13 +562,10 @@ export const threadService = {
   },
 
   createThread(input: CreateThreadInput): ThreadResponse {
-    let workspaceId = input.workspaceId?.trim();
+    const workspaceId = input.workspaceId?.trim();
     const knowledgeBaseId = input.knowledgeBaseId?.trim();
     const roleId = input.roleId?.trim();
     const agentEnabled = input.agentEnabled;
-    if (agentEnabled === true && !workspaceId) {
-      workspaceId = this.ensureDefaultChatWorkspace(input.userId).id;
-    }
     const ttsEnabled = input.ttsEnabled;
     const imageEnabled = input.imageEnabled;
     const contextSummary = input.contextSummary?.trim();
@@ -571,6 +594,13 @@ export const threadService = {
       contextSummaryUpdatedAt: contextSummary ? new Date().toISOString() : null,
       status: "active",
     });
+
+    if (created.agentEnabled && !created.workspaceId) {
+      privateAgentWorkspaceService.ensure({
+        threadId: created.id,
+        userId: input.userId,
+      });
+    }
 
     return toThreadResponse(created, []);
   },
@@ -623,10 +653,7 @@ export const threadService = {
       updateData.workspaceId = workspaceId;
     }
     if (input.workspaceId === null) {
-      updateData.workspaceId =
-        input.agentEnabled === true || (input.agentEnabled === undefined && existing.agentEnabled)
-          ? this.ensureDefaultChatWorkspace(userId).id
-          : null;
+      updateData.workspaceId = null;
     }
     if (typeof input.knowledgeBaseId === "string") {
       const knowledgeBaseId = input.knowledgeBaseId.trim();
@@ -652,9 +679,6 @@ export const threadService = {
     }
     if (typeof input.agentEnabled === "boolean") {
       updateData.agentEnabled = input.agentEnabled;
-      if (input.agentEnabled && input.workspaceId === undefined && !existing.workspaceId) {
-        updateData.workspaceId = this.ensureDefaultChatWorkspace(userId).id;
-      }
     }
     if (input.agentEnabled === null) {
       updateData.agentEnabled = null;
@@ -678,6 +702,13 @@ export const threadService = {
     const updated = threadRepository.updateById(id, updateData);
     if (!updated) {
       return null;
+    }
+
+    if (updated.agentEnabled && !updated.workspaceId) {
+      privateAgentWorkspaceService.ensure({
+        threadId: updated.id,
+        userId,
+      });
     }
 
     const messages = messageRepository.listByThread(updated.id);
@@ -719,7 +750,7 @@ export const threadService = {
     if (!existing) {
       return false;
     }
-    conversationWorkdirService.cleanup({ threadId: id, userId });
+    privateAgentWorkspaceService.cleanup({ threadId: id, userId });
     const mediaCleanup = chatMediaService.removeForThread(id);
     if (mediaCleanup.failed > 0) {
       throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s): ${mediaCleanup.errors.map((item) => item.mediaId).join(", ")}`);
@@ -734,7 +765,7 @@ export const threadService = {
     deletedThreads: number;
     deletedMessages: number;
     failedThreads: number;
-    failedWorkdirs: number;
+    failedAgentWorkspaces: number;
   } {
     const threadsToDelete = [
       ...threadRepository.list({ userId, status: "active", sortBy: "updatedAt", sortOrder: "asc" }),
@@ -743,15 +774,15 @@ export const threadService = {
     let deletedThreads = 0;
     let deletedMessages = 0;
     let failedThreads = 0;
-    let failedWorkdirs = 0;
+    let failedAgentWorkspaces = 0;
 
     for (const thread of threadsToDelete) {
       try {
         const messages = messageRepository.listByThread(thread.id);
         try {
-          conversationWorkdirService.cleanup({ threadId: thread.id, userId });
+          privateAgentWorkspaceService.cleanup({ threadId: thread.id, userId });
         } catch {
-          failedWorkdirs += 1;
+          failedAgentWorkspaces += 1;
           continue;
         }
         const mediaCleanup = chatMediaService.removeForMessages(messages.map((message) => message.id));
@@ -769,7 +800,7 @@ export const threadService = {
       }
     }
 
-    return { deletedThreads, deletedMessages, failedThreads, failedWorkdirs };
+    return { deletedThreads, deletedMessages, failedThreads, failedAgentWorkspaces };
   },
 
   createMessage(

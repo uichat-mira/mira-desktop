@@ -342,6 +342,8 @@
 - Input / Select：默认 `bg-surface-primary border-border text-text-primary`，focus 使用 `primary`
 - Modal / Tooltip / Dropdown：优先 `surface-elevated + border`
 - DropdownMenu / Submenu 必须通过 portal 渲染，并显式高于底部悬浮 Composer、抽屉和普通卡片层
+- 竖直侧栏中的 `DropdownMenu` 优先使用 `side="right"`，让菜单沿导航方向展开，避免向下覆盖主内容。
+- `selected` 仅用于表达菜单项对应当前路由或当前上下文的常驻选中态；多选、开关等状态继续使用 `checked`，不要混用语义。
 - 搜索选择类弹窗优先使用共享 `SearchSelectModal`，并保持“固定搜索头 + 独立滚动结果区”
 - 搜索选择类弹窗默认走更紧凑的 modal 壳层，列表项应以单行标题、轻量元信息和较小圆角为主，避免大卡片堆叠
 - 加载占位优先使用共享 `Skeleton`，不要在业务页重复散落 `animate-pulse + bg-surface-secondary + rounded-*`

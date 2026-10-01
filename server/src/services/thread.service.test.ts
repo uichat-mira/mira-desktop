@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { afterAll, test } from "vitest";
 import { initializeAuthDatabase } from "@/db/auth.db";
 import { getSqlite } from "@/db/index.js";
@@ -14,6 +15,7 @@ import {
   userRepository,
 } from "@/db/repositories";
 import { threadService } from "./thread.service.js";
+import { privateAgentWorkspaceService } from "./agent-workspace.service.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 
 const testDbPath = createTimestampedTestArtifactPath("db", "rag-demo-thread-service", ".sqlite");
@@ -310,6 +312,72 @@ test("getThreadWorkspaceRoot resolves a bound thread workspace path", () => {
     threadService.getThreadWorkspaceRoot(thread.id, user.id),
     workspaceRoot,
   );
+  assert.equal(
+    threadService.getEffectiveAgentWorkspaceRoot(thread.id, user.id),
+    workspaceRoot,
+  );
+
+  const cleared = threadService.updateThread(thread.id, user.id, {
+    workspaceId: null,
+  });
+  assert.equal(cleared?.workspaceId, null);
+});
+
+test("unbound Agent threads resolve stable isolated private workspaces", () => {
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const first = threadService.createThread({
+    userId: user.id,
+    title: "Private Agent A",
+    agentEnabled: true,
+  });
+  const second = threadService.createThread({
+    userId: user.id,
+    title: "Private Agent B",
+    agentEnabled: true,
+  });
+
+  assert.equal(first.workspaceId, null);
+  assert.equal(second.workspaceId, null);
+  assert.ok(privateAgentWorkspaceService.get(first.id, user.id));
+  assert.ok(privateAgentWorkspaceService.get(second.id, user.id));
+
+  const firstRoot = threadService.getEffectiveAgentWorkspaceRoot(first.id, user.id);
+  const firstRootAgain = threadService.getEffectiveAgentWorkspaceRoot(first.id, user.id);
+  const secondRoot = threadService.getEffectiveAgentWorkspaceRoot(second.id, user.id);
+
+  assert.ok(firstRoot);
+  assert.ok(secondRoot);
+  assert.equal(firstRootAgain, firstRoot);
+  assert.notEqual(secondRoot, firstRoot);
+  assert.equal(path.basename(firstRoot), first.id);
+  assert.match(path.basename(firstRoot), /^[a-f0-9]{32}$/);
+
+  const storageRoot = path.resolve(path.dirname(testDbPath));
+  const relative = path.relative(storageRoot, firstRoot);
+  assert.ok(relative);
+  assert.equal(relative.startsWith(".."), false);
+  assert.equal(path.isAbsolute(relative), false);
+
+  const plain = threadService.createThread({
+    userId: user.id,
+    title: "Plain then Agent",
+  });
+  assert.equal(privateAgentWorkspaceService.get(plain.id, user.id), null);
+  assert.equal(
+    threadService.getEffectiveAgentWorkspaceRoot(plain.id, user.id),
+    null,
+  );
+  assert.equal(privateAgentWorkspaceService.get(plain.id, user.id), null);
+  const activated = threadService.updateThread(plain.id, user.id, {
+    agentEnabled: true,
+  });
+  assert.equal(activated?.workspaceId, null);
+  assert.ok(privateAgentWorkspaceService.get(plain.id, user.id));
 });
 
 test("createMessage uses lineage.parentId for branch pruning", () => {

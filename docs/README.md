@@ -113,7 +113,9 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[microapp/README]]：MicroApps Hub、Integration binding、Studio 与领域 Runtime 入口；
 - [[chat/README]]：Chat 与 Agent UI 入口；
 - [[platform/tauri]]：Tauri 平台路径；
-- [[platform/macos-implementation-phases]]：macOS 支持缺口、改造进度与验收门槛（Proposed，不代表当前已支持）。
+- [[platform/macos-implementation-phases]]：macOS 支持缺口、改造进度与验收门槛（Proposed，不代表当前已支持）；
+- [[platform/macos-electron-build-exploration]]：macOS Electron 构建独立探索（Intel 优先，research，不代表当前已支持）；
+- [[platform/macos-electron-build-plan]]：macOS Electron 构建分层验证规划表（Intel 优先，plan，不代表当前已支持）。
 
 ## Provider 文档引用规则
 
