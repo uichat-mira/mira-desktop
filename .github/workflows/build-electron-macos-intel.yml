@@ -2,7 +2,19 @@ name: Build Electron macOS Intel
 
 on:
   workflow_call:
+    inputs:
+      skip_release_tests:
+        description: Skip duplicate release test-report generation for non-production branch CI.
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      skip_release_tests:
+        description: Skip duplicate release test-report generation.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -11,7 +23,7 @@ jobs:
   build-macos-intel:
     name: Build Electron (macOS Intel)
     runs-on: macos-15-intel
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,6 +52,14 @@ jobs:
           restore-keys: |
             macos-intel-electron-
 
+      - name: Cache local model sources
+        uses: actions/cache@v4
+        with:
+          path: .local-models/raw
+          key: macos-intel-local-models-v1-${{ hashFiles('scripts/prepare-local-model-packs.mjs') }}
+          restore-keys: |
+            macos-intel-local-models-v1-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -49,11 +69,24 @@ jobs:
       - name: Type check
         run: pnpm check
 
-      - name: Build unsigned Intel DMG
-        run: node scripts/build-dist.js mac
+      - name: Prepare cached local model sources
+        run: pnpm prepare:local-model-packs
         env:
+          LOCAL_MODEL_PACK_RAW_ROOT: .local-models/raw
           LOCAL_MODEL_ALLOW_NETWORK: '1'
+
+      - name: Build unsigned Intel DMG
+        shell: bash
+        env:
+          LOCAL_MODEL_RAW_ROOT: .local-models/raw
           RELEASE_KEEP_COUNT: 3
+          SKIP_RELEASE_TESTS: ${{ inputs.skip_release_tests && '1' || '0' }}
+        run: |
+          args=(mac)
+          if [ "$SKIP_RELEASE_TESTS" = "1" ]; then
+            args+=(--notest)
+          fi
+          node scripts/build-dist.js "${args[@]}"
 
       - name: Verify DMG output
         shell: bash

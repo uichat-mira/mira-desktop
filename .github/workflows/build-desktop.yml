@@ -149,11 +149,6 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  build-electron-macos-intel:
-    name: Build Electron (macOS Intel)
-    if: github.event_name != 'pull_request' && contains(fromJSON('["dev","test","prod"]'), github.ref_name)
-    uses: ./.github/workflows/build-electron-macos-intel.yml
-
   build-tauri:
     name: Build Tauri (Windows)
     if: github.event_name != 'pull_request' && contains(fromJSON('["dev","test","prod"]'), github.ref_name)
@@ -242,6 +237,7 @@ jobs:
             release/**/tauri/nsis/*setup.exe
           if-no-files-found: error
           retention-days: 3
+
 
 
   publish-prod-r2:
