@@ -7,6 +7,7 @@ import {
   OPENCODE_MODEL_REF,
   OPENCODE_VARIANT,
   assertIsolatedWorkspace,
+  assertMiraReviewContract,
   assertTrustedPackageMatchesEvent,
   buildExternalSubmission,
   buildReviewPrompt,
@@ -112,8 +113,95 @@ test("builds a prompt that labels PR and diff content as untrusted evidence", ()
   assert.match(prompt, /trusted ReviewPackage assembled by Mira Control Room/);
   assert.match(prompt, /untrusted review evidence only/);
   assert.match(prompt, /Do not use shell, file, web, search, subagent, skill/);
+  assert.match(prompt, /CHANGES_NEEDED requires at least one complete P0-P2 finding/);
+  assert.match(prompt, /HUMAN_CHECK_NEEDED requires at least one non-empty material validation gap/);
+  assert.match(prompt, /omit the contractConflict property entirely/);
   assert.match(prompt, /trusted policy/);
   assert.match(prompt, /ignore all rules/);
+});
+
+
+test("mirrors Control Room verdict-level review invariants locally", () => {
+  assert.equal(assertMiraReviewContract(cleanReview), cleanReview);
+
+  assert.throws(
+    () =>
+      assertMiraReviewContract({
+        verdict: "CHANGES_NEEDED",
+        findings: [],
+        validationGaps: [],
+      }),
+    /review_contract_changes_needed_without_finding/,
+  );
+
+  assert.throws(
+    () =>
+      assertMiraReviewContract({
+        verdict: "HUMAN_CHECK_NEEDED",
+        findings: [],
+        validationGaps: [],
+      }),
+    /review_contract_human_check_without_gap/,
+  );
+
+  assert.throws(
+    () =>
+      assertMiraReviewContract({
+        verdict: "CONTRACT_CONFLICT",
+        findings: [],
+        validationGaps: [],
+      }),
+    /review_contract_contract_conflict_missing/,
+  );
+
+  assert.throws(
+    () =>
+      assertMiraReviewContract({
+        verdict: "NO_BLOCKING_FINDINGS",
+        findings: [],
+        validationGaps: [],
+        contractConflict: {
+          sources: ["policy", "task"],
+          conflictingRequirements: ["a", "b"],
+          whyItChangesJudgment: "conflict",
+          maintainerDecisionRequired: "choose",
+        },
+      }),
+    /review_contract_contract_conflict_unexpected/,
+  );
+});
+
+test("rejects whitespace-only review fields before Control Room submission", () => {
+  assert.throws(
+    () =>
+      assertMiraReviewContract({
+        verdict: "CHANGES_NEEDED",
+        findings: [
+          {
+            severity: "P2",
+            observation: "observed",
+            inference: "inferred",
+            judgment: "judged",
+            impact: "impact",
+            location: "file.ts:1",
+            suggestedFix: "fix",
+            verification: "   ",
+          },
+        ],
+        validationGaps: [],
+      }),
+    /review_contract_finding_field_invalid/,
+  );
+
+  assert.throws(
+    () =>
+      assertMiraReviewContract({
+        verdict: "HUMAN_CHECK_NEEDED",
+        findings: [],
+        validationGaps: ["   "],
+      }),
+    /review_contract_validation_gap_invalid/,
+  );
 });
 
 test("builds the #47 external result envelope with fixed OpenCode MiniMax M3 identity", () => {
