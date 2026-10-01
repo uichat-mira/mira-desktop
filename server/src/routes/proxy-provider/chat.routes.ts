@@ -125,8 +125,12 @@ const collectThreadRequestContext = (
         platform: process.platform,
         shellFamily: harnessEnvironment.terminal.shellProfile.shellFamily,
         shellExecutable: harnessEnvironment.terminal.shellProfile.shell,
-        workspaceRoot: threadWorkspaceRoot ?? harnessEnvironment.workspace.rootPath,
-        cwd: threadWorkspaceRoot ?? harnessEnvironment.workspace.rootPath,
+        workspaceRoot: options.agentEnabled
+          ? threadWorkspaceRoot
+          : threadWorkspaceRoot ?? harnessEnvironment.workspace.rootPath,
+        cwd: options.agentEnabled
+          ? threadWorkspaceRoot
+          : threadWorkspaceRoot ?? harnessEnvironment.workspace.rootPath,
         availableTools: toolSurface.map((tool) => tool.id),
       },
     },
@@ -259,6 +263,9 @@ const sendPersistedDefaultChatStream = ({
   const workspaceRoot = agentEnabled
     ? resolveAgentWorkspaceRoot(threadId, authUserId)
     : resolveThreadWorkspaceRoot(threadId, authUserId);
+  if (agentEnabled && !workspaceRoot) {
+    throw badRequest("Agent workspace is unavailable");
+  }
   const { latestUserMessageId, latestUserMessage } = persistVisibleUserMessage({
     threadId,
     userId: authUserId,
