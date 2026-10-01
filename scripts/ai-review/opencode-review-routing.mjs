@@ -10,7 +10,8 @@ export const DEFAULT_REVIEW_ROUTING_PATH = resolve(
 );
 
 const TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$/;
-const ENV_PATTERN = /^[A-Z][A-Z0-9_]{1,127}$/;
+const CREDENTIAL_ENV_PATTERN =
+  /^(?:OPENCODE_[A-Z0-9_]+_API_KEY|AI_PROVIDER_[A-Z0-9_]+_KEY)$/;
 
 function fail(reason) {
   throw new Error(`review_route_${reason}`);
@@ -32,7 +33,7 @@ function token(value, reason) {
 }
 
 function credentialEnv(value) {
-  if (typeof value !== "string" || !ENV_PATTERN.test(value)) {
+  if (typeof value !== "string" || !CREDENTIAL_ENV_PATTERN.test(value)) {
     fail("credential_env_invalid");
   }
   return value;
