@@ -390,6 +390,10 @@ export const executeSandboxedCommand = async (
       env,
       windowsHide: true,
       shell: false,
+      // L1 Sandbox commands are non-interactive. Keeping the default piped
+      // stdin open can leave powershell.exe waiting on Windows CI after the
+      // command has produced its output, so close stdin explicitly.
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
 
