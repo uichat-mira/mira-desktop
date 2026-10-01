@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { afterAll, test } from "vitest";
 import { initializeAuthDatabase } from "@/db/auth.db";
 import { getSqlite } from "@/db/index.js";
@@ -310,6 +311,54 @@ test("getThreadWorkspaceRoot resolves a bound thread workspace path", () => {
     threadService.getThreadWorkspaceRoot(thread.id, user.id),
     workspaceRoot,
   );
+  assert.equal(
+    threadService.getEffectiveAgentWorkspaceRoot(thread.id, user.id),
+    workspaceRoot,
+  );
+
+  const cleared = threadService.updateThread(thread.id, user.id, {
+    workspaceId: null,
+  });
+  assert.equal(cleared?.workspaceId, null);
+});
+
+test("unbound Agent threads resolve stable isolated private workspaces", () => {
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const first = threadService.createThread({
+    userId: user.id,
+    title: "Private Agent A",
+    agentEnabled: true,
+  });
+  const second = threadService.createThread({
+    userId: user.id,
+    title: "Private Agent B",
+    agentEnabled: true,
+  });
+
+  assert.equal(first.workspaceId, null);
+  assert.equal(second.workspaceId, null);
+
+  const firstRoot = threadService.getEffectiveAgentWorkspaceRoot(first.id, user.id);
+  const firstRootAgain = threadService.getEffectiveAgentWorkspaceRoot(first.id, user.id);
+  const secondRoot = threadService.getEffectiveAgentWorkspaceRoot(second.id, user.id);
+
+  assert.ok(firstRoot);
+  assert.ok(secondRoot);
+  assert.equal(firstRootAgain, firstRoot);
+  assert.notEqual(secondRoot, firstRoot);
+  assert.equal(path.basename(firstRoot), first.id);
+  assert.match(path.basename(firstRoot), /^[a-f0-9]{32}$/);
+
+  const storageRoot = path.resolve(path.dirname(testDbPath));
+  const relative = path.relative(storageRoot, firstRoot);
+  assert.ok(relative);
+  assert.equal(relative.startsWith(".."), false);
+  assert.equal(path.isAbsolute(relative), false);
 });
 
 test("createMessage uses lineage.parentId for branch pruning", () => {
