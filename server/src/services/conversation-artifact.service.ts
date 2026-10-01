@@ -103,7 +103,7 @@ const isParentPath = (relative: string) =>
 const resolveCanonicalRoot = (
   rootPath: string,
   missingCode: ConversationArtifactErrorCode,
-) => {
+): string => {
   if (!rootPath.trim() || !path.isAbsolute(rootPath)) {
     fail("invalid_source", "Artifact source root must be an absolute path");
   }
@@ -117,9 +117,12 @@ const resolveCanonicalRoot = (
   } catch (error) {
     if (error instanceof ConversationArtifactError) throw error;
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      fail(missingCode, "Artifact source root is missing");
+      return fail(missingCode, "Artifact source root is missing");
     }
-    fail("containment_failure", "Artifact source root cannot be resolved");
+    return fail(
+      "containment_failure",
+      "Artifact source root cannot be resolved",
+    );
   }
 };
 
@@ -182,15 +185,16 @@ const assertRegistrationRootOwned = (input: {
     return canonicalRoot;
   }
 
-  if (!thread.workspaceId) {
-    fail(
+  const workspaceId = thread.workspaceId;
+  if (!workspaceId) {
+    return fail(
       "invalid_ownership",
       "Artifact source root does not belong to this Agent conversation",
     );
   }
 
   const workspace = chatWorkspaceRepository.findById(
-    thread.workspaceId,
+    workspaceId,
     input.userId,
   );
   if (!workspace?.rootPath || !samePath(workspace.rootPath, canonicalRoot)) {
