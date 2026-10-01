@@ -83,8 +83,10 @@ test("registers a private-workspace artifact with a frozen source root", () => {
   });
 
   assert.equal(ref.threadId, thread.id);
-  assert.equal(ref.sourceRootPath, fs.realpathSync(privateRoot));
+  assert.equal("sourceRootPath" in ref, false);
   assert.equal(ref.sourceRelativePath, "final.txt");
+  const persisted = conversationArtifactRepository.findById(ref.id, user.id);
+  assert.equal(persisted?.sourceRootPath, fs.realpathSync(privateRoot));
 
   resetDatabaseClients();
   initializeAuthDatabase();
@@ -129,7 +131,7 @@ test("read-back stays on the creation root after the thread switches Workspace",
     userId: user.id,
   });
   assert.equal(fs.readFileSync(resolved.absolutePath, "utf8"), "private");
-  assert.equal(resolved.reference.sourceRootPath, fs.realpathSync(privateRoot));
+  assert.equal("sourceRootPath" in resolved.reference, false);
 });
 
 test("registers output from the thread's explicit Workspace", () => {
@@ -155,7 +157,11 @@ test("registers output from the thread's explicit Workspace", () => {
     sourceRelativePath: "report.txt",
     lifecycle: "final",
   });
-  assert.equal(ref.sourceRootPath, fs.realpathSync(explicitRoot));
+  assert.equal("sourceRootPath" in ref, false);
+  assert.equal(
+    conversationArtifactRepository.findById(ref.id, user.id)?.sourceRootPath,
+    fs.realpathSync(explicitRoot),
+  );
 });
 
 test("rejects roots that do not belong to the conversation", () => {
