@@ -9,6 +9,7 @@ import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
 import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { resetDatabaseClients } from "@/db";
 import {
+  agentRunRepository,
   chatWorkspaceRepository,
   conversationArtifactRepository,
   threadRepository,
@@ -340,3 +341,91 @@ test("rejects a symlinked source outside the frozen root", () => {
       error.code === "containment_failure",
   );
 });
+
+test("AgentRun-frozen registration rejects a mismatched thread", () => {
+  const run = agentRunRepository.create({
+    threadId: thread.id,
+    userId: user.id,
+    goal: {
+      id: "artifact-frozen-root",
+      text: "artifact",
+      successCriteria: [],
+      constraints: [],
+      riskLevel: "low",
+    },
+    runtimeInput: {
+      messages: [],
+      params: {},
+      workspaceRoot: privateRoot,
+    },
+  });
+  const otherThread = threadRepository.create({
+    userId: user.id,
+    title: "artifact-other-thread",
+  });
+
+  assert.throws(
+    () =>
+      conversationArtifactService.register({
+        threadId: otherThread.id,
+        userId: user.id,
+        sourceRootPath: privateRoot,
+        sourceRelativePath: "final.txt",
+        lifecycle: "final",
+        agentRunId: run.id,
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "invalid_ownership",
+  );
+});
+
+test("rejects read-back when the frozen root itself is replaced by a link", () => {
+  const linkedThread = threadRepository.create({
+    userId: user.id,
+    title: "artifact-linked-root",
+  });
+  const linkedRoot = privateAgentWorkspaceService.ensure({
+    threadId: linkedThread.id,
+    userId: user.id,
+  });
+  fs.writeFileSync(path.join(linkedRoot, "final.txt"), "original");
+  const ref = conversationArtifactService.register({
+    threadId: linkedThread.id,
+    userId: user.id,
+    sourceRootPath: linkedRoot,
+    sourceRelativePath: "final.txt",
+    lifecycle: "final",
+  });
+
+  const replacementRoot = path.join(
+    root,
+    `artifact-root-replacement-${crypto.randomUUID()}`,
+  );
+  fs.mkdirSync(replacementRoot, { recursive: true });
+  fs.writeFileSync(path.join(replacementRoot, "final.txt"), "escaped");
+  fs.rmSync(linkedRoot, { recursive: true, force: true });
+
+  try {
+    fs.symlinkSync(
+      replacementRoot,
+      linkedRoot,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  } catch {
+    return;
+  }
+
+  assert.throws(
+    () =>
+      conversationArtifactService.resolve({
+        id: ref.id,
+        threadId: linkedThread.id,
+        userId: user.id,
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "containment_failure",
+  );
+});
+

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  agentRunRepository,
   chatWorkspaceRepository,
   conversationArtifactRepository,
   threadRepository,
@@ -107,7 +108,13 @@ const resolveCanonicalRoot = (
   }
 
   try {
-    const stat = fs.statSync(rootPath);
+    const stat = fs.lstatSync(rootPath);
+    if (stat.isSymbolicLink()) {
+      fail(
+        "containment_failure",
+        "Artifact source root cannot be a symbolic link or junction",
+      );
+    }
     if (!stat.isDirectory()) {
       fail("containment_failure", "Artifact source root is not a directory");
     }
@@ -164,6 +171,7 @@ const assertRegistrationRootOwned = (input: {
   threadId: string;
   userId: number;
   sourceRootPath: string;
+  agentRunId?: string;
 }) => {
   const thread =
     threadRepository.findById(input.threadId, input.userId) ??
@@ -172,6 +180,33 @@ const assertRegistrationRootOwned = (input: {
     input.sourceRootPath,
     "missing_source",
   );
+
+  if (input.agentRunId) {
+    const run = agentRunRepository.get(input.agentRunId);
+    if (
+      !run ||
+      run.threadId !== input.threadId ||
+      run.userId !== input.userId
+    ) {
+      return fail(
+        "invalid_ownership",
+        "Artifact AgentRun does not belong to this conversation",
+      );
+    }
+
+    const frozenRoot =
+      typeof run.runtimeInput?.workspaceRoot === "string"
+        ? run.runtimeInput.workspaceRoot.trim()
+        : "";
+    if (!frozenRoot || !samePath(frozenRoot, input.sourceRootPath)) {
+      return fail(
+        "invalid_ownership",
+        "Artifact source root does not match the AgentRun frozen workspace",
+      );
+    }
+
+    return canonicalRoot;
+  }
 
   if (
     privateAgentWorkspaceService.isExpectedRoot({
@@ -213,6 +248,7 @@ export const conversationArtifactService = {
     sourceRootPath: string;
     sourceRelativePath: string;
     lifecycle: ConversationArtifactLifecycle;
+    agentRunId?: string;
     mimeType?: string | null;
   }): ConversationArtifactReference {
     const sourceRootPath = assertRegistrationRootOwned(input);

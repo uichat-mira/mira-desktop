@@ -450,6 +450,7 @@ const executePreparedApprovedAgentRunResume = async (
   const conversationArtifacts =
     output.status === "completed"
       ? registerAgentWorkspaceOutputs({
+          runId: run.id,
           threadId: run.threadId,
           userId: run.userId,
           sourceRootPath: runtimeInput.workspaceRoot!,

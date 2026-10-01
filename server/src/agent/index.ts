@@ -163,6 +163,7 @@ export const createAndRunAgent = async (
     const conversationArtifacts =
       output.status === "completed"
         ? registerAgentWorkspaceOutputs({
+            runId: run.id,
             threadId: input.threadId,
             userId: input.userId,
             sourceRootPath: workspaceRoot,

@@ -15,6 +15,7 @@ import type { AgentWorkspaceOutputDeclaration } from "./types.js";
  * Workspace the thread happens to use later.
  */
 export const registerAgentWorkspaceOutputs = (input: {
+  runId: string;
   threadId: string;
   userId: number;
   sourceRootPath: string;
@@ -45,6 +46,7 @@ export const registerAgentWorkspaceOutputs = (input: {
           userId: input.userId,
           sourceRootPath: input.sourceRootPath,
           sourceRelativePath: declaration.sourceRelativePath,
+          agentRunId: input.runId,
           lifecycle: "final",
           mimeType: declaration.mimeType,
         }),

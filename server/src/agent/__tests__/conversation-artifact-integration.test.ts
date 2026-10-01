@@ -18,7 +18,12 @@ import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import { conversationArtifacts } from "@/db/schema.js";
-import { agentRunRepository, threadRepository, userRepository } from "@/db/repositories/index.js";
+import {
+  agentRunRepository,
+  chatWorkspaceRepository,
+  threadRepository,
+  userRepository,
+} from "@/db/repositories/index.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { conversationArtifactService } from "@/services/conversation-artifact.service.js";
 import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
@@ -172,6 +177,84 @@ test("registers explicit final runtime output and reads it after reload", async 
     }).reference.id,
     reference.id,
   );
+});
+
+test("registers final output against the AgentRun frozen explicit Workspace root", async () => {
+  const user = userRepository.create({
+    username: `artifact-explicit-frozen-${Date.now()}`,
+    passwordHash: "x",
+    role: "user",
+  });
+  const thread = threadRepository.create({
+    userId: user.id,
+    title: "frozen explicit artifact",
+  });
+  const explicitRootA = path.join(
+    path.dirname(dbPath),
+    `explicit-a-${crypto.randomUUID()}`,
+  );
+  const explicitRootB = path.join(
+    path.dirname(dbPath),
+    `explicit-b-${crypto.randomUUID()}`,
+  );
+  fs.mkdirSync(explicitRootA, { recursive: true });
+  fs.mkdirSync(explicitRootB, { recursive: true });
+
+  const workspace = chatWorkspaceRepository.create({
+    userId: user.id,
+    name: "Explicit",
+    rootPath: explicitRootA,
+    status: "active",
+  });
+  threadRepository.updateById(thread.id, { workspaceId: workspace.id });
+
+  mocks.runAgentRuntime.mockImplementation(async (input) => {
+    assert.equal(input.workspaceRoot, explicitRootA);
+    fs.writeFileSync(path.join(explicitRootA, "final.txt"), "frozen-root");
+    chatWorkspaceRepository.updateById(workspace.id, {
+      rootPath: explicitRootB,
+    });
+    return {
+      ...output(),
+      workspaceOutputs: [
+        { sourceRelativePath: "final.txt", lifecycle: "final" },
+      ],
+    };
+  });
+
+  try {
+    const result = await createAndRunAgent({
+      threadId: thread.id,
+      userId: user.id,
+      workspaceRoot: explicitRootA,
+      goalText: "produce a stable artifact",
+      messages: [
+        {
+          role: "user",
+          content: "produce a stable artifact",
+          parts: [{ type: "text", text: "produce a stable artifact" }],
+        },
+      ],
+    });
+
+    const reference = result.output.conversationArtifacts?.[0];
+    assert.ok(reference);
+    assert.equal(
+      chatWorkspaceRepository.findById(workspace.id, user.id)?.rootPath,
+      explicitRootB,
+    );
+
+    const resolved = conversationArtifactService.resolve({
+      id: reference.id,
+      threadId: thread.id,
+      userId: user.id,
+    });
+    assert.equal(resolved.absolutePath, path.join(fs.realpathSync(explicitRootA), "final.txt"));
+    assert.equal(fs.readFileSync(resolved.absolutePath, "utf8"), "frozen-root");
+  } finally {
+    fs.rmSync(explicitRootA, { recursive: true, force: true });
+    fs.rmSync(explicitRootB, { recursive: true, force: true });
+  }
 });
 
 test("does not promote temporary runtime output", async () => {
