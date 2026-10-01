@@ -43,8 +43,11 @@ jobs:
       - name: Type check
         run: pnpm check
 
-      - name: Run #198 targeted desktop regression
-        run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/chat/core/runtime.provider.test.tsx
+      - name: "Run #198 targeted desktop regressions"
+        run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/chat/core/runtime.provider.test.tsx src/features/chat/components/UChatThread.test.tsx src/features/chat/core/protocol.test.ts
+
+      - name: "Run #198 Agent route regressions"
+        run: pnpm --filter @ui-chat-mira/server test -- src/routes/proxy-provider/chat.routes.test.ts --testNamePattern='POST /proxy/chat/default passes agentEnabled true into createAndRunAgent|POST /proxy/chat/default routes knowledge-bound agent sends through AgentRun instead of the legacy RAG branch|POST /proxy/chat/default passes bound thread workspaceRoot into createAndRunAgent'
 
   build-electron:
     name: Build Electron (${{ matrix.platform }})
