@@ -79,6 +79,14 @@ test("rejects invalid, incomplete, or secret-bearing route configuration", () =>
   const secretBearing = baseConfig();
   secretBearing.roles.routine.apiKey = "do-not-commit";
   assert.throws(() => parseReviewRoutingConfig(secretBearing), /review_route_routine_unknown_field/);
+
+  const controlPlaneCredential = baseConfig();
+  controlPlaneCredential.roles.routine.credentialEnv =
+    "AI_REVIEW_EXTERNAL_RESULT_TOKEN";
+  assert.throws(
+    () => parseReviewRoutingConfig(controlPlaneCredential),
+    /review_route_credential_env_invalid/,
+  );
 });
 
 test("requires the credential named by the selected route without logging or storing its value", () => {
