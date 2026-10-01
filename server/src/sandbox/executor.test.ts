@@ -232,10 +232,17 @@ describe("SandboxExecutor", () => {
     expect(result.stdoutEncoding).toBe("utf8");
     expect(sandboxMocks.spawnMock).toHaveBeenCalledWith(
       expect.stringContaining("powershell.exe"),
-      ["-NoProfile", "-Command", "node script.js"],
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "node script.js; exit $LASTEXITCODE",
+      ],
       expect.objectContaining({
         shell: false,
         windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
       }),
     );
   });
