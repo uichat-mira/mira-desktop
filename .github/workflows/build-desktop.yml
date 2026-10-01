@@ -46,6 +46,9 @@ jobs:
       - name: "Run #199 UI convergence regressions"
         run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/shared/uchat/ui/UChatThreadView.test.tsx src/shared/uchat/ui/UChatAgentControls.test.tsx src/features/chat/components/roleChatState.test.ts src/features/chat/components/UChatThread.test.tsx
 
+      - name: Run E05A sidebar visibility regression
+        run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/chat/components/UChatThreadListSidebar.test.tsx -t "hides Mira BASE from workspace groups even when legacy data lacks isDefault"
+
       - name: Run default Agent entry regressions
         run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/chat/core/runtime.provider.test.tsx src/features/chat/components/UChatThread.test.tsx src/features/chat/core/protocol.test.ts
 

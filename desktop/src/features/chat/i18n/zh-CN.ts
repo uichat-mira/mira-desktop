@@ -136,6 +136,7 @@ const chatPending = {
         empty: "暂无可展示的来源内容。",
       },
       actions: {
+        send: "发送",
         copy: "复制",
         copySuccess: "已复制",
         copyFailed: "复制失败，请重试",

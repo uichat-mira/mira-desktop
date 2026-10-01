@@ -139,6 +139,7 @@ const chatPending = {
         empty: "No source content to display.",
       },
       actions: {
+        send: "Send",
         copy: "Copy",
         copySuccess: "Copied",
         copyFailed: "Copy failed, please try again",

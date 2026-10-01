@@ -65,7 +65,9 @@ const desktopRuntimeBaseCapabilities = {
 
 const syncRuntimeStatusFromAgentRun = (runtime: ChatRuntime, run: AgentRun) => {
   if (run.status === "queued" || run.status === "running") {
-    runtime.store.getState().setRunStatus({ type: "running" });
+    runtime.store
+      .getState()
+      .setRunStatus({ type: "running" }, run.threadId);
     return;
   }
   if (run.status === "failed") {

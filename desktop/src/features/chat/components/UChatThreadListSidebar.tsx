@@ -31,6 +31,13 @@ type WorkspaceGroup = {
 const sortByUpdatedAtDesc = (left: { updatedAt: string }, right: { updatedAt: string }) =>
   right.updatedAt.localeCompare(left.updatedAt);
 
+const isSystemDefaultWorkspace = (
+  workspace: Pick<ChatWorkspace, "isDefault" | "name">,
+) =>
+  workspace.isDefault ||
+  workspace.name === "Default Workspace" ||
+  workspace.name === "Mira BASE";
+
 export function UChatThreadListSidebar() {
   const { t } = useTranslation();
   const runtime = useChatRuntime();
@@ -76,7 +83,10 @@ export function UChatThreadListSidebar() {
 
   useEffect(() => {
     const nextGroups = workspaces
-      .filter((workspace) => !workspace.isDefault)
+      // Older installs may retain the reserved default workspace name while
+      // root-path drift makes the backend report isDefault=false. Keep the
+      // system default hidden until those legacy rows are normalized.
+      .filter((workspace) => !isSystemDefaultWorkspace(workspace))
       .map<WorkspaceGroup>((workspace) => ({
         id: workspace.id,
         name: workspace.name,

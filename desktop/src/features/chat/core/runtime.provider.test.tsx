@@ -48,6 +48,10 @@ function StateProbe({ label }: { label: string }) {
   const attachmentCount = useChatRuntimeSelector(
     (state) => state.composer.attachments.length,
   );
+  const runStatus = useChatRuntimeSelector((state) => state.runStatus.type);
+  const activeRunThreadId = useChatRuntimeSelector(
+    (state) => state.activeRunThreadId,
+  );
   const {
     draftRoleId,
     draftAgentEnabled,
@@ -63,6 +67,8 @@ function StateProbe({ label }: { label: string }) {
       <div data-testid="attachment-count">{attachmentCount}</div>
       <div data-testid="draft-role">{draftRoleId ?? ""}</div>
       <div data-testid="draft-agent-enabled">{String(draftAgentEnabled)}</div>
+      <div data-testid="run-status">{runStatus}</div>
+      <div data-testid="active-run-thread-id">{activeRunThreadId ?? ""}</div>
       <button type="button" onClick={() => runtime.setComposerText("draft text")}>
         set-composer
       </button>
@@ -134,6 +140,37 @@ test("resetting to a new conversation restores the Agent Runtime default", async
 
   fireEvent.click(screen.getByRole("button", { name: "reset-draft" }));
   expect(screen.getByTestId("draft-agent-enabled")).toHaveTextContent("true");
+});
+
+test("AgentRun running updates preserve the owning thread for the running UI", async () => {
+  render(
+    <AppChatRuntimeProvider sessionKey="user-1">
+      <StateProbe label="chat" />
+    </AppChatRuntimeProvider>,
+  );
+
+  await waitFor(() => expect(runtimeAdapterMocks.listThreads).toHaveBeenCalledTimes(1));
+
+  window.dispatchEvent(
+    new CustomEvent("uichat:agent-run-updated", {
+      detail: {
+        run: {
+          id: "run-1",
+          threadId: "thread-1",
+          userId: 1,
+          status: "running",
+          traceId: "trace-1",
+          createdAt: "2026-10-01T00:00:00.000Z",
+          updatedAt: "2026-10-01T00:00:01.000Z",
+        },
+      },
+    }),
+  );
+
+  await waitFor(() => {
+    expect(screen.getByTestId("run-status")).toHaveTextContent("running");
+    expect(screen.getByTestId("active-run-thread-id")).toHaveTextContent("thread-1");
+  });
 });
 
 test("desktop integration preserves runtime and business drafts for the same session", async () => {

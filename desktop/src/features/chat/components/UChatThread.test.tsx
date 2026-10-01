@@ -258,7 +258,7 @@ describe("UChatThread", () => {
       render(<UChatThread />);
     });
 
-    const button = screen.getByRole("button", { name: "chat.thread.actions.send" });
+    const button = screen.getByRole("button", { name: i18n.t("chat.thread.actions.send") });
     assert.equal(button.hasAttribute("disabled"), false);
     fireEvent.click(button);
 
@@ -302,6 +302,15 @@ describe("UChatThread", () => {
     });
 
     assert.ok(screen.getByText(i18n.t("chat.thread.agent.running")));
+    assert.ok(
+      screen.getByRole("button", {
+        name: i18n.t("chat.thread.composer.cancelGeneration"),
+      }),
+    );
+    assert.equal(
+      screen.queryByRole("button", { name: i18n.t("chat.thread.actions.send") }),
+      null,
+    );
   });
 
   test("keeps Role image action available when Agent is enabled and no Knowledge Base is bound", async () => {
@@ -371,11 +380,11 @@ describe("UChatThread", () => {
     fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
     assert.equal(sendMock.mock.calls.length, 0);
     const sendButton = screen.getByRole("button", {
-      name: "chat.thread.actions.send",
+      name: i18n.t("chat.thread.actions.send"),
     });
     assert.equal(sendButton.hasAttribute("disabled"), true);
     assert.equal(
-      screen.queryByRole("button", { name: "chat.thread.composer.cancelGeneration" }),
+      screen.queryByRole("button", { name: i18n.t("chat.thread.composer.cancelGeneration") }),
       null,
     );
   });

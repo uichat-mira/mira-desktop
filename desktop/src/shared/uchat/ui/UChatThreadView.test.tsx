@@ -358,8 +358,9 @@ test("UChatThreadView calls onAgentSend when the Agent button is clicked", () =>
     />,
   );
 
+  assert.equal(i18n.t("chat.thread.actions.send"), "Send");
   const submit = screen.getByRole("button", {
-    name: i18n.t("chat.thread.actions.send"),
+    name: "Send",
   });
   fireEvent.click(submit);
   assert.equal(onAgentSend.mock.calls.length, 1);
@@ -490,7 +491,7 @@ test("UChatThreadView keeps normal send enabled when Agent toggle is off", () =>
   );
 
   const button = screen.getByRole("button", {
-    name: "chat.thread.actions.send",
+    name: i18n.t("chat.thread.actions.send"),
   });
   assert.equal(button.hasAttribute("disabled"), false);
   fireEvent.click(button);
