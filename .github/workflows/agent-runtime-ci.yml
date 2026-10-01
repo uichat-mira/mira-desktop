@@ -79,6 +79,8 @@ jobs:
           src/agent/__tests__/pi-loop-semantic-compat.test.ts
           src/agent/__tests__/unbounded-agent-iterations.test.ts
           src/services/conversation-workdir.service.test.ts
+          src/services/thread.service.test.ts
+          src/routes/proxy-provider/chat.routes.test.ts
           --maxWorkers=1
           --fileParallelism=false
           --reporter=json
