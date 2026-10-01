@@ -100,7 +100,6 @@ export default function DashboardPage() {
       title="Mira 工作台"
       description="你的智能助手，随时为你掌握全局"
       contentMode="flow"
-      containerClassName="px-5 sm:px-6 xl:px-8"
       contentClassName="pt-5 xl:pt-6"
     >
       <div className="space-y-3">
