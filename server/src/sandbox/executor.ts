@@ -51,6 +51,7 @@ export interface SandboxExecutionResult {
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024;
 const MAX_TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_LIMIT_BYTES = 1024 * 1024;
+const WINDOWS_EXIT_DRAIN_GRACE_MS = 100;
 
 const BINARY_PLACEHOLDER_TEXT = "[binary output omitted]";
 
@@ -428,6 +429,10 @@ export const executeSandboxedCommand = async (
   const violations: string[] = [];
   let settled = false;
   let failExecution: ((error: Error) => void) | null = null;
+  let windowsExitDrainTimer: NodeJS.Timeout | null = null;
+  let exitObserved = false;
+  let stdoutEnded = !child.stdout;
+  let stderrEnded = !child.stderr;
 
   const appendChunk = (
     target: string[],
@@ -479,11 +484,19 @@ export const executeSandboxedCommand = async (
   };
 
   await new Promise<void>((resolve, reject) => {
+    const clearWindowsExitDrainTimer = () => {
+      if (windowsExitDrainTimer) {
+        clearTimeout(windowsExitDrainTimer);
+        windowsExitDrainTimer = null;
+      }
+    };
+
     const finishResolve = () => {
       if (settled) {
         return;
       }
       settled = true;
+      clearWindowsExitDrainTimer();
       resolve();
     };
 
@@ -492,6 +505,7 @@ export const executeSandboxedCommand = async (
         return;
       }
       settled = true;
+      clearWindowsExitDrainTimer();
       reject(error);
     };
     failExecution = finishReject;
@@ -508,6 +522,29 @@ export const executeSandboxedCommand = async (
       void killProcessTree(child.pid);
       finishResolve();
     }, timeoutMs);
+
+    const finishAfterWindowsExit = () => {
+      if (
+        process.platform !== "win32" ||
+        !exitObserved ||
+        settled ||
+        !stdoutEnded ||
+        !stderrEnded
+      ) {
+        return;
+      }
+      clearTimeout(timer);
+      finishResolve();
+    };
+
+    child.stdout?.once("end", () => {
+      stdoutEnded = true;
+      finishAfterWindowsExit();
+    });
+    child.stderr?.once("end", () => {
+      stderrEnded = true;
+      finishAfterWindowsExit();
+    });
 
     child.stdout?.on("data", (chunk: Buffer | string) => {
       try {
@@ -538,12 +575,37 @@ export const executeSandboxedCommand = async (
       finishReject(error instanceof Error ? error : new Error(String(error)));
     });
 
+    child.once("exit", (code) => {
+      exitObserved = true;
+      exitCode = code;
+
+      if (process.platform !== "win32" || settled) {
+        return;
+      }
+
+      finishAfterWindowsExit();
+      if (settled) {
+        return;
+      }
+
+      clearWindowsExitDrainTimer();
+      windowsExitDrainTimer = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        clearTimeout(timer);
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        finishResolve();
+      }, WINDOWS_EXIT_DRAIN_GRACE_MS);
+    });
+
     child.once("close", (code) => {
       clearTimeout(timer);
       if (settled) {
         return;
       }
-      exitCode = code;
+      exitCode = code ?? exitCode;
       finishResolve();
     });
 
