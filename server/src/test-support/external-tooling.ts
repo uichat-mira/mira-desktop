@@ -7,8 +7,6 @@ import { spawnSync } from "node:child_process";
  * POSIX host with python3 but no python alias does not pass the probe and then
  * fail while constructing the fixture.
  */
-const probeCache = new Map<string, boolean>();
-
 export const resolveExternalToolingPython = (): string =>
   process.platform === "win32" ? "python" : "python3";
 
@@ -32,27 +30,12 @@ const canRunCommand = (command: string): boolean => {
   return !result.error && result.status === 0;
 };
 
-export const hasPythonOfficeTooling = (): boolean => {
-  const cached = probeCache.get("python-office");
-  if (cached !== undefined) return cached;
+export const hasPythonOfficeTooling = (): boolean =>
+  canRunPythonModule("docx") &&
+  canRunPythonModule("pptx") &&
+  canRunPythonModule("openpyxl");
 
-  const available =
-    canRunPythonModule("docx") &&
-    canRunPythonModule("pptx") &&
-    canRunPythonModule("openpyxl");
-
-  probeCache.set("python-office", available);
-  return available;
-};
-
-export const hasPdfTextTooling = (): boolean => {
-  const cached = probeCache.get("pdf-text");
-  if (cached !== undefined) return cached;
-
-  const available = canRunCommand("pdftotext");
-  probeCache.set("pdf-text", available);
-  return available;
-};
+export const hasPdfTextTooling = (): boolean => canRunCommand("pdftotext");
 
 export const hasExternalDocumentTooling = (): boolean =>
   hasPythonOfficeTooling() && hasPdfTextTooling();
@@ -62,11 +45,4 @@ export const hasExternalDocumentTooling = (): boolean =>
  * binary the candidate set silently shrinks, so locate assertions are only
  * meaningful where ripgrep is actually available.
  */
-export const hasRipgrep = (): boolean => {
-  const cached = probeCache.get("ripgrep");
-  if (cached !== undefined) return cached;
-
-  const available = canRunCommand("rg");
-  probeCache.set("ripgrep", available);
-  return available;
-};
+export const hasRipgrep = (): boolean => canRunCommand("rg");
