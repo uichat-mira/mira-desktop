@@ -76,12 +76,7 @@ export function UChatThreadListSidebar() {
 
   useEffect(() => {
     const nextGroups = workspaces
-      .filter(
-        (workspace) =>
-          !workspace.isDefault &&
-          workspace.name !== "Default Workspace" &&
-          workspace.name !== "Mira BASE",
-      )
+      .filter((workspace) => !workspace.isDefault)
       .map<WorkspaceGroup>((workspace) => ({
         id: workspace.id,
         name: workspace.name,
