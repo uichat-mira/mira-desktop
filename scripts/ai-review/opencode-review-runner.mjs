@@ -312,9 +312,9 @@ export async function runReviewFailClosed(createOpencode, pkg, now = () => Date.
 async function main() {
   const packagePath = string(process.env.MIRA_REVIEW_PACKAGE_PATH, "MIRA_REVIEW_PACKAGE_PATH");
   const outputPath = string(process.env.MIRA_REVIEW_OUTPUT_PATH, "MIRA_REVIEW_OUTPUT_PATH");
-  const sdkEntry = string(process.env.OPENCODE_SDK_ENTRY, "OPENCODE_SDK_ENTRY");
+  const sdkEntry = process.env.OPENCODE_SDK_ENTRY?.trim();
   const githubWorkspace = string(process.env.GITHUB_WORKSPACE, "GITHUB_WORKSPACE");
-  const goKey = string(process.env.OPENCODE_GO_API_KEY, "OPENCODE_GO_API_KEY");
+  const goKey = process.env.OPENCODE_GO_API_KEY?.trim();
 
   assertIsolatedWorkspace(process.cwd(), githubWorkspace);
 
@@ -323,17 +323,30 @@ async function main() {
   process.env.OPENCODE_DISABLE_PROJECT_CONFIG = "1";
   process.env.OPENCODE_DISABLE_CLAUDE_CODE = "1";
   process.env.OPENCODE_PURE = "1";
-  process.env.OPENCODE_AUTH_CONTENT = JSON.stringify({
-    [OPENCODE_PROVIDER]: { type: "api", key: goKey },
-  });
-  delete process.env.OPENCODE_GO_API_KEY;
 
-  const sdk = await import(pathToFileURL(sdkEntry).href);
-  if (typeof sdk.createOpencode !== "function") {
-    throw new Error("OpenCode SDK entry does not export createOpencode");
+  let createOpencode = async () => {
+    throw new Error("opencode_runtime_unavailable");
+  };
+
+  if (goKey && sdkEntry) {
+    process.env.OPENCODE_AUTH_CONTENT = JSON.stringify({
+      [OPENCODE_PROVIDER]: { type: "api", key: goKey },
+    });
+    delete process.env.OPENCODE_GO_API_KEY;
+
+    try {
+      const sdk = await import(pathToFileURL(sdkEntry).href);
+      if (typeof sdk.createOpencode === "function") {
+        createOpencode = sdk.createOpencode;
+      }
+    } catch {
+      // runReviewFailClosed below converts runtime import failure into a null review submission.
+    }
+  } else {
+    delete process.env.OPENCODE_GO_API_KEY;
   }
 
-  const result = await runReviewFailClosed(sdk.createOpencode, pkg);
+  const result = await runReviewFailClosed(createOpencode, pkg);
   await writeFile(outputPath, JSON.stringify(result), { mode: 0o600 });
   console.log(`Mira OpenCode runner: ${result.runner.state}`);
 }
