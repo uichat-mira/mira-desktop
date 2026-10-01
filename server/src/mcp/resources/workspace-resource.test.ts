@@ -6,13 +6,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { workspaceResource } from "./workspace-resource.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
-import { hasExternalDocumentTooling } from "@/test-support/external-tooling.js";
+import {
+  hasPythonOfficeTooling,
+  resolveExternalToolingPython,
+} from "@/test-support/external-tooling.js";
 
 const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-mcp-read");
 
 const createDocx = (filePath: string, text: string) => {
   execFileSync(
-    "python",
+    resolveExternalToolingPython(),
     [
       "-c",
       [
@@ -31,7 +34,7 @@ const createDocx = (filePath: string, text: string) => {
 
 const createPptx = (filePath: string, text: string) => {
   execFileSync(
-    "python",
+    resolveExternalToolingPython(),
     [
       "-c",
       [
@@ -133,7 +136,7 @@ describe("workspace resource", () => {
     );
   });
 
-  it.skipIf(!hasExternalDocumentTooling())("reads docx, pptx and xlsx files", async () => {
+  it.skipIf(!hasPythonOfficeTooling())("reads docx, pptx and xlsx files", async () => {
     createDocx(path.join(tempRoot, "sample.docx"), "Hello Docx");
     createPptx(path.join(tempRoot, "sample.pptx"), "Hello Pptx");
 
