@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -5,19 +6,18 @@ import path from "node:path";
  * Test-only environment bootstrap.
  *
  * Several suites persist through the real SQLite repositories, which require
- * DATABASE_URL. Without it those suites either throw DATABASE_URL is not set
- * or assert against unintended state, so the value is provisioned here
- * instead of being repeated per test file.
+ * DATABASE_URL. Vitest runs this setup file before each test file, so allocate
+ * a fresh database every time instead of sharing one database across the
+ * single-fork test process.
  *
- * The database is a throwaway test artifact under the repository-root
- * .test-artifact directory, scoped per test process on purpose: the runner
- * uses a single fork, so one shared file would let unrelated suites observe
- * and reset each other rows.
+ * Suites that intentionally own a dedicated database may still replace
+ * DATABASE_URL in their module setup.
  */
 const testArtifactRoot = path.resolve(process.cwd(), "..", ".test-artifact", "server");
+fs.mkdirSync(testArtifactRoot, { recursive: true });
 
-if (!process.env.DATABASE_URL) {
-  fs.mkdirSync(testArtifactRoot, { recursive: true });
-  const databasePath = path.join(testArtifactRoot, `vitest-${process.pid}.db`);
-  process.env.DATABASE_URL = "file:" + databasePath;
-}
+const databasePath = path.join(
+  testArtifactRoot,
+  `vitest-${process.pid}-${crypto.randomUUID()}.db`,
+);
+process.env.DATABASE_URL = "file:" + databasePath;
