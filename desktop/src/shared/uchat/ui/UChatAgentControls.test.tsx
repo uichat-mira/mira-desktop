@@ -24,6 +24,7 @@ test("UChatAgentModeControl toggles the UChat Agent mode", () => {
 
   const button = screen.getByRole("button", { name: "Enable Agent" });
   assert.equal(button.hasAttribute("disabled"), false);
+  assert.ok(screen.getByText("Compatibility Chat"));
   fireEvent.click(button);
   assert.equal(onToggle.mock.calls.length, 1);
 });
