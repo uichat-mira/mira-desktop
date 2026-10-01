@@ -210,6 +210,7 @@ const chatPending = {
         run: "以智能体模式运行",
         toggleOn: "开启智能体",
         toggleOff: "解绑智能体",
+        compatibilityLabel: "兼容 Chat",
         waitingApprovalTitle: "等待审批",
         waitingApprovalDetail: "Agent 需要人工确认后继续。",
         blockedTitle: "Agent 已阻断",
