@@ -5,7 +5,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const OPENCODE_ENGINE = "opencode";
 export const OPENCODE_PROVIDER = "opencode-go";
 export const OPENCODE_MODEL = "minimax-m3";
-export const OPENCODE_MODEL_REF = `${OPENCODE_PROVIDER}/${OPENCODE_MODEL}`;\nexport const OPENCODE_VARIANT = "none";
+export const OPENCODE_MODEL_REF = `${OPENCODE_PROVIDER}/${OPENCODE_MODEL}`;
+export const OPENCODE_VARIANT = "none";
 
 const VERDICTS = [
   "NO_BLOCKING_FINDINGS",
