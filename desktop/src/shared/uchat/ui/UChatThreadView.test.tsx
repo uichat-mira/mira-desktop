@@ -400,7 +400,7 @@ test("UChatThreadView renders Agent mode through the composer tools slot", () =>
     />,
   );
 
-  const toggle = screen.getByRole("button", { name: "Enable Agent" });
+  const toggle = screen.getByRole("button", { name: "Return to Agent" });
   const additionalTool = screen.getByText("Additional composer tool");
   const composerSurface = screen.getByRole("textbox").parentElement;
   assert.ok(composerSurface);
