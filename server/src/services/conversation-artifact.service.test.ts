@@ -259,6 +259,63 @@ test("rejects traversal, absolute, missing, temporary, and cross-thread reads", 
   );
 });
 
+test("rejects cross-user reads and stale frozen roots", () => {
+  const crossUserRef = conversationArtifactService.register({
+    threadId: thread.id,
+    userId: user.id,
+    sourceRootPath: privateRoot,
+    sourceRelativePath: "final.txt",
+    lifecycle: "final",
+  });
+  const otherUser = userRepository.create({
+    username: `artifact-other-${crypto.randomUUID()}`,
+    passwordHash: "x",
+    role: "user",
+  });
+
+  assert.throws(
+    () =>
+      conversationArtifactService.resolve({
+        id: crossUserRef.id,
+        threadId: thread.id,
+        userId: otherUser.id,
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "invalid_ownership",
+  );
+
+  const staleThread = threadRepository.create({
+    userId: user.id,
+    title: "stale-root",
+  });
+  const staleRoot = privateAgentWorkspaceService.ensure({
+    threadId: staleThread.id,
+    userId: user.id,
+  });
+  fs.writeFileSync(path.join(staleRoot, "stale.txt"), "stale");
+  const staleRef = conversationArtifactService.register({
+    threadId: staleThread.id,
+    userId: user.id,
+    sourceRootPath: staleRoot,
+    sourceRelativePath: "stale.txt",
+    lifecycle: "final",
+  });
+  fs.rmSync(staleRoot, { recursive: true, force: true });
+
+  assert.throws(
+    () =>
+      conversationArtifactService.resolve({
+        id: staleRef.id,
+        threadId: staleThread.id,
+        userId: user.id,
+      }),
+    (error) =>
+      error instanceof ConversationArtifactError &&
+      error.code === "stale_reference",
+  );
+});
+
 test("rejects a symlinked source outside the frozen root", () => {
   const outside = path.join(root, "outside.txt");
   const linked = path.join(privateRoot, "linked.txt");
