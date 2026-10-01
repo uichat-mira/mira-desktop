@@ -195,7 +195,7 @@ describe("UChatThread", () => {
       render(<UChatThread />);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Run in Agent mode" }));
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("chat.thread.actions.send") }));
 
     await waitFor(() => {
       assert.equal(sendMock.mock.calls.length, 1);
@@ -209,7 +209,7 @@ describe("UChatThread", () => {
     await act(async () => {
       render(<UChatThread />);
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run in Agent mode" }));
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("chat.thread.actions.send") }));
 
     await waitFor(() => assert.equal(sendMock.mock.calls.length, 1));
     assert.deepEqual(setComposerTextMock.mock.calls[0], ["请使用 $xlsx 分析"]);
