@@ -172,6 +172,24 @@ test("runs OpenCode with a single provider/model and a read-only tool surface", 
   assert.equal(closed, true);
 });
 
+test("maps OpenCode runtime unavailability to a null review submission", async () => {
+  let time = 3000;
+  const result = await runReviewFailClosed(
+    async () => {
+      throw new Error("opencode_runtime_unavailable");
+    },
+    reviewPackage(),
+    () => (time += 15),
+  );
+
+  assert.deepEqual(result.runner, {
+    state: "REVIEW_UNAVAILABLE",
+    reason: "opencode_execution_failed",
+  });
+  assert.equal(result.submission.execution.review, null);
+  assert.equal(result.submission.execution.latencyMs, 15);
+});
+
 test("maps missing structured OpenCode output to a fail-closed submission for Control Room", async () => {
   let time = 1000;
   const createOpencode = async () => ({
