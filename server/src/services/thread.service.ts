@@ -582,6 +582,13 @@ export const threadService = {
       status: "active",
     });
 
+    if (created.agentEnabled && !created.workspaceId) {
+      conversationWorkdirService.ensure({
+        threadId: created.id,
+        userId: input.userId,
+      });
+    }
+
     return toThreadResponse(created, []);
   },
 
@@ -659,9 +666,6 @@ export const threadService = {
     }
     if (typeof input.agentEnabled === "boolean") {
       updateData.agentEnabled = input.agentEnabled;
-      if (input.agentEnabled && input.workspaceId === undefined && !existing.workspaceId) {
-        updateData.workspaceId = this.ensureDefaultChatWorkspace(userId).id;
-      }
     }
     if (input.agentEnabled === null) {
       updateData.agentEnabled = null;
@@ -685,6 +689,13 @@ export const threadService = {
     const updated = threadRepository.updateById(id, updateData);
     if (!updated) {
       return null;
+    }
+
+    if (updated.agentEnabled && !updated.workspaceId) {
+      conversationWorkdirService.ensure({
+        threadId: updated.id,
+        userId,
+      });
     }
 
     const messages = messageRepository.listByThread(updated.id);
