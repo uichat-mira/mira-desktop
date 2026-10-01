@@ -52,6 +52,7 @@ jobs:
       - name: Build unsigned Intel DMG
         run: node scripts/build-dist.js mac
         env:
+          LOCAL_MODEL_ALLOW_NETWORK: '1'
           RELEASE_KEEP_COUNT: 3
 
       - name: Verify DMG output
