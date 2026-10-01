@@ -288,6 +288,10 @@ const sendPersistedDefaultChatStream = ({
       ...(preludeChunks ? { preludeChunks } : {}),
       executeFullAnswer: async ({ emitToolEvent, emitExecutionNode }) => {
         if (agentEnabled) {
+          const resolvedAgentWorkspaceRoot = workspaceRoot;
+          if (!resolvedAgentWorkspaceRoot) {
+            throw new Error("Agent workspace is unavailable");
+          }
           const goalText = latestUserMessage.content.trim();
           const { run, output } = await createAndRunAgent({
             threadId,
@@ -299,7 +303,7 @@ const sendPersistedDefaultChatStream = ({
             requestContextMessages,
             params,
             knowledgeBaseId,
-            workspaceRoot,
+            workspaceRoot: resolvedAgentWorkspaceRoot,
             requestedToolGroupIds,
             onExecutionNode: emitExecutionNode,
           });
