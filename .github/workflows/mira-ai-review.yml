@@ -26,10 +26,12 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       AI_REVIEW_GATEWAY_TOKEN: ${{ secrets.AI_REVIEW_GATEWAY_TOKEN }}
-      AI_REVIEW_GATEWAY_URL: https://uichat-mira-control-room.dangjingtao.workers.dev/api/v1/ai-review/publish
+      AI_REVIEW_EXTERNAL_RESULT_TOKEN: ${{ secrets.AI_REVIEW_EXTERNAL_RESULT_TOKEN }}
+      AI_REVIEW_PACKAGE_URL: https://uichat-mira-control-room.dangjingtao.workers.dev/api/v1/ai-review/package
+      AI_REVIEW_RESULT_URL: https://uichat-mira-control-room.dangjingtao.workers.dev/api/v1/ai-review/result
     steps:
       - name: Validate trusted review transition
         id: target
@@ -55,14 +57,26 @@ jobs:
           console.log(`pull_request=${pr.number}`);
           NODE
 
-      - name: Publish Mira review
+      - name: Checkout trusted base review runner
+        if: steps.target.outputs.eligible == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted-review-control
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Fetch trusted Mira review package
         if: steps.target.outputs.eligible == 'true'
         shell: bash
         run: |
           set -euo pipefail
           test -n "${AI_REVIEW_GATEWAY_TOKEN:-}"
 
-          node <<'NODE' > /tmp/mira-review-request.json
+          review_dir="$RUNNER_TEMP/mira-ai-review"
+          mkdir -p "$review_dir"
+
+          node <<'NODE' > "$RUNNER_TEMP/mira-ai-review/request.json"
           const fs = require('node:fs');
           const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
           process.stdout.write(JSON.stringify({
@@ -72,24 +86,105 @@ jobs:
           NODE
 
           status="$(
-            curl --silent --show-error \
-              --max-time 180 \
-              -X POST \
-              -H "Authorization: Bearer ${AI_REVIEW_GATEWAY_TOKEN}" \
-              -H 'Accept: application/json' \
-              -H 'Content-Type: application/json' \
-              --data @/tmp/mira-review-request.json \
-              --output /tmp/mira-review-response.json \
-              --write-out '%{http_code}' \
-              "${AI_REVIEW_GATEWAY_URL}"
+            curl --silent --show-error               --max-time 60               -X POST               -H "Authorization: Bearer ${AI_REVIEW_GATEWAY_TOKEN}"               -H 'Accept: application/json'               -H 'Content-Type: application/json'               --data @"$RUNNER_TEMP/mira-ai-review/request.json"               --output "$RUNNER_TEMP/mira-ai-review/package.json"               --write-out '%{http_code}'               "${AI_REVIEW_PACKAGE_URL}"
           )"
 
-          HTTP_STATUS="$status" node <<'NODE'
+          if [ "$status" != "200" ]; then
+            echo "::error::Mira trusted review package request failed with HTTP $status."
+            exit 1
+          fi
+
+          MIRA_REVIEW_PACKAGE_PATH="$RUNNER_TEMP/mira-ai-review/package.json"           node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { pathToFileURL } from 'node:url';
+
+          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const pkg = JSON.parse(fs.readFileSync(process.env.MIRA_REVIEW_PACKAGE_PATH, 'utf8'));
+          const runnerUrl = pathToFileURL(
+            process.cwd() + '/trusted-review-control/scripts/ai-review/opencode-review-runner.mjs',
+          ).href;
+          const { assertTrustedPackageMatchesEvent } = await import(runnerUrl);
+          const identity = assertTrustedPackageMatchesEvent(pkg, event);
+          console.log(
+            `Trusted Mira package: PR #${identity.pullRequest}, base=${identity.baseSha}, head=${identity.headSha}`,
+          );
+          NODE
+
+      - name: Install isolated OpenCode runtime
+        if: steps.target.outputs.eligible == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          runtime_dir="$RUNNER_TEMP/mira-opencode-runtime"
+          mkdir -p "$runtime_dir"
+
+          npm install             --prefix "$runtime_dir"             --no-audit             --no-fund             --package-lock=false             opencode-ai@1.18.34             @opencode-ai/sdk@1.18.34
+
+          cat > "$runtime_dir/resolve-sdk.mjs" <<'NODE'
+          import { fileURLToPath } from 'node:url';
+          process.stdout.write(fileURLToPath(import.meta.resolve('@opencode-ai/sdk')));
+          NODE
+
+          sdk_entry="$(node "$runtime_dir/resolve-sdk.mjs")"
+          rm -f "$runtime_dir/resolve-sdk.mjs"
+
+          echo "OPENCODE_SDK_ENTRY=$sdk_entry" >> "$GITHUB_ENV"
+          echo "$runtime_dir/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Execute isolated OpenCode review
+        if: steps.target.outputs.eligible == 'true'
+        id: opencode
+        shell: bash
+        env:
+          OPENCODE_GO_API_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: |
+          set -euo pipefail
+          review_dir="$RUNNER_TEMP/mira-ai-review"
+          workspace="$review_dir/workspace"
+          home_dir="$review_dir/home"
+          config_dir="$review_dir/opencode-config"
+          mkdir -p "$workspace" "$home_dir" "$config_dir"
+
+          cd "$workspace"
+
+          HOME="$home_dir"           XDG_CONFIG_HOME="$home_dir/.config"           XDG_DATA_HOME="$home_dir/.local/share"           XDG_CACHE_HOME="$home_dir/.cache"           OPENCODE_CONFIG_DIR="$config_dir"           MIRA_REVIEW_PACKAGE_PATH="$review_dir/package.json"           MIRA_REVIEW_OUTPUT_PATH="$review_dir/runner-output.json"           node "$GITHUB_WORKSPACE/trusted-review-control/scripts/ai-review/opencode-review-runner.mjs"
+
+          RUNNER_OUTPUT="$review_dir/runner-output.json" node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('node:fs');
+          const output = JSON.parse(fs.readFileSync(process.env.RUNNER_OUTPUT, 'utf8'));
+          console.log(`state=${output.runner?.state ?? 'UNKNOWN'}`);
+          if (output.runner?.reason) console.log(`reason=${output.runner.reason}`);
+          NODE
+
+      - name: Submit OpenCode result to Mira Control Room
+        if: steps.target.outputs.eligible == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${AI_REVIEW_EXTERNAL_RESULT_TOKEN:-}"
+
+          review_dir="$RUNNER_TEMP/mira-ai-review"
+
+          RUNNER_OUTPUT="$review_dir/runner-output.json"           SUBMISSION_PATH="$review_dir/submission.json"           node <<'NODE'
+          const fs = require('node:fs');
+          const output = JSON.parse(fs.readFileSync(process.env.RUNNER_OUTPUT, 'utf8'));
+          if (!output.submission) throw new Error('OpenCode runner did not produce a submission');
+          fs.writeFileSync(process.env.SUBMISSION_PATH, JSON.stringify(output.submission), { mode: 0o600 });
+          NODE
+
+          status="$(
+            curl --silent --show-error               --max-time 60               -X POST               -H "Authorization: Bearer ${AI_REVIEW_EXTERNAL_RESULT_TOKEN}"               -H 'Accept: application/json'               -H 'Content-Type: application/json'               --data @"$review_dir/submission.json"               --output "$review_dir/result.json"               --write-out '%{http_code}'               "${AI_REVIEW_RESULT_URL}"
+          )"
+
+          HTTP_STATUS="$status" RESULT_PATH="$review_dir/result.json" node <<'NODE'
           const fs = require('node:fs');
           const status = Number(process.env.HTTP_STATUS);
-          const body = JSON.parse(fs.readFileSync('/tmp/mira-review-response.json', 'utf8'));
+          const body = JSON.parse(fs.readFileSync(process.env.RESULT_PATH, 'utf8'));
           const publicationState = body.publication?.state;
-          const publicationSucceeded = publicationState === 'CREATED' || publicationState === 'UPDATED';
+          const publicationSucceeded =
+            publicationState === 'CREATED' || publicationState === 'UPDATED';
 
           const completed =
             status === 200 &&
@@ -101,27 +196,28 @@ jobs:
             body.freshness?.state === 'STALE_REVIEW' &&
             publicationSucceeded;
           const unavailable =
-            status === 503 &&
-            body.execution?.state === 'REVIEW_UNAVAILABLE' &&
+            status === 422 &&
+            body.error === 'invalid_external_review' &&
             publicationSucceeded;
 
           const state = completed
-            ? `COMPLETED:${body.execution.review?.verdict ?? 'UNKNOWN'}`
+            ? `COMPLETED:${body.execution.review?.verdict ?? 'UNKNOWN'}:${body.execution.provider?.engine ?? 'unknown'}/${body.execution.provider?.model ?? 'unknown'}`
             : stale
               ? 'STALE_REVIEW'
               : unavailable
-                ? `REVIEW_UNAVAILABLE:${body.execution.reason ?? 'unknown'}`
+                ? 'REVIEW_UNAVAILABLE:external_review_invalid'
                 : `FAILED:HTTP_${status}`;
+
           console.log(`Mira AI Review: ${state}`);
 
           if (!completed && !stale && !unavailable) {
             const safeError = typeof body.error === 'string' ? body.error : 'unexpected_response';
-            console.error(`Mira AI Review caller failed: ${safeError}`);
+            console.error(`Mira AI Review result handoff failed: ${safeError}`);
             process.exit(1);
           }
           NODE
 
-          rm -f /tmp/mira-review-request.json /tmp/mira-review-response.json
+          rm -f             "$review_dir/request.json"             "$review_dir/package.json"             "$review_dir/runner-output.json"             "$review_dir/submission.json"             "$review_dir/result.json"
 
       - name: Skip unsupported transition
         if: steps.target.outputs.eligible != 'true'
