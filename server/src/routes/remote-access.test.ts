@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { sendRouteError } from "@/utils/route-errors.js";
+import { badRequest, sendRouteError } from "@/utils/route-errors.js";
 
 const mocks = vi.hoisted(() => {
   class PairingServiceError extends Error {
@@ -492,10 +492,11 @@ describe("remote access routes", () => {
   });
 
   it("rejects unavailable tools before committing the SSE response", async () => {
+    // Production throws an AppError (mcpBadRequest); a plain Error carrying a
+    // statusCode property is not recognized by isAppError and is re-wrapped as
+    // INTERNAL_ERROR, so the mock must use the real error type.
     mocks.toolGateway.assertAvailable.mockRejectedValueOnce(
-      Object.assign(new Error("Tool is not available to the mobile Agent surface"), {
-        statusCode: 400,
-      }),
+      badRequest("Tool is not available to the mobile Agent surface"),
     );
     const app = await createApp({
       authenticated: true,

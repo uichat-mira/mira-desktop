@@ -275,7 +275,7 @@ describe("ComputerUseRuntimeManager", () => {
     );
   });
 
-  it("restores executable permissions for non-Windows managed runtimes", async () => {
+  it.skipIf(process.platform === "win32")("restores executable permissions for non-Windows managed runtimes", async () => {
     const storageRoot = createTempRoot();
     const archiveBytes = Buffer.from("non-windows-archive");
     const executableRelativePath =
