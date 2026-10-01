@@ -139,7 +139,7 @@ pnpm package:tauri:win:notest
 2. 运行 `pnpm check`
 3. 运行 `pnpm build`
 4. 按需运行目标桌面打包命令；不要为了普通代码变更重复完整打包
-5. `prod` 分支构建成功后仅把 Windows 分支安装包同步到 R2 `mira/latest/`；`v*` 标签由 `.github/workflows/release-production.yml` 触发正式 Release Factory，GitHub Release 保存 Windows 安装包并追加 Intel macOS DMG，R2 仍只同步 Windows 资产
+5. `prod` 分支构建成功后，Windows 分支安装包同步到 R2 `mira/latest/`，Intel macOS DMG 独立同步到 `mira/macos-intel/latest/`；`v*` 标签由 `.github/workflows/release-production.yml` 触发正式 Release Factory，GitHub Release 保存 Windows 安装包并追加 Intel macOS DMG，同时分别更新两套 R2 latest 前缀
 
 ## 说明
 
