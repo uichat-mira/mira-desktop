@@ -6,7 +6,7 @@ import type {
   AgentObservation,
   AgentRun,
   AgentToolExecutionResult,
-  ConversationWorkdirOutputDeclaration,
+  AgentWorkspaceOutputDeclaration,
   CurrentTaskFrame,
 } from "./types";
 import type { RetrievedChunk } from "@/services/rag-nodes";
@@ -19,7 +19,7 @@ export interface AgentRuntimeCheckpoint {
   lastToolExecution?: AgentToolExecutionResult;
   iterationCount?: number;
   finalizationPacket?: AgentFinalizationPacket;
-  conversationWorkdirOutputs?: ConversationWorkdirOutputDeclaration[];
+  workspaceOutputs?: AgentWorkspaceOutputDeclaration[];
 }
 
 type PersistedRuntimeInput = NonNullable<AgentRun["runtimeInput"]>;
@@ -57,9 +57,9 @@ export const applyAgentRuntimeCheckpoint = (
       explicitInput.iterationCount ?? checkpoint?.iterationCount,
     finalizationPacket:
       explicitInput.finalizationPacket ?? checkpoint?.finalizationPacket,
-    conversationWorkdirOutputs:
-      explicitInput.conversationWorkdirOutputs ??
-      checkpoint?.conversationWorkdirOutputs,
+    workspaceOutputs:
+      explicitInput.workspaceOutputs ??
+      checkpoint?.workspaceOutputs,
   };
 };
 
@@ -94,7 +94,7 @@ export const persistAgentRuntimeCheckpoint = (
       iterationCount:
         checkpointOutput.iterationCount ?? derivedIterationCount,
       finalizationPacket: output.finalizationPacket,
-      conversationWorkdirOutputs: output.conversationWorkdirOutputs,
+      workspaceOutputs: output.workspaceOutputs,
     },
   };
 };
