@@ -82,7 +82,14 @@ const buildShellArgs = (profile: SandboxShellProfile, command: string) => {
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      `${command}; exit $LASTEXITCODE`,
+      [
+        command,
+        "$__mira_success = $?",
+        "$__mira_native_exit = $LASTEXITCODE",
+        "if ($null -ne $__mira_native_exit) { exit $__mira_native_exit }",
+        "if ($__mira_success) { exit 0 }",
+        "exit 1",
+      ].join("; "),
     ];
   }
 
