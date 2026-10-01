@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   MIRA_REVIEW_SCHEMA,
   OPENCODE_MODEL_REF,
+  OPENCODE_VARIANT,
   assertIsolatedWorkspace,
   assertTrustedPackageMatchesEvent,
   buildExternalSubmission,
