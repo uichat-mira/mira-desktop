@@ -31,7 +31,6 @@ export class ConversationArtifactError extends Error {
 export interface ConversationArtifactReference {
   id: string;
   threadId: string;
-  sourceRootPath: string;
   sourceRelativePath: string;
   lifecycle: ConversationArtifactLifecycle;
   mimeType?: string | null;
@@ -62,7 +61,6 @@ const toReference = (row: {
 }): ConversationArtifactReference => ({
   id: row.id,
   threadId: row.threadId,
-  sourceRootPath: row.sourceRootPath,
   sourceRelativePath: row.sourceRelativePath,
   lifecycle: row.lifecycle,
   mimeType: row.mimeType,
@@ -274,7 +272,6 @@ export const conversationArtifactService = {
     return {
       reference: {
         ...toReference(row),
-        sourceRootPath: resolved.canonicalRoot,
         sourceRelativePath: relative,
       },
       absolutePath: resolved.absolutePath,
