@@ -369,6 +369,26 @@ test("closes the OpenCode server when prompt execution times out", async () => {
   assert.equal(closed, true);
 });
 
+test("maps a missing selected-route credential to an explicit fail-closed result", async () => {
+  let time = 2500;
+  const result = await runReviewFailClosed(
+    async () => {
+      throw new Error("review_route_credential_unavailable");
+    },
+    reviewPackage(),
+    routineRoute,
+    () => (time += 10),
+  );
+
+  assert.deepEqual(result.runner, {
+    state: "REVIEW_UNAVAILABLE",
+    reason: "review_route_credential_unavailable",
+  });
+  assert.equal(result.submission.execution.provider, "opencode-go");
+  assert.equal(result.submission.execution.model, "minimax-m3");
+  assert.equal(result.submission.execution.review, null);
+});
+
 test("maps OpenCode runtime unavailability to a null review submission", async () => {
   let time = 3000;
   const result = await runReviewFailClosed(
