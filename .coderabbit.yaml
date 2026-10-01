@@ -1,5 +1,9 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 
+# Merge uichat-mira central CodeRabbit defaults, then apply Desktop-specific values below.
+# Keep repository overrides here only when Desktop genuinely needs to differ.
+inheritance: true
+
 language: "zh-CN"
 early_access: false
 tone_instructions: >-
