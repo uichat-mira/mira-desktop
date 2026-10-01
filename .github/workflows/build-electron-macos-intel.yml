@@ -2,7 +2,19 @@ name: Build Electron macOS Intel
 
 on:
   workflow_call:
+    inputs:
+      skip_release_tests:
+        description: Skip duplicate release test-report generation for non-production branch CI.
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      skip_release_tests:
+        description: Skip duplicate release test-report generation.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -11,7 +23,7 @@ jobs:
   build-macos-intel:
     name: Build Electron (macOS Intel)
     runs-on: macos-15-intel
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,10 +76,17 @@ jobs:
           LOCAL_MODEL_ALLOW_NETWORK: '1'
 
       - name: Build unsigned Intel DMG
-        run: node scripts/build-dist.js mac
+        shell: bash
         env:
           LOCAL_MODEL_RAW_ROOT: .local-models/raw
           RELEASE_KEEP_COUNT: 3
+          SKIP_RELEASE_TESTS: ${{ inputs.skip_release_tests && '1' || '0' }}
+        run: |
+          args=(mac)
+          if [ "$SKIP_RELEASE_TESTS" = "1" ]; then
+            args+=(--notest)
+          fi
+          node scripts/build-dist.js "${args[@]}"
 
       - name: Verify DMG output
         shell: bash
