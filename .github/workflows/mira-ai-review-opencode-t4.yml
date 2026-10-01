@@ -24,8 +24,8 @@ jobs:
       TARGET_REPOSITORY: uichat-mira/mira-desktop
       TARGET_PR: "181"
       EXPECTED_BASE_REF: dev
-      EXPECTED_HEAD_SHA: 975d6684ebf4ab8da4aec81b92c820a5949a5704
-      EXPECTED_RUNNER_BLOB_SHA: f7496da1b9297fc71af41b819cb30873b32d78df
+      EXPECTED_HEAD_SHA: 226f2a1ae0a1188d025d120f2e1b76b2edbeb13b
+      EXPECTED_RUNNER_BLOB_SHA: 0857bc438c5911ef21a39c5662681e23a5353f81
       AI_REVIEW_GATEWAY_TOKEN: ${{ secrets.AI_REVIEW_GATEWAY_TOKEN }}
       AI_REVIEW_EXTERNAL_RESULT_TOKEN: ${{ secrets.AI_REVIEW_EXTERNAL_RESULT_TOKEN }}
       AI_REVIEW_PACKAGE_URL: https://uichat-mira-control-room.dangjingtao.workers.dev/api/v1/ai-review/package
