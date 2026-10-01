@@ -302,6 +302,15 @@ describe("UChatThread", () => {
     });
 
     assert.ok(screen.getByText(i18n.t("chat.thread.agent.running")));
+    assert.ok(
+      screen.getByRole("button", {
+        name: i18n.t("chat.thread.composer.cancelGeneration"),
+      }),
+    );
+    assert.equal(
+      screen.queryByRole("button", { name: i18n.t("chat.thread.actions.send") }),
+      null,
+    );
   });
 
   test("keeps Role image action available when Agent is enabled and no Knowledge Base is bound", async () => {
