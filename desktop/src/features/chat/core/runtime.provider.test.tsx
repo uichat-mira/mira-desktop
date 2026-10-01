@@ -13,12 +13,14 @@ const runtimeAdapterMocks = vi.hoisted(() => ({
   repositoryConstructions: 0,
   listThreads: vi.fn(async () => []),
   getThread: vi.fn(),
+  getCreateThreadInput: undefined as undefined | (() => unknown),
 }));
 
 vi.mock("./protocol", () => ({
   DesktopChatRepository: class DesktopChatRepository {
-    constructor() {
+    constructor(getCreateThreadInput: () => unknown) {
       runtimeAdapterMocks.repositoryConstructions += 1;
+      runtimeAdapterMocks.getCreateThreadInput = getCreateThreadInput;
     }
 
     listThreads = runtimeAdapterMocks.listThreads;
@@ -91,6 +93,7 @@ beforeEach(() => {
   runtimeAdapterMocks.repositoryConstructions = 0;
   runtimeAdapterMocks.listThreads.mockClear();
   runtimeAdapterMocks.getThread.mockClear();
+  runtimeAdapterMocks.getCreateThreadInput = undefined;
   globalThis.localStorage.clear();
 });
 
@@ -103,6 +106,19 @@ test("new conversation draft defaults to Agent Runtime", async () => {
 
   await waitFor(() => expect(runtimeAdapterMocks.listThreads).toHaveBeenCalledTimes(1));
   expect(screen.getByTestId("draft-agent-enabled")).toHaveTextContent("true");
+});
+
+test("new conversation thread creation input selects Agent Runtime", async () => {
+  render(
+    <AppChatRuntimeProvider sessionKey="user-1">
+      <StateProbe label="chat" />
+    </AppChatRuntimeProvider>,
+  );
+
+  await waitFor(() => expect(runtimeAdapterMocks.listThreads).toHaveBeenCalledTimes(1));
+  expect(runtimeAdapterMocks.getCreateThreadInput?.()).toEqual(
+    expect.objectContaining({ agentEnabled: true }),
+  );
 });
 
 test("resetting to a new conversation restores the Agent Runtime default", async () => {
