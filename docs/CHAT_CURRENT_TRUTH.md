@@ -1,7 +1,7 @@
 ---
 status: current
 owner: chat / runtime
-last_verified: 2026-08-01
+last_verified: 2026-10-01
 layer: wiki
 module: Chat
 feature: ChatRuntimeTruth
@@ -123,7 +123,7 @@ updatedAt
 | `workspaceId` | 用户显式选择的 ChatWorkspace；Agent 为 null 时改用对话私有执行 namespace |
 | `knowledgeBaseId` | 非 Agent 时选择 RAG；Agent 时作为检索输入 |
 | `roleId` | 注入 Role prompt；在 Normal / Agent persisted path 合并数值生成参数 |
-| `agentEnabled` | 选择 Agent Chat |
+| `agentEnabled` | 持久化 Thread 的执行路径选择；Desktop 新对话 draft 默认 `true`，历史 Thread 已持久化的 `false` 继续保留 legacy Normal/RAG compatibility |
 | `ttsEnabled` | Assistant 成功后异步生成语音 |
 | `imageEnabled` | 满足条件时 Assistant 成功后异步生成图片 |
 | `contextSummary` | 作为 request-only system context 注入 |
@@ -204,7 +204,9 @@ Core 不认识 Mira route、Provider、Knowledge Base、Role、TTS、Image 或 A
 activeThreadId = null
 ```
 
-第一条真实发送才创建数据库 Thread。打开欢迎页不制造空历史。
+Desktop Welcome draft 的 `agentEnabled` 默认是 `true`；第一条真实发送才创建数据库 Thread，并把该 draft 选择写入新 Thread。重新进入“新对话”会恢复这个默认值。打开欢迎页本身仍不制造空历史。
+
+已有 Thread 不跟随 Welcome 默认值重写；其执行路径继续由持久化的 `agentEnabled` 决定，因此历史 `agentEnabled=false` Thread 仍保留 Normal/RAG compatibility。
 
 ## 4. 三条发送路径
 
