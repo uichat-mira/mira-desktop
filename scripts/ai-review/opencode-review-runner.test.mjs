@@ -149,7 +149,7 @@ test("runs OpenCode with a single provider/model and a read-only tool surface", 
           create: async () => ({ data: { id: "session-1" } }),
           prompt: async (input) => {
             capturedPrompt = input;
-            return { data: { info: { structured_output: cleanReview } } };
+            return { data: { info: { structured: cleanReview } } };
           },
         },
       },
@@ -170,6 +170,7 @@ test("runs OpenCode with a single provider/model and a read-only tool surface", 
   assert.equal(capturedPrompt.body.model.providerID, "opencode-go");
   assert.equal(capturedPrompt.body.model.modelID, "minimax-m3");
   assert.deepEqual(capturedPrompt.body.format.schema, MIRA_REVIEW_SCHEMA);
+  assert.equal(capturedPrompt.body.format.retryCount, 0);
   assert.equal(closed, true);
 });
 
