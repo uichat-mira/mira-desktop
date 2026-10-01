@@ -1,0 +1,255 @@
+name: Mira OpenCode Review T4 177
+
+on:
+  push:
+    branches:
+      - prod
+    paths:
+      - .github/t4/177-opencode-review-t4.marker
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: mira-opencode-review-t4-177
+  cancel-in-progress: false
+
+jobs:
+  t4:
+    name: OpenCode Go MiniMax M3 T4
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_REPOSITORY: uichat-mira/mira-desktop
+      TARGET_PR: "181"
+      EXPECTED_BASE_REF: dev
+      EXPECTED_HEAD_SHA: 36f73f1b4b20eaf05e82b7b611ba1117a52c545f
+      EXPECTED_RUNNER_BLOB_SHA: 453d5477bcce78a80f504e6f1d20d7e9ed16c34f
+      AI_REVIEW_GATEWAY_TOKEN: ${{ secrets.AI_REVIEW_GATEWAY_TOKEN }}
+      AI_REVIEW_EXTERNAL_RESULT_TOKEN: ${{ secrets.AI_REVIEW_EXTERNAL_RESULT_TOKEN }}
+      AI_REVIEW_PACKAGE_URL: https://uichat-mira-control-room.dangjingtao.workers.dev/api/v1/ai-review/package
+      AI_REVIEW_RESULT_URL: https://uichat-mira-control-room.dangjingtao.workers.dev/api/v1/ai-review/result
+    steps:
+      - name: Checkout trusted prod harness
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify trusted runner is byte-identical to PR 181 runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const path = 'scripts/ai-review/t4-opencode-review-runner.mjs';
+          const content = fs.readFileSync(path);
+          const header = Buffer.from(`blob ${content.length}\0`);
+          const sha = crypto
+            .createHash('sha1')
+            .update(Buffer.concat([header, content]))
+            .digest('hex');
+          if (sha !== process.env.EXPECTED_RUNNER_BLOB_SHA) {
+            throw new Error(`T4 runner blob mismatch: expected ${process.env.EXPECTED_RUNNER_BLOB_SHA}, got ${sha}`);
+          }
+          console.log(`Trusted T4 runner blob: ${sha}`);
+          NODE
+
+      - name: Resolve exact Desktop PR identity
+        shell: bash
+        env:
+          GH_API_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          review_dir="$RUNNER_TEMP/mira-opencode-t4"
+          mkdir -p "$review_dir"
+
+          curl --fail --silent --show-error             -H "Authorization: Bearer ${GH_API_TOKEN}"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${TARGET_REPOSITORY}/pulls/${TARGET_PR}"             --output "$review_dir/pr.json"
+
+          PR_PATH="$review_dir/pr.json" EVENT_PATH="$review_dir/event.json" node <<'NODE'
+          const fs = require('node:fs');
+          const pr = JSON.parse(fs.readFileSync(process.env.PR_PATH, 'utf8'));
+          const expectedPr = Number(process.env.TARGET_PR);
+
+          if (pr.number !== expectedPr) throw new Error('Unexpected pull request number');
+          if (pr.base?.repo?.full_name !== process.env.TARGET_REPOSITORY) {
+            throw new Error('Unexpected base repository');
+          }
+          if (pr.head?.repo?.full_name !== process.env.TARGET_REPOSITORY) {
+            throw new Error('T4 requires a same-repository PR');
+          }
+          if (pr.base?.ref !== process.env.EXPECTED_BASE_REF) {
+            throw new Error(`Unexpected base ref: ${pr.base?.ref}`);
+          }
+          if (pr.head?.sha !== process.env.EXPECTED_HEAD_SHA) {
+            throw new Error(`PR head moved: expected ${process.env.EXPECTED_HEAD_SHA}, got ${pr.head?.sha}`);
+          }
+
+          fs.writeFileSync(
+            process.env.EVENT_PATH,
+            JSON.stringify({
+              pull_request: {
+                number: pr.number,
+                base: {
+                  sha: pr.base.sha,
+                  repo: { full_name: pr.base.repo.full_name },
+                },
+                head: { sha: pr.head.sha },
+              },
+            }),
+            { mode: 0o600 },
+          );
+
+          console.log(
+            `Controlled T4 target: PR #${pr.number}, base=${pr.base.sha}, head=${pr.head.sha}, draft=${Boolean(pr.draft)}`,
+          );
+          NODE
+
+      - name: Fetch trusted Mira review package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${AI_REVIEW_GATEWAY_TOKEN:-}"
+
+          review_dir="$RUNNER_TEMP/mira-opencode-t4"
+
+          node <<'NODE' > "$review_dir/request.json"
+          process.stdout.write(JSON.stringify({
+            repository: process.env.TARGET_REPOSITORY,
+            pullRequest: Number(process.env.TARGET_PR),
+          }));
+          NODE
+
+          status="$(
+            curl --silent --show-error               --max-time 60               -X POST               -H "Authorization: Bearer ${AI_REVIEW_GATEWAY_TOKEN}"               -H 'Accept: application/json'               -H 'Content-Type: application/json'               --data @"$review_dir/request.json"               --output "$review_dir/package.json"               --write-out '%{http_code}'               "${AI_REVIEW_PACKAGE_URL}"
+          )"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Trusted review package request failed with HTTP $status."
+            cat "$review_dir/package.json" || true
+            exit 1
+          fi
+
+          MIRA_REVIEW_PACKAGE_PATH="$review_dir/package.json"           MIRA_T4_EVENT_PATH="$review_dir/event.json"           node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { pathToFileURL } from 'node:url';
+
+          const event = JSON.parse(fs.readFileSync(process.env.MIRA_T4_EVENT_PATH, 'utf8'));
+          const pkg = JSON.parse(fs.readFileSync(process.env.MIRA_REVIEW_PACKAGE_PATH, 'utf8'));
+          const runnerUrl = pathToFileURL(
+            process.cwd() + '/scripts/ai-review/t4-opencode-review-runner.mjs',
+          ).href;
+          const { assertTrustedPackageMatchesEvent } = await import(runnerUrl);
+          const identity = assertTrustedPackageMatchesEvent(pkg, event);
+          if (identity.headSha !== process.env.EXPECTED_HEAD_SHA) {
+            throw new Error('Trusted package head is not the controlled T4 head');
+          }
+          console.log(
+            `Trusted package bound: PR #${identity.pullRequest}, base=${identity.baseSha}, head=${identity.headSha}`,
+          );
+          NODE
+
+      - name: Install isolated OpenCode runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          runtime_dir="$RUNNER_TEMP/mira-opencode-runtime"
+          mkdir -p "$runtime_dir"
+
+          npm install             --prefix "$runtime_dir"             --no-audit             --no-fund             --package-lock=false             opencode-ai@1.18.34             @opencode-ai/sdk@1.18.34
+
+          cat > "$runtime_dir/resolve-sdk.mjs" <<'NODE'
+          import { fileURLToPath } from 'node:url';
+          process.stdout.write(fileURLToPath(import.meta.resolve('@opencode-ai/sdk')));
+          NODE
+
+          sdk_entry="$(node "$runtime_dir/resolve-sdk.mjs")"
+          rm -f "$runtime_dir/resolve-sdk.mjs"
+
+          echo "OPENCODE_SDK_ENTRY=$sdk_entry" >> "$GITHUB_ENV"
+          echo "$runtime_dir/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Execute real OpenCode Go MiniMax M3 review
+        id: opencode
+        shell: bash
+        env:
+          OPENCODE_GO_API_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${OPENCODE_GO_API_KEY:-}"
+          test -n "${OPENCODE_SDK_ENTRY:-}"
+
+          review_dir="$RUNNER_TEMP/mira-opencode-t4"
+          workspace="$review_dir/workspace"
+          home_dir="$review_dir/home"
+          config_dir="$review_dir/opencode-config"
+          mkdir -p "$workspace" "$home_dir" "$config_dir"
+
+          cd "$workspace"
+
+          HOME="$home_dir"           XDG_CONFIG_HOME="$home_dir/.config"           XDG_DATA_HOME="$home_dir/.local/share"           XDG_CACHE_HOME="$home_dir/.cache"           OPENCODE_CONFIG_DIR="$config_dir"           MIRA_REVIEW_PACKAGE_PATH="$review_dir/package.json"           MIRA_REVIEW_OUTPUT_PATH="$review_dir/runner-output.json"           node "$GITHUB_WORKSPACE/scripts/ai-review/t4-opencode-review-runner.mjs"
+
+          RUNNER_OUTPUT="$review_dir/runner-output.json" node <<'NODE'
+          const fs = require('node:fs');
+          const output = JSON.parse(fs.readFileSync(process.env.RUNNER_OUTPUT, 'utf8'));
+          console.log(`OpenCode runner state: ${output.runner?.state ?? 'UNKNOWN'}`);
+          if (output.runner?.reason) console.log(`OpenCode runner reason: ${output.runner.reason}`);
+          if (!output.submission) throw new Error('Runner did not produce a Control Room submission');
+          NODE
+
+      - name: Submit T4 result to Mira Control Room
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${AI_REVIEW_EXTERNAL_RESULT_TOKEN:-}"
+
+          review_dir="$RUNNER_TEMP/mira-opencode-t4"
+
+          RUNNER_OUTPUT="$review_dir/runner-output.json"           SUBMISSION_PATH="$review_dir/submission.json"           node <<'NODE'
+          const fs = require('node:fs');
+          const output = JSON.parse(fs.readFileSync(process.env.RUNNER_OUTPUT, 'utf8'));
+          if (!output.submission) throw new Error('OpenCode runner did not produce a submission');
+          fs.writeFileSync(process.env.SUBMISSION_PATH, JSON.stringify(output.submission), { mode: 0o600 });
+          NODE
+
+          status="$(
+            curl --silent --show-error               --max-time 60               -X POST               -H "Authorization: Bearer ${AI_REVIEW_EXTERNAL_RESULT_TOKEN}"               -H 'Accept: application/json'               -H 'Content-Type: application/json'               --data @"$review_dir/submission.json"               --output "$review_dir/result.json"               --write-out '%{http_code}'               "${AI_REVIEW_RESULT_URL}"
+          )"
+
+          HTTP_STATUS="$status" RESULT_PATH="$review_dir/result.json" node <<'NODE'
+          const fs = require('node:fs');
+          const status = Number(process.env.HTTP_STATUS);
+          const body = JSON.parse(fs.readFileSync(process.env.RESULT_PATH, 'utf8'));
+
+          const publicationState = body.publication?.state;
+          const publicationSucceeded =
+            publicationState === 'CREATED' || publicationState === 'UPDATED';
+
+          const completed =
+            status === 200 &&
+            body.execution?.state === 'COMPLETED' &&
+            body.freshness?.state === 'CURRENT' &&
+            publicationSucceeded &&
+            body.execution?.provider?.engine === 'opencode' &&
+            body.execution?.provider?.id === 'opencode-go' &&
+            body.execution?.provider?.model === 'minimax-m3' &&
+            body.identity?.headSha === process.env.EXPECTED_HEAD_SHA;
+
+          console.log(
+            `T4 result: http=${status}, state=${body.execution?.state ?? 'UNKNOWN'}, freshness=${body.freshness?.state ?? 'UNKNOWN'}, verdict=${body.execution?.review?.verdict ?? 'UNKNOWN'}, engine=${body.execution?.provider?.engine ?? 'UNKNOWN'}, provider=${body.execution?.provider?.id ?? 'UNKNOWN'}, model=${body.execution?.provider?.model ?? 'UNKNOWN'}, publication=${publicationState ?? 'UNKNOWN'}`,
+          );
+
+          if (!completed) {
+            const safeError = typeof body.error === 'string' ? body.error : 't4_not_completed';
+            throw new Error(`OpenCode T4 failed closed: ${safeError}`);
+          }
+          NODE
+
+      - name: Remove temporary result files
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/mira-opencode-t4" "$RUNNER_TEMP/mira-opencode-runtime"
