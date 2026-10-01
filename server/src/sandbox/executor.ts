@@ -73,7 +73,17 @@ const toCombinedOutput = (stdout: string, stderr: string) =>
 
 const buildShellArgs = (profile: SandboxShellProfile, command: string) => {
   if (profile.argsMode === "powershell") {
-    return ["-NoProfile", "-Command", command];
+    // The L1 sandbox contract is non-interactive. Windows PowerShell can keep
+    // the host process alive after ordinary cmdlets on redirected CI runners,
+    // so terminate the command invocation explicitly while preserving a native
+    // command's LASTEXITCODE when one exists.
+    return [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `${command}; exit $LASTEXITCODE`,
+    ];
   }
 
   if (profile.argsMode === "cmd") {
