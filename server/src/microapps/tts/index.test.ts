@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, beforeEach, test, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, test, vi } from "vitest";
 import { initializeModelConfigDatabase } from "@/db/model-config.db.js";
 import { resetDatabaseClients } from "@/db/index.js";
 import { microAppProviderConfigsRepository } from "@/db/repositories/micro-app-provider-configs.repository.js";
@@ -53,6 +53,10 @@ const configureApiProvider = (input: {
 process.env.DATABASE_URL = `file:${testDbPath}`;
 
 const { createTtsService } = await import("./index.js");
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   resetDatabaseClients();
