@@ -358,8 +358,15 @@ test("UChatThreadView calls onAgentSend when the Agent button is clicked", () =>
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Run in Agent mode" }));
+  const submit = screen.getByRole("button", {
+    name: i18n.t("chat.thread.actions.send"),
+  });
+  fireEvent.click(submit);
   assert.equal(onAgentSend.mock.calls.length, 1);
+  assert.equal(
+    screen.queryByRole("button", { name: i18n.t("chat.thread.agent.run") }),
+    null,
+  );
 });
 
 test("UChatThreadView renders Agent mode through the composer tools slot", () => {
@@ -438,7 +445,7 @@ test("UChatThreadView disables send arrow when Agent is enabled but workspace is
   );
 
   const button = screen.getByRole("button", {
-    name: "Run in Agent mode",
+    name: i18n.t("chat.thread.actions.send"),
   });
   assert.equal(button.hasAttribute("disabled"), true);
   fireEvent.click(button);
