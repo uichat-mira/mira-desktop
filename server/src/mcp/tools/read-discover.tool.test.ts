@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { clearWorkspaceSelection } from "../workspace.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
-import { hasRipgrep } from "@/test-support/external-tooling.js";
 import { readDiscoverTool } from "./read-discover.tool.js";
 import { createToolExecutionEvidenceSummary } from "../../agent/evidence.js";
 
@@ -46,12 +45,14 @@ describe("read_discover tool", () => {
     expect(result.result).not.toHaveProperty("source");
     const matches = (result.result as { matches: Array<{ preview?: string }> }).matches;
     expect(matches.every((match) => (match.preview?.length ?? 0) <= 120)).toBe(true);
-    expect(result.result).toMatchObject({ hasMore: false, truncated: false });
-    // The full candidate count depends on ripgrep being resolvable; without it
-    // locate degrades and the count is not the product contract under test.
-    if (hasRipgrep()) {
-      expect(result.result).toMatchObject({ returnedCount: 2 });
-    }
+    // read_discover locate intentionally dispatches searchMode="path", so
+    // only the fast-glob path provider participates. The single guide.md
+    // fixture must therefore produce exactly one candidate on every host.
+    expect(result.result).toMatchObject({
+      returnedCount: 1,
+      hasMore: false,
+      truncated: false,
+    });
   });
 
   it("reports truncation when list results exceed maxResults", async () => {
