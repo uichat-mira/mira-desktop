@@ -327,19 +327,23 @@ test("rejects a symlinked source outside the frozen root", () => {
     return;
   }
 
-  assert.throws(
-    () =>
-      conversationArtifactService.register({
-        threadId: thread.id,
-        userId: user.id,
-        sourceRootPath: privateRoot,
-        sourceRelativePath: "linked.txt",
-        lifecycle: "final",
-      }),
-    (error) =>
-      error instanceof ConversationArtifactError &&
-      error.code === "containment_failure",
-  );
+  try {
+    assert.throws(
+      () =>
+        conversationArtifactService.register({
+          threadId: thread.id,
+          userId: user.id,
+          sourceRootPath: privateRoot,
+          sourceRelativePath: "linked.txt",
+          lifecycle: "final",
+        }),
+      (error) =>
+        error instanceof ConversationArtifactError &&
+        error.code === "containment_failure",
+    );
+  } finally {
+    fs.rmSync(linked, { force: true });
+  }
 });
 
 test("AgentRun-frozen registration rejects a mismatched thread", () => {
