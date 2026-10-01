@@ -1,5 +1,12 @@
 import Header from "@/app/Layouts/PageHeader";
 
+/**
+ * Page gutter for the app-level page shell. Keep this as the single source of
+ * truth so every page shares the same horizontal rhythm instead of overriding
+ * per page. Mirrors the former dashboard override, which was the correct value.
+ */
+export const PAGE_GUTTER_CLASS = "px-5 sm:px-6 xl:px-8";
+
 export interface AppPageLayoutProps {
   miniTitle: string;
   title: string;
@@ -35,7 +42,7 @@ export default function AppPageLayout({
 
   return (
     <div className={`mx-auto flex h-full min-h-0 w-full flex-col overflow-hidden ${className}`}>
-      <div className={`shrink-0 px-2 ${containerClasses}`}>
+      <div className={`shrink-0 ${PAGE_GUTTER_CLASS} ${containerClasses}`}>
         <Header
           miniTitle={miniTitle}
           title={title}
@@ -48,7 +55,7 @@ export default function AppPageLayout({
         className={["min-h-0 flex-1", scrollBody ? "stable-scrollbar overflow-y-auto" : "", bodyClassName].join(" ")}
       >
         <div
-          className={`flex flex-col px-2 pb-6 ${contentMode === "flow" ? "min-h-full" : "h-full min-h-0"} ${containerClasses} ${contentClassName}`}
+          className={`flex flex-col ${PAGE_GUTTER_CLASS} pb-6 ${contentMode === "flow" ? "min-h-full" : "h-full min-h-0"} ${containerClasses} ${contentClassName}`}
         >
           {children}
         </div>

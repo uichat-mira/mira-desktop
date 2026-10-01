@@ -45,6 +45,10 @@ server/tmp-*.sqlitex
 release-*/
 release/
 data/
+
+# Build-time generated app metadata; regenerate via scripts/app-meta-generator.js.
+server/app-meta.json
+
 .codex/
 .*.sqlite
 .*.sqlite-shm
