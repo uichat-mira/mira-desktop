@@ -43,6 +43,16 @@ const createMockSpawnProcess = () => {
   return child;
 };
 
+const explicitPowerShellExitCommand = (command: string) =>
+  [
+    command,
+    "$__mira_success = $?",
+    "$__mira_native_exit = $LASTEXITCODE",
+    "if ($null -ne $__mira_native_exit) { exit $__mira_native_exit }",
+    "if ($__mira_success) { exit 0 }",
+    "exit 1",
+  ].join("; ");
+
 const executeAllowedCommand = async (command: string, stdoutText = "ok\n") => {
   const child = createMockSpawnProcess();
   sandboxMocks.spawnMock.mockReturnValue(child);
@@ -61,10 +71,17 @@ const executeAllowedCommand = async (command: string, stdoutText = "ok\n") => {
   expect(result.stdout).toBe(stdoutText.trim());
   expect(sandboxMocks.spawnMock).toHaveBeenCalledWith(
     expect.stringContaining("powershell.exe"),
-    ["-NoProfile", "-Command", command],
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      explicitPowerShellExitCommand(command),
+    ],
     expect.objectContaining({
       shell: false,
       windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
     }),
   );
 };
@@ -253,10 +270,17 @@ describe("SandboxExecutor", () => {
     expect(result.stdoutEncoding).toBe("utf8");
     expect(sandboxMocks.spawnMock).toHaveBeenCalledWith(
       expect.stringContaining("powershell.exe"),
-      ["-NoProfile", "-Command", "node script.js"],
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        explicitPowerShellExitCommand("node script.js"),
+      ],
       expect.objectContaining({
         shell: false,
         windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
       }),
     );
   });
