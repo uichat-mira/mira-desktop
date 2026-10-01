@@ -21,7 +21,7 @@ Related:
 - 根目录 `CHANGELOG.md` 是当前产品更新日志的唯一真相源；`docs/CHANGELOG.md` 仅作历史归档。
 - `electron/package.json`、`desktop/package.json`、`server/package.json`、`packages/core/package.json`、`tauri/tauri.conf.json` 和 `tauri/Cargo.toml` 都应与根版本保持一致。
 - Windows 打包产物目录会自动带上当前版本号和构建时间戳。
-- GitHub Actions 的桌面构建和发布规则以 `../build/README.md` 为准；环境分支包由 `.github/workflows/build-desktop.yml` 负责，`v*` 标签正式发布由 `.github/workflows/release-production.yml` 调用 Release Factory 完成。
+- GitHub Actions 的桌面构建和发布规则以 `../build/README.md` 为准；Windows 环境分支包由 `.github/workflows/build-desktop.yml` 负责，Intel macOS 环境分支包由独立 `.github/workflows/build-macos-intel.yml` 负责，`v*` 标签正式发布由 `.github/workflows/release-production.yml` 调用 Release Factory 与 Intel macOS reusable build 完成。
 
 ## 版本来源
 
