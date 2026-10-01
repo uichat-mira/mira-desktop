@@ -51,7 +51,6 @@ export interface SandboxExecutionResult {
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024;
 const MAX_TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_LIMIT_BYTES = 1024 * 1024;
-const WINDOWS_EXIT_DRAIN_GRACE_MS = 100;
 
 const BINARY_PLACEHOLDER_TEXT = "[binary output omitted]";
 
@@ -69,29 +68,28 @@ const SAFE_ENV_ALLOWLIST = [
   "TERM",
 ] as const;
 
+const WINDOWS_SAFE_ENV_ALLOWLIST = [
+  "APPDATA",
+  "LOCALAPPDATA",
+  "ProgramData",
+  "ProgramFiles",
+  "ProgramFiles(x86)",
+  "SystemDrive",
+  "HOMEDRIVE",
+  "HOMEPATH",
+] as const;
+
+const getSafeEnvAllowlist = () =>
+  process.platform === "win32"
+    ? [...SAFE_ENV_ALLOWLIST, ...WINDOWS_SAFE_ENV_ALLOWLIST]
+    : [...SAFE_ENV_ALLOWLIST];
+
 const toCombinedOutput = (stdout: string, stderr: string) =>
   [stdout, stderr].filter(Boolean).join("\n").trimEnd();
 
 const buildShellArgs = (profile: SandboxShellProfile, command: string) => {
   if (profile.argsMode === "powershell") {
-    // The L1 sandbox contract is non-interactive. Windows PowerShell can keep
-    // the host process alive after ordinary cmdlets on redirected CI runners,
-    // so terminate the command invocation explicitly while preserving a native
-    // command's LASTEXITCODE when one exists.
-    return [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      [
-        command,
-        "$__mira_success = $?",
-        "$__mira_native_exit = $LASTEXITCODE",
-        "if ($null -ne $__mira_native_exit) { exit $__mira_native_exit }",
-        "if ($__mira_success) { exit 0 }",
-        "exit 1",
-      ].join("; "),
-    ];
+    return ["-NoProfile", "-Command", command];
   }
 
   if (profile.argsMode === "cmd") {
@@ -120,7 +118,7 @@ export const resolveSandboxCwd = (cwd?: string) => {
 };
 
 const findAllowedEnvKey = (inputKey: string) =>
-  SAFE_ENV_ALLOWLIST.find((allowedKey) =>
+  getSafeEnvAllowlist().find((allowedKey) =>
     process.platform === "win32"
       ? allowedKey.toLowerCase() === inputKey.toLowerCase()
       : allowedKey === inputKey,
@@ -143,7 +141,7 @@ const findProcessEnvValue = (inputKey: string) => {
 
 export const resolveSandboxEnv = (overrides?: Record<string, string>) => {
   const base = Object.fromEntries(
-    SAFE_ENV_ALLOWLIST.flatMap((key) => {
+    getSafeEnvAllowlist().flatMap((key) => {
       const value = findProcessEnvValue(key);
       return typeof value === "string" ? [[key, value]] : [];
     }),
@@ -408,10 +406,6 @@ export const executeSandboxedCommand = async (
       env,
       windowsHide: true,
       shell: false,
-      // L1 Sandbox commands are non-interactive. Keeping the default piped
-      // stdin open can leave powershell.exe waiting on Windows CI after the
-      // command has produced its output, so close stdin explicitly.
-      stdio: ["ignore", "pipe", "pipe"],
     },
   );
 
@@ -429,10 +423,6 @@ export const executeSandboxedCommand = async (
   const violations: string[] = [];
   let settled = false;
   let failExecution: ((error: Error) => void) | null = null;
-  let windowsExitDrainTimer: NodeJS.Timeout | null = null;
-  let exitObserved = false;
-  let stdoutEnded = !child.stdout;
-  let stderrEnded = !child.stderr;
 
   const appendChunk = (
     target: string[],
@@ -484,19 +474,11 @@ export const executeSandboxedCommand = async (
   };
 
   await new Promise<void>((resolve, reject) => {
-    const clearWindowsExitDrainTimer = () => {
-      if (windowsExitDrainTimer) {
-        clearTimeout(windowsExitDrainTimer);
-        windowsExitDrainTimer = null;
-      }
-    };
-
     const finishResolve = () => {
       if (settled) {
         return;
       }
       settled = true;
-      clearWindowsExitDrainTimer();
       resolve();
     };
 
@@ -505,7 +487,6 @@ export const executeSandboxedCommand = async (
         return;
       }
       settled = true;
-      clearWindowsExitDrainTimer();
       reject(error);
     };
     failExecution = finishReject;
@@ -522,29 +503,6 @@ export const executeSandboxedCommand = async (
       void killProcessTree(child.pid);
       finishResolve();
     }, timeoutMs);
-
-    const finishAfterWindowsExit = () => {
-      if (
-        process.platform !== "win32" ||
-        !exitObserved ||
-        settled ||
-        !stdoutEnded ||
-        !stderrEnded
-      ) {
-        return;
-      }
-      clearTimeout(timer);
-      finishResolve();
-    };
-
-    child.stdout?.once("end", () => {
-      stdoutEnded = true;
-      finishAfterWindowsExit();
-    });
-    child.stderr?.once("end", () => {
-      stderrEnded = true;
-      finishAfterWindowsExit();
-    });
 
     child.stdout?.on("data", (chunk: Buffer | string) => {
       try {
@@ -575,37 +533,12 @@ export const executeSandboxedCommand = async (
       finishReject(error instanceof Error ? error : new Error(String(error)));
     });
 
-    child.once("exit", (code) => {
-      exitObserved = true;
-      exitCode = code;
-
-      if (process.platform !== "win32" || settled) {
-        return;
-      }
-
-      finishAfterWindowsExit();
-      if (settled) {
-        return;
-      }
-
-      clearWindowsExitDrainTimer();
-      windowsExitDrainTimer = setTimeout(() => {
-        if (settled) {
-          return;
-        }
-        clearTimeout(timer);
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        finishResolve();
-      }, WINDOWS_EXIT_DRAIN_GRACE_MS);
-    });
-
     child.once("close", (code) => {
       clearTimeout(timer);
       if (settled) {
         return;
       }
-      exitCode = code ?? exitCode;
+      exitCode = code;
       finishResolve();
     });
 
