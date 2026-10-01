@@ -234,13 +234,6 @@ jobs:
           test -n "$(find mac-release-assets -maxdepth 1 -type f -print -quit)"
           ls -lah mac-release-assets/
 
-      - name: Attach Intel macOS assets to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release_meta.outputs.tag }}
-          files: mac-release-assets/*
-          fail_on_unmatched_files: true
-
       - name: Validate R2 secrets
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -295,3 +288,10 @@ jobs:
             echo "Uploaded release macOS Intel assets to: ${public_base}/${latest_prefix}/"
             echo 'Retention: latest successful prod/tag macOS Intel publish wins'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attach Intel macOS assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          files: mac-release-assets/*
+          fail_on_unmatched_files: true
