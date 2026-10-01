@@ -45,26 +45,6 @@ import { validateNextAction } from "./validate";
 const PLANNER_EXECUTION_HISTORY_LIMIT = 12;
 const PLANNER_COVERED_PROGRESS_LIMIT = 20;
 const PLANNER_VISIBLE_THOUGHT_MIN_DELTA = 12;
-const PLANNER_TEXT_DECISION_REPAIR_ATTEMPT_LIMIT = 1;
-
-const buildPlannerTextDecisionRepairMessages = (
-  messages: NormalizedChatMessage[],
-  parseErrorReason: string,
-): NormalizedChatMessage[] => [
-  ...messages,
-  {
-    role: "system",
-    content: [
-      "The previous Planner decision was rejected by the runtime decision parser.",
-      `Validation error: ${parseErrorReason}`,
-      "Regenerate the decision from the same task context.",
-      "Return exactly one complete nextAction JSON object and nothing else.",
-      "Do not use Markdown, code fences, commentary, or multiple JSON objects.",
-      "Keep the same allowed action/tool/schema constraints from the preceding Planner contract.",
-    ].join("\n"),
-    parts: [],
-  },
-];
 
 const decodeJsonStringFragment = (value: string) => {
   let decoded = "";
@@ -422,50 +402,17 @@ export const nextActionPlannerNode = async (
         sanitizedOutput: validationResult.sanitizedOutput ?? "",
         parseErrorReason: validationResult.parseErrorReason,
         parseWarnings: validationResult.parseWarnings,
-        outputKind: nativeOutput ? ("native" as const) : ("text" as const),
       };
     };
 
     try {
       const initialPlannerDecision = await resolvePlannerModelAction(messages);
-      let selectedPlannerDecision = initialPlannerDecision;
-
-      if (
-        initialPlannerDecision.outputKind === "text" &&
-        initialPlannerDecision.parseErrorReason
-      ) {
-        for (
-          let repairAttempt = 0;
-          repairAttempt < PLANNER_TEXT_DECISION_REPAIR_ATTEMPT_LIMIT;
-          repairAttempt += 1
-        ) {
-          const repairedDecision = await resolvePlannerModelAction(
-            buildPlannerTextDecisionRepairMessages(
-              messages,
-              selectedPlannerDecision.parseErrorReason ??
-                "Planner decision failed validation.",
-            ),
-          );
-          selectedPlannerDecision = repairedDecision;
-          if (!repairedDecision.parseErrorReason) {
-            selectedPlannerDecision = {
-              ...repairedDecision,
-              parseWarnings: [
-                ...(repairedDecision.parseWarnings ?? []),
-                "planner_text_decision_repaired",
-              ],
-            };
-            break;
-          }
-        }
-      }
-
-      nextAction = selectedPlannerDecision.action;
-      plannerTaskPlanUpdate = selectedPlannerDecision.taskPlanUpdate;
-      rawOutput = selectedPlannerDecision.rawOutput;
-      sanitizedOutput = selectedPlannerDecision.sanitizedOutput;
-      parseErrorReason = selectedPlannerDecision.parseErrorReason;
-      parseWarnings = selectedPlannerDecision.parseWarnings;
+      nextAction = initialPlannerDecision.action;
+      plannerTaskPlanUpdate = initialPlannerDecision.taskPlanUpdate;
+      rawOutput = initialPlannerDecision.rawOutput;
+      sanitizedOutput = initialPlannerDecision.sanitizedOutput;
+      parseErrorReason = initialPlannerDecision.parseErrorReason;
+      parseWarnings = initialPlannerDecision.parseWarnings;
       if (nextAction.type === "answer") {
         const validation = validateAndFreezeFinalizationPacket({
           action: nextAction,
