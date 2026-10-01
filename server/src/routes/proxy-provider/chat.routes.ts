@@ -491,6 +491,15 @@ export const registerProxyProviderChatRoutes = async (
           typeof request.body.agentEnabled === "boolean"
             ? request.body.agentEnabled
             : resolveThreadAgentEnabled(threadId, authUser?.id);
+        if (agentEnabled && typeof threadId === "string" && authUser) {
+          const workspaceRoot = threadService.ensureEffectiveAgentWorkspaceRoot(
+            threadId,
+            authUser.id,
+          );
+          if (!workspaceRoot) {
+            throw badRequest("Agent workspace is unavailable");
+          }
+        }
         const requestContextContext = collectThreadRequestContext(
           threadId,
           authUser?.id,
