@@ -6,6 +6,7 @@ export const OPENCODE_ENGINE = "opencode";
 export const OPENCODE_PROVIDER = "opencode-go";
 export const OPENCODE_MODEL = "minimax-m3";
 export const OPENCODE_MODEL_REF = `${OPENCODE_PROVIDER}/${OPENCODE_MODEL}`;
+export const OPENCODE_VARIANT = "none";
 
 const VERDICTS = [
   "NO_BLOCKING_FINDINGS",
@@ -280,6 +281,7 @@ export async function executeOpenCodeReview(
           providerID: OPENCODE_PROVIDER,
           modelID: OPENCODE_MODEL,
         },
+        variant: OPENCODE_VARIANT,
         parts: [{ type: "text", text: buildReviewPrompt(pkg) }],
         format: {
           type: "json_schema",
