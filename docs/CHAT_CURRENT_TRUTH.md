@@ -92,7 +92,7 @@ Agent Thread 可以显式绑定 ChatWorkspace，也可以保持 `workspaceId = n
 - 没有显式 `workspaceId`：Agent 使用当前对话自己的私有执行 namespace，不自动绑定共享 `Mira BASE`；
 - 私有 namespace 是 Runtime 内部执行空间，不进入 ChatWorkspace 列表、Picker 或侧栏分组。
 
-当前过渡实现复用 E03 的 Conversation Workdir 物理目录作为未绑定 Agent 的 effective workspace root；Workdir 独立领域身份的退役由后续工程包处理。
+未绑定 Agent 使用 deterministic private workspace root；`conversation-workdirs` 仅保留为兼容既有本地文件的磁盘目录名，不再存在独立 `Conversation Workdir` 数据库/runtime identity。AgentRun 只冻结 `workspaceRoot`，Artifact 只冻结创建时的 `sourceRootPath + sourceRelativePath`。
 
 普通 Chat Thread 仍可以不绑定 Workspace。
 
