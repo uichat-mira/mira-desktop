@@ -4,8 +4,6 @@ import test from "node:test";
 
 import {
   MIRA_REVIEW_SCHEMA,
-  OPENCODE_MODEL_REF,
-  OPENCODE_VARIANT,
   assertIsolatedWorkspace,
   assertMiraReviewContract,
   assertTrustedPackageMatchesEvent,
@@ -77,6 +75,15 @@ const cleanReview = {
   findings: [],
   validationGaps: [],
 };
+
+const routineRoute = Object.freeze({
+  role: "routine",
+  enabled: true,
+  provider: "opencode-go",
+  model: "minimax-m3",
+  variant: "none",
+  credentialEnv: "OPENCODE_GO_API_KEY",
+});
 
 test("shapes the exact Control Room identity without accepting execution controls", () => {
   assert.deepEqual(reviewPackageIdentity(reviewPackage()), {
@@ -204,14 +211,31 @@ test("rejects whitespace-only review fields before Control Room submission", () 
   );
 });
 
-test("builds the #47 external result envelope with fixed OpenCode MiniMax M3 identity", () => {
-  const submission = buildExternalSubmission(reviewPackage(), cleanReview, 123.9);
+test("builds the #47 external result envelope from the selected OpenCode route", () => {
+  const submission = buildExternalSubmission(reviewPackage(), routineRoute, cleanReview, 123.9);
   assert.equal(submission.execution.engine, "opencode");
   assert.equal(submission.execution.provider, "opencode-go");
   assert.equal(submission.execution.model, "minimax-m3");
   assert.equal(submission.execution.role, "routine");
   assert.equal(submission.execution.latencyMs, 123);
   assert.equal(submission.identity.headSha, HEAD_SHA);
+});
+
+test("external result metadata follows an alternate selected route without Control Room changes", () => {
+  const alternateRoute = {
+    ...routineRoute,
+    model: "deepseek-v4-flash",
+  };
+  const submission = buildExternalSubmission(
+    reviewPackage(),
+    alternateRoute,
+    cleanReview,
+    25,
+  );
+
+  assert.equal(submission.execution.provider, "opencode-go");
+  assert.equal(submission.execution.model, "deepseek-v4-flash");
+  assert.equal(submission.execution.role, "routine");
 });
 
 test("rejects running OpenCode inside the GitHub checkout", () => {
@@ -257,10 +281,14 @@ test("runs OpenCode with a single provider/model and a read-only tool surface", 
     };
   };
 
-  const review = await executeOpenCodeReview(createOpencode, reviewPackage());
+  const review = await executeOpenCodeReview(
+    createOpencode,
+    reviewPackage(),
+    routineRoute,
+  );
 
   assert.deepEqual(review, cleanReview);
-  assert.equal(capturedOptions.config.model, OPENCODE_MODEL_REF);
+  assert.equal(capturedOptions.config.model, "opencode-go/minimax-m3");
   assert.deepEqual(capturedOptions.config.enabled_providers, ["opencode-go"]);
   assert.equal(capturedOptions.config.permission.edit, "deny");
   assert.equal(capturedOptions.config.permission.bash, "deny");
@@ -307,9 +335,12 @@ test("bounds instance disposal before closing the OpenCode server", async () => 
     },
   });
 
-  const review = await executeOpenCodeReview(createOpencode, reviewPackage(), {
-    disposeTimeoutMs: 5,
-  });
+  const review = await executeOpenCodeReview(
+    createOpencode,
+    reviewPackage(),
+    routineRoute,
+    { disposeTimeoutMs: 5 },
+  );
 
   assert.deepEqual(review, cleanReview);
   assert.equal(disposeAborted, true);
@@ -329,10 +360,33 @@ test("closes the OpenCode server when prompt execution times out", async () => {
   });
 
   await assert.rejects(
-    () => executeOpenCodeReview(createOpencode, reviewPackage(), { promptTimeoutMs: 5 }),
+    () =>
+      executeOpenCodeReview(createOpencode, reviewPackage(), routineRoute, {
+        promptTimeoutMs: 5,
+      }),
     /opencode_prompt_timeout/,
   );
   assert.equal(closed, true);
+});
+
+test("maps a missing selected-route credential to an explicit fail-closed result", async () => {
+  let time = 2500;
+  const result = await runReviewFailClosed(
+    async () => {
+      throw new Error("review_route_credential_unavailable");
+    },
+    reviewPackage(),
+    routineRoute,
+    () => (time += 10),
+  );
+
+  assert.deepEqual(result.runner, {
+    state: "REVIEW_UNAVAILABLE",
+    reason: "review_route_credential_unavailable",
+  });
+  assert.equal(result.submission.execution.provider, "opencode-go");
+  assert.equal(result.submission.execution.model, "minimax-m3");
+  assert.equal(result.submission.execution.review, null);
 });
 
 test("maps OpenCode runtime unavailability to a null review submission", async () => {
@@ -342,6 +396,7 @@ test("maps OpenCode runtime unavailability to a null review submission", async (
       throw new Error("opencode_runtime_unavailable");
     },
     reviewPackage(),
+    routineRoute,
     () => (time += 15),
   );
 
@@ -368,6 +423,7 @@ test("maps missing structured OpenCode output to a fail-closed submission for Co
   const result = await runReviewFailClosed(
     createOpencode,
     reviewPackage(),
+    routineRoute,
     () => (time += 25),
   );
 
@@ -400,6 +456,7 @@ test("maps StructuredOutputError to a fail-closed submission rather than a clean
   const result = await runReviewFailClosed(
     createOpencode,
     reviewPackage(),
+    routineRoute,
     () => (time += 10),
   );
 
@@ -453,6 +510,7 @@ test("workflow routes execution through OpenCode and the external result handoff
   assert.doesNotMatch(workflow, /\/api\/v1\/ai-review\/publish/);
   assert.match(workflow, /AI_REVIEW_EXTERNAL_RESULT_TOKEN/);
   assert.match(workflow, /AI_PROVIDER_OPENCODE_GO_KEY/);
+  assert.doesNotMatch(workflow, /minimax-m3|deepseek-v4-(?:flash|pro)/);
   assert.match(workflow, /opencode-ai@1\.18\.34/);
   assert.match(workflow, /@opencode-ai\/sdk@1\.18\.34/);
   assert.match(workflow, /import\.meta\.resolve\('@opencode-ai\/sdk'\)/);
