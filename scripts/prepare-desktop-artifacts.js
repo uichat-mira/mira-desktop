@@ -179,8 +179,9 @@ if (isWindowsHost) {
   });
   execSync("pnpm prepare:piper-runtime", { cwd: projectRoot, stdio: "inherit" });
 } else {
+  execSync("pnpm prepare:node-runtime", { cwd: projectRoot, stdio: "inherit" });
   console.warn(
-    `[desktop-artifacts] Skipping Terminal Dev Runtime, staged server runtime smoke, and Piper runtime on ${process.platform}: these are Windows-only payloads. Terminal Dev Runtime and Piper are explicitly unavailable on this platform.`,
+    `[desktop-artifacts] Prepared the Node backend runtime for ${process.platform}. Terminal Dev Runtime (git/uv/ripgrep), staged server runtime smoke, and Piper remain Windows-only and are explicitly unavailable on this platform.`,
   );
 }
 
@@ -298,8 +299,13 @@ if (isWindowsHost) {
     "staged Piper runtime",
   );
 } else {
+  copyPath(
+    path.join(artifactsRoot, "node-runtime"),
+    path.join(electronArtifactsRoot, "node-runtime"),
+    "staged Node backend runtime",
+  );
   console.warn(
-    `[desktop-artifacts] Skipped staging Terminal Dev Runtime and Piper runtime into the Electron app on ${process.platform}: both are Windows-only payloads.`,
+    `[desktop-artifacts] Staged the Node backend runtime for ${process.platform}; Terminal Dev Runtime and Piper remain unavailable on this platform.`,
   );
 }
 fs.mkdirSync(path.join(electronArtifactsRoot, "model-packs"), { recursive: true });

@@ -69,7 +69,7 @@ Related:
 | L3 | 已完成 | `node scripts/prepare-desktop-artifacts.js` 在 darwin-x64 上完整跑通，输出「Desktop artifacts are ready」；`.artifacts/electron-app` 结构完整（backend/server.cjs + darwin-x64 native、desktop/dist、icons、runtime.config.cjs、main.cjs、preload.cjs、electron-builder.yml、空 browser-extension 占位）；Windows 分支逻辑逐字保留在 `if (isWindowsHost)` 内 | 进入 L4/L5 |
 | L4 | 已完成（随 L3 实施） | darwin 下 Native Host / 扩展打包 / Terminal Dev Runtime / Piper / staged server runtime smoke 均被显式跳过并打印 warning，无静默降级；`browser-extension` 目录保留空占位以维持资源布局 | 进入 L5 |
 | L5 | 已完成 | `electron-builder --mac --x64` 在 staged `electron-app` 上产出 `UIChat Mira.app`（Mach-O x86_64，bundle id `com.tomz.uichat`）与 `UIChat Mira-0.101.0.dmg`（约 181MB），Resources 含 app.asar / server / runtime.config.cjs / icon.icns，无 `.exe`/`.dll`；**退出码 0**（补 `repository` 字段前为 1） | 进入 L6 |
-| L6 | 未开始 | — | 依赖 L5 |
+| L6 | 已完成（Core） | 方案 1 落地后：`.app` 用随包 `node-runtime/node`（Node 22.23.1）启动 backend；`/health` 200、sqlite-vec 加载、Forge 初始化、默认 Workspace 创建、重启复用同一 DB、退出后端 code 0 且无残留 | 收尾（可选：DMG 复验、static 警告排查） |
 
 ## L0：环境与基线冻结
 
@@ -286,6 +286,56 @@ pnpm exec electron-builder --mac --x64 \
 **通过标准**：以上均有实测证据；未实现项准确标注。
 
 **回退点**：如核心链路失败，定位到对应层（L1–L4）回溯。
+
+### L6 首次验证（受阻）
+
+用 `--dir` 产出 `.app`，去掉 quarantine 后直接启动 `Contents/MacOS/UIChat Mira`。
+
+- ✅ Electron 外壳启动：`App ready, isDev: false`，Helper 进程拉起，`process.resourcesPath` 解析正确；
+- ✅ 资源解析正确（`server.cjs`、`desktop/dist/index.html`）；
+- ✅ 密钥与数据目录创建；
+- ❌ backend 以 code 1 退出。
+
+根因（已复现）：
+
+```text
+Error [ERR_REQUIRE_ESM]: require() of ES Module .../parse5/dist/index.js
+  from .../jsdom/lib/jsdom/browser/parser/html.js not supported.
+```
+
+| 组件 | 版本 | `require(ESM)` |
+| --- | --- | --- |
+| `parse5` | 8.0.1（纯 ESM，`type: module`） | — |
+| `jsdom` | 26.1.0（CJS，`require('parse5')`） | — |
+| 系统 Node | 22.22.3 | ✅ |
+| Electron 内嵌 Node | 20.18.0 | ❌（加 `--experimental-require-module` 后可加载） |
+
+macOS payload 未携带独立 `node-runtime`（当时为 Windows-only），Electron main 回退到 `ELECTRON_RUN_AS_NODE=1` + `process.execPath`，实际使用 Electron 31 内嵌的 Node 20.18.0；其默认 `require()` 无法加载 ESM-only 的 `parse5`，导致 backend 启动即崩。
+
+### L6 修复（方案 1：随包独立 Node runtime）
+
+- 新增 `scripts/node-runtime.lock.json`：按 `platform-arch` 固定 Node 版本与 SHA-256（`darwin-x64`、`darwin-arm64`，均为 Node 22.23.1）；
+- 新增 `scripts/prepare-node-runtime.mjs` 与根命令 `pnpm prepare:node-runtime`：下载并校验后 stage `node` 到 `.artifacts/node-runtime/`（含 `manifest.json`、`LICENSE`）；
+- `prepare-desktop-artifacts.js`：非 Windows 宿主执行 `prepare:node-runtime`，并把 `node-runtime` 复制进 `.artifacts/electron-app`；Terminal Dev Runtime（git/uv/ripgrep）与 Piper 仍保持 Windows-only；
+- `electron/main.cjs`：bundled node 二进制名按平台解析（`win32 → node.exe`，其余 `node`），Windows 行为不变。
+
+### L6 复验（通过）
+
+- ✅ `Backend runtime: .../Resources/node-runtime/node`（不再走 Electron 内嵌 Node 回退）；
+- ✅ backend 启动：`Server listening at http://127.0.0.1:39877`（隔离端口，避免与仓库遗留 dev server 混淆）；`/health` 返回 `200 {"success":true}`，监听进程为打包 backend；
+- ✅ SQLite：创建 userData `data/uichat-rag-test.db`；`sqlite-vec` 扩展加载（`vec0.dylib`）；Forge runtime 初始化；
+- ✅ 默认 Workspace：`~/Documents/UIChat Mira/Default Workspace` 创建；
+- ✅ 重启持久化：关闭后重启，复用同一 `uichat-rag-test.db`，`/health` 再次 200；
+- ✅ 退出清理：`Shutting down gracefully...` → `Backend process exited with code 0`，无残留进程、无占用端口。
+
+**结论**：L6 **通过（Core）**。
+
+**已知残留（非阻塞）**：
+
+- 启动时有一条 `@fastify/static` 的 `"root" path ".../Resources/static" must exist` 警告（level 40，非致命，server 正常启动）；属静态资源 root 与打包布局的解析差异，未定位到具体注册点，待单独排查；
+- Chat / Provider / Agent 完整链路需配置外部 Provider 才能端到端验证，本轮仅验证到服务端就绪（auth DB / forge / sqlite-vec）；
+- 未实现能力（Native Messaging / Terminal Dev Runtime / Piper）尚未在 UI 上显式标注；
+- 产物未签名（本机无 Developer ID）。
 
 ## 决策点（执行前需确认）
 
