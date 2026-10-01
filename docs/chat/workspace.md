@@ -74,7 +74,22 @@ Thread (owner)
   -> AgentRun.runtimeInput.conversationWorkdir snapshot
 ```
 
-这里的 `app-data` 使用 backend 已有的数据库数据目录边界。Workdir 路径不从 `ChatWorkspace.rootPath` 派生，因此创建 Workdir 本身不要求创建、选择或重新解释用户 Workspace。
+这里的 `app-data` 使用 backend 已有的数据库数据目录边界。Workdir 路径不从 `ChatWorkspace.rootPath` 派生。
+
+当前 Agent workspace resolution 为：
+
+```text
+thread.workspaceId exists
+  -> ChatWorkspace.rootPath
+  -> user-visible explicit Workspace
+
+thread.workspaceId is null
+  -> Conversation Workdir physical root
+  -> private per-conversation effective workspace
+  -> not projected as ChatWorkspace
+```
+
+因此未显式选择 Workspace 的 Agent 不再自动绑定共享 `Mira BASE`。Conversation Workdir 在本阶段仍作为过渡性的持久化/Artifact 依赖存在，后续再退役其独立领域身份。
 
 ## 2. 内置默认空间
 
@@ -176,15 +191,21 @@ snapshot reads a missing path
 
 ## 5. 默认 Workspace 的数据库语义
 
-Agent Thread 必须绑定 ChatWorkspace。启用 Agent 时若没有显式选择：
+`Mira BASE` 仍是内置默认 ChatWorkspace 的数据库记录，可用于现有 Workspace 列表和显式选择语义；它不再是 Agent 未选择 Workspace 时的自动 fallback。
+
+Agent Thread 的执行根按以下顺序解析：
 
 ```text
-ensure Mira BASE database row
-→ bind current Harness workspace root
-→ attach workspaceId to Thread
+explicit thread.workspaceId
+→ ChatWorkspace.rootPath
+
+no explicit thread.workspaceId
+→ private per-conversation effective workspace
 ```
 
-数据库记录存在只证明路径配置已经绑定，不证明：
+因此启用 Agent、发送 Agent 消息或清除显式 Workspace 都不会仅因为 Agent 模式而把 `Mira BASE.id` 自动写回 Thread。
+
+数据库 ChatWorkspace 记录存在只证明某个显式 Workspace 路径配置已经绑定，不证明：
 
 - 物理目录一定存在；
 - 目录可写；
