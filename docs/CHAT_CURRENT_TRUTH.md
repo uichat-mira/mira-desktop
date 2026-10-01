@@ -86,9 +86,15 @@ Chat Workspace 保存数据库 id、userId、名称、rootPath、状态和时间
 
 `workspaceId` 是数据库 id，不是文件系统路径。实际路径在 `chat_workspaces.root_path`。
 
-Agent Thread 必须有 Workspace。启用 Agent 时若没有显式选择，backend 会复用或创建名为 `Mira BASE` 的默认 Workspace，并绑定当前 Harness workspace root。
+Agent Thread 可以显式绑定 ChatWorkspace，也可以保持 `workspaceId = null`。
 
-普通 Chat Thread 可以不绑定 Workspace。
+- 有显式 `workspaceId`：Agent / Tool 使用对应 ChatWorkspace 的 `rootPath`；
+- 没有显式 `workspaceId`：Agent 使用当前对话自己的私有执行 namespace，不自动绑定共享 `Mira BASE`；
+- 私有 namespace 是 Runtime 内部执行空间，不进入 ChatWorkspace 列表、Picker 或侧栏分组。
+
+当前过渡实现复用 E03 的 Conversation Workdir 物理目录作为未绑定 Agent 的 effective workspace root；Workdir 独立领域身份的退役由后续工程包处理。
+
+普通 Chat Thread 仍可以不绑定 Workspace。
 
 ### 2.2 `Thread`
 
@@ -114,7 +120,7 @@ updatedAt
 
 | 字段 | 当前作用 |
 | --- | --- |
-| `workspaceId` | Agent / Tool 的默认执行空间 |
+| `workspaceId` | 用户显式选择的 ChatWorkspace；Agent 为 null 时改用对话私有执行 namespace |
 | `knowledgeBaseId` | 非 Agent 时选择 RAG；Agent 时作为检索输入 |
 | `roleId` | 注入 Role prompt；在 Normal / Agent persisted path 合并数值生成参数 |
 | `agentEnabled` | 选择 Agent Chat |

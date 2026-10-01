@@ -119,7 +119,6 @@ export default function UChatThread() {
     draftKnowledgeBaseId,
     draftRoleId,
     draftAgentEnabled,
-    draftWorkspaceId,
     setDraftKnowledgeBaseId,
     setDraftRoleId,
     setDraftAgentEnabled,
@@ -141,23 +140,12 @@ export default function UChatThread() {
 
   const activeThreadWorkspaceId =
     activeThread?.workspaceId ?? null;
-  const effectiveWorkspaceId = activeThreadId
-    ? activeThreadWorkspaceId
-    : draftWorkspaceId;
-  const hasWorkspaceBound = Boolean(effectiveWorkspaceId);
-  const defaultWorkspace = workspaces.find(
-    (workspace) =>
-      workspace.isDefault ||
-      workspace.name === "Default Workspace" ||
-      workspace.name === "Mira BASE",
-  );
-  const workspaceAvailable = hasWorkspaceBound || Boolean(defaultWorkspace);
   const isThreadAgentEnabled =
     typeof activeThread?.metadata?.agentEnabled === "boolean"
       ? activeThread.metadata.agentEnabled
       : false;
   const isAgentEnabled = activeThreadId ? isThreadAgentEnabled : draftAgentEnabled;
-  const canRunAgent = workspaceAvailable && isAgentEnabled;
+  const canRunAgent = isAgentEnabled;
   const isAgentRunning =
     isRunning &&
     Boolean(
@@ -488,22 +476,9 @@ export default function UChatThread() {
   };
 
   const handleAgentSend = async () => {
-    if (!hasWorkspaceBound && !defaultWorkspace) {
-      message.error(t("chat.thread.agent.workspaceRequired"));
-      return;
-    }
     if (!isAgentEnabled) {
       message.error(t("chat.thread.agent.enableFirst"));
       return;
-    }
-
-    if (!hasWorkspaceBound && defaultWorkspace) {
-      if (activeThreadId) {
-        await updateThread(activeThreadId, { workspaceId: defaultWorkspace.id });
-        await runtime.refreshThread(activeThreadId);
-      } else {
-        setDraftWorkspaceId(defaultWorkspace.id);
-      }
     }
 
     const requestedToolGroupIds = getExplicitToolkitIds(composer.text);
@@ -519,10 +494,6 @@ export default function UChatThread() {
 
   const handleToggleAgentEnabled = async () => {
     const nextEnabled = !isAgentEnabled;
-    if (nextEnabled && !workspaceAvailable) {
-      message.error(t("chat.thread.agent.workspaceRequired"));
-      return;
-    }
     if (!nextEnabled) {
       const plainText = resolveExplicitSkillsForSubmission(composer.text);
       if (plainText !== composer.text) {
@@ -538,10 +509,6 @@ export default function UChatThread() {
       });
       await runtime.refreshThread(activeThreadId);
       return;
-    }
-
-    if (nextEnabled && !hasWorkspaceBound && defaultWorkspace) {
-      setDraftWorkspaceId(defaultWorkspace.id);
     }
 
     setDraftAgentEnabled(nextEnabled);
@@ -666,18 +633,13 @@ export default function UChatThread() {
             enabled: isAgentEnabled,
             running: isAgentRunning,
             toggleAvailability: {
-              enabled: workspaceAvailable,
-              disabledReason: !workspaceAvailable
-                ? t("chat.thread.agent.workspaceRequired")
-                : undefined,
+              enabled: true,
             },
             submissionAvailability: {
               enabled: canRunAgent,
-              disabledReason: !workspaceAvailable
-                ? t("chat.thread.agent.workspaceRequired")
-                : !isAgentEnabled
-                  ? t("chat.thread.agent.enableFirst")
-                  : undefined,
+              disabledReason: !isAgentEnabled
+                ? t("chat.thread.agent.enableFirst")
+                : undefined,
             },
             onToggle: handleToggleAgentEnabled,
             onSubmit: handleAgentSend,

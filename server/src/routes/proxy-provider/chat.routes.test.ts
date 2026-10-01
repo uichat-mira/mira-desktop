@@ -710,6 +710,16 @@ test("POST /proxy/chat/default routes knowledge-bound agent sends through AgentR
     assert.equal(capturedAgentInput?.messages.length, 1);
     assert.equal(capturedAgentInput?.messages[0]?.role, "user");
     assert.equal(capturedAgentInput?.requestContextMessages?.length ?? 0, 0);
+    const expectedPrivateRoot = threadService.getEffectiveAgentWorkspaceRoot(
+      thread.id,
+      user.id,
+    );
+    assert.ok(expectedPrivateRoot);
+    assert.equal(capturedAgentInput?.workspaceRoot, expectedPrivateRoot);
+    assert.equal(
+      threadService.getThreadSummaryById(thread.id, user.id)?.workspaceId,
+      null,
+    );
   } finally {
     providerProxyService.createPersistedChatStream = originalPersistedStream;
     providerProxyService.streamTaskChatText = originalStreamTaskChatText;
@@ -938,6 +948,64 @@ test("POST /proxy/chat/default passes bound thread workspaceRoot into createAndR
   } finally {
     providerProxyService.createPersistedChatStream = originalPersistedStream;
     providerProxyService.streamTaskChatText = originalStreamTaskChatText;
+    createAndRunAgentSpy.mockRestore();
+    await app.close();
+  }
+});
+
+test("POST /proxy/chat/default fails closed when an explicit Agent workspace has no root", async () => {
+  const user = userRepository.create({
+    username: `user-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const workspace = threadService.createChatWorkspace({
+    userId: user.id,
+    name: "Unavailable Workspace",
+    rootPath: os.platform() === "win32" ? "D:\\unavailable-root" : "/tmp/unavailable-root",
+  });
+  threadService.updateChatWorkspace(workspace.id, user.id, { rootPath: null });
+  const thread = threadService.createThread({
+    userId: user.id,
+    title: "Unavailable Agent workspace",
+    agentEnabled: true,
+    workspaceId: workspace.id,
+  });
+  const token = createAccessToken({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+  });
+  const app = await createAuthedApp(user);
+  const createAndRunAgentSpy = vi.spyOn(agentModule, "createAndRunAgent");
+
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/proxy/chat/default",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      payload: {
+        id: thread.id,
+        messageId: "user-agent-workspace-missing-root",
+        agentEnabled: true,
+        messages: [
+          {
+            id: "user-agent-workspace-missing-root",
+            role: "user",
+            parts: [{ type: "text", text: "看看当前 workspace" }],
+          },
+        ],
+      },
+    });
+
+    assert.equal(response.statusCode, 400, response.body);
+    assert.match(response.body, /Agent workspace is unavailable/);
+    assert.equal(createAndRunAgentSpy.mock.calls.length, 0);
+  } finally {
     createAndRunAgentSpy.mockRestore();
     await app.close();
   }
@@ -1206,6 +1274,12 @@ test("POST /proxy/chat/default injects agent execution environment into request-
     assert.match(capturedMessages?.[0]?.content ?? "", /当前执行平台：/);
     assert.match(capturedMessages?.[0]?.content ?? "", /当前 shell：/);
     assert.match(capturedMessages?.[0]?.content ?? "", /当前可用工具：/);
+    const expectedPrivateRoot = threadService.getEffectiveAgentWorkspaceRoot(
+      thread.id,
+      user.id,
+    );
+    assert.ok(expectedPrivateRoot);
+    assert.ok((capturedMessages?.[0]?.content ?? "").includes(expectedPrivateRoot));
   } finally {
     providerProxyService.createPersistedChatStream = originalPersistedStream;
     await app.close();

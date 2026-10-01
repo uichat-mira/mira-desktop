@@ -54,7 +54,8 @@ const persistRunningAgentState = (
 };
 
 export const createAndRunAgent = async (
-  input: Omit<AgentGraphInput, "runId" | "goal"> & {
+  input: Omit<AgentGraphInput, "runId" | "goal" | "workspaceRoot"> & {
+    workspaceRoot: string;
     goalText: string;
     userMessageId?: string;
     assistantMessageId?: string;
@@ -65,10 +66,14 @@ export const createAndRunAgent = async (
     threadId: input.threadId,
     userId: input.userId,
   });
+  const workspaceRoot = input.workspaceRoot.trim();
+  if (!workspaceRoot) {
+    throw new Error("Agent workspace root is required");
+  }
 
   const materializedAttachments = await materializeAgentTaskFileAttachments({
     messages: input.messages,
-    workspaceRoot: input.workspaceRoot,
+    workspaceRoot,
   });
   const attachmentGoalContext = buildAgentAttachmentGoalContext(
     materializedAttachments,
@@ -115,7 +120,7 @@ export const createAndRunAgent = async (
       params: input.params,
       knowledgeBaseId: input.knowledgeBaseId,
       intentConfig: input.intentConfig,
-      workspaceRoot: input.workspaceRoot,
+      workspaceRoot,
       conversationWorkdir,
       conversationWorkdirOutputs: input.conversationWorkdirOutputs,
       requestedToolGroupIds: input.requestedToolGroupIds,
@@ -132,6 +137,7 @@ export const createAndRunAgent = async (
 
     const output = await runAgentRuntime({
       ...input,
+      workspaceRoot,
       conversationWorkdir,
       requestContextMessages,
       runId: run.id,
