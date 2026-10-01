@@ -204,7 +204,7 @@ Core 不认识 Mira route、Provider、Knowledge Base、Role、TTS、Image 或 A
 activeThreadId = null
 ```
 
-Desktop Welcome draft 的 `agentEnabled` 默认是 `true`；第一条真实发送才创建数据库 Thread，并把该 draft 选择写入新 Thread。重新进入“新对话”会恢复这个默认值。打开欢迎页本身仍不制造空历史。
+Desktop Welcome draft 的 `agentEnabled` 默认是 `true`。单纯进入 Welcome 不会预创建数据库 Thread；首次发送会按当前 draft 创建 Thread 并写入该选择。若用户在发送前执行了需要持久 Thread 的显式操作（例如绑定 Workspace），Thread 可由该操作提前创建。重新进入“新对话”会恢复 Agent 默认值。
 
 已有 Thread 不跟随 Welcome 默认值重写；其执行路径继续由持久化的 `agentEnabled` 决定，因此历史 `agentEnabled=false` Thread 仍保留 Normal/RAG compatibility。
 
