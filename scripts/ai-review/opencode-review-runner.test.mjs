@@ -172,6 +172,25 @@ test("runs OpenCode with a single provider/model and a read-only tool surface", 
   assert.equal(closed, true);
 });
 
+test("closes the OpenCode server when prompt execution times out", async () => {
+  let closed = false;
+  const createOpencode = async () => ({
+    server: { close: () => { closed = true; } },
+    client: {
+      session: {
+        create: async () => ({ data: { id: "session-timeout" } }),
+        prompt: async () => new Promise(() => {}),
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => executeOpenCodeReview(createOpencode, reviewPackage(), { promptTimeoutMs: 5 }),
+    /opencode_prompt_timeout/,
+  );
+  assert.equal(closed, true);
+});
+
 test("maps OpenCode runtime unavailability to a null review submission", async () => {
   let time = 3000;
   const result = await runReviewFailClosed(
