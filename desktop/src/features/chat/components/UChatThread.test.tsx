@@ -224,7 +224,7 @@ describe("UChatThread", () => {
       render(<UChatThread />);
     });
 
-    const button = screen.getByRole("button", { name: "Enable Agent" });
+    const button = screen.getByRole("button", { name: "Return to Agent" });
     assert.equal(button.hasAttribute("disabled"), false);
 
     fireEvent.click(button);
@@ -242,7 +242,7 @@ describe("UChatThread", () => {
       render(<UChatThread />);
     });
 
-    const button = screen.getByRole("button", { name: "Enable Agent" });
+    const button = screen.getByRole("button", { name: "Return to Agent" });
     assert.equal(button.hasAttribute("disabled"), false);
     fireEvent.click(button);
 
