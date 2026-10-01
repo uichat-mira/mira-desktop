@@ -6,6 +6,7 @@ export const OPENCODE_ENGINE = "opencode";
 export const OPENCODE_PROVIDER = "opencode-go";
 export const OPENCODE_MODEL = "minimax-m3";
 export const OPENCODE_MODEL_REF = `${OPENCODE_PROVIDER}/${OPENCODE_MODEL}`;
+export const OPENCODE_VARIANT = "none";
 
 const VERDICTS = [
   "NO_BLOCKING_FINDINGS",
@@ -14,6 +15,8 @@ const VERDICTS = [
   "CONTRACT_CONFLICT",
 ];
 
+const SEVERITIES = ["P0", "P1", "P2"];
+
 export const MIRA_REVIEW_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -21,10 +24,13 @@ export const MIRA_REVIEW_SCHEMA = {
     verdict: {
       type: "string",
       enum: VERDICTS,
-      description: "Normalized Mira review verdict.",
+      description:
+        "Normalized Mira review verdict. CHANGES_NEEDED requires >=1 finding; HUMAN_CHECK_NEEDED requires >=1 validation gap; CONTRACT_CONFLICT requires contractConflict; all other verdicts must omit contractConflict.",
     },
     findings: {
       type: "array",
+      description:
+        "High-confidence P0-P2 findings. Must contain at least one item when verdict is CHANGES_NEEDED.",
       items: {
         type: "object",
         additionalProperties: false,
@@ -52,10 +58,14 @@ export const MIRA_REVIEW_SCHEMA = {
     },
     validationGaps: {
       type: "array",
+      description:
+        "Material validation gaps. Must contain at least one item when verdict is HUMAN_CHECK_NEEDED.",
       items: { type: "string", minLength: 1 },
     },
     contractConflict: {
       type: "object",
+      description:
+        "Required only for CONTRACT_CONFLICT. Omit this property entirely for every other verdict.",
       additionalProperties: false,
       properties: {
         sources: {
@@ -162,6 +172,7 @@ export function buildReviewPrompt(pkg) {
     "Review the delta first. Report only high-confidence P0/P1/P2 findings. Missing evidence is a validation gap unless the trusted contract makes it an implementation defect.",
     "Do not use shell, file, web, search, subagent, skill, or repository tools. The ReviewPackage is the complete review input for this run.",
     "Return only the requested structured Mira review object. Do not return provider-native approval, score, prose wrapper, or acceptance language.",
+    "Mira review invariants are mandatory: CHANGES_NEEDED requires at least one complete P0-P2 finding; HUMAN_CHECK_NEEDED requires at least one non-empty material validation gap; CONTRACT_CONFLICT requires complete contractConflict detail with at least two sources and two conflicting requirements; for every other verdict omit the contractConflict property entirely; every required string must contain non-whitespace text.",
     "",
     "TRUSTED_REVIEW_PACKAGE_JSON",
     JSON.stringify(root),
@@ -194,6 +205,103 @@ export function assertIsolatedWorkspace(cwd, githubWorkspace) {
   }
 }
 
+function reviewContractFailure(reason) {
+  throw new Error(`review_contract_${reason}`);
+}
+
+function reviewString(value, reason) {
+  if (typeof value !== "string" || !value.trim()) {
+    reviewContractFailure(reason);
+  }
+  return value;
+}
+
+function reviewStringArray(value, arrayReason, itemReason, minimum = 0) {
+  if (!Array.isArray(value)) {
+    reviewContractFailure(arrayReason);
+  }
+  for (const item of value) reviewString(item, itemReason);
+  if (value.length < minimum) reviewContractFailure(itemReason);
+  return value;
+}
+
+export function assertMiraReviewContract(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    reviewContractFailure("review_not_object");
+  }
+
+  const verdict = value.verdict;
+  if (typeof verdict !== "string" || !VERDICTS.includes(verdict)) {
+    reviewContractFailure("verdict_invalid");
+  }
+
+  if (!Array.isArray(value.findings)) {
+    reviewContractFailure("findings_not_array");
+  }
+
+  for (const finding of value.findings) {
+    if (!finding || typeof finding !== "object" || Array.isArray(finding)) {
+      reviewContractFailure("finding_not_object");
+    }
+    if (
+      typeof finding.severity !== "string" ||
+      !SEVERITIES.includes(finding.severity)
+    ) {
+      reviewContractFailure("finding_severity_invalid");
+    }
+    for (const field of [
+      "observation",
+      "inference",
+      "judgment",
+      "impact",
+      "location",
+      "suggestedFix",
+      "verification",
+    ]) {
+      reviewString(finding[field], "finding_field_invalid");
+    }
+  }
+
+  reviewStringArray(
+    value.validationGaps,
+    "validation_gaps_not_array",
+    "validation_gap_invalid",
+  );
+
+  if (verdict === "CHANGES_NEEDED" && value.findings.length === 0) {
+    reviewContractFailure("changes_needed_without_finding");
+  }
+  if (verdict === "HUMAN_CHECK_NEEDED" && value.validationGaps.length === 0) {
+    reviewContractFailure("human_check_without_gap");
+  }
+
+  if (verdict === "CONTRACT_CONFLICT") {
+    const detail = value.contractConflict;
+    if (detail === undefined) reviewContractFailure("contract_conflict_missing");
+    if (!detail || typeof detail !== "object" || Array.isArray(detail)) {
+      reviewContractFailure("contract_conflict_invalid");
+    }
+    reviewStringArray(
+      detail.sources,
+      "contract_conflict_invalid",
+      "contract_conflict_invalid",
+      2,
+    );
+    reviewStringArray(
+      detail.conflictingRequirements,
+      "contract_conflict_invalid",
+      "contract_conflict_invalid",
+      2,
+    );
+    reviewString(detail.whyItChangesJudgment, "contract_conflict_invalid");
+    reviewString(detail.maintainerDecisionRequired, "contract_conflict_invalid");
+  } else if (value.contractConflict !== undefined) {
+    reviewContractFailure("contract_conflict_unexpected");
+  }
+
+  return value;
+}
+
 function structuredOutputFrom(result) {
   const response = result?.data ?? result;
   const info = response?.info;
@@ -204,14 +312,7 @@ function structuredOutputFrom(result) {
   if (!output || typeof output !== "object" || Array.isArray(output)) {
     throw new Error("structured_output_missing");
   }
-  if (
-    !VERDICTS.includes(output.verdict) ||
-    !Array.isArray(output.findings) ||
-    !Array.isArray(output.validationGaps)
-  ) {
-    throw new Error("structured_output_invalid");
-  }
-  return output;
+  return assertMiraReviewContract(output);
 }
 
 function safeFailureReason(error) {
@@ -219,6 +320,8 @@ function safeFailureReason(error) {
   if (message === "structured_output_failed") return "structured_output_failed";
   if (message === "structured_output_missing") return "structured_output_missing";
   if (message === "structured_output_invalid") return "structured_output_invalid";
+  if (message === "opencode_prompt_timeout") return "opencode_prompt_timeout";
+  if (message.startsWith("review_contract_")) return message;
   return "opencode_execution_failed";
 }
 
@@ -280,6 +383,7 @@ export async function executeOpenCodeReview(
           providerID: OPENCODE_PROVIDER,
           modelID: OPENCODE_MODEL,
         },
+        variant: OPENCODE_VARIANT,
         parts: [{ type: "text", text: buildReviewPrompt(pkg) }],
         format: {
           type: "json_schema",
