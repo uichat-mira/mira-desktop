@@ -312,5 +312,7 @@ test("workflow routes execution through OpenCode and the external result handoff
   assert.match(workflow, /AI_PROVIDER_OPENCODE_GO_KEY/);
   assert.match(workflow, /opencode-ai@1\.18\.34/);
   assert.match(workflow, /@opencode-ai\/sdk@1\.18\.34/);
+  assert.match(workflow, /import\.meta\.resolve\('@opencode-ai\/sdk'\)/);
+  assert.doesNotMatch(workflow, /require\.resolve\('@opencode-ai\/sdk'/);
   assert.match(workflow, /workspace="\$review_dir\/workspace"/);
 });
