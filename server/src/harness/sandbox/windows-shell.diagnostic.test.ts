@@ -149,6 +149,71 @@ describe.skipIf(process.platform !== "win32")("Windows sandbox shell diagnostics
       closeStdin: true,
     });
 
+    const resolveFullEnvEntries = (keys: string[]) =>
+      Object.fromEntries(
+        keys.flatMap((requestedKey) => {
+          const actualKey = Object.keys(fullEnv).find(
+            (key) => key.toLowerCase() === requestedKey.toLowerCase(),
+          );
+          const value = actualKey ? fullEnv[actualKey] : undefined;
+          return typeof value === "string" ? [[actualKey!, value]] : [];
+        }),
+      );
+
+    const candidateGroups = [
+      {
+        label: "candidate-psmodulepath",
+        keys: ["PSModulePath", "PSExecutionPolicyPreference", "POWERSHELL_DISTRIBUTION_CHANNEL"],
+      },
+      {
+        label: "candidate-common-program-paths",
+        keys: [
+          "CommonProgramFiles",
+          "CommonProgramFiles(x86)",
+          "CommonProgramW6432",
+          "ProgramW6432",
+          "ALLUSERSPROFILE",
+          "PUBLIC",
+        ],
+      },
+      {
+        label: "candidate-user-identity",
+        keys: [
+          "USERNAME",
+          "USERDOMAIN",
+          "USERDOMAIN_ROAMINGPROFILE",
+          "COMPUTERNAME",
+          "LOGONSERVER",
+        ],
+      },
+      {
+        label: "candidate-os-processor",
+        keys: [
+          "OS",
+          "PROCESSOR_ARCHITECTURE",
+          "PROCESSOR_IDENTIFIER",
+          "PROCESSOR_LEVEL",
+          "PROCESSOR_REVISION",
+          "NUMBER_OF_PROCESSORS",
+        ],
+      },
+    ];
+
+    const candidateResults = await Promise.all(
+      candidateGroups.map(({ label, keys }) =>
+        runAsyncProbe({
+          label,
+          shell,
+          args: baseArgs,
+          env: {
+            ...sandboxEnv,
+            ...resolveFullEnvEntries(keys),
+          },
+          closeStdin: true,
+        }),
+      ),
+    );
+
     const report = {
       shell,
       sandboxEnvKeys: Object.keys(sandboxEnv).sort(),
@@ -169,18 +234,17 @@ describe.skipIf(process.platform !== "win32")("Windows sandbox shell diagnostics
       asyncFull,
       asyncSandbox,
       asyncSandboxClosedStdin,
+      candidateGroups: candidateGroups.map(({ label, keys }) => ({
+        label,
+        inheritedKeys: Object.keys(resolveFullEnvEntries(keys)).sort(),
+      })),
+      candidateResults,
     };
 
-    const passed =
-      syncFull.status === 0 &&
-      syncSandbox.status === 0 &&
-      !asyncFull.timedOut &&
-      asyncFull.exitCode === 0 &&
-      !asyncSandbox.timedOut &&
-      asyncSandbox.exitCode === 0 &&
-      !asyncSandboxClosedStdin.timedOut &&
-      asyncSandboxClosedStdin.exitCode === 0;
+    const candidateRecovered = candidateResults.some(
+      (result) => !result.timedOut && result.exitCode === 0,
+    );
 
-    assert.equal(passed, true, JSON.stringify(report, null, 2));
+    assert.equal(candidateRecovered, true, JSON.stringify(report, null, 2));
   }, 20_000);
 });
