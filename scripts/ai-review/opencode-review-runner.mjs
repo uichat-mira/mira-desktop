@@ -222,7 +222,11 @@ function safeFailureReason(error) {
   return "opencode_execution_failed";
 }
 
-export async function executeOpenCodeReview(createOpencode, pkg) {
+export async function executeOpenCodeReview(
+  createOpencode,
+  pkg,
+  { promptTimeoutMs = 300_000 } = {},
+) {
   const instance = await createOpencode({
     hostname: "127.0.0.1",
     timeout: 15_000,
@@ -268,7 +272,8 @@ export async function executeOpenCodeReview(createOpencode, pkg) {
     const sessionId = session?.id;
     if (!sessionId) throw new Error("opencode_session_create_failed");
 
-    const result = await instance.client.session.prompt({
+    let timeout;
+    const prompt = instance.client.session.prompt({
       path: { id: sessionId },
       body: {
         model: {
@@ -283,8 +288,18 @@ export async function executeOpenCodeReview(createOpencode, pkg) {
         },
       },
     });
+    const timedOut = new Promise((_, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error("opencode_prompt_timeout")),
+        promptTimeoutMs,
+      );
+    });
 
-    return structuredOutputFrom(result);
+    try {
+      return structuredOutputFrom(await Promise.race([prompt, timedOut]));
+    } finally {
+      clearTimeout(timeout);
+    }
   } finally {
     instance.server?.close?.();
   }
