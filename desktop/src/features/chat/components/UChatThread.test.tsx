@@ -188,7 +188,9 @@ describe("UChatThread", () => {
     composerTextState.value = "hello";
   });
 
-  test("welcome state can run agent after workspace is bound", async () => {
+  test("welcome state can run agent without an explicit workspace", async () => {
+    draftWorkspaceState.value = null;
+
     await act(async () => {
       render(<UChatThread />);
     });
@@ -214,7 +216,7 @@ describe("UChatThread", () => {
     assert.deepEqual(sendMock.mock.calls[0]?.[0], { agentEnabled: true });
   });
 
-  test("agent button is disabled in welcome state when workspace is missing", async () => {
+  test("agent toggle stays available in welcome state when workspace is missing", async () => {
     draftWorkspaceState.value = null;
     draftAgentEnabledState.value = false;
 
@@ -223,11 +225,12 @@ describe("UChatThread", () => {
     });
 
     const button = screen.getByRole("button", { name: "Enable Agent" });
-    assert.equal(button.hasAttribute("disabled"), true);
+    assert.equal(button.hasAttribute("disabled"), false);
 
     fireEvent.click(button);
-    assert.equal(sendMock.mock.calls.length, 0);
-    assert.equal(setDraftAgentEnabledMock.mock.calls.length, 0);
+    await waitFor(() => {
+      assert.deepEqual(setDraftAgentEnabledMock.mock.calls[0], [true]);
+    });
     assert.equal(messageErrorMock.mock.calls.length, 0);
   });
 
