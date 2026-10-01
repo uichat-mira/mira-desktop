@@ -213,6 +213,10 @@ test("registers multiple final runtime outputs atomically", async () => {
       createAndRunAgent({
         threadId: thread.id,
         userId: user.id,
+        workspaceRoot: privateAgentWorkspaceService.ensure({
+          threadId: thread.id,
+          userId: user.id,
+        }),
         goalText: "batch output",
         messages: [{ role: "user", content: "batch output", parts: [{ type: "text", text: "batch output" }] }],
       }),
