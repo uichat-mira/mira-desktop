@@ -68,6 +68,10 @@ export const registerThreadRoutes = async (app: FastifyInstance) => {
       const result = threadService.createThread({
         userId,
         ...request.body,
+        agentEnabled:
+          typeof request.body.agentEnabled === "boolean"
+            ? request.body.agentEnabled
+            : true,
       });
       return success(result, "Thread created");
     }),
