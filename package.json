@@ -69,6 +69,7 @@
     "internal:prepare:tauri": "node scripts/prepare-tauri-assets.js",
     "internal:dev:tauri:services": "node scripts/tauri-dev-launcher.cjs",
     "prepare:terminal-runtime": "node scripts/prepare-terminal-runtime.mjs",
+    "prepare:node-runtime": "node scripts/prepare-node-runtime.mjs",
     "smoke:terminal-runtime": "pnpm prepare:terminal-runtime && pnpm internal:build:server && node scripts/smoke-terminal-runtime.mjs --quick",
     "smoke:terminal-runtime:staged": "pnpm prepare:terminal-runtime && pnpm internal:build:server && node scripts/smoke-terminal-runtime.mjs --full",
     "smoke:pi-skill-agent": "pnpm --filter @ui-chat-mira/server smoke:pi-skill-agent",
