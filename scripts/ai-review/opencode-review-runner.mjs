@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const OPENCODE_ENGINE = "opencode";
 export const OPENCODE_PROVIDER = "opencode-go";
@@ -339,7 +339,7 @@ async function main() {
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : "";
-const modulePath = resolve(new URL(import.meta.url).pathname);
+const modulePath = resolve(fileURLToPath(import.meta.url));
 if (invokedPath === modulePath) {
   main().catch((error) => {
     const message = error instanceof Error ? error.message : "unknown runner failure";
