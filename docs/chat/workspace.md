@@ -244,7 +244,7 @@ GitHub remote operations
 - 该路径由 `threadId + userId` 直接决定，不需要额外数据库 identity；
 - 一个 AgentRun 只持有 `runtimeInput.workspaceRoot`；不存在第二个 `conversationWorkdir` snapshot；
 - approval resume 必须使用同一 Run 冻结的 `workspaceRoot`；
-- private root 继续执行 realpath containment、symlink / junction、Windows 大小写与 quota 校验；
+- private root 继续执行 realpath containment、symlink / junction、Windows 大小写与 per-user quota 校验；当前配置名为 `UI_CHAT_PRIVATE_AGENT_WORKSPACE_QUOTA_BYTES`，旧 `UI_CHAT_CONVERSATION_WORKDIR_QUOTA_BYTES` 仅作为升级兼容读取；
 - Thread hard delete / history cleanup 只清理该 Thread 的 deterministic private root，不删除或重解释用户 ChatWorkspace；
 - explicit Workspace 始终由 `ChatWorkspace.rootPath` 负责；private root 不投影成 Workspace row、picker 项或 sidebar group；
 - 新 Conversation Artifact 以 `sourceRootPath + sourceRelativePath` 固化创建时来源；
