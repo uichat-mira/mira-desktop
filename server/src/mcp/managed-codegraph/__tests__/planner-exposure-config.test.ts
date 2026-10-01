@@ -92,8 +92,8 @@ test.skipIf(process.platform !== "win32")("resolveManagedCodeGraphPlannerConfig 
   assert.equal(result.externalIndexSupport.status, "blocked");
   assert.equal(result.externalIndexSupport.externalIndexRootSupported, false);
   assert.equal(result.externalIndexSupport.repoDataDirName, ".codegraph");
-  assert.equal(
-    String(result.externalIndexSupport.reason).includes("external index root"),
-    true,
+  assert.match(
+    result.externalIndexSupport.reason ?? "",
+    /cannot relocate.*workspace\/\.codegraph/i,
   );
 });
