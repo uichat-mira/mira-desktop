@@ -61,10 +61,17 @@ const executeAllowedCommand = async (command: string, stdoutText = "ok\n") => {
   expect(result.stdout).toBe(stdoutText.trim());
   expect(sandboxMocks.spawnMock).toHaveBeenCalledWith(
     expect.stringContaining("powershell.exe"),
-    ["-NoProfile", "-Command", command],
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `${command}; exit $LASTEXITCODE`,
+    ],
     expect.objectContaining({
       shell: false,
       windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
     }),
   );
 };
