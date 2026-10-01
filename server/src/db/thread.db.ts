@@ -63,7 +63,6 @@ const createThreadTables = () => {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_thread_id ON conversation_artifacts(thread_id);
-    CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_source_root_path ON conversation_artifacts(source_root_path);
     CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
   `);
@@ -277,6 +276,21 @@ const retireConversationWorkdirTable = () => {
   const sqlite = getSqlite();
   if (!hasSqliteTable(sqlite, "conversation_workdirs")) return;
   sqlite.exec("DROP TABLE conversation_workdirs");
+};
+
+const ensureConversationArtifactIndexes = () => {
+  const sqlite = getSqlite();
+  if (!hasSqliteTable(sqlite, "conversation_artifacts")) return;
+  sqlite.exec(
+    "CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_thread_id ON conversation_artifacts(thread_id)",
+  );
+  if (
+    hasSqliteColumn(sqlite, "conversation_artifacts", "source_root_path")
+  ) {
+    sqlite.exec(
+      "CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_source_root_path ON conversation_artifacts(source_root_path)",
+    );
+  }
 };
 
 const createAgentRunTables = () => {
@@ -753,6 +767,7 @@ export const initializeThreadDatabase = () => {
     rebuildThreadsTableForWorkspaceSupport();
     createThreadTables();
     migrateConversationArtifactsOffWorkdirIdentity();
+    ensureConversationArtifactIndexes();
     rebuildMessagesTableForThreadSupport();
     ensureThreadWorkspaceColumn();
     ensureThreadKnowledgeBaseColumn();
