@@ -217,6 +217,7 @@ const chatPending = {
         run: "Run in Agent mode",
         toggleOn: "Enable Agent",
         toggleOff: "Unbind Agent",
+        compatibilityLabel: "Compatibility Chat",
         waitingApprovalTitle: "Waiting for approval",
         waitingApprovalDetail: "Agent needs manual confirmation before continuing.",
         blockedTitle: "Agent blocked",
