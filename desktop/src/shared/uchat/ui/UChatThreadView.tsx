@@ -723,11 +723,7 @@ export function UChatThreadView({
                           submitDisabledReason={
                             agentSubmission.disabledReason
                           }
-                          submitLabel={
-                            agentSubmission.mode === "agent"
-                              ? t("chat.thread.agent.run")
-                              : t("chat.thread.actions.send")
-                          }
+                          submitLabel={t("chat.thread.actions.send")}
                           composerTools={
                             <UChatAgentComposerTools
                               controller={agent}
