@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import KnowledgeBaseAddWizard from "../pages/Add";
 
 vi.mock("react-router-dom", () => ({
+  useLocation: () => ({ pathname: "/knowledge-base/add" }),
   useNavigate: () => vi.fn(),
 }));
 
