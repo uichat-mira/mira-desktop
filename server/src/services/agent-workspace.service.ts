@@ -28,7 +28,12 @@ export class AgentWorkspaceError extends Error {
 }
 
 export const DEFAULT_PRIVATE_AGENT_WORKSPACE_QUOTA_BYTES = 1024 * 1024 * 1024;
-const QUOTA_ENV = "UI_CHAT_CONVERSATION_WORKDIR_QUOTA_BYTES";
+const QUOTA_ENV = "UI_CHAT_PRIVATE_AGENT_WORKSPACE_QUOTA_BYTES";
+/**
+ * Upgrade compatibility only. Remove after every supported upgrade path has
+ * passed through a release that documents QUOTA_ENV as the canonical setting.
+ */
+const LEGACY_QUOTA_ENV = "UI_CHAT_CONVERSATION_WORKDIR_QUOTA_BYTES";
 const SAFE_SEGMENT = /^[A-Za-z0-9_-]+$/;
 
 /**
@@ -75,7 +80,7 @@ const normalizeQuota = (value: number) => {
 export const resolvePrivateAgentWorkspaceQuotaBytes = (
   env: NodeJS.ProcessEnv = process.env,
 ) => {
-  const raw = env[QUOTA_ENV]?.trim();
+  const raw = env[QUOTA_ENV]?.trim() ?? env[LEGACY_QUOTA_ENV]?.trim();
   return raw
     ? normalizeQuota(Number(raw))
     : DEFAULT_PRIVATE_AGENT_WORKSPACE_QUOTA_BYTES;
@@ -302,7 +307,7 @@ const scanBytes = (directory: string, root: string): number => {
     }
     contained(root, real);
 
-    if (stat.isDirectory()) total += scanBytes(userPath(real), root);
+    if (stat.isDirectory()) total += scanBytes(real, root);
     else if (stat.isFile()) total += stat.size;
     else {
       fail(
@@ -313,8 +318,6 @@ const scanBytes = (directory: string, root: string): number => {
   }
   return total;
 };
-
-const userPath = (value: string) => value;
 
 const usageForUser = (input: {
   userId: number;
@@ -372,8 +375,17 @@ export const privateAgentWorkspaceService = {
   get(threadId: string, userId: number): string | null {
     if (!threadRepository.findById(threadId, userId)) return null;
     const storageRoot = resolvePrivateAgentWorkspaceStorageRoot();
+    let root: string;
+    try {
+      root = trustedRoot(storageRoot, false);
+    } catch (error) {
+      if (error instanceof AgentWorkspaceError && error.code === "missing") {
+        return null;
+      }
+      throw error;
+    }
     const expected = buildPrivateAgentWorkspacePath({
-      storageRoot,
+      storageRoot: root,
       userId,
       threadId,
     });
@@ -438,8 +450,14 @@ export const privateAgentWorkspaceService = {
   }): boolean {
     const storageRoot =
       input.storageRoot ?? resolvePrivateAgentWorkspaceStorageRoot();
+    let root: string;
+    try {
+      root = trustedRoot(storageRoot, false);
+    } catch {
+      return false;
+    }
     const expected = buildPrivateAgentWorkspacePath({
-      storageRoot,
+      storageRoot: root,
       userId: input.userId,
       threadId: input.threadId,
     });
