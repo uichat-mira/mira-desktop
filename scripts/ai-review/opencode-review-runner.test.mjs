@@ -228,12 +228,24 @@ test("runs OpenCode with a single provider/model and a read-only tool surface", 
   let capturedOptions;
   let capturedPrompt;
   let closed = false;
+  const cleanupOrder = [];
 
   const createOpencode = async (options) => {
     capturedOptions = options;
     return {
-      server: { close: () => { closed = true; } },
+      server: {
+        close: () => {
+          cleanupOrder.push("close");
+          closed = true;
+        },
+      },
       client: {
+        instance: {
+          dispose: async () => {
+            cleanupOrder.push("dispose");
+            return { data: true };
+          },
+        },
         session: {
           create: async () => ({ data: { id: "session-1" } }),
           prompt: async (input) => {
@@ -260,6 +272,47 @@ test("runs OpenCode with a single provider/model and a read-only tool surface", 
   assert.equal(capturedPrompt.body.model.modelID, "minimax-m3");
   assert.deepEqual(capturedPrompt.body.format.schema, MIRA_REVIEW_SCHEMA);
   assert.equal(capturedPrompt.body.format.retryCount, 0);
+  assert.equal(closed, true);
+  assert.deepEqual(cleanupOrder, ["dispose", "close"]);
+});
+
+test("bounds instance disposal before closing the OpenCode server", async () => {
+  let closed = false;
+  let disposeAborted = false;
+
+  const createOpencode = async () => ({
+    server: {
+      close: () => {
+        closed = true;
+      },
+    },
+    client: {
+      instance: {
+        dispose: ({ signal }) =>
+          new Promise((resolve) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                disposeAborted = true;
+                resolve({ data: false });
+              },
+              { once: true },
+            );
+          }),
+      },
+      session: {
+        create: async () => ({ data: { id: "session-dispose-timeout" } }),
+        prompt: async () => ({ data: { info: { structured: cleanReview } } }),
+      },
+    },
+  });
+
+  const review = await executeOpenCodeReview(createOpencode, reviewPackage(), {
+    disposeTimeoutMs: 5,
+  });
+
+  assert.deepEqual(review, cleanReview);
+  assert.equal(disposeAborted, true);
   assert.equal(closed, true);
 });
 
