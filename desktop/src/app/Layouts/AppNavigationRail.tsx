@@ -4,12 +4,12 @@ import {
   ExternalLink,
   FolderKanban,
   GitBranch,
-  Home,
   Info,
   LayoutDashboard,
   LibraryBig,
   ListChecks,
   LogOut,
+  MessageSquareText,
   Settings2,
   Smartphone,
   type LucideIcon,
@@ -40,7 +40,7 @@ const primaryItems: PrimaryRailItem[] = [
   {
     id: "home",
     label: "app.navigation.home",
-    icon: Home,
+    icon: MessageSquareText,
     to: "/chat",
   },
   {
@@ -89,6 +89,22 @@ function isLibraryRoute(pathname: string) {
     matchesRoute(pathname, "/knowledge-base") ||
     matchesRoute(pathname, "/evaluation")
   );
+}
+
+function isKnowledgeBaseRoute(pathname: string) {
+  return matchesRoute(pathname, "/knowledge-base");
+}
+
+function isEvaluationRoute(pathname: string) {
+  return matchesRoute(pathname, "/evaluation");
+}
+
+function isAboutRoute(pathname: string) {
+  return matchesRoute(pathname, "/about");
+}
+
+function isDevelopmentRoute(pathname: string) {
+  return matchesRoute(pathname, "/development");
 }
 
 function RailButton({
@@ -166,13 +182,20 @@ function UserMenu() {
   );
 }
 
-function ResourceMenu({ active = false }: { active?: boolean }) {
+function ResourceMenu({
+  active = false,
+  pathname,
+}: {
+  active?: boolean;
+  pathname: string;
+}) {
   const navigate = useNavigate();
   const { t } = useTranslation();
 
   return (
     <DropdownMenu
-      align="end"
+      align="start"
+      side="right"
       sideOffset={8}
       trigger={
         <button
@@ -197,11 +220,13 @@ function ResourceMenu({ active = false }: { active?: boolean }) {
           id: "about",
           label: t("app.navigation.about"),
           leadingIcon: <Info className="h-4 w-4" />,
+          selected: isAboutRoute(pathname),
         },
         {
           id: "development",
           label: t("app.navigation.development"),
           leadingIcon: <Braces className="h-4 w-4" />,
+          selected: isDevelopmentRoute(pathname),
         },
         {
           id: "help",
@@ -224,7 +249,13 @@ function ResourceMenu({ active = false }: { active?: boolean }) {
   );
 }
 
-function LibraryMenu({ active = false }: { active?: boolean }) {
+function LibraryMenu({
+  active = false,
+  pathname,
+}: {
+  active?: boolean;
+  pathname: string;
+}) {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const triggerClassName = `group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
@@ -235,7 +266,8 @@ function LibraryMenu({ active = false }: { active?: boolean }) {
 
   return (
     <DropdownMenu
-      align="end"
+      align="start"
+      side="right"
       sideOffset={8}
       trigger={
         <button
@@ -256,11 +288,13 @@ function LibraryMenu({ active = false }: { active?: boolean }) {
           id: "knowledge-base",
           label: t("app.navigation.knowledgeBase"),
           leadingIcon: <LibraryBig className="h-4 w-4" />,
+          selected: isKnowledgeBaseRoute(pathname),
         },
         {
           id: "evaluation",
           label: t("app.navigation.evaluation"),
           leadingIcon: <ListChecks className="h-4 w-4" />,
+          selected: isEvaluationRoute(pathname),
         },
       ]}
       onSelect={(item) => {
@@ -299,7 +333,7 @@ export function AppNavigationRail() {
         {primaryItems.map((item) => (
           <div key={item.id}>
             {item.id === "projects" ? (
-              <LibraryMenu active={isLibraryRoute(pathname)} />
+              <LibraryMenu active={isLibraryRoute(pathname)} pathname={pathname} />
             ) : (
               <RailButton
                 item={{ ...item, label: t(item.label) }}
@@ -320,7 +354,7 @@ export function AppNavigationRail() {
           }}
           active={activeItem === "settings"}
         />
-        <ResourceMenu active={isResourceRoute(pathname)} />
+        <ResourceMenu active={isResourceRoute(pathname)} pathname={pathname} />
         <UserMenu />
       </div>
     </nav>

@@ -12,6 +12,7 @@ type DropdownMenuItemData = {
   leadingIcon?: React.ReactNode;
   trailingText?: string;
   checked?: boolean;
+  selected?: boolean;
   tone?: "default" | "danger";
   children?: DropdownMenuItemData[];
 };
@@ -21,6 +22,7 @@ type DropdownMenuProps = {
   items: DropdownMenuItemData[];
   onSelect: (item: DropdownMenuItemData) => void;
   align?: "start" | "center" | "end";
+  side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
 };
 
@@ -45,12 +47,16 @@ function MenuItem({
       ? "text-danger-text data-[highlighted]:bg-primary/10"
       : "text-text-primary data-[highlighted]:bg-surface-secondary";
 
+  const itemSelectedClassName = item.selected
+    ? "bg-surface-secondary"
+    : "";
+
   if (item.children?.length) {
     return (
       <DropdownMenuPrimitive.Sub>
         <DropdownMenuPrimitive.SubTrigger
           disabled={item.disabled}
-          className={`${itemClassName} ${itemToneClassName}`}
+          className={`${itemClassName} ${itemToneClassName} ${itemSelectedClassName}`}
           title={item.title ?? item.label}
         >
           <span className="inline-flex min-w-0 items-center gap-2">
@@ -82,7 +88,7 @@ function MenuItem({
     <DropdownMenuPrimitive.Item
       disabled={item.disabled}
       onSelect={() => onSelect(item)}
-      className={`${itemClassName} ${itemToneClassName}`}
+      className={`${itemClassName} ${itemToneClassName} ${itemSelectedClassName}`}
       title={item.title ?? item.label}
     >
       <span className="inline-flex min-w-0 items-center gap-2">
@@ -105,6 +111,7 @@ export default function DropdownMenu({
   items,
   onSelect,
   align = "start",
+  side = "bottom",
   sideOffset = 8,
 }: DropdownMenuProps) {
   return (
@@ -116,7 +123,7 @@ export default function DropdownMenu({
       <DropdownMenuPrimitive.Portal>
         <DropdownMenuPrimitive.Content
           align={align}
-          side="bottom"
+          side={side}
           sideOffset={sideOffset}
           collisionPadding={12}
           className={contentClassName}
