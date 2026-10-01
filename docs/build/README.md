@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: build
-Last verified: 2026-07-22
+Last verified: 2026-10-02
 Layer: raw-source
 Module: Build
 Feature: Packaging
@@ -75,24 +75,25 @@ pnpm version:sync
 | 事件 | 行为 |
 | --- | --- |
 | Pull Request → `dev/test/prod` | 轻量检查，不执行完整桌面打包 |
-| push → `dev` | 构建 Electron / Tauri 分支包，保存 Actions artifacts |
-| push → `test` | 构建 Electron / Tauri 分支包，保存 Actions artifacts |
-| push → `prod` | 构建 Electron / Tauri 分支包，保存 Actions artifacts，并同步 R2 `mira/latest/` |
-| push → `v*` tag | Release Factory 完整校验与打包，创建 GitHub Release，并同步 R2 `mira/latest/` |
+| push → `dev` | 构建 Windows Electron / Tauri 与 Intel macOS Electron 分支包，保存 Actions artifacts |
+| push → `test` | 构建 Windows Electron / Tauri 与 Intel macOS Electron 分支包，保存 Actions artifacts |
+| push → `prod` | 构建 Windows Electron / Tauri 与 Intel macOS Electron 分支包；仅 Windows 安装包同步 R2 `mira/latest/` |
+| push → `v*` tag | Release Factory 完整校验 Windows 产物；并行构建 Intel macOS DMG。GitHub Release 保存 Windows + Intel macOS 资产，R2 仍只同步 Windows 资产 |
 
 Windows 分支构建仍由 Electron 与 Tauri 两个独立 job 并行执行。GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
 
 | 平台 | 分支包 / Release 资产 |
 | --- | --- |
-| Electron | `*Setup*.exe`、对应 `.exe.blockmap` |
-| Tauri | `msi/*.msi`、`nsis/*setup.exe` |
+| Electron Windows | `*Setup*.exe`、对应 `.exe.blockmap` |
+| Tauri Windows | `msi/*.msi`、`nsis/*setup.exe` |
+| Electron macOS Intel | `*.dmg`、对应 `.dmg.blockmap`；当前未签名，仅作为 Intel 兼容性 / 内部发板资产 |
 | GitHub 自动生成 | Source code (`.zip`、`.tar.gz`，仅 GitHub Release) |
 
 Actions artifact 为短期构建产物；GitHub Release 保存标签版本历史。
 
 ### Cloudflare R2 当前版本分发
 
-R2 作为当前版本分发源：
+R2 作为当前 **Windows** 版本分发源；Intel macOS DMG 暂不上传 R2，只保存在 GitHub Release：
 
 ```text
 mira/latest/

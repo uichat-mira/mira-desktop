@@ -23,6 +23,10 @@ jobs:
     uses: ./.github/workflows/release-factory-v2.yml
     secrets: inherit
 
+  build-macos-intel:
+    name: Build macOS Intel release asset
+    uses: ./.github/workflows/build-electron-macos-intel.yml
+
   publish:
     name: Publish GitHub Release and Cloudflare R2
     needs: factory
@@ -187,3 +191,52 @@ jobs:
               description: 'GitHub Release or Cloudflare R2 publishing failed',
               target_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
             });
+
+  publish-macos-intel:
+    name: Attach macOS Intel DMG to GitHub Release
+    needs: [build-macos-intel, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate release tag
+        id: release_meta
+        shell: bash
+        run: |
+          package_version=$(node -p "require('./package.json').version")
+          expected_tag="v${package_version}"
+          tag="${GITHUB_REF_NAME}"
+          if [ "$tag" != "$expected_tag" ]; then
+            echo "Tag ${tag} does not match package.json version ${package_version}." >&2
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Download Intel macOS package
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-macos-intel-${{ github.sha }}
+          path: release-assets/macos-intel
+
+      - name: Prepare GitHub-only macOS assets
+        shell: bash
+        run: |
+          mkdir -p mac-release-assets
+          find release-assets/macos-intel -type f \( -name '*.dmg' -o -name '*.dmg.blockmap' \) -print0 |
+            while IFS= read -r -d '' file; do
+              filename=$(basename "$file")
+              cp "$file" "mac-release-assets/macos-intel_${filename}"
+            done
+          test -n "$(find mac-release-assets -maxdepth 1 -type f -print -quit)"
+          ls -lah mac-release-assets/
+
+      - name: Attach Intel macOS assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          files: mac-release-assets/*
+          fail_on_unmatched_files: true

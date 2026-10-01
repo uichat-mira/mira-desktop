@@ -1,0 +1,76 @@
+name: Build Electron macOS Intel
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos-intel:
+    name: Build Electron (macOS Intel)
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Verify Intel runner
+        run: node -e "if (process.platform !== 'darwin' || process.arch !== 'x64') { throw new Error(`Expected darwin/x64, received ${process.platform}/${process.arch}`); }"
+
+      - name: Cache Electron builder and Node runtime
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron-builder
+            .local-runtimes/node-runtime
+          key: macos-intel-electron-${{ hashFiles('pnpm-lock.yaml', 'scripts/node-runtime.lock.json') }}
+          restore-keys: |
+            macos-intel-electron-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync package versions
+        run: pnpm version:sync
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Build unsigned Intel DMG
+        run: node scripts/build-dist.js mac
+        env:
+          RELEASE_KEEP_COUNT: 3
+
+      - name: Verify DMG output
+        shell: bash
+        run: |
+          mapfile -t dmgs < <(find release -type f -name '*.dmg' -print)
+          if [ "${#dmgs[@]}" -eq 0 ]; then
+            echo 'No macOS DMG was produced.' >&2
+            exit 1
+          fi
+          printf 'Intel macOS DMG(s):\n'
+          printf ' - %s\n' "${dmgs[@]}"
+
+      - name: Upload Intel macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-macos-intel-${{ github.sha }}
+          path: |
+            release/**/electron/*.dmg
+            release/**/electron/*.dmg.blockmap
+          if-no-files-found: error
+          retention-days: 3
