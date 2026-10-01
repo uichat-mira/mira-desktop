@@ -406,6 +406,25 @@ Image part 保持图片输入协议；具体模型能否理解图片由 concrete
 - Message / Thread 删除 helper 只处理 File part，不处理普通 Image attachment；
 - 没有统一 asset reference table、引用计数或周期 GC。
 
+## 8.1 默认 Agent 的前台表达
+
+Desktop 新对话默认进入 Agent Runtime，但当前 UI 不把主发送动作呈现为另一种特殊提交：Agent-enabled 与 Compatibility Chat 都使用普通“发送”语义。
+
+Agent toggle 在 E05A 阶段仍保留，作用是 compatibility escape hatch：
+
+- `agentEnabled=true`：默认 Agent Runtime，保留 Skill / Toolkit composer 能力；
+- `agentEnabled=false`：显式显示 Compatibility Chat，继续保留历史 Normal / legacy RAG 行为；
+- E05A 不迁移已有 `agentEnabled=false` Thread，也不删除 legacy route。
+
+这层兼容存在是为了阶段收口，不是长期产品目标；删除条件由 E05B 决定。
+
+Role 手动图片生成入口不再依赖 `agentEnabled`。它与自动图片后处理使用同一真实资格边界：
+
+```text
+roleId exists
++ no knowledgeBaseId
+```
+
 ## 9. TTS 与图片后处理
 
 `ttsEnabled` / `imageEnabled` 是 Assistant 成功后的 desktop media lifecycle，不是模型原生输入能力。
