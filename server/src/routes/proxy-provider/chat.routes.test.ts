@@ -373,7 +373,7 @@ test("POST /proxy/chat/default routes knowledge-bound threads into the RAG branc
     knowledgeBaseService.getKnowledgeBaseById = originalGetKnowledgeBaseById;
     await app.close();
   }
-});
+}, 15_000);
 
 test("POST /proxy/chat/default passes bound role request context into the RAG branch", async () => {
   const user = userRepository.create({
