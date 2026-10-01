@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { test, vi } from "vitest";
 import { agentGraph } from "../graph";
 import { scheduleApprovedAgentRunResume } from "../resume";
@@ -7,13 +8,23 @@ import { createInvocationInputHash } from "../approval-fingerprint";
 import { createAgentGoal } from "../nodes";
 import * as messagePersistenceModule from "@/routes/proxy-provider/message-persistence";
 import { threadService } from "@/services/thread.service";
+import { getTestArtifactDir } from "@/test-support/artifacts.js";
 
 const waitForMicrotasks = async () => {
   await Promise.resolve();
   await Promise.resolve();
 };
 
+const createApprovalResumeWorkspace = (name: string) =>
+  getTestArtifactDir(
+    "agent",
+    `approval-resume-${name}-${process.pid}-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`,
+  );
+
 test("scheduled approval resume returns running and persists incremental trace", async () => {
+  const workspaceRoot = createApprovalResumeWorkspace("running");
   const approvedInput = { query: "hello" };
   const inputHash = createInvocationInputHash(approvedInput);
   const run = agentRunStore.create({
@@ -31,7 +42,7 @@ test("scheduled approval resume returns running and persists incremental trace",
         },
       ],
       params: {},
-      workspaceRoot: "/workspace/thread-1",
+      workspaceRoot,
     },
   });
   agentRunStore.update(run.id, {
@@ -143,6 +154,7 @@ test("scheduled approval resume returns running and persists incremental trace",
     runSpy.mockRestore();
     persistSpy.mockRestore();
     getMessageSpy.mockRestore();
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
     agentRunStore.clear();
   }
 });
@@ -182,6 +194,18 @@ test("scheduled approval resume keeps approval state when frozen workspace root 
     },
   });
   const runSpy = vi.spyOn(agentGraph, "run");
+  const persistSpy = vi
+    .spyOn(messagePersistenceModule, "persistAssistantMessage")
+    .mockImplementation(() => {});
+  const getMessageSpy = vi.spyOn(threadService, "getMessageById").mockReturnValue({
+    id: "assistant-workspace-root-missing",
+    threadId: "thread-workspace-root-missing",
+    role: "assistant",
+    content: "等待审批",
+    parts: [{ type: "text", text: "等待审批" }],
+    metadata: {},
+    createdAt: "2026-07-18T00:00:00.000Z",
+  });
 
   try {
     assert.throws(
@@ -193,8 +217,105 @@ test("scheduled approval resume keeps approval state when frozen workspace root 
     assert.equal(persisted?.pendingApproval?.id, "approval-workspace-1");
     assert.equal(persisted?.pendingToolCall?.id, "pending-workspace-1");
     assert.equal(runSpy.mock.calls.length, 0);
+    assert.equal(persistSpy.mock.calls.length, 1);
+    const persistedMessage = persistSpy.mock.calls[0]?.[0];
+    assert.equal(
+      (persistedMessage?.metadata as { agent?: { status?: string } }).agent?.status,
+      "waiting_approval",
+    );
+    const errorPart = persistedMessage?.parts?.find(
+      (part) => part.type === "data" && part.name === "execution-node",
+    );
+    const errorNode =
+      errorPart?.type === "data"
+        ? (errorPart.value as { details?: { code?: string } })
+        : undefined;
+    assert.equal(errorNode?.details?.code, "missing_frozen_workspace_root");
   } finally {
     runSpy.mockRestore();
+    persistSpy.mockRestore();
+    getMessageSpy.mockRestore();
+    agentRunStore.clear();
+  }
+});
+
+
+test("scheduled approval resume keeps approval state when frozen workspace root disappears", () => {
+  const workspaceRoot = createApprovalResumeWorkspace("deleted");
+  const inputHash = createInvocationInputHash({ query: "hello" });
+  const run = agentRunStore.create({
+    threadId: "thread-workspace-root-deleted",
+    userId: 1,
+    goal: createAgentGoal("answer the user"),
+    assistantMessageId: "assistant-workspace-root-deleted",
+    assistantParentId: "user-workspace-root-deleted",
+    runtimeInput: {
+      messages: [],
+      workspaceRoot,
+    },
+  });
+  agentRunStore.update(run.id, {
+    status: "waiting_approval",
+    pendingApproval: {
+      id: "approval-workspace-deleted",
+      runId: run.id,
+      stepId: "approval",
+      toolId: "web_search",
+      reason: "needs approval",
+      input: { query: "hello" },
+      inputHash,
+      createdAt: "2026-07-18T00:00:00.000Z",
+    },
+    pendingToolCall: {
+      id: "pending-workspace-deleted",
+      toolId: "web_search",
+      args: { query: "hello" },
+      inputHash,
+      source: "planner",
+      status: "frozen",
+      createdAt: "2026-07-18T00:00:00.000Z",
+    },
+  });
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+
+  const runSpy = vi.spyOn(agentGraph, "run");
+  const persistSpy = vi
+    .spyOn(messagePersistenceModule, "persistAssistantMessage")
+    .mockImplementation(() => {});
+  const getMessageSpy = vi.spyOn(threadService, "getMessageById").mockReturnValue({
+    id: "assistant-workspace-root-deleted",
+    threadId: "thread-workspace-root-deleted",
+    role: "assistant",
+    content: "等待审批",
+    parts: [{ type: "text", text: "等待审批" }],
+    metadata: {},
+    createdAt: "2026-07-18T00:00:00.000Z",
+  });
+
+  try {
+    assert.throws(
+      () => scheduleApprovedAgentRunResume(run.id),
+      /Agent workspace root is missing/,
+    );
+    const persisted = agentRunStore.get(run.id);
+    assert.equal(persisted?.status, "waiting_approval");
+    assert.equal(persisted?.pendingApproval?.id, "approval-workspace-deleted");
+    assert.equal(persisted?.pendingToolCall?.id, "pending-workspace-deleted");
+    assert.equal(runSpy.mock.calls.length, 0);
+    assert.equal(persistSpy.mock.calls.length, 1);
+    const persistedMessage = persistSpy.mock.calls[0]?.[0];
+    const errorPart = persistedMessage?.parts?.find(
+      (part) => part.type === "data" && part.name === "execution-node",
+    );
+    const errorNode =
+      errorPart?.type === "data"
+        ? (errorPart.value as { details?: { code?: string } })
+        : undefined;
+    assert.equal(errorNode?.details?.code, "workspace_root_missing");
+  } finally {
+    runSpy.mockRestore();
+    persistSpy.mockRestore();
+    getMessageSpy.mockRestore();
     agentRunStore.clear();
   }
 });

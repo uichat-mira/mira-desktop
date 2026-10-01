@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { agentGraph } from "./graph";
 import { agentRunStore } from "./run-store";
 import { getAgentRunById } from "./run-read";
@@ -253,6 +255,118 @@ export const persistAgentAssistantState = (input: {
   });
 };
 
+type ApprovalResumeWorkspaceErrorCode =
+  | "missing_frozen_workspace_root"
+  | "workspace_root_missing"
+  | "workspace_root_linked"
+  | "workspace_root_invalid"
+  | "workspace_root_unavailable";
+
+class ApprovalResumeWorkspaceError extends Error {
+  readonly code: ApprovalResumeWorkspaceErrorCode;
+
+  constructor(code: ApprovalResumeWorkspaceErrorCode, message: string) {
+    super(message);
+    this.name = "ApprovalResumeWorkspaceError";
+    this.code = code;
+  }
+}
+
+const comparableWorkspaceRoot = (value: string) => {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+};
+
+const toApprovalResumeWorkspaceError = (
+  workspaceRoot: string,
+  runId: string,
+  error: unknown,
+) => {
+  if (error instanceof ApprovalResumeWorkspaceError) {
+    return error;
+  }
+
+  if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+    return new ApprovalResumeWorkspaceError(
+      "workspace_root_missing",
+      `Agent workspace root is missing: ${workspaceRoot}`,
+    );
+  }
+
+  return new ApprovalResumeWorkspaceError(
+    "workspace_root_unavailable",
+    `Agent workspace root is unavailable for resume: ${runId}`,
+  );
+};
+
+const assertFrozenWorkspaceRootAvailable = (
+  workspaceRoot: string,
+  runId: string,
+) => {
+  if (!workspaceRoot) {
+    throw new ApprovalResumeWorkspaceError(
+      "missing_frozen_workspace_root",
+      `AgentRun missing frozen workspace root: ${runId}`,
+    );
+  }
+
+  try {
+    const stat = fs.lstatSync(workspaceRoot);
+    if (stat.isSymbolicLink()) {
+      throw new ApprovalResumeWorkspaceError(
+        "workspace_root_linked",
+        `Agent workspace root cannot be a symbolic link or junction: ${workspaceRoot}`,
+      );
+    }
+    if (!stat.isDirectory()) {
+      throw new ApprovalResumeWorkspaceError(
+        "workspace_root_invalid",
+        `Agent workspace root is not a directory: ${workspaceRoot}`,
+      );
+    }
+
+    const realRoot = fs.realpathSync(workspaceRoot);
+    if (
+      comparableWorkspaceRoot(realRoot) !==
+      comparableWorkspaceRoot(workspaceRoot)
+    ) {
+      throw new ApprovalResumeWorkspaceError(
+        "workspace_root_linked",
+        `Agent workspace root cannot traverse a symbolic link or junction: ${workspaceRoot}`,
+      );
+    }
+  } catch (error) {
+    throw toApprovalResumeWorkspaceError(workspaceRoot, runId, error);
+  }
+};
+
+const persistApprovalResumeWorkspaceFailure = (input: {
+  run: AgentRun;
+  pendingApproval: AgentApprovalRequest;
+  error: ApprovalResumeWorkspaceError;
+}) => {
+  persistAgentAssistantState({
+    run: input.run,
+    status: "waiting_approval",
+    content: "工作空间无法恢复，审批仍保留，请修复工作空间后重试。",
+    pendingApproval: input.pendingApproval,
+    errorMessage: input.error.message,
+    errorSourceNodeId: "agent-resume-workspace",
+    executionNodes: [
+      toAgentErrorExecutionNode({
+        runId: input.run.id,
+        nodeId: "agent-resume-workspace",
+        label: "恢复工作空间",
+        summary: "工作空间无法恢复，审批仍保留",
+        details: {
+          code: input.error.code,
+          errorMessage: input.error.message,
+        },
+      }),
+    ],
+  });
+};
+
 type PreparedApprovedAgentRunResume = {
   run: AgentRun;
   runtimeInput: NonNullable<AgentRun["runtimeInput"]>;
@@ -328,10 +442,19 @@ const prepareApprovedAgentRunResume = (
     typeof runtimeInput.workspaceRoot === "string"
       ? runtimeInput.workspaceRoot.trim()
       : "";
-  if (!workspaceRoot) {
-    throw new Error(
-      `AgentRun missing frozen workspace root: ${runId}`,
-    );
+  try {
+    assertFrozenWorkspaceRootAvailable(workspaceRoot, runId);
+  } catch (error) {
+    const workspaceError =
+      error instanceof ApprovalResumeWorkspaceError
+        ? error
+        : toApprovalResumeWorkspaceError(workspaceRoot, runId, error);
+    persistApprovalResumeWorkspaceFailure({
+      run,
+      pendingApproval,
+      error: workspaceError,
+    });
+    throw workspaceError;
   }
 
   const checkpoint = getAgentRuntimeCheckpoint(runtimeInput);
