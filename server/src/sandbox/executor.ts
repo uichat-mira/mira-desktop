@@ -90,7 +90,22 @@ const toCombinedOutput = (stdout: string, stderr: string) =>
 
 const buildShellArgs = (profile: SandboxShellProfile, command: string) => {
   if (profile.argsMode === "powershell") {
-    return ["-NoProfile", "-Command", command];
+    const explicitExitCommand = [
+      command,
+      "$__mira_success = $?",
+      "$__mira_native_exit = $LASTEXITCODE",
+      "if ($null -ne $__mira_native_exit) { exit $__mira_native_exit }",
+      "if ($__mira_success) { exit 0 }",
+      "exit 1",
+    ].join("; ");
+
+    return [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      explicitExitCommand,
+    ];
   }
 
   if (profile.argsMode === "cmd") {
@@ -407,6 +422,7 @@ export const executeSandboxedCommand = async (
       env,
       windowsHide: true,
       shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
 
