@@ -78,7 +78,7 @@ test("resolveManagedCodeGraphPlannerConfig derives app-data root from existing l
   delete process.env.UI_CHAT_CODEGRAPH_COMMAND;
 });
 
-test.skipIf(process.platform !== "win32")("resolveManagedCodeGraphPlannerConfig defaults to serve --mcp for the real provider", () => {
+test("resolveManagedCodeGraphPlannerConfig defaults to serve --mcp for the real provider", () => {
   process.env.UI_CHAT_CODEGRAPH_APP_DATA_ROOT = path.join(
     os.tmpdir(),
     "codegraph-appdata-default-args",
