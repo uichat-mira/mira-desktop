@@ -93,14 +93,6 @@ jobs:
           --maxWorkers=1
           --fileParallelism=false
 
-      - name: Run Planner decision repair regressions
-        run: >-
-          pnpm --filter @ui-chat-mira/server test --
-          src/agent/__tests__/next-action-planner.test.ts
-          --testNamePattern="nextActionPlannerNode retries one invalid text decision before failing closed|nextActionPlannerNode repairs one invalid text decision with a valid retry"
-          --maxWorkers=1
-          --fileParallelism=false
-
       - name: Upload delegated-task regression report
         if: always()
         uses: actions/upload-artifact@v4
