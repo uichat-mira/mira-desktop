@@ -224,7 +224,7 @@ const adv05 = () => ({
       'fs.writeFileSync(path.join(jobRoot, "artifact.partial.txt"), "partial\\n", "utf8");',
       'fs.writeFileSync(path.join(".fixture", "async-current.json"), JSON.stringify({ jobId }, null, 2) + "\\n", "utf8");',
       'const child = spawn(process.execPath, [path.resolve("scripts/async-worker.mjs"), path.resolve(jobRoot)], { cwd: process.cwd(), detached: true, stdio: "ignore" });',
-      'fs.writeFileSync(path.join(".fixture", "async-worker.pid"), String(child.pid) + "\n", "utf8");',
+      'fs.writeFileSync(path.join(".fixture", "async-worker.pid"), String(child.pid) + "\\n", "utf8");',
       'child.unref();',
       'console.log(JSON.stringify({ jobId, status: "building" }));'
     ),
