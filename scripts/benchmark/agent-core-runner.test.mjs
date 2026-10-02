@@ -8,11 +8,14 @@
 
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import { runRepetition } from "./agent-core-runner.mjs";
 import { collectObservability } from "./lib/observability.mjs";
 import { parseRepetitions, resolveSelection, SelectionError } from "./lib/selection.mjs";
 
@@ -137,4 +140,161 @@ test("CLI: --repetitions 0 exits non-zero with no run", async () => {
   );
   assert.notEqual(result.code, 0);
   assert.match(result.stderr, /positive integer/);
+});
+
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const caseSetFor = (id) => ({
+  caseSetVersion: "test-v0",
+  cases: [
+    {
+      id,
+      difficulty: "Beginner",
+      public: { prompt: "initial prompt" },
+      timing: { tSoftMs: null, tHardMs: null, status: "calibration_pending" },
+    },
+  ],
+});
+
+const runnerArgs = (overrides = {}) => ({
+  keepFixture: false,
+  cancelAfterMs: null,
+  maxWaitMs: 1000,
+  pollIntervalMs: 5,
+  ...overrides,
+});
+
+test("runRepetition excludes workspace/thread setup from benchmark elapsed time", async (t) => {
+  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-timer-"));
+  t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }));
+
+  const client = {
+    async createWorkspace() {
+      await delay(50);
+      return { id: "ws-1" };
+    },
+    async createThread() {
+      await delay(50);
+      return { id: "thread-1" };
+    },
+    async streamChatTurn(_input, { onEvent }) {
+      onEvent?.({
+        type: "data-execution-node",
+        data: { details: { runId: "run-1" } },
+      });
+      await delay(5);
+      return { runId: "run-1", finishReason: "stop", events: [] };
+    },
+    async getRun() {
+      return { status: "completed", terminalReason: "completed" };
+    },
+    async getMessages() {
+      return [];
+    },
+    async archiveThread() {},
+    async deleteWorkspace() {},
+    async approveRun() {},
+    async cancelRun() {},
+  };
+
+  const wallStarted = Date.now();
+  const result = await runRepetition({
+    args: runnerArgs(),
+    client,
+    caseSet: caseSetFor("beginner-02-locate-release-checklist"),
+    selectionEntry: {
+      id: "beginner-02-locate-release-checklist",
+      fixture: "beginner-workspace-v0.1",
+      executionMode: "canonical",
+    },
+    outputRoot,
+    repetitionIndex: 1,
+  });
+  const wallElapsedMs = Date.now() - wallStarted;
+  const benchmarkElapsedMs = result.executorFacts.elapsed.elapsedMs;
+
+  assert.ok(wallElapsedMs >= 90, `expected setup delay in wall time, got ${wallElapsedMs}ms`);
+  assert.ok(
+    wallElapsedMs - benchmarkElapsedMs >= 80,
+    `setup leaked into benchmark timer: wall=${wallElapsedMs}ms benchmark=${benchmarkElapsedMs}ms`,
+  );
+});
+
+test("waiting_user follow-up stays non-blocking so cancel control remains live", async (t) => {
+  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-followup-"));
+  t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }));
+
+  let streamCount = 0;
+  let cancelled = false;
+  const cancelledRunIds = [];
+
+  const client = {
+    async createWorkspace() {
+      return { id: "ws-2" };
+    },
+    async createThread() {
+      return { id: "thread-2" };
+    },
+    async streamChatTurn({ signal }, { onEvent }) {
+      streamCount += 1;
+      const runId = streamCount === 1 ? "run-1" : "run-2";
+      onEvent?.({
+        type: "data-execution-node",
+        data: { details: { runId } },
+      });
+
+      if (streamCount === 1) {
+        return { runId, finishReason: null, events: [] };
+      }
+
+      return new Promise((resolve, reject) => {
+        const abort = () => reject(signal?.reason ?? new Error("aborted"));
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+      });
+    },
+    async getRun(runId) {
+      if (runId === "run-1") return { status: "waiting_user" };
+      return {
+        status: cancelled ? "cancelled" : "running",
+        terminalReason: cancelled ? "cancelled" : null,
+      };
+    },
+    async cancelRun(runId) {
+      cancelled = true;
+      cancelledRunIds.push(runId);
+      return { status: "cancelled", terminalReason: "cancelled" };
+    },
+    async getMessages() {
+      return [];
+    },
+    async archiveThread() {},
+    async deleteWorkspace() {},
+    async approveRun() {},
+  };
+
+  const wallStarted = Date.now();
+  const result = await runRepetition({
+    args: runnerArgs({ cancelAfterMs: 30 }),
+    client,
+    caseSet: caseSetFor("beginner-08-contextual-config-follow-up"),
+    selectionEntry: {
+      id: "beginner-08-contextual-config-follow-up",
+      fixture: "beginner-workspace-v0.1",
+      executionMode: "canonical",
+      turns: ["initial prompt", "scripted follow-up"],
+    },
+    outputRoot,
+    repetitionIndex: 1,
+  });
+  const wallElapsedMs = Date.now() - wallStarted;
+
+  assert.deepEqual(cancelledRunIds, ["run-2"]);
+  assert.equal(result.executorFacts.terminal.status, "cancelled");
+  assert.equal(result.executorFacts.timing.cancelRequested, true);
+  assert.ok(
+    wallElapsedMs < 500,
+    `follow-up stream blocked cutoff monitoring for ${wallElapsedMs}ms`,
+  );
 });
