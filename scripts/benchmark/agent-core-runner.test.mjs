@@ -17,7 +17,7 @@ import { promisify } from "node:util";
 
 import { runRepetition } from "./agent-core-runner.mjs";
 import { createClient } from "./lib/http.mjs";
-import { listFixtures, materializeFixture, resolveFixture, workspaceManifest } from "./lib/fixtures.mjs";
+import { cleanupFixture, listFixtures, materializeFixture, resolveFixture, workspaceManifest } from "./lib/fixtures.mjs";
 import { collectObservability } from "./lib/observability.mjs";
 import { parseRepetitions, resolveSelection, SelectionError } from "./lib/selection.mjs";
 
@@ -578,4 +578,27 @@ test("selection validates initialPrompt and accepts B08 completed follow-up shap
       { knownCaseIds: ["x"] },
     ),
   );
+});
+
+
+test("adv05 cleanup hook terminates a live fixture worker", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-adv05-cleanup-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const workspace = path.join(root, "workspace");
+  const spec = materializeFixture({ fixtureId: "adv05-v1", destDir: workspace, externalDir: path.join(root, "external") });
+
+  await execFileAsync(process.execPath, ["scripts/start-async-build.mjs"], { cwd: workspace });
+  const pid = Number(fs.readFileSync(path.join(workspace, ".fixture", "async-worker.pid"), "utf8").trim());
+  assert.ok(Number.isInteger(pid) && pid > 0);
+  cleanupFixture(spec, { destDir: workspace, externalDir: path.join(root, "external") });
+
+  await delay(50);
+  let alive = true;
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if (error?.code === "ESRCH") alive = false;
+    else throw error;
+  }
+  assert.equal(alive, false);
 });
