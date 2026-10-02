@@ -73,6 +73,7 @@
     "smoke:terminal-runtime": "pnpm prepare:terminal-runtime && pnpm internal:build:server && node scripts/smoke-terminal-runtime.mjs --quick",
     "smoke:terminal-runtime:staged": "pnpm prepare:terminal-runtime && pnpm internal:build:server && node scripts/smoke-terminal-runtime.mjs --full",
     "smoke:pi-skill-agent": "pnpm --filter @ui-chat-mira/server smoke:pi-skill-agent",
+    "benchmark:agent-core": "node scripts/benchmark/agent-core-runner.mjs",
     "prepare:piper-runtime": "node scripts/prepare-piper-runtime.mjs",
     "prepare:vivliostyle-runtime": "node scripts/prepare-vivliostyle-runtime.mjs",
     "prepare:local-model-packs": "node scripts/prepare-local-model-packs.mjs",

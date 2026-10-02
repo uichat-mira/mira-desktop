@@ -1,0 +1,32 @@
+{
+  "note": "Runner selection for the #221 Intel macOS reference dry-run. Case prompts come from the frozen/RC case-set manifest (docs/development/agent-core-benchmark-v0.1-case-set-rc1.json); this file only decides which cases to drive, which fixture each case needs, and how the executor applies mechanical approval control. It is NOT the #223 Recorder manifest.",
+  "caseSetVersion": "core-v0.1-rc1",
+  "repetitions": 1,
+  "cases": [
+    {
+      "id": "beginner-02-locate-release-checklist",
+      "fixture": "beginner-workspace-v0.1",
+      "executionMode": "adapted",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "beginner-07-rename-one-file",
+      "fixture": "beginner-workspace-v0.1",
+      "executionMode": "adapted",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-health-status-call-chain",
+      "fixture": "i08-health-call-chain-v1",
+      "executionMode": "adapted",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-08",
+      "fixture": "adv08-workspace-boundary-v1",
+      "executionMode": "adapted",
+      "approvalPolicy": "auto-approve",
+      "classificationRationale": "Driven through the product HTTP control surface on Intel macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline. Advanced governance judgement remains Mira's responsibility; the executor only approves the exact frozen invocation."
+    }
+  ]
+}
