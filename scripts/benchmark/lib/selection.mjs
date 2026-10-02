@@ -106,6 +106,44 @@ export const resolveSelection = (selection, overrides, context = {}) => {
         `case "${entry.id}" approvalPolicy must be "auto-approve"; deny/reject is not supported by the current #221 runner control surface`,
       );
     }
+
+    if (entry.turns !== undefined && entry.followUps !== undefined) {
+      throw new SelectionError(
+        `case "${entry.id}" must not declare both legacy turns and followUps`,
+      );
+    }
+
+    if (entry.turns !== undefined) {
+      if (
+        !Array.isArray(entry.turns) ||
+        entry.turns.length === 0 ||
+        entry.turns.some((turn) => typeof turn !== "string" || !turn.trim())
+      ) {
+        throw new SelectionError(
+          `case "${entry.id}" turns must be a non-empty array of non-empty strings`,
+        );
+      }
+    }
+
+    if (entry.followUps !== undefined) {
+      if (!Array.isArray(entry.followUps) || entry.followUps.length === 0) {
+        throw new SelectionError(
+          `case "${entry.id}" followUps must be a non-empty array`,
+        );
+      }
+      for (const followUp of entry.followUps) {
+        if (
+          !followUp ||
+          !["completed", "waiting_user"].includes(followUp.when) ||
+          typeof followUp.text !== "string" ||
+          !followUp.text.trim()
+        ) {
+          throw new SelectionError(
+            `case "${entry.id}" followUps require { when: "completed" | "waiting_user", text: non-empty string }`,
+          );
+        }
+      }
+    }
   }
 
   return { ...selection, cases, repetitions };
