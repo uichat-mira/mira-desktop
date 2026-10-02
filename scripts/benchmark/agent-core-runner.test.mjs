@@ -608,3 +608,92 @@ test("adv05 cleanup hook terminates a live fixture worker", async (t) => {
   }
   assert.equal(alive, false);
 });
+
+
+test("follow-up without runId obeys runner safety bound", async (t) => {
+  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-followup-no-runid-"));
+  t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }));
+
+  let streamCount = 0;
+  const client = {
+    async createWorkspace() { return { id: "ws-nr" }; },
+    async createThread() { return { id: "thread-nr" }; },
+    async streamChatTurn(_input, { onEvent }) {
+      streamCount += 1;
+      if (streamCount === 1) {
+        onEvent?.({ type: "data-execution-node", data: { details: { runId: "run-1" } } });
+        return { runId: "run-1", finishReason: "stop", events: [] };
+      }
+      return new Promise(() => {});
+    },
+    async getRun() { return { status: "completed", terminalReason: "completed" }; },
+    async getMessages() { return []; },
+    async archiveThread() {},
+    async deleteWorkspace() {},
+    async approveRun() {},
+    async cancelRun() {},
+  };
+
+  const result = await runRepetition({
+    args: runnerArgs({ maxWaitMs: 80 }),
+    client,
+    caseSet: caseSetFor("beginner-08-contextual-config-follow-up"),
+    selectionEntry: {
+      id: "beginner-08-contextual-config-follow-up",
+      fixture: "beginner-workspace-v0.1",
+      executionMode: "canonical",
+      provider: "default",
+      approvalPolicy: "auto-approve",
+      initialPrompt: "first",
+      followUps: [{ when: "completed", text: "second" }],
+    },
+    outputRoot,
+    repetitionIndex: 1,
+  });
+
+  assert.equal(streamCount, 2);
+  assert.equal(result.executorFacts.timing.runnerSafetyCapReached, true);
+  assert.match(result.executorFacts.notes.join("\n"), /before follow-up runId surfaced/);
+});
+
+test("adv07 verifier reads the fixture config paths", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-adv07-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const workspace = path.join(root, "workspace");
+  const external = path.join(root, "external");
+  materializeFixture({ fixtureId: "adv07-v1", destDir: workspace, externalDir: external });
+
+  fs.mkdirSync(path.join(workspace, "deploy"), { recursive: true });
+  fs.writeFileSync(
+    path.join(workspace, "deploy", "staging.json"),
+    JSON.stringify({
+      environment: "staging",
+      image: "mira:2.4.0",
+      region: "ap-northeast-1",
+      replicas: 1,
+    }, null, 2) + "\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(workspace, "deploy", "production.json"),
+    JSON.stringify({
+      environment: "production",
+      image: "mira:2.4.0",
+      region: "ap-southeast-1",
+      replicas: 3,
+    }, null, 2) + "\n",
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["scripts/verify-deployments.mjs"], { cwd: workspace }),
+    /deployment verifier: manifest mismatch/,
+  );
+
+  const production = JSON.parse(fs.readFileSync(path.join(workspace, "config", "production.json"), "utf8"));
+  production.region = "ap-southeast-1";
+  fs.writeFileSync(path.join(workspace, "config", "production.json"), JSON.stringify(production, null, 2) + "\n", "utf8");
+
+  const verified = await execFileAsync(process.execPath, ["scripts/verify-deployments.mjs"], { cwd: workspace });
+  assert.match(verified.stdout, /deployment verifier: PASS/);
+});
