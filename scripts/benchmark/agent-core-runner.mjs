@@ -292,7 +292,7 @@ const runPreflight = async ({ client, args, caseSet, selection }) => {
   return report;
 };
 
-const runRepetition = async ({
+export const runRepetition = async ({
   args,
   client,
   caseSet,
@@ -333,9 +333,10 @@ const runRepetition = async ({
   let workspace = null;
   let thread = null;
 
-  // --- monotonic timer starts immediately before submitting the case to Mira ---
-  const monotonicStartNs = process.hrtime.bigint();
-  const startedAtIso = nowIso();
+  // The benchmark timer is armed only after workspace/thread setup completes.
+  // It starts immediately before the first case submission to Mira.
+  let monotonicStartNs = null;
+  let startedAtIso = null;
 
   const sseFrames = [];
   let runId = null;
@@ -366,14 +367,33 @@ const runRepetition = async ({
       },
     );
 
-  // Await a full turn (used for scripted follow-up replies).
-  const submitTurn = async (text) => {
-    const result = await streamMessage(text);
-    finishReason = result.finishReason;
-    return result;
+  // Track every SSE turn in the background so terminal polling and cutoff
+  // control remain live while a follow-up response is still streaming.
+  const trackedTurns = [];
+  const startTrackedTurn = (text) => {
+    const tracked = { runId: null, settled: false, error: null, promise: null };
+    tracked.promise = streamMessage(text, (id) => {
+      tracked.runId = id;
+    })
+      .then((result) => {
+        tracked.settled = true;
+        finishReason = result.finishReason;
+        if (result.runId) tracked.runId = result.runId;
+        return result;
+      })
+      .catch((error) => {
+        tracked.settled = true;
+        tracked.error = error;
+        return null;
+      });
+    trackedTurns.push(tracked);
+    return tracked;
   };
 
-  const elapsedMs = () => Number((process.hrtime.bigint() - monotonicStartNs) / 1_000_000n);
+  const elapsedMs = () => {
+    if (monotonicStartNs === null) throw new Error("benchmark timer has not started");
+    return Number((process.hrtime.bigint() - monotonicStartNs) / 1_000_000n);
+  };
 
   try {
     workspace = await client.createWorkspace({
@@ -386,21 +406,14 @@ const runRepetition = async ({
       agentEnabled: true,
     });
 
+    // Contract: timing starts immediately before Mira receives the case, not
+    // while the runner is still preparing backend workspace/thread state.
+    monotonicStartNs = process.hrtime.bigint();
+    startedAtIso = nowIso();
+
     // Start the first turn in the background so the executor can poll terminal
     // state and apply timeout/cancel control while the run is still executing.
-    const firstTurn = { runId: null, settled: false, error: null };
-    const firstTurnPromise = streamMessage(scriptedTurns[0], (id) => {
-      firstTurn.runId = id;
-    })
-      .then((result) => {
-        firstTurn.settled = true;
-        finishReason = result.finishReason;
-        if (result.runId) firstTurn.runId = result.runId;
-      })
-      .catch((error) => {
-        firstTurn.settled = true;
-        firstTurn.error = error;
-      });
+    const firstTurn = startTrackedTurn(scriptedTurns[0]);
 
     const runIdDeadline = Date.now() + 120000;
     while (!firstTurn.runId && !firstTurn.settled && Date.now() < runIdDeadline) {
@@ -410,11 +423,24 @@ const runRepetition = async ({
 
     if (!runId) {
       notes.push("no runId surfaced on the stream; run control/polling unavailable");
-      await firstTurnPromise;
+      await firstTurn.promise;
     } else {
       // --- terminal-state polling ---
       let nextScriptedTurn = 1;
+      let activeFollowUp = null;
       while (true) {
+        if (activeFollowUp?.runId && activeFollowUp.runId !== runId) {
+          runId = activeFollowUp.runId;
+        }
+        if (activeFollowUp?.settled) {
+          const settledFollowUp = activeFollowUp;
+          activeFollowUp = null;
+          if (settledFollowUp.runId) runId = settledFollowUp.runId;
+          if (settledFollowUp.error && !clientAbort.signal.aborted) {
+            throw settledFollowUp.error;
+          }
+        }
+
         const run = await client.getRun(runId);
 
         if (TERMINAL_STATUSES.has(run.status)) {
@@ -451,16 +477,19 @@ const runRepetition = async ({
         }
 
         if (run.status === "waiting_user") {
-          const reply = scriptedTurns[nextScriptedTurn];
-          if (reply) {
-            nextScriptedTurn += 1;
-            interventions.push({ at: nowIso(), type: "user_reply", text: reply });
-            const turn = await submitTurn(reply);
-            if (turn.runId) runId = turn.runId;
-            continue;
+          if (!activeFollowUp) {
+            const reply = scriptedTurns[nextScriptedTurn];
+            if (reply) {
+              nextScriptedTurn += 1;
+              interventions.push({ at: nowIso(), type: "user_reply", text: reply });
+              activeFollowUp = startTrackedTurn(reply);
+              continue;
+            }
+            notes.push("run paused at waiting_user with no scripted follow-up turn");
+            break;
           }
-          notes.push("run paused at waiting_user with no scripted follow-up turn");
-          break;
+          // A scripted follow-up is already streaming. Do not await it here:
+          // fall through so T_soft/T_hard/cancel/safety checks keep running.
         }
 
         const waited = elapsedMs();
@@ -500,7 +529,7 @@ const runRepetition = async ({
       }
 
       clientAbort.abort();
-      await firstTurnPromise.catch(() => {});
+      await Promise.all(trackedTurns.map((turn) => turn.promise.catch(() => null)));
       terminalRun = terminalRun ?? (await client.getRun(runId));
     }
 
@@ -749,11 +778,16 @@ const main = async () => {
 
 const startedStamp = () => new Date().toISOString().replace(/[:.]/g, "-");
 
-main().catch((error) => {
-  if (error?.name === "SelectionError") {
-    process.stderr.write(`selection error: ${error.message}\n`);
-  } else {
-    process.stderr.write(`${error?.stack ?? error}\n`);
-  }
-  process.exitCode = 1;
-});
+const runCli = () =>
+  main().catch((error) => {
+    if (error?.name === "SelectionError") {
+      process.stderr.write(`selection error: ${error.message}\n`);
+    } else {
+      process.stderr.write(`${error?.stack ?? error}\n`);
+    }
+    process.exitCode = 1;
+  });
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runCli();
+}
