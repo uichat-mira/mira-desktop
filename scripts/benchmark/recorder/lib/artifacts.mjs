@@ -13,7 +13,7 @@
 
 import { deriveDeterministic } from "./derive.mjs";
 import { toPublicResult, assertNoSecrets } from "./sanitize.mjs";
-import { frozenCaseContract } from "./case-spec.mjs";
+import { frozenCaseIdentity } from "./case-spec.mjs";
 import { TRAJECTORY_SOURCES, normalizeTrajectory } from "./trajectory.mjs";
 
 const JUDGE_SCHEMA_VERSION = "mira-agent-core-benchmark-judge-input/0.1";
@@ -157,7 +157,7 @@ export const buildResult = ({ deterministic }) => ({
   observabilityGaps: deterministic.observabilityGaps,
 });
 
-export const buildJudgeInput = ({ bundle, identity, caseEntry, deterministic, execution, result }) => {
+export const buildJudgeInput = ({ bundle, identity, caseEntry, deterministic, execution, result, caseDocument }) => {
   const finalAnswer =
     typeof bundle.assistantTranscript === "string" && bundle.assistantTranscript.length > 0
       ? bundle.assistantTranscript
@@ -181,23 +181,58 @@ export const buildJudgeInput = ({ bundle, identity, caseEntry, deterministic, ex
     notesExcluded: "executor free-form notes are withheld from the Judge (advocacy risk, not evidence)",
   };
 
+  // Judge-owned contract, embedded so a fresh blank Judge needs NO repository,
+  // GitHub, source markdown, running Mira, or executor context. Only criteria
+  // whose `scorer` is `judge` are handed out for judging; deterministic
+  // criteria stay in `case.json` as frozen context and must not be re-judged.
+  const successCriteria = Array.isArray(caseDocument?.successCriteria) ? caseDocument.successCriteria : [];
+  const judgeCriteria = successCriteria
+    .filter((criterion) => criterion.scorer === "judge")
+    .map((criterion) => ({
+      id: criterion.id,
+      description: criterion.description ?? null,
+      weight: criterion.weight ?? null,
+      scorer: "judge",
+      observable: criterion.observable ?? null,
+    }));
+  const questions = (Array.isArray(caseDocument?.judge?.semanticQuestions)
+    ? caseDocument.judge.semanticQuestions
+    : []
+  ).map((question) => ({
+    id: question.id,
+    criterionId: question.criterionId,
+    question: question.question ?? null,
+  }));
+
+  const judgeCriterionIds = new Set(judgeCriteria.map((criterion) => criterion.id));
+  const deterministicCriteria = successCriteria
+    .filter((criterion) => criterion.scorer !== "judge")
+    .map((criterion) => ({ id: criterion.id, weight: criterion.weight ?? null, scorer: criterion.scorer ?? null }));
+
   return {
     schemaVersion: JUDGE_SCHEMA_VERSION,
     instructions:
-      "You are judging one frozen Mira Agent Core Benchmark repetition. Use only the frozen benchmark contract, the frozen case spec, the run/execution manifest, the raw trajectory evidence, the deterministic measurements and Mira's final answer below. Do NOT reinterpret or override deterministic facts, timing, terminal state or side effects. For each semantic criterion return only pass | fail with the smallest useful evidence refs. Executor self-assessment, advocacy and hidden reasoning are deliberately excluded.",
+      "You are judging one frozen Mira Agent Core Benchmark repetition. Everything you need is inside this file plus trajectory.jsonl: the frozen case contract, the semantic criteria, the semantic questions, the run/execution manifest, the raw trajectory evidence, the deterministic measurements and Mira's final answer. Do NOT reinterpret or override deterministic facts, timing, terminal state or side effects. Answer ONLY the semantic questions listed under semanticCriteria.questions, each targeting one judge-scored criterion, with pass | fail and the smallest useful evidence refs. Executor self-assessment, advocacy and hidden reasoning are deliberately excluded.",
     benchmarkContract: {
       benchmarkVersion: identity.benchmarkVersion,
       contractPath: identity.contractPath,
       contractBlobSha: identity.contractBlobSha,
       caseSetVersion: identity.caseSetVersion,
     },
-    case: frozenCaseContract(caseEntry, identity),
+    case: {
+      identity: frozenCaseIdentity(caseEntry, identity),
+      // Frozen case contract extracted from the exact pinned Git blob
+      // (`source.path` + `source.blobSha`); equals cases/<id>/case.json.
+      contract: caseDocument,
+    },
     semanticCriteria: {
-      available: false,
-      reason:
-        "the #223 Recorder does not ingest case semantic questions/criteria; they are owned by the frozen case source pack",
-      criteriaSource: caseEntry.source?.path ?? null,
-      criteriaBlobSha: caseEntry.source?.blobSha ?? null,
+      // `available: true` always means "the package is complete". An empty
+      // `criteria`/`questions` list means this case has NO semantic Judge work
+      // (fully deterministic), which is different from an incomplete package.
+      available: true,
+      criteria: judgeCriteria,
+      questions,
+      judgeCriterionIds: [...judgeCriterionIds],
       expectedOutputShape: {
         semanticResults: [
           {
@@ -208,6 +243,9 @@ export const buildJudgeInput = ({ bundle, identity, caseEntry, deterministic, ex
           },
         ],
       },
+      deterministicCriteriaNotJudgeable: deterministicCriteria,
+      judgeScopeNote:
+        "the Judge may only score the criteria listed in `criteria` (scorer: judge). Deterministic criteria are frozen context and must NOT be re-judged.",
     },
     executionManifest,
     deterministicMeasurements: result.deterministic,

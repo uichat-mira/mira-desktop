@@ -99,6 +99,7 @@
     "jimp": "^1.6.1",
     "onnxruntime-web": "^1.27.0",
     "png2icons": "^2.0.1",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "yaml": "^2.9.0"
   }
 }

@@ -17,12 +17,14 @@
 //     summary.json
 //     report.md
 //     public-summary.json
-//     raw-snapshot.json
-//     cases/<case-id>/repetitions/<n>/
-//       execution.json
-//       trajectory.jsonl
-//       result.json
-//       judge-input.json
+//     raw/<case>-rep-<n>.snapshot.json
+//     cases/<case-id>/
+//       case.json                       # frozen case contract (from pinned blob)
+//       repetitions/<n>/
+//         execution.json
+//         trajectory.jsonl
+//         result.json
+//         judge-input.json
 
 import fs from "node:fs";
 import path from "node:path";
@@ -38,6 +40,7 @@ import {
   serializeTrajectoryJsonl,
 } from "./lib/artifacts.mjs";
 import { loadBenchmarkIdentity, findCase } from "./lib/case-spec.mjs";
+import { resolveFrozenCase } from "./lib/frozen-source.mjs";
 import {
   buildReportMarkdown,
   buildRunManifest,
@@ -49,6 +52,37 @@ export const RECORDER_VERSION = "agent-core-recorder/0.1";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+
+/** Duplicate (caseId, repetition) is data destruction — refuse to write. */
+export class DuplicateRepetitionError extends Error {
+  constructor(duplicates) {
+    super(
+      `duplicate (caseId, repetition) records would overwrite each other: ${duplicates
+        .map((d) => `${d.caseId}#${d.repetition} (x${d.count})`)
+        .join(", ")}`,
+    );
+    this.name = "DuplicateRepetitionError";
+    this.duplicates = duplicates;
+  }
+}
+
+/**
+ * Fail fast, BEFORE deleting the output dir or writing any artifact, if two
+ * input bundles resolve to the same (caseId, repetition). Otherwise the second
+ * would silently overwrite the first while manifest/summary still counted two.
+ */
+export const assertUniqueRepetitions = (records) => {
+  const seen = new Map();
+  for (const record of records) {
+    const key = `${record.caseId}#${record.repetition}`;
+    const entry = seen.get(key) ?? { caseId: record.caseId, repetition: record.repetition, count: 0 };
+    entry.count += 1;
+    seen.set(key, entry);
+  }
+  const duplicates = [...seen.values()].filter((entry) => entry.count > 1);
+  if (duplicates.length) throw new DuplicateRepetitionError(duplicates);
+  return duplicates;
+};
 
 const writeJson = (file, value) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -129,7 +163,7 @@ const comparableFor = (classification, selection) => {
   return true;
 };
 
-export const recordOne = ({ bundle, identity, selection, runManifest, strictMissing }) => {
+export const recordOne = ({ bundle, identity, selection, runManifest, strictMissing, repoRoot = REPO_ROOT }) => {
   const facts = bundle.executorFacts ?? {};
   const caseId = facts.caseId;
   if (!caseId) {
@@ -142,6 +176,11 @@ export const recordOne = ({ bundle, identity, selection, runManifest, strictMiss
   const comparable = comparableFor(classification, selectionEntry);
 
   const deterministic = deriveDeterministic(bundle);
+
+  // Blocker 3/4: freeze the case contract from the EXACT pinned Git blob so the
+  // package is self-contained for a fresh blank Judge. Fails loudly on a
+  // missing/mismatched blob or an absent/duplicate case block.
+  const { caseDocument } = resolveFrozenCase({ repoRoot, caseEntry, identity });
 
   const corrections = {
     miraCommit: runManifest.miraCommit ?? facts.miraCommit ?? null,
@@ -161,7 +200,7 @@ export const recordOne = ({ bundle, identity, selection, runManifest, strictMiss
 
   const execution = buildExecution({ bundle, identity, caseEntry, correction: corrections, fixtures });
   const result = buildResult({ deterministic });
-  const judgeInput = buildJudgeInput({ bundle, identity, caseEntry, deterministic, execution, result });
+  const judgeInput = buildJudgeInput({ bundle, identity, caseEntry, deterministic, execution, result, caseDocument });
 
   const identityForProjection = {
     benchmarkVersion: identity.benchmarkVersion,
@@ -179,6 +218,7 @@ export const recordOne = ({ bundle, identity, selection, runManifest, strictMiss
     executionClassification: classification,
     comparable,
     deterministic,
+    caseDocument,
     execution,
     result,
     judgeInput,
@@ -226,6 +266,27 @@ const main = async () => {
   }
   if (!records.length) throw new Error("no recordable repetitions were produced");
 
+  // Blocker 2: refuse duplicates BEFORE destroying/writing output. A duplicate
+  // (caseId, repetition) would overwrite evidence while manifest/summary still
+  // counted both, i.e. a self-contradictory "successful" package.
+  assertUniqueRepetitions(records);
+
+  // Blocker 4: a case may have multiple repetitions, but they must all resolve
+  // to the SAME frozen case contract. A conflicting frozen contract is a hard
+  // failure, not something to silently pick.
+  const caseDocuments = new Map();
+  for (const record of records) {
+    const fingerprint = JSON.stringify(record.caseDocument);
+    const existing = caseDocuments.get(record.caseId);
+    if (!existing) {
+      caseDocuments.set(record.caseId, { document: record.caseDocument, fingerprint });
+    } else if (existing.fingerprint !== fingerprint) {
+      throw new Error(
+        `case "${record.caseId}" produced inconsistent frozen case contracts across repetitions; refusing to write`,
+      );
+    }
+  }
+
   fs.rmSync(args.out, { recursive: true, force: true });
   const publicResults = [];
 
@@ -236,6 +297,11 @@ const main = async () => {
     writeJson(path.join(repDir, "result.json"), record.result);
     writeJson(path.join(repDir, "judge-input.json"), record.judgeInput);
     publicResults.push({ ...record.publicResult, caseId: record.caseId, repetition: record.repetition });
+  }
+
+  // Blocker 4: one case.json per case (shared by all its repetitions).
+  for (const [caseId, entry] of caseDocuments) {
+    writeJson(path.join(args.out, "cases", caseId, "case.json"), entry.document);
   }
 
   // run-level raw snapshots (for offline replay) live under raw/

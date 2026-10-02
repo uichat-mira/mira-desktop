@@ -39,13 +39,14 @@ export const findCase = (caseSet, caseId) => {
 };
 
 /**
- * The frozen case contract handed to the Judge. Only fields the case-set
- * genuinely records are exposed. The RC manifest carries public title/difficulty/
- * prompt/intent + scorer ownership + timing; canonical scoring criteria and
- * hard-fail detail live in the frozen case source packs (referenced by blob SHA)
- * and are intentionally NOT reconstructed here to avoid inventing criteria.
+ * Frozen case identity handed to a fresh blank Judge.
+ *
+ * Criteria/hard-fail detail is NOT sourced from here: it is extracted from the
+ * exact pinned Git blob by `frozen-source.mjs` and embedded in `case.json` /
+ * `judge-input.json`, so the Judge needs no repository access. This identity
+ * document only carries the RC-manifest-level facts.
  */
-export const frozenCaseContract = (caseEntry, identity) => ({
+export const frozenCaseIdentity = (caseEntry, identity) => ({
   caseId: caseEntry.id,
   title: caseEntry.title ?? null,
   difficulty: caseEntry.difficulty ?? null,
@@ -57,9 +58,4 @@ export const frozenCaseContract = (caseEntry, identity) => ({
     prompt: caseEntry.public?.prompt ?? null,
     intentSummary: caseEntry.public?.intentSummary ?? null,
   },
-  // Criteria/hard-fail detail is owned by the referenced frozen source pack.
-  criteriaSource: caseEntry.source?.path ?? null,
-  criteriaBlobSha: caseEntry.source?.blobSha ?? null,
-  criteriaNote:
-    "canonical scoring criteria and hard-fail definitions live in the frozen case source pack identified by criteriaBlobSha; the Recorder does not reconstruct or invent them",
 });

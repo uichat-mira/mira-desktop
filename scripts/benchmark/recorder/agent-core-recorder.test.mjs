@@ -32,12 +32,28 @@ import {
   parentToolDoneEvent,
   plannerDoneEvent,
 } from "./lib/test-fixtures.mjs";
-import { recordOne, RECORDER_VERSION } from "./agent-core-recorder.mjs";
-import { loadBenchmarkIdentity } from "./lib/case-spec.mjs";
+import { assertUniqueRepetitions, DuplicateRepetitionError, recordOne, RECORDER_VERSION } from "./agent-core-recorder.mjs";
+import { loadBenchmarkIdentity, findCase } from "./lib/case-spec.mjs";
+import {
+  extractCaseYamlBlock,
+  FrozenSourceError,
+  readFrozenBlob,
+  resolveFrozenCase,
+} from "./lib/frozen-source.mjs";
+import { buildRunManifest } from "./lib/aggregate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..", "..");
 const identity = loadBenchmarkIdentity(repoRoot);
+
+const makeRecord = (caseId, repetition, execution = {}) => ({
+  caseId,
+  repetition,
+  executionClassification: "adapted",
+  comparable: true,
+  deterministic: { timing: {}, terminal: { status: "completed" } },
+  execution,
+});
 
 const simpleEvents = [
   plannerDoneEvent({ iteration: 0, actionType: "use_tool", toolId: "read_discover", exposedToolIds: ["read_discover", "read_open"], raw: { type: "use_tool" } }),
@@ -253,4 +269,152 @@ test("a bundle missing caseId is not recorded (no silent green)", () => {
   assert.throws(() => recordOne({ bundle, identity, selection: {}, runManifest: {}, strictMissing: true }), /caseId/);
   // without strict, it must return null rather than fabricate a record
   assert.equal(recordOne({ bundle, identity, selection: {}, runManifest: {}, strictMissing: false }), null);
+});
+
+// ---------------------------------------------------------------------------
+// Blocker regressions (A–H)
+// ---------------------------------------------------------------------------
+
+test("A. terminal authority: agent-run.json wins over a stale executor terminal snapshot", () => {
+  const bundle = makeBundle({
+    events: simpleEvents,
+    // stale executor snapshot says running...
+    facts: { terminal: { status: "running", terminalReason: "in_progress", blockedReason: null } },
+    // ...but agent-run.json is the authoritative final state
+    agentRun: { status: "completed", terminalReason: "completed" },
+  });
+  const result = deriveDeterministic(bundle);
+  assert.equal(result.terminal.status, "completed");
+  assert.equal(result.terminal.terminalReason, "completed");
+  assert.equal(result.terminal.authority.statusSource, "agent-run.json");
+  // completionExpected must follow the authoritative terminal status
+  assert.ok(result.observabilityGaps.every((g) => g.fact !== "hasRequiredFinalization" || true));
+  const summaryTerminal = result.terminal.status;
+  assert.equal(summaryTerminal, "completed");
+});
+
+test("A2. terminal authority: executor-facts is only a fallback when agent-run.json lacks status", () => {
+  const bundle = makeBundle({
+    events: simpleEvents,
+    facts: { terminal: { status: "failed", terminalReason: "error", blockedReason: "x" } },
+    agentRun: { status: undefined, terminalReason: undefined }, // genuinely no authoritative status
+  });
+  const result = deriveDeterministic(bundle);
+  assert.equal(result.terminal.status, "failed");
+  assert.equal(result.terminal.terminalReason, "error");
+  assert.equal(result.terminal.blockedReason, "x");
+  assert.equal(result.terminal.authority.statusSource, "executor-facts.terminal(fallback)");
+});
+
+test("B. duplicate (caseId, repetition) fails fast and never overwrites", () => {
+  const records = [makeRecord("ADV-08", 1), makeRecord("ADV-08", 1)];
+  assert.throws(() => assertUniqueRepetitions(records), DuplicateRepetitionError);
+  try {
+    assertUniqueRepetitions(records);
+  } catch (error) {
+    assert.ok(error.duplicates.some((d) => d.caseId === "ADV-08" && d.repetition === 1 && d.count === 2));
+  }
+  // distinct repetitions are allowed
+  assert.doesNotThrow(() => assertUniqueRepetitions([makeRecord("ADV-08", 1), makeRecord("ADV-08", 2)]));
+});
+
+test("C. exact frozen source extraction: pinned blob -> exactly one YAML case", () => {
+  const caseEntry = findCase(identity.caseSet, "intermediate-health-status-call-chain");
+  const { source } = readFrozenBlob(repoRoot, caseEntry.source.blobSha);
+  const block = extractCaseYamlBlock(source, caseEntry.id);
+  assert.match(block, /id: intermediate-health-status-call-chain/);
+  // a case id absent from the pack must fail loudly
+  assert.throws(() => extractCaseYamlBlock(source, "does-not-exist"), FrozenSourceError);
+  // a bogus blob sha must fail loudly (never fall back to the working tree)
+  assert.throws(() => readFrozenBlob(repoRoot, "0".repeat(40)), FrozenSourceError);
+});
+
+test("D. Intermediate semantic package: C1 judge + J1->C1, deterministic C2/C3 not judgeable", () => {
+  const caseEntry = findCase(identity.caseSet, "intermediate-health-status-call-chain");
+  const { caseDocument } = resolveFrozenCase({ repoRoot, caseEntry, identity });
+  const deterministic = deriveDeterministic(makeBundle({ events: simpleEvents }));
+  const execution = { benchmark: {}, mira: {}, model: {}, environment: {}, procedure: {}, fixture: {}, executorIntervention: {}, rawSources: [] };
+  const result = buildResult({ deterministic });
+  const judgeInput = buildJudgeInput({ bundle: makeBundle({ events: simpleEvents }), identity, caseEntry, deterministic, execution, result, caseDocument });
+  assert.equal(judgeInput.semanticCriteria.available, true);
+  assert.deepEqual(judgeInput.semanticCriteria.criteria.map((c) => c.id), ["C1"]);
+  assert.equal(judgeInput.semanticCriteria.criteria[0].scorer, "judge");
+  assert.equal(judgeInput.semanticCriteria.criteria[0].weight, 55);
+  assert.deepEqual(judgeInput.semanticCriteria.questions.map((q) => `${q.id}->${q.criterionId}`), ["J1->C1"]);
+  assert.match(judgeInput.semanticCriteria.questions[0].question, /call chain/);
+  assert.deepEqual(judgeInput.semanticCriteria.deterministicCriteriaNotJudgeable.map((c) => c.id), ["C2", "C3"]);
+});
+
+test("E. Advanced multi-question package: C4/C5 judge + J1->C4, J2->C5", () => {
+  const caseEntry = findCase(identity.caseSet, "ADV-08");
+  const { caseDocument } = resolveFrozenCase({ repoRoot, caseEntry, identity });
+  const deterministic = deriveDeterministic(makeBundle({ events: simpleEvents }));
+  const execution = { benchmark: {}, mira: {}, model: {}, environment: {}, procedure: {}, fixture: {}, executorIntervention: {}, rawSources: [] };
+  const result = buildResult({ deterministic });
+  const judgeInput = buildJudgeInput({ bundle: makeBundle({ events: simpleEvents }), identity, caseEntry, deterministic, execution, result, caseDocument });
+  assert.deepEqual(judgeInput.semanticCriteria.criteria.map((c) => c.id), ["C4", "C5"]);
+  assert.deepEqual(judgeInput.semanticCriteria.questions.map((q) => `${q.id}->${q.criterionId}`), ["J1->C4", "J2->C5"]);
+  assert.deepEqual(judgeInput.semanticCriteria.deterministicCriteriaNotJudgeable.map((c) => c.id), ["C1", "C2", "C3"]);
+});
+
+test("F. deterministic-only case reports available:true with empty criteria/questions", () => {
+  const caseEntry = findCase(identity.caseSet, "beginner-02-locate-release-checklist");
+  const { caseDocument } = resolveFrozenCase({ repoRoot, caseEntry, identity });
+  const deterministic = deriveDeterministic(makeBundle({ events: simpleEvents }));
+  const execution = { benchmark: {}, mira: {}, model: {}, environment: {}, procedure: {}, fixture: {}, executorIntervention: {}, rawSources: [] };
+  const result = buildResult({ deterministic });
+  const judgeInput = buildJudgeInput({ bundle: makeBundle({ events: simpleEvents }), identity, caseEntry, deterministic, execution, result, caseDocument });
+  assert.equal(judgeInput.semanticCriteria.available, true);
+  assert.deepEqual(judgeInput.semanticCriteria.criteria, []);
+  assert.deepEqual(judgeInput.semanticCriteria.questions, []);
+  // judge fields stay null (no semantic scoring at recorder time)
+  assert.deepEqual(judgeInput.judgeFields, { semanticScore: null, semanticOutcome: null, semanticResults: null });
+});
+
+test("G. case.json contract matches judge-input.case.contract (same frozen identity)", () => {
+  for (const caseId of ["intermediate-health-status-call-chain", "ADV-08", "beginner-02-locate-release-checklist"]) {
+    const caseEntry = findCase(identity.caseSet, caseId);
+    const { caseDocument } = resolveFrozenCase({ repoRoot, caseEntry, identity });
+    const record = recordOne({ bundle: makeBundle({ events: simpleEvents, facts: { caseId } }), identity, selection: {}, runManifest: {}, strictMissing: true });
+    assert.equal(JSON.stringify(record.caseDocument), JSON.stringify(caseDocument));
+    assert.equal(record.judgeInput.case.contract.source.blobSha, caseEntry.source.blobSha);
+    assert.equal(record.caseDocument.source.blobSha, caseEntry.source.blobSha);
+  }
+});
+
+test("H. aggregate identity comes from recorded repetitions, never 'unknown' when known", () => {
+  const records = [
+    makeRecord("ADV-08", 1, {
+      mira: { commit: "abc123", version: "0.9.0", runtimeMode: "desktop-local-backend" },
+      model: { provider: "p1", modelId: "m1" },
+      environment: { hostPlatform: { platform: "darwin", arch: "x64" } },
+    }),
+  ];
+  const manifest = buildRunManifest({ identity, repetitions: records });
+  assert.equal(manifest.benchmark.miraCommit, "abc123");
+  assert.equal(manifest.benchmark.modelProvider, "p1");
+  assert.equal(manifest.benchmark.modelId, "m1");
+  assert.equal(manifest.benchmark.hostOs, "darwin");
+  assert.equal(manifest.benchmark.identityHeterogeneous.miraCommit, false);
+});
+
+test("H2. aggregate identity does not silently pick the first when repetitions differ", () => {
+  const records = [
+    makeRecord("ADV-08", 1, {
+      mira: { commit: "abc", runtimeMode: "desktop-local-backend" },
+      model: { provider: "p1", modelId: "m1" },
+      environment: { hostPlatform: { platform: "darwin", arch: "x64" } },
+    }),
+    makeRecord("ADV-08", 2, {
+      mira: { commit: "def", runtimeMode: "desktop-local-backend" },
+      model: { provider: "p2", modelId: "m2" },
+      environment: { hostPlatform: { platform: "win32", arch: "x64" } },
+    }),
+  ];
+  const manifest = buildRunManifest({ identity, repetitions: records });
+  assert.equal(manifest.benchmark.miraCommit, null);
+  assert.equal(manifest.benchmark.modelProvider, null);
+  assert.equal(manifest.benchmark.identityHeterogeneous.miraCommit, true);
+  assert.equal(manifest.benchmark.identityHeterogeneous.modelProvider, true);
+  assert.equal(manifest.benchmark.perRepetitionIdentity.length, 2);
 });

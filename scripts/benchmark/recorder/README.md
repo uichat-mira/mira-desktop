@@ -69,15 +69,59 @@ comes from `agent-run.json`. This is recorded in every `execution.json`.
   report.md                           # human-readable projection
   public-summary.json                 # sanitized machine-readable projection
   raw/<case>-rep-<n>.snapshot.json    # raw snapshot for offline replay
-  cases/<case-id>/repetitions/<n>/
-    execution.json                    # under what conditions this rep ran
-    trajectory.jsonl                  # verbatim ordered raw trajectory + refs
-    result.json                       # raw | deterministic | judge(null)
-    judge-input.json                  # frozen evidence pack for a blank Judge
+  cases/<case-id>/
+    case.json                         # frozen case contract (from pinned blob)
+    repetitions/<n>/
+      execution.json                  # under what conditions this rep ran
+      trajectory.jsonl                # verbatim ordered raw trajectory + refs
+      result.json                     # raw | deterministic | judge(null)
+      judge-input.json                # frozen evidence pack for a blank Judge
 ```
 
 `manifest.json` / `summary.json` / `report.md` are projections. Raw trajectory is
 the fact source and is never replaced by a projection.
+
+### Duplicate protection (fail-fast)
+
+Two input bundles that resolve to the same `(caseId, repetition)` would silently
+overwrite each other while `manifest.json` still counted both. The Recorder
+verifies uniqueness of `(caseId, repetition)` **before** deleting the output
+directory or writing any artifact, and exits non-zero listing the duplicate keys.
+
+### Aggregate identity
+
+`manifest.json` identity (`miraCommit`, `modelProvider`, `modelId`, `hostOs`,
+`hostArch`, `runtimeMode`) is aggregated from the **recorded repetitions'
+`execution.json`**, never inferred from the benchmark case-set identity. When all
+repetitions agree, a shared value is emitted; when they differ the field becomes
+`null` with `identityHeterogeneous.<field> = true` and a full
+`perRepetitionIdentity[]` breakdown — the Recorder never silently picks the first.
+
+### Frozen case contract (`case.json`) and self-contained Judge input
+
+`case.json` is the frozen case contract extracted from the **exact Git blob**
+pinned by the RC manifest (`source.path` + `source.blobSha`, via `git cat-file`).
+It is never read from a possibly-drifted working tree; a missing or mismatched
+blob fails loudly. The Recorder self-checks the frozen contract (weight sum = 100,
+every `scorer: judge` criterion mapped by exactly one semantic question) before
+publishing.
+
+`judge-input.json` embeds that same frozen contract plus the Judge-owned criteria
+and semantic questions, so a fresh blank Judge needs **no** repository, GitHub,
+source markdown, running Mira, or executor context:
+
+```text
+semanticCriteria = {
+  available: true,          # true == package complete
+  criteria: [...],          # only scorer: judge
+  questions: [...],         # id -> criterionId
+  deterministicCriteriaNotJudgeable: [...]   # frozen context, Judge must not re-judge
+}
+```
+
+A fully deterministic case yields `available: true` with empty
+`criteria`/`questions` (not `available: false`) — the package is complete, there
+is simply no semantic Judge work.
 
 ## Schema boundaries
 
@@ -160,8 +204,11 @@ pnpm check:benchmark-recorder
 
 Covers trajectory order preservation, offline replay identity, judge-field
 nulls, structured observability gaps, adapted/noncanonical preservation, timing
-calibration state, secret-safe public projection, and fail-loud behavior for
-malformed/incomplete input.
+calibration state, secret-safe public projection, fail-loud behavior for
+malformed/incomplete input, terminal authority precedence, duplicate
+`(caseId, repetition)` fail-fast, exact frozen-blob case extraction,
+self-contained Judge criteria mapping (I08 / ADV-08 / deterministic-only), and
+aggregate identity provenance.
 
 ## Non-goals
 

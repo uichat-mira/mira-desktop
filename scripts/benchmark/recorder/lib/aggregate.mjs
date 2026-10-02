@@ -19,34 +19,97 @@ const countBy = (items, keyFn) => {
   return out;
 };
 
-export const buildRunManifest = ({ identity, repetitions }) => ({
-  schemaVersion: "mira-agent-core-benchmark-manifest/0.1",
-  benchmark: {
-    benchmarkVersion: identity.benchmarkVersion,
-    caseSetVersion: identity.caseSetVersion,
-    contractPath: identity.contractPath,
-    contractBlobSha: identity.contractBlobSha,
-    caseSetManifestPath: identity.caseSetManifestPath,
-    caseSetManifestSha256: identity.caseSetManifestSha256,
-    timingPolicy: identity.timingPolicy,
-    // #216 §14: the manifest must state Mira/model/runtime identity.
-    miraCommit: identity.miraCommit ?? "unknown",
-    modelProvider: identity.modelProvider ?? "unknown",
-    modelId: identity.modelId ?? "unknown",
-    hostOs: identity.hostPlatform?.platform ?? "unknown",
-    hostArch: identity.hostPlatform?.arch ?? "unknown",
-  },
-  recorder: {
-    artifactSchemaVersion: "mira-agent-core-benchmark-report/0.1",
-    issue: 223,
-    note: "Recorder consumes #221 raw bundles; it never drives Mira and never scores semantic quality",
-  },
-  cases: [...new Set(repetitions.map((r) => r.caseId))].map((caseId) => ({
-    caseId,
-    repetitions: repetitions.filter((r) => r.caseId === caseId).map((r) => r.repetition),
-  })),
-  repetitionCount: repetitions.length,
-});
+/**
+ * Blocker 5: aggregate Run Manifest identity is derived from the ACTUAL recorded
+ * repetitions' execution identity, not from the benchmark case-set identity.
+ * When every repetition agrees we emit a shared identity; when they disagree we
+ * must NOT silently pick the first — we surface the heterogeneity explicitly.
+ */
+const UNKNOWN = "unknown";
+
+const aggregateIdentityField = (repetitions, select) => {
+  const values = repetitions.map((r) => select(r));
+  const normalized = values.map((v) => (v === undefined || v === null ? UNKNOWN : v));
+  const unique = [...new Set(normalized.map((v) => JSON.stringify(v)))].map((s) => JSON.parse(s));
+  if (unique.length === 1) {
+    return { shared: unique[0], heterogeneous: false, values: normalized };
+  }
+  return { shared: null, heterogeneous: true, values: normalized };
+};
+
+export const buildRunManifest = ({ identity, repetitions }) => {
+  const executionIdentity = (r) => r.execution ?? {};
+
+  const miraCommit = aggregateIdentityField(repetitions, (r) => executionIdentity(r).mira?.commit ?? UNKNOWN);
+  const miraVersion = aggregateIdentityField(repetitions, (r) => executionIdentity(r).mira?.version ?? UNKNOWN);
+  const runtimeMode = aggregateIdentityField(repetitions, (r) => executionIdentity(r).mira?.runtimeMode ?? UNKNOWN);
+  const modelProvider = aggregateIdentityField(repetitions, (r) => executionIdentity(r).model?.provider ?? UNKNOWN);
+  const modelId = aggregateIdentityField(repetitions, (r) => executionIdentity(r).model?.modelId ?? UNKNOWN);
+  const hostOs = aggregateIdentityField(
+    repetitions,
+    (r) => executionIdentity(r).environment?.hostPlatform?.platform ?? UNKNOWN,
+  );
+  const hostArch = aggregateIdentityField(
+    repetitions,
+    (r) => executionIdentity(r).environment?.hostPlatform?.arch ?? UNKNOWN,
+  );
+
+  const sharedOrNull = (field) => (field.heterogeneous ? null : field.shared);
+
+  return {
+    schemaVersion: "mira-agent-core-benchmark-manifest/0.1",
+    benchmark: {
+      benchmarkVersion: identity.benchmarkVersion,
+      caseSetVersion: identity.caseSetVersion,
+      contractPath: identity.contractPath,
+      contractBlobSha: identity.contractBlobSha,
+      caseSetManifestPath: identity.caseSetManifestPath,
+      caseSetManifestSha256: identity.caseSetManifestSha256,
+      timingPolicy: identity.timingPolicy,
+      // #216 §14: the manifest must state Mira/model/runtime identity. These are
+      // aggregated from the recorded repetitions, never inferred from the
+      // benchmark case-set identity (`loadBenchmarkIdentity`).
+      miraCommit: sharedOrNull(miraCommit),
+      miraVersion: sharedOrNull(miraVersion),
+      modelProvider: sharedOrNull(modelProvider),
+      modelId: sharedOrNull(modelId),
+      hostOs: sharedOrNull(hostOs),
+      hostArch: sharedOrNull(hostArch),
+      runtimeMode: sharedOrNull(runtimeMode),
+      identitySource: "aggregated from recorded repetition execution.json (not benchmark case-set identity)",
+      identityHeterogeneous: {
+        miraCommit: miraCommit.heterogeneous,
+        miraVersion: miraVersion.heterogeneous,
+        modelProvider: modelProvider.heterogeneous,
+        modelId: modelId.heterogeneous,
+        hostOs: hostOs.heterogeneous,
+        hostArch: hostArch.heterogeneous,
+        runtimeMode: runtimeMode.heterogeneous,
+      },
+      perRepetitionIdentity: repetitions.map((r) => ({
+        caseId: r.caseId,
+        repetition: r.repetition,
+        miraCommit: executionIdentity(r).mira?.commit ?? UNKNOWN,
+        miraVersion: executionIdentity(r).mira?.version ?? UNKNOWN,
+        modelProvider: executionIdentity(r).model?.provider ?? UNKNOWN,
+        modelId: executionIdentity(r).model?.modelId ?? UNKNOWN,
+        hostOs: executionIdentity(r).environment?.hostPlatform?.platform ?? UNKNOWN,
+        hostArch: executionIdentity(r).environment?.hostPlatform?.arch ?? UNKNOWN,
+        runtimeMode: executionIdentity(r).mira?.runtimeMode ?? UNKNOWN,
+      })),
+    },
+    recorder: {
+      artifactSchemaVersion: "mira-agent-core-benchmark-report/0.1",
+      issue: 223,
+      note: "Recorder consumes #221 raw bundles; it never drives Mira and never scores semantic quality",
+    },
+    cases: [...new Set(repetitions.map((r) => r.caseId))].map((caseId) => ({
+      caseId,
+      repetitions: repetitions.filter((r) => r.caseId === caseId).map((r) => r.repetition),
+    })),
+    repetitionCount: repetitions.length,
+  };
+};
 
 export const buildSummary = ({ repetitions }) => {
   const validComparable = repetitions.filter((r) => r.comparable === true);

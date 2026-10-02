@@ -168,7 +168,16 @@ export const deriveDeterministic = (bundle) => {
   const idx = indexEvents(events);
   const gaps = [];
 
-  const terminalStatus = executorFacts?.terminal?.status ?? bundle.agentRun?.status ?? null;
+  // --- terminal authority (Blocker 1) ---
+  // `agent-run.json` is the authoritative terminal run-state document; the
+  // executor's `executor-facts.terminal` snapshot is a secondary control fact
+  // and is only a FALLBACK when `agent-run.json` genuinely lacks the field. A
+  // stale executor snapshot must never override the final AgentRun.
+  const agentRun = bundle.agentRun ?? null;
+  const executorTerminal = executorFacts?.terminal ?? {};
+  const terminalStatus = agentRun?.status ?? executorTerminal.status ?? null;
+  const terminalReason = agentRun?.terminalReason ?? executorTerminal.terminalReason ?? null;
+  const terminalBlockedReason = agentRun?.blockedReason ?? executorTerminal.blockedReason ?? null;
   const completionExpected = COMPLETION_EXPECTED_STATUSES.has(terminalStatus);
 
   // --- action / tool facts (all cite exact trajectory indices) ---
@@ -333,9 +342,13 @@ export const deriveDeterministic = (bundle) => {
     schemaVersion: DETERMINISTIC_SCHEMA_VERSION,
     terminal: {
       status: terminalStatus,
-      terminalReason: executorFacts?.terminal?.terminalReason ?? bundle.agentRun?.terminalReason ?? null,
-      blockedReason: executorFacts?.terminal?.blockedReason ?? null,
+      terminalReason,
+      blockedReason: terminalBlockedReason,
       streamFinishReason: executorFacts?.streamFinishReason ?? null,
+      authority: {
+        statusSource: agentRun?.status != null ? "agent-run.json" : "executor-facts.terminal(fallback)",
+        note: "agent-run.json is authoritative terminal state; executor-facts.terminal is only a fallback when agent-run.json lacks the field",
+      },
       refs: [refs.terminal],
     },
     plannerIterations,
