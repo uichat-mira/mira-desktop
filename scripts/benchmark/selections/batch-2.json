@@ -1,0 +1,47 @@
+{
+  "note": "#220 timing calibration Batch 2; #249 runner-ready selection.",
+  "caseSetVersion": "core-v0.1-rc1",
+  "repetitions": 3,
+  "cases": [
+    {
+      "id": "beginner-03-find-retry-window-references",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "beginner-04-read-only-telemetry-state",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-production-retry-only",
+      "fixture": "i02-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-01",
+      "fixture": "adv01-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-02",
+      "fixture": "adv02-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    }
+  ]
+}

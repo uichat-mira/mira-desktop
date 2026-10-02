@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 
 import { createClient } from "./lib/http.mjs";
 import {
+  cleanupFixture,
   diffManifest,
   fileSha256,
   hashManifest,
@@ -309,8 +310,10 @@ export const runRepetition = async ({
   const fixtureDir = path.join(repDir, "workspace");
   const externalDir = path.join(repDir, "external");
 
-  const prompt = selectionEntry.turns?.[0] ?? caseEntry.public?.prompt ?? "";
-  const scriptedTurns = selectionEntry.turns ?? [prompt];
+  const prompt = selectionEntry.initialPrompt ?? selectionEntry.turns?.[0] ?? caseEntry.public?.prompt ?? "";
+  const followUps =
+    selectionEntry.followUps ??
+    (selectionEntry.turns?.slice(1).map((text) => ({ when: "waiting_user", text })) ?? []);
 
   // --- fixture setup ---
   const fixtureSpec = materializeFixture({
@@ -414,7 +417,7 @@ export const runRepetition = async ({
 
     // Start the first turn in the background so the executor can poll terminal
     // state and apply timeout/cancel control while the run is still executing.
-    const firstTurn = startTrackedTurn(scriptedTurns[0]);
+    const firstTurn = startTrackedTurn(prompt);
 
     const runIdDeadline = Date.now() + 120000;
     while (!firstTurn.runId && !firstTurn.settled && Date.now() < runIdDeadline) {
@@ -427,11 +430,33 @@ export const runRepetition = async ({
       await firstTurn.promise;
     } else {
       // --- terminal-state polling ---
-      let nextScriptedTurn = 1;
+      let nextFollowUp = 0;
       let activeFollowUp = null;
+      const startFollowUp = (followUp) => {
+        nextFollowUp += 1;
+        interventions.push({
+          at: nowIso(),
+          type: "user_reply",
+          trigger: followUp.when,
+          text: followUp.text,
+        });
+        return startTrackedTurn(followUp.text);
+      };
+
       while (true) {
         if (activeFollowUp?.runId && activeFollowUp.runId !== runId) {
           runId = activeFollowUp.runId;
+        }
+        if (activeFollowUp && !activeFollowUp.runId && !activeFollowUp.settled) {
+          if (elapsedMs() >= args.maxWaitMs) {
+            runnerSafetyCapReached = true;
+            notes.push(
+              `runner safety bound ${args.maxWaitMs}ms reached before follow-up runId surfaced`,
+            );
+            break;
+          }
+          await sleep(50);
+          continue;
         }
         if (activeFollowUp?.settled) {
           const settledFollowUp = activeFollowUp;
@@ -445,6 +470,15 @@ export const runRepetition = async ({
         const run = await client.getRun(runId);
 
         if (TERMINAL_STATUSES.has(run.status)) {
+          const followUp = followUps[nextFollowUp];
+          if (
+            run.status === "completed" &&
+            !activeFollowUp &&
+            followUp?.when === "completed"
+          ) {
+            activeFollowUp = startFollowUp(followUp);
+            continue;
+          }
           terminalRun = run;
           break;
         }
@@ -465,14 +499,12 @@ export const runRepetition = async ({
 
         if (run.status === "waiting_user") {
           if (!activeFollowUp) {
-            const reply = scriptedTurns[nextScriptedTurn];
-            if (reply) {
-              nextScriptedTurn += 1;
-              interventions.push({ at: nowIso(), type: "user_reply", text: reply });
-              activeFollowUp = startTrackedTurn(reply);
+            const followUp = followUps[nextFollowUp];
+            if (followUp?.when === "waiting_user") {
+              activeFollowUp = startFollowUp(followUp);
               continue;
             }
-            notes.push("run paused at waiting_user with no scripted follow-up turn");
+            notes.push("run paused at waiting_user with no matching scripted follow-up");
             break;
           }
           // A scripted follow-up is already streaming. Do not await it here:
@@ -680,6 +712,11 @@ export const runRepetition = async ({
     return { repDir, executorFacts };
   } finally {
     // --- cleanup (also covers partial setup failures) ---
+    try {
+      cleanupFixture(fixtureSpec, { destDir: fixtureDir, externalDir });
+    } catch (error) {
+      notes.push(`fixture cleanup failed: ${error.message}`);
+    }
     if (thread) {
       try {
         await client.archiveThread(thread.id);
