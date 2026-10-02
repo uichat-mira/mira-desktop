@@ -86,6 +86,26 @@ export const resolveSelection = (selection, overrides, context = {}) => {
         );
       }
     }
+
+    if (typeof entry.provider !== "string" || !entry.provider.trim()) {
+      throw new SelectionError(
+        `case "${entry.id}" must declare an explicit provider; the runner never falls back to "default"`,
+      );
+    }
+    if (!/^[A-Za-z0-9._-]+$/.test(entry.provider)) {
+      throw new SelectionError(
+        `case "${entry.id}" has an invalid provider "${entry.provider}"`,
+      );
+    }
+
+    // #221 exposes approval/resume control but the current product surface has
+    // no reject endpoint. Refuse unsupported deny policies instead of recording
+    // a denial that was never sent to Mira.
+    if (entry.approvalPolicy !== "auto-approve") {
+      throw new SelectionError(
+        `case "${entry.id}" approvalPolicy must be "auto-approve"; deny/reject is not supported by the current #221 runner control surface`,
+      );
+    }
   }
 
   return { ...selection, cases, repetitions };
