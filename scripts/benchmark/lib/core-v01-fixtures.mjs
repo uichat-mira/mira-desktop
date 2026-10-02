@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 
 const text = (...lines) => lines.join("\n") + "\n";
 const json = (value) => JSON.stringify(value, null, 2) + "\n";
