@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: current
 owner: agent-runtime
 last_verified: 2026-10-02
 layer: contract
@@ -104,6 +104,33 @@ Prepare Context
 - terminal status / terminal reason。
 
 Benchmark **不得预设需要新的 Trace 抽象**。只有 #223/#224 的真实运行证明某个评分事实无法从现有观测获取时，才记录精确 observability gap，并另开最小补点任务。
+
+
+### 3.1 已核验的 observability 代码锚点
+
+以下不是设计假设，而是 v0.1 contract 冻结时对当前 `dev` 的静态核验结果：
+
+| Benchmark signal | 当前代码锚点 |
+| --- | --- |
+| Planner iteration / exposed tools | `server/src/agent/planner/node.ts` 的 `plannerStartDetails.iteration / exposedToolIds` |
+| selected action / selected tool | 同文件 Planner done execution node 的 `selectedActionType / selectedToolId` |
+| repeated semantic action | 同文件 `repeatedSemanticActionCount` |
+| finalization Evidence refs | 同文件 `finalizationEvidenceRefs` |
+| Generic SubAgent start / return / delegated goal / child tool calls | `server/src/agent/nodes/generic-task-subagent.ts` |
+| Evidence summary / counts | `server/src/agent/nodes/evidence.ts` |
+| approval / resume identity | `docs/development/agent-observability.md` 第 7 节定义的 toolId / toolCallId / inputHash / approval id / Parent run id / Child checkpoint |
+| terminal delivery / terminal reason | `server/src/agent/nodes/evaluate.ts` 与 Pi-loop terminal path |
+| overall semantic step ordering | `server/src/agent/pi-loop/index.ts` |
+
+现有测试还直接保护：
+
+- `server/src/agent/__tests__/planner-decision-characterization.test.ts`：Planner action contract；
+- `server/src/agent/__tests__/current-task-frame.test.ts`：global/current goal 与 Tool Exposure；
+- `server/src/agent/__tests__/generic-task-subagent.test.ts`：单层 delegation / approval handoff；
+- `server/src/agent/__tests__/pi-agent-loop-runtime.test.ts`：tool → Evidence → Planner loop；
+- `server/src/agent/__tests__/next-action-planner.test.ts`：Evidence、recovery 与 Planner observation contract。
+
+因此 #223 可以优先消费已有 execution nodes；若真实 Recorder 无法得到某个 hard-fail 所需事实，必须以具体字段缺口提出补点，而不是把本表当作“所有未来 case 都肯定无需新增观测”的保证。
 
 ## 4. 执行角色
 
@@ -575,6 +602,29 @@ benchmark-report/
 Raw trajectory 是事实源。  
 `report.md` 和 `summary.json` 只是 projection，不得覆盖或替代 raw evidence。
 
+
+### 15.1 #223 / #224 实现 handoff
+
+#223 Recorder 可以直接从本文取得：
+
+- manifest 必填身份；
+- repetition execution mode；
+- timing / timeout；
+- deterministic fact ownership；
+- report directory contract；
+- raw trajectory 优先级。
+
+#224 Pilot / Judge handoff 可以直接从本文取得：
+
+- 3 个 valid comparable repetitions 的正式条件；
+- invalid / noncanonical 的补跑规则；
+- semantic question → weighted criterion 的一对一映射；
+- Judge 唯一允许结果 `pass | fail`；
+- timing / hard-fail / deterministic fact 不可被 Judge 覆盖；
+- fresh blank thread 的允许输入集合。
+
+如果实现过程中还需要新字段，必须先判断它是**序列化细节**还是会改变 scoring semantics：前者归 #223/#224 自己定义；后者必须返回 #216。
+
 ## 16. Case-pack 覆盖要求
 
 #217/#218/#219 不需要平均覆盖工具，而应共同覆盖这些 Agent 核心行为：
@@ -601,6 +651,19 @@ Raw trajectory 是事实源。
 - Evidence single-writer 行为。
 
 Core Benchmark 应测试这些合同在**真实完整任务中是否共同工作**。
+
+
+### 16.1 Case schema 三档表达性静态检查
+
+本合同不在 #216 预写具体题，但 schema 必须能表达三档候选题而不让 #217–#219 发明新字段：
+
+| Tier | Case schema 如何表达 |
+| --- | --- |
+| Beginner | 一个自然 prompt + deterministic fixture + 少量 weighted criteria；可完全没有 semantic question；boundaries 可表达 read-only / no-network 等基础约束 |
+| Intermediate | 同一 schema 可增加多个 criteria、approval expectation、recoverable-failure observable、semantic criterion；仍不需要额外 scoring 语义 |
+| Advanced | 同一 schema 可组合多个全局 criteria、SubAgent / Evidence / approval observables、严格 boundaries 与更长 timing budget；复杂度来自任务关系而不是新增评分类型 |
+
+三档只改变 **case 内容和协调复杂度**，不改变 scorer 类型、hard-fail 语义、timing 算法或 Judge 输出格式。这是 #220 校准时判断“是否出现第二套规则”的检查基线。
 
 ## 17. 题目质量门槛
 
