@@ -547,8 +547,7 @@ public:
 fixture:
   version: i05-v1
   setup:
-    - After the Turn 1 answer is complete, executor submits the fixed follow-up user message:
-      按你刚才的最小方案改掉并确认。
+    - "After the Turn 1 answer is complete, executor submits the fixed follow-up user message: 按你刚才的最小方案改掉并确认。"
     - Create docs/SMOKE.md stating the supported smoke target is preview.
     - Create config/smoke.json with target = staging.
     - Create src/smoke-loader.ts showing runtime reads config/smoke.json directly.
@@ -778,8 +777,7 @@ public:
 fixture:
   version: i07-v1
   setup:
-    - When Mira asks for the missing release region, executor submits exactly:
-      这次是 ap-southeast-1。
+    - "When Mira asks for the missing release region, executor submits exactly: 这次是 ap-southeast-1。"
     - Create docs/release-regions.md with at least ap-southeast-1 and ap-northeast-1 endpoint mappings.
     - Create deploy/staging.yaml with an obsolete endpoint.
     - Ensure no file, environment variable, message, or metadata identifies the current release region.
