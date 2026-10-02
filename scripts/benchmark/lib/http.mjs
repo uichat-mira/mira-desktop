@@ -137,9 +137,13 @@ export const createClient = ({ baseUrl, fetchImpl = fetch }) => {
      * first execution-node frame that carries `details.runId` (server assigns it).
      */
     async streamChatTurn(
-      { threadId, messages, agentEnabled = true, signal, timeoutMs },
+      { threadId, messages, provider, agentEnabled = true, signal, timeoutMs },
       { onEvent } = {},
     ) {
+      if (typeof provider !== "string" || !provider.trim()) {
+        throw new MiraHttpError("streamChatTurn requires an explicit provider");
+      }
+      const providerPath = encodeURIComponent(provider);
       const controller = new AbortController();
       const timeout = setTimeout(
         () => controller.abort(new Error("stream timeout")),
@@ -156,7 +160,7 @@ export const createClient = ({ baseUrl, fetchImpl = fetch }) => {
       let finishReason = null;
 
       try {
-        const response = await fetchImpl(`${root}/proxy/chat/default`, {
+        const response = await fetchImpl(`${root}/proxy/chat/${providerPath}`, {
           method: "POST",
           headers: withAuth({ "content-type": "application/json" }),
           body: JSON.stringify({ id: threadId, agentEnabled, messages }),
@@ -165,7 +169,7 @@ export const createClient = ({ baseUrl, fetchImpl = fetch }) => {
         if (!response.ok || !response.body) {
           const text = await response.text().catch(() => "");
           throw new MiraHttpError(
-            `POST /proxy/chat/default failed with HTTP ${response.status}`,
+            `POST /proxy/chat/${providerPath} failed with HTTP ${response.status}`,
             { status: response.status, body: text },
           );
         }
