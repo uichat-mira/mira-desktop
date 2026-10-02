@@ -32,7 +32,7 @@ import {
   parentToolDoneEvent,
   plannerDoneEvent,
 } from "./lib/test-fixtures.mjs";
-import { assertUniqueRepetitions, DuplicateRepetitionError, recordOne, RECORDER_VERSION, assertSafeOutputDir, UnsafeOutputError } from "./agent-core-recorder.mjs";
+import { assertUniqueRepetitions, DuplicateRepetitionError, recordOne, RECORDER_VERSION, assertSafeOutputDir, UnsafeOutputError, assertValidRepetition } from "./agent-core-recorder.mjs";
 import { loadBenchmarkIdentity, findCase } from "./lib/case-spec.mjs";
 import {
   extractCaseYamlBlock,
@@ -318,6 +318,18 @@ test("B. duplicate (caseId, repetition) fails fast and never overwrites", () => 
   assert.doesNotThrow(() => assertUniqueRepetitions([makeRecord("ADV-08", 1), makeRecord("ADV-08", 2)]));
 });
 
+test("B2. repetition must be a positive integer and rejects path traversal", () => {
+  for (const repetition of [0, -1, 1.5, "1", "../escape", null, undefined]) {
+    assert.throws(() => assertValidRepetition(repetition), /repetition must be an integer >= 1/);
+  }
+  assert.equal(assertValidRepetition(1), 1);
+  assert.equal(assertValidRepetition(42), 42);
+  assert.throws(
+    () => recordOne({ bundle: makeBundle({ events: simpleEvents, facts: { repetition: "../escape" } }), identity, selection: {}, runManifest: {}, strictMissing: true }),
+    /repetition must be an integer >= 1/,
+  );
+});
+
 test("C. exact frozen source extraction: pinned blob -> exactly one YAML case", () => {
   const caseEntry = findCase(identity.caseSet, "intermediate-health-status-call-chain");
   const { source } = readFrozenBlob(repoRoot, caseEntry.source.blobSha);
@@ -505,6 +517,23 @@ test("J. parent success + child failed surfaces the child failure", () => {
   assert.ok(result.toolFailures.some((call) => call.source === "child"));
 });
 
+test("J1. child failures dedupe by evidence ref", () => {
+  const failed = (seq) => ({
+    nodeId: `subagent-trace:child-run:${seq}`,
+    nodeType: "tool",
+    phase: "done",
+    details: {
+      subAgentRunId: "child-run",
+      subAgentEventType: "tool.failed",
+      traceDetails: { evidenceRef: "stream:7", toolId: "write_file", toolCallId: `child-${seq}`, status: "failed" },
+    },
+  });
+  const result = deriveDeterministic(makeBundle({ events: [...simpleEvents, failed(1), failed(2)] }));
+  assert.equal(result.childFailureCount, 1);
+  assert.equal(result.childFailures[0].ref, "stream:7");
+  assert.equal(result.failedToolCallCount, 1);
+});
+
 test("J2. child status unavailable yields a structured gap, never a silent zero", () => {
   const events = [...simpleEvents.slice(0, 2), childToolCompletedEvent({ seq: 1, toolId: "read_open" }), ...simpleEvents.slice(2)];
   const result = deriveDeterministic(makeBundle({ events }));
@@ -513,6 +542,24 @@ test("J2. child status unavailable yields a structured gap, never a silent zero"
   const gap = result.observabilityGaps.find((g) => g.fact === "childFailureCount");
   assert.ok(gap, "expected childFailureCount gap");
   assert.ok(gap.requiredBy && gap.availableSources.length && gap.missingReason && gap.scoringImpact);
+});
+
+test("J3. any unavailable child status preserves the childFailureCount gap", () => {
+  const knownFailure = {
+    nodeId: "subagent-trace:child-run:known",
+    nodeType: "tool",
+    phase: "done",
+    details: {
+      subAgentRunId: "child-run",
+      subAgentEventType: "tool.failed",
+      traceDetails: { toolId: "write_file", toolCallId: "known", status: "failed" },
+    },
+  };
+  const unknown = childToolCompletedEvent({ seq: 8, toolId: "read_open" });
+  const result = deriveDeterministic(makeBundle({ events: [...simpleEvents, knownFailure, unknown] }));
+  assert.equal(result.childFailureCount, 1);
+  assert.equal(result.childStatusUnavailableCount, 1);
+  assert.ok(result.observabilityGaps.some((g) => g.fact === "childFailureCount"));
 });
 
 test("K. replay snapshot: missing workspace stays unavailable, not observed empty", () => {

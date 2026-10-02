@@ -50,6 +50,13 @@ import { listFixtures, resolveFixture } from "../lib/fixtures.mjs";
 
 export const RECORDER_VERSION = "agent-core-recorder/0.1";
 
+export const assertValidRepetition = (repetition) => {
+  if (!Number.isInteger(repetition) || repetition < 1) {
+    throw new Error(`repetition must be an integer >= 1, got ${JSON.stringify(repetition)}`);
+  }
+  return repetition;
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
@@ -242,6 +249,7 @@ export const recordOne = ({ bundle, identity, selection, runManifest, strictMiss
     if (strictMissing) throw new Error("executor-facts is missing caseId");
     return null;
   }
+  assertValidRepetition(facts.repetition);
   const caseEntry = findCase(identity.caseSet, caseId);
   const classification = facts.executionMode ?? "canonical";
   const selectionEntry = selection?.[caseId] ?? {};

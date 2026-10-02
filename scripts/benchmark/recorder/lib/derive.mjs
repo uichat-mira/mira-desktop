@@ -21,6 +21,18 @@ const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 
 const TOOL_FAILURE_STATUSES = new Set(["failed", "denied", "error", "timeout"]);
 
+const childEvidenceRef = (event, index) =>
+  event?.details?.traceDetails?.evidenceRef ?? event?.details?.evidenceRef ?? trajectoryNodeRef(index, event?.nodeId);
+
+const dedupeByEvidenceRef = (calls) => {
+  const seen = new Set();
+  return calls.filter((call) => {
+    if (seen.has(call.ref)) return false;
+    seen.add(call.ref);
+    return true;
+  });
+};
+
 const COMPLETION_EXPECTED_STATUSES = new Set(["completed", "waiting_user"]);
 
 /** Index every event by nodeId/phase so we can cite exact positions. */
@@ -227,7 +239,7 @@ export const deriveDeterministic = (bundle) => {
     const status = events[i]?.details?.traceDetails?.status ?? null;
     return {
       source: "child",
-      ref: trajectoryNodeRef(i, events[i].nodeId),
+      ref: childEvidenceRef(events[i], i),
       subAgentRunId: events[i]?.details?.subAgentRunId ?? null,
       toolId: events[i]?.details?.traceDetails?.toolId ?? null,
       toolCallId: events[i]?.details?.traceDetails?.toolCallId ?? null,
@@ -245,19 +257,20 @@ export const deriveDeterministic = (bundle) => {
   // counted ONLY when a definite failure fact exists (`tool.failed` event or an
   // explicit failing `traceDetails.status`). When the trace cannot prove a child
   // call's outcome, we emit a structured gap instead of a fabricated success/0.
-  const childStatusProven = idx.childStatusObserved.length > 0;
-  const childFailures = idx.childToolFailed.map((i) => ({
-    source: "child",
-    ref: trajectoryNodeRef(i, events[i].nodeId),
-    subAgentRunId: events[i]?.details?.subAgentRunId ?? null,
-    toolId: events[i]?.details?.traceDetails?.toolId ?? null,
-    toolCallId: events[i]?.details?.traceDetails?.toolCallId ?? null,
-    status: events[i]?.details?.traceDetails?.status ?? "failed",
-    at: events[i]?.emittedAt ?? null,
-  }));
+  const childFailures = dedupeByEvidenceRef(
+    idx.childToolFailed.map((i) => ({
+      source: "child",
+      ref: childEvidenceRef(events[i], i),
+      subAgentRunId: events[i]?.details?.subAgentRunId ?? null,
+      toolId: events[i]?.details?.traceDetails?.toolId ?? null,
+      toolCallId: events[i]?.details?.traceDetails?.toolCallId ?? null,
+      status: events[i]?.details?.traceDetails?.status ?? "failed",
+      at: events[i]?.emittedAt ?? null,
+    })),
+  );
 
   const childFailureCount = childFailures.length;
-  if (childToolCalls.length > 0 && !childStatusProven) {
+  if (childToolCalls.some((call) => call.statusUnavailable)) {
     gaps.push({
       fact: "childFailureCount",
       requiredBy: "#216 §12/§13 delegated failure visibility; #221 subagent-trace contract",
@@ -273,8 +286,8 @@ export const deriveDeterministic = (bundle) => {
   // Definite child failures (`tool.failed` events) are neither `agent-tool-N`
   // nodes nor `tool.completed` traces, so they are folded into the failure facts
   // explicitly instead of being silently dropped.
-  const failedToolCalls = [...toolCalls, ...childFailures].filter(
-    (call) => call.status && TOOL_FAILURE_STATUSES.has(call.status),
+  const failedToolCalls = dedupeByEvidenceRef(
+    [...toolCalls, ...childFailures].filter((call) => call.status && TOOL_FAILURE_STATUSES.has(call.status)),
   );
 
   // exposed tools / first selected tool come from the last planner done node.
