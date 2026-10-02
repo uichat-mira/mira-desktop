@@ -17,6 +17,7 @@ import { promisify } from "node:util";
 
 import { runRepetition } from "./agent-core-runner.mjs";
 import { createClient } from "./lib/http.mjs";
+import { listFixtures, materializeFixture, resolveFixture, workspaceManifest } from "./lib/fixtures.mjs";
 import { collectObservability } from "./lib/observability.mjs";
 import { parseRepetitions, resolveSelection, SelectionError } from "./lib/selection.mjs";
 
@@ -378,4 +379,139 @@ test("HTTP client refuses a chat turn without an explicit provider", async () =>
     }),
     /requires an explicit provider/,
   );
+});
+
+
+test("Core v0.1 Batch 2-5 fixture ids are registered", () => {
+  const expected = [
+    "beginner-workspace-v0.1",
+    "i02-v1", "i03-v1", "i04-v1", "i05-v1", "i06-v1", "i07-v1",
+    "adv01-v1", "adv02-v1", "adv03-v1", "adv04-v1", "adv05-v1", "adv06-v1", "adv07-v1",
+  ];
+  const known = new Set(listFixtures());
+  for (const id of expected) assert.equal(known.has(id), true, id);
+  assert.throws(() => resolveFixture("missing-v1"), /Unknown fixture/);
+});
+
+test("fixture reset is deterministic for representative static fixtures", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-fixtures-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const fixtureId of ["i02-v1", "i04-v1", "i06-v1", "adv01-v1", "adv06-v1"]) {
+    const workspace = path.join(root, fixtureId, "workspace");
+    const external = path.join(root, fixtureId, "external");
+    materializeFixture({ fixtureId, destDir: workspace, externalDir: external });
+    const first = workspaceManifest(workspace);
+    fs.writeFileSync(path.join(workspace, "unexpected.txt"), "dirty\n", "utf8");
+    materializeFixture({ fixtureId, destDir: workspace, externalDir: external });
+    assert.deepEqual(workspaceManifest(workspace), first, fixtureId);
+  }
+});
+
+test("i03 fixture issues a fresh recoverable challenge and accepts only its ticket", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-i03-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const workspace = path.join(root, "workspace");
+  const external = path.join(root, "external");
+  materializeFixture({ fixtureId: "i03-v1", destDir: workspace, externalDir: external });
+
+  const first = await execFileAsync(process.execPath, ["tools/handshake-check.mjs"], { cwd: workspace }).then(
+    (result) => ({ code: 0, stdout: result.stdout, stderr: result.stderr }),
+    (error) => ({ code: error.code, stdout: String(error.stdout ?? ""), stderr: String(error.stderr ?? "") }),
+  );
+  assert.notEqual(first.code, 0);
+  const challenge = JSON.parse(first.stderr.trim());
+  assert.equal(challenge.status, "challenge");
+
+  const second = await execFileAsync(process.execPath, ["tools/handshake-check.mjs", "--ticket", challenge.challenge], { cwd: workspace });
+  assert.match(second.stdout, /"status":"ok"/);
+});
+
+test("adv04 fixture enforces one-shot full audit", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-adv04-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const workspace = path.join(root, "workspace");
+  materializeFixture({ fixtureId: "adv04-v1", destDir: workspace, externalDir: path.join(root, "external") });
+
+  const first = await execFileAsync(process.execPath, ["scripts/full-audit.mjs"], { cwd: workspace });
+  assert.match(first.stdout, /search: FAIL/);
+
+  const second = await execFileAsync(process.execPath, ["scripts/full-audit.mjs"], { cwd: workspace }).then(
+    () => ({ code: 0 }),
+    (error) => ({ code: error.code }),
+  );
+  assert.notEqual(second.code, 0);
+});
+
+test("adv05 fixture reaches ready and verifier passes for the same job", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-adv05-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const workspace = path.join(root, "workspace");
+  materializeFixture({ fixtureId: "adv05-v1", destDir: workspace, externalDir: path.join(root, "external") });
+
+  const kickoff = await execFileAsync(process.execPath, ["scripts/start-async-build.mjs"], { cwd: workspace });
+  const started = JSON.parse(kickoff.stdout.trim());
+  assert.equal(started.status, "building");
+
+  await delay(1200);
+  const status = JSON.parse((await execFileAsync(process.execPath, ["scripts/show-async-status.mjs"], { cwd: workspace })).stdout.trim());
+  assert.equal(status.jobId, started.jobId);
+  assert.equal(status.status, "ready");
+
+  const verified = await execFileAsync(process.execPath, ["scripts/verify-async-build.mjs"], { cwd: workspace });
+  assert.match(verified.stdout, new RegExp(started.jobId));
+});
+
+test("selection rejects malformed triggered follow-ups", () => {
+  const base = adaptedCase("x");
+  assert.throws(
+    () => resolveSelection(selectionWith([{ ...base, followUps: [{ when: "later", text: "x" }] }], 1), {}, { knownCaseIds: ["x"] }),
+    /followUps require/,
+  );
+  assert.throws(
+    () => resolveSelection(selectionWith([{ ...base, turns: ["a"], followUps: [{ when: "completed", text: "b" }] }], 1), {}, { knownCaseIds: ["x"] }),
+    /must not declare both/,
+  );
+});
+
+test("completed-trigger follow-up starts a second AgentRun", async (t) => {
+  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-completed-followup-"));
+  t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }));
+
+  let streamCount = 0;
+  const client = {
+    async createWorkspace() { return { id: "ws-c" }; },
+    async createThread() { return { id: "thread-c" }; },
+    async streamChatTurn(_input, { onEvent }) {
+      streamCount += 1;
+      const runId = "run-" + streamCount;
+      onEvent?.({ type: "data-execution-node", data: { details: { runId } } });
+      return { runId, finishReason: "stop", events: [] };
+    },
+    async getRun(runId) { return { status: "completed", terminalReason: "completed", id: runId }; },
+    async getMessages() { return []; },
+    async archiveThread() {},
+    async deleteWorkspace() {},
+    async approveRun() {},
+    async cancelRun() {},
+  };
+
+  const result = await runRepetition({
+    args: runnerArgs(),
+    client,
+    caseSet: caseSetFor("beginner-08-contextual-config-follow-up"),
+    selectionEntry: {
+      id: "beginner-08-contextual-config-follow-up",
+      fixture: "beginner-workspace-v0.1",
+      executionMode: "canonical",
+      provider: "default",
+      approvalPolicy: "auto-approve",
+      followUps: [{ when: "completed", text: "那 timeoutMs 呢？" }],
+    },
+    outputRoot,
+    repetitionIndex: 1,
+  });
+
+  assert.equal(streamCount, 2);
+  assert.equal(result.executorFacts.executorInterventions.filter((x) => x.type === "user_reply").length, 1);
+  assert.equal(result.executorFacts.terminal.status, "completed");
 });
