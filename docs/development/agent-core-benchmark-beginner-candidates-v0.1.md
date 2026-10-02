@@ -68,8 +68,9 @@ drafts/release.md
 
 Canonical contents:
 
+**`README.md`**
+
 ```text
-# README.md
 # Mira Benchmark Fixture
 
 ## Development
@@ -77,8 +78,9 @@ Canonical contents:
 Run `pnpm dev:mira` from the repository root.
 ```
 
+**`package.json`**
+
 ```json
-// package.json
 {
   "name": "mira-benchmark-fixture",
   "version": "0.0.217",
@@ -86,67 +88,76 @@ Run `pnpm dev:mira` from the repository root.
 }
 ```
 
+**`docs/release-checklist.md`**
+
 ```markdown
-<!-- docs/release-checklist.md -->
 # Release Checklist
 
 - run tests
 - package candidate
 ```
 
+**`src/runtime/retry.ts`**
+
 ```ts
-// src/runtime/retry.ts
 export const retryWindowMs = 1200;
 export const retryMode = "bounded";
 ```
 
+**`config/retry.json`**
+
 ```json
-// config/retry.json
 {
   "retryWindowMs": 1200,
   "maxAttempts": 3
 }
 ```
 
+**`config/app.json`**
+
 ```json
-// config/app.json
 {
   "telemetry": true,
   "channel": "stable"
 }
 ```
 
+**`config/service.json`**
+
 ```json
-// config/service.json
 {
   "region": "ap-southeast-1",
   "timeoutMs": 4500
 }
 ```
 
+**`config/worker.json`**
+
 ```json
-// config/worker.json
 {
   "queue": "background",
   "timeoutMs": 9000
 }
 ```
 
+**`notes/draft.txt`**
+
 ```text
-# notes/draft.txt
 Quarterly release notes
 Do not alter this body.
 ```
 
+**`drafts/meeting.md`**
+
 ```markdown
-<!-- drafts/meeting.md -->
 # Meeting draft
 
 Discuss release readiness.
 ```
 
+**`drafts/release.md`**
+
 ```markdown
-<!-- drafts/release.md -->
 # Release draft
 
 Prepare release notes.
