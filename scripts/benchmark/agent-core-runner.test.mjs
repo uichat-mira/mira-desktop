@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { runRepetition } from "./agent-core-runner.mjs";
+import { createClient } from "./lib/http.mjs";
 import { collectObservability } from "./lib/observability.mjs";
 import { parseRepetitions, resolveSelection, SelectionError } from "./lib/selection.mjs";
 
@@ -28,8 +29,10 @@ const selectionWith = (cases, repetitions) => ({ caseSetVersion: "test", repetit
 const adaptedCase = (id) => ({
   id,
   fixture: "beginner-workspace-v0.1",
+  provider: "default",
   executionMode: "adapted",
   comparabilityImpact: "none: equivalent test conditions",
+  approvalPolicy: "auto-approve",
 });
 
 test("parseRepetitions rejects non-positive and non-integer values", () => {
@@ -82,7 +85,12 @@ test("resolveSelection requires comparabilityImpact for non-canonical cases", ()
     () => resolveSelection(selectionWith([missing], 1), {}, { knownCaseIds: ["x"] }),
     /comparabilityImpact/,
   );
-  const canonical = { id: "y", fixture: "beginner-workspace-v0.1" };
+  const canonical = {
+    id: "y",
+    fixture: "beginner-workspace-v0.1",
+    provider: "default",
+    approvalPolicy: "auto-approve",
+  };
   assert.doesNotThrow(() => resolveSelection(selectionWith([canonical], 1), {}, { knownCaseIds: ["y"] }));
 });
 
@@ -207,6 +215,8 @@ test("runRepetition excludes workspace/thread setup from benchmark elapsed time"
       id: "beginner-02-locate-release-checklist",
       fixture: "beginner-workspace-v0.1",
       executionMode: "canonical",
+      provider: "default",
+      approvalPolicy: "auto-approve",
     },
     outputRoot,
     repetitionIndex: 1,
@@ -283,6 +293,8 @@ test("waiting_user follow-up stays non-blocking so cancel control remains live",
       id: "beginner-08-contextual-config-follow-up",
       fixture: "beginner-workspace-v0.1",
       executionMode: "canonical",
+      provider: "default",
+      approvalPolicy: "auto-approve",
       turns: ["initial prompt", "scripted follow-up"],
     },
     outputRoot,
@@ -296,5 +308,74 @@ test("waiting_user follow-up stays non-blocking so cancel control remains live",
   assert.ok(
     wallElapsedMs < 500,
     `follow-up stream blocked cutoff monitoring for ${wallElapsedMs}ms`,
+  );
+});
+
+
+test("resolveSelection rejects unsupported deny approval policy instead of faking a denial", () => {
+  const denied = {
+    ...adaptedCase("deny-case"),
+    approvalPolicy: "deny",
+  };
+  assert.throws(
+    () => resolveSelection(selectionWith([denied], 1), {}, { knownCaseIds: ["deny-case"] }),
+    /deny\/reject is not supported/,
+  );
+});
+
+test("resolveSelection requires an explicit provider and never falls back to default", () => {
+  const missingProvider = { ...adaptedCase("provider-case") };
+  delete missingProvider.provider;
+  assert.throws(
+    () => resolveSelection(selectionWith([missingProvider], 1), {}, { knownCaseIds: ["provider-case"] }),
+    /must declare an explicit provider/,
+  );
+
+  const invalidProvider = { ...adaptedCase("provider-case"), provider: "bad/provider" };
+  assert.throws(
+    () => resolveSelection(selectionWith([invalidProvider], 1), {}, { knownCaseIds: ["provider-case"] }),
+    /invalid provider/,
+  );
+});
+
+test("HTTP client routes a chat turn through the selected provider", async () => {
+  const seen = [];
+  const fetchImpl = async (url) => {
+    seen.push(String(url));
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return {
+      ok: true,
+      status: 200,
+      body,
+      async text() { return ""; },
+    };
+  };
+  const client = createClient({ baseUrl: "http://127.0.0.1:9999", fetchImpl });
+  await client.streamChatTurn({
+    threadId: "thread-provider",
+    provider: "provider-x",
+    messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+  });
+  assert.deepEqual(seen, ["http://127.0.0.1:9999/proxy/chat/provider-x"]);
+});
+
+test("HTTP client refuses a chat turn without an explicit provider", async () => {
+  const client = createClient({
+    baseUrl: "http://127.0.0.1:9999",
+    fetchImpl: async () => {
+      throw new Error("fetch should not run");
+    },
+  });
+  await assert.rejects(
+    () => client.streamChatTurn({
+      threadId: "thread-provider",
+      messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+    }),
+    /requires an explicit provider/,
   );
 });
