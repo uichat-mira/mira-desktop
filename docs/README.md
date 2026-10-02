@@ -112,6 +112,7 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[development/agent-observability]]：Agent / SubAgent 观测与诊断；
 - [[development/agent-core-benchmark-v0.1]]：Mira Agent Core Benchmark v0.1 设计合同、评分与记录语义；
 - [[development/agent-core-benchmark-beginner-candidates-v0.1]]：Core Benchmark v0.1 Beginner 候选题包（#217，待 #220 校准冻结）；
+- [[development/agent-core-benchmark-v0.1-intermediate-candidates]]：#218 Intermediate 候选题包（draft，非冻结正式题库）；
 - [[microapp/README]]：MicroApps Hub、Integration binding、Studio 与领域 Runtime 入口；
 - [[chat/README]]：Chat 与 Agent UI 入口；
 - [[platform/tauri]]：Tauri 平台路径；
