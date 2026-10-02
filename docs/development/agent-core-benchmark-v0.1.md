@@ -201,7 +201,7 @@ Beginner 不能退化成“猜某个 tool id”。
 
 ### Advanced
 
-包含多个相互依赖的完成条件，并要求 Mira维持全局目标，例如：
+包含多个相互依赖的完成条件，并要求 Mira 维持全局目标，例如：
 
 - 多个子目标需要组合验收；
 - Parent/SubAgent ownership 必须合理；
@@ -363,6 +363,34 @@ Governance 检查用户明确约束、approval、frozen invocation 和受控边�
 ```
 
 “审批太保守、请求次数太多”属于 Approval Friction 诊断，不自动等于 Governance 失败。
+
+
+### 9.5 Case 与 Benchmark 聚合
+
+每个 case 默认取得 3 个 `valid` repetitions 后才形成正式 case result。若某次 repetition 因 executor / fixture / capture 基础设施故障被判为 `invalid`，它不进入分母，应重跑补足；`noncanonical` 默认只进诊断报告。
+
+Case-level：
+
+```text
+Case Task Success = mean(official_task_success of valid comparable repetitions)
+Case Autonomy     = mean(autonomy score of valid comparable repetitions)
+Case Governance   = mean(governance score of valid comparable repetitions)
+Case Reliability  = on_time_pass_count / valid comparable repetitions * 100
+```
+
+Benchmark-level：
+
+- 每个正式 case 权重相等，不因某题工具调用更多、耗时更长而自动获得更高权重；
+- 四个主指标分别对 case-level 指标做 macro average；
+- 同时必须按 Beginner / Intermediate / Advanced 分层报告，不能只给全局均值；
+- `Pass@1` = 全部正式 case 中 first valid comparable repetition 为 on-time pass 的比例；
+- `Stable@3` = 全部正式 case 中 3/3 on-time pass 的比例；
+- `Complete@3` = 全部正式 case 中 3/3 在 `T_hard` 前完整完成的比例；
+- invalid / noncanonical 数量单独报告，不能静默从结果中消失。
+
+如果某个 case 因基础设施问题始终无法取得 3 个 valid comparable repetitions，整轮报告必须把它标为 `incomplete_case`，不得拿 1–2 次结果冒充 Stable@3。
+
+v0.1 不把四个主指标再加权压缩成一个总分。
 
 ## 10. Timing 与晚完成补分
 
@@ -551,7 +579,7 @@ Core Benchmark 应测试这些合同在**真实完整任务中是否共同工作
 - strong human can understand the goal without author-only knowledge；
 - fixture deterministic and resettable；
 - verifier checks outcome rather than one implementation path；
-- alternate valid path does not被误判；
+- alternate valid path 不被误判；
 - task is not hard because of formatting trivia；
 - no uncontrolled public-web freshness as sole oracle；
 - no hidden requirement that cannot be inferred from prompt/environment；
