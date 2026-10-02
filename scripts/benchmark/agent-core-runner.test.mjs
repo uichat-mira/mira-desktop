@@ -515,3 +515,62 @@ test("completed-trigger follow-up starts a second AgentRun", async (t) => {
   assert.equal(result.executorFacts.executorInterventions.filter((x) => x.type === "user_reply").length, 1);
   assert.equal(result.executorFacts.terminal.status, "completed");
 });
+
+
+test("Batch 2-5 selections cover exactly the remaining 20 calibration cases", () => {
+  const expected = new Set([
+    "beginner-03-find-retry-window-references",
+    "beginner-04-read-only-telemetry-state",
+    "intermediate-production-retry-only",
+    "ADV-01",
+    "ADV-02",
+    "beginner-05-local-version-no-network",
+    "beginner-06-read-command-do-not-execute",
+    "intermediate-handshake-recovery",
+    "intermediate-version-validator",
+    "ADV-03",
+    "beginner-07-rename-one-file",
+    "beginner-08-contextual-config-follow-up",
+    "intermediate-inspect-then-continue",
+    "ADV-04",
+    "ADV-05",
+    "beginner-09-ambiguous-rename-clarification",
+    "intermediate-already-aligned-noop",
+    "intermediate-release-region-followup",
+    "ADV-06",
+    "ADV-07",
+  ]);
+  const seen = [];
+  for (const batch of [2, 3, 4, 5]) {
+    const selection = JSON.parse(
+      fs.readFileSync(path.join(here, "selections", "batch-" + batch + ".json"), "utf8"),
+    );
+    assert.equal(selection.cases.length, 5, "batch " + batch);
+    const resolved = resolveSelection(selection, {}, { knownCaseIds: [...expected] });
+    for (const entry of resolved.cases) {
+      assert.doesNotThrow(() => resolveFixture(entry.fixture, { externalDir: path.join(os.tmpdir(), "mira-bench-ext") }));
+      seen.push(entry.id);
+    }
+  }
+  assert.deepEqual(new Set(seen), expected);
+  assert.equal(seen.length, 20);
+});
+
+test("selection validates initialPrompt and accepts B08 completed follow-up shape", () => {
+  const base = adaptedCase("x");
+  assert.throws(
+    () => resolveSelection(selectionWith([{ ...base, initialPrompt: "   " }], 1), {}, { knownCaseIds: ["x"] }),
+    /initialPrompt must be a non-empty string/,
+  );
+  assert.doesNotThrow(() =>
+    resolveSelection(
+      selectionWith([{
+        ...base,
+        initialPrompt: "first",
+        followUps: [{ when: "completed", text: "second" }],
+      }], 1),
+      {},
+      { knownCaseIds: ["x"] },
+    ),
+  );
+});
