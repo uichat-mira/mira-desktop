@@ -342,15 +342,15 @@ Semantic criterion 只能由 blank judge 判定；deterministic criterion 由 sc
 
 ### 9.3 Reliability
 
-默认每题 **3 个 valid repetitions**。
+默认每题 **3 个 valid comparable repetitions**。
 
 ```text
-Reliability = on_time_pass_count / valid_repetition_count * 100
+Reliability = on_time_pass_count / valid_comparable_repetition_count * 100
 ```
 
 同时固定报告：
 
-- `Pass@1`：第一个 valid repetition 是否 on-time pass；
+- `Pass@1`：第一个 valid comparable repetition 是否 on-time pass；
 - `Stable@3`：3/3 是否均 on-time pass；
 - `Complete@3`：3/3 是否至少在 `T_hard` 前完整完成；
 - late-completion count；
