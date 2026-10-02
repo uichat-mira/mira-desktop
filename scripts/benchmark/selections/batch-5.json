@@ -1,0 +1,59 @@
+{
+  "note": "#220 timing calibration Batch 5; #249 runner-ready selection.",
+  "caseSetVersion": "core-v0.1-rc1",
+  "repetitions": 3,
+  "cases": [
+    {
+      "id": "beginner-09-ambiguous-rename-clarification",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-already-aligned-noop",
+      "fixture": "i06-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-release-region-followup",
+      "fixture": "i07-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve",
+      "followUps": [
+        {
+          "when": "waiting_user",
+          "text": "这次是 ap-southeast-1。"
+        }
+      ]
+    },
+    {
+      "id": "ADV-06",
+      "fixture": "adv06-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-07",
+      "fixture": "adv07-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve",
+      "followUps": [
+        {
+          "when": "waiting_user",
+          "text": "ap-southeast-1"
+        }
+      ]
+    }
+  ]
+}
