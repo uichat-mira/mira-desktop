@@ -1,7 +1,7 @@
 ---
 status: planned
 owner: architecture / agent-runtime / harness / microapp
-last_verified: 2026-09-19
+last_verified: 2026-10-03
 layer: design
 module: MiraNext
 feature: AgentCapabilityMicroApp
@@ -25,35 +25,36 @@ related:
 >
 > 它是 **Planning / engineering draft**，不是 Current Truth，不覆盖现有 canonical contract，也不授权一次性重写 Agent、Tool、MicroApp、Mobile 或 Forge。
 >
-> 本稿核对基线：`mira-desktop dev@0e313cf4f2f1ffc791c47334f90439e1e25b077e`；Mobile 当前合同读取自 `mira-mobile@dev`；Organization AI policy revision `2026-09-16.2`。
+> 本稿按当前 Desktop / Mobile owning contracts、当前代码与 Runtime 事实持续核验；具体实现状态以 owning Current Truth、代码和可重复运行证据为准，不把某个历史 commit 固化为长期设计前提。
 
 产品草案来源：
 
 - https://mira.tomz.io/blogs/product-journal/mira-next-draft-01-agent-tools-external-world
 - https://mira.tomz.io/blogs/product-journal/mira-next-draft-02-capabilities-microapps-agent-work
 
+
 ## 1. 这次真正要解决什么
 
-两篇草案讨论了 Chat 默认 Agent、Pi Loop、Structured Action、Tool discovery、触界、MCP、Conversation Workspace、Capability、MicroApp、Mobile、审批、看板、Forge、Memory 与 Insight。
+两篇草案讨论了 Chat 默认 Agent、Pi Loop、Structured Action、Tool discovery、触界、MCP、Workspace、Capability、MicroApp、Mobile、审批、看板、Forge、Memory 与 Insight。
 
-如果直接把这些画成一张“大架构图”，会混淆三类东西：
+Mira Next 的长期工程目标不是把这些能力一次性画成一张“大架构图”，而是建立少量稳定边界，让 Agent 能在不同工作上下文中逐步获得所需能力，同时保持 Tool、Policy、Evidence 与跨端合同可验证。
 
-1. 已经稳定并应保护的合同；
-2. 已经存在但语义位置不对的实现；
-3. 仍然只是产品方向、不能提前钉死的开放问题。
-
-因此 Mira Next 不作为一次 V2 rewrite 推进，而是一条可独立验证的迁移链：
+长期迁移主线：
 
 ```text
-先锁定当前真相与概念边界
+锁定当前真相与概念边界
   ↓
-先让模型决策进入 Runtime 的边界可靠
+让模型决策进入 Runtime 的边界可靠
   ↓
-给默认 Agent Conversation 正确的工作目录语义
+确立 Thread-owned Workspace
   ↓
-再把 Chat 收敛到 Agent Runtime
+让 Chat 收敛到 Agent Runtime
   ↓
-再解耦 Tool Core / MCP，并升级能力发现
+硬化 Universal Core Tools 与 Context Core
+  ↓
+建立 protocol-neutral Tool Core 与 progressive disclosure
+  ↓
+以 MCP 为外部扩展优先协议
   ↓
 Browser / Search 形成基础外部世界能力
   ↓
@@ -64,9 +65,11 @@ Remote Capability 对齐 Desktop / Mobile 已有协议
 最后再讨论通用持续工作对象与看板
 ```
 
-第一原则是：
+设计原则：
 
-> 每一步都能独立验证，并且不需要推翻前一步。
+> **工具面按 Agent 认知语义保持小而稳定；工作上下文按需增加次核心能力；外部世界通过渐进披露逐层展开。**
+
+Mira Next 不作为一次 V2 rewrite 推进。每一步都必须能独立验证，并且不要求推翻前一步。
 
 ## 2. 文档与真相读取规则
 
@@ -127,7 +130,10 @@ Mira Next 不重新发明 Agent 主循环。
 
 当前 hardening 已经不少，但模型格式错误仍会直接进入运行可靠性问题。
 
-### 3.4 Tool Exposure 仍以 20 个为阈值
+
+### 3.4 Tool Exposure 当前仍依赖阈值式 ranking
+
+当前 Runtime 仍存在：
 
 ```text
 public eligible tools <= 20
@@ -139,7 +145,11 @@ public eligible tools > 20
   → 前 20
 ```
 
-`Core Tools + Deferred Catalog + Tool Search` 仍是目标，不是当前运行真相。
+这属于当前实现事实，不是 Mira Next 的长期 Tool Exposure 设计。
+
+Mira Next 将 Tool Exposure 收敛到 **progressive disclosure**：少量稳定 Core Tool 可直接暴露；上下文相关能力按工作环境启用；大规模动态能力先暴露 namespace / capability summary，再按需展开具体 tool schema。
+
+Embedding / rerank 可以作为某些 search backend 的可选实现，但不再作为 Tool Discovery 的基础前置，也不应成为 Desktop 安装包为了工具路由而必须携带的模型依赖。
 
 ### 3.5 已存在 Harness Capability Profile
 
@@ -197,15 +207,27 @@ toolId + toolCallId + inputHash
 
 reusable capability grant 不能直接覆盖这条债。
 
-### 3.10 当前 ChatWorkspace 不是 Conversation Workdir
 
-`ChatWorkspace` 是用户显式工作区，绑定持久 rootPath；Agent Thread 当前必须有 Workspace，没有显式选择时会复用或创建 `Mira BASE`。
+### 3.10 Workspace ownership 采用 Thread-owned Workspace
 
-这和“一条 Conversation 自己天然拥有的小目录”不是同一个对象。
+Mira Next 的长期 Workspace 心智固定为：
 
-> 2026-09-19 产品决策校正：这里保留当时的原判断，不做删除或改写。回看讨论后确认，当时这里存在理解差别：草案把 Workspace 与 Conversation 的执行目录拆成了两个平行对象；维护者实际强调的是“一个线程一个工作空间”，并以这个工作空间作为 Agent 的默认施工边界，而不是在 Workspace 之外再创造一套 Workdir。
+```text
+Thread
+  ↓ owns
+Workspace
+  ├─ user files
+  ├─ downloads
+  ├─ temp / intermediate outputs
+  ├─ scripts
+  └─ final artifacts
+```
 
-**正确决策：一个 Thread 只拥有一个 Workspace。这个 Workspace 随 Thread 持久存在、默认相对隔离，并承担 Agent 的读取、写入、临时施工、下载、脚本和最终产物承载。Mira 不再把 Conversation Workdir 作为与 Workspace 平行的第二个根目录。**
+一个 Thread 只拥有一个持续、可恢复、相对隔离的 Workspace。AgentRun 是一次执行，Workspace 是 Thread 持续拥有的施工空间。
+
+如果实现需要 cache、temporary staging、internal metadata 等区域，它们只能作为 Workspace 内部实现细节存在，不再形成与 Workspace 平行的第二套用户可感知根目录语义。
+
+Workspace 的相对隔离不等于 host filesystem 全开放；文件、Terminal、Artifact 与外部 transfer 仍受各自 Policy / Approval / Runtime boundary 约束。
 
 ### 3.11 Mobile 已经正式形成双链路
 
@@ -337,21 +359,19 @@ Capability taxonomy 与 Approval taxonomy 分离。
 
 ## 6. 工程路线
 
+
 ### Phase 0 — 名词与当前真相锁定
 
 固定：
 
 - `CapabilityClass / HarnessCapabilityProfile / RiskSignature`；
-- `ChatWorkspace != Conversation Workdir`；
+- 一个 Thread 一个 Workspace；
+- Agent-facing primitive 的原子性按语义而不是底层实现步骤定义；
 - `Tool Core != MCP transport`；
 - Platform MicroApp != Integration `MicroAppDefinition`；
 - 产品草案只是输入，不是 current contract。
 
-> 2026-09-19 产品决策校正：上面的 `ChatWorkspace != Conversation Workdir` 保留为当时草案原话，用来记录当时的理解路径。
-
-**正确决策：不再建立 Workspace 与 Conversation Workdir 两套平行目录语义。一个 Thread 一个 Workspace，默认相对隔离；AgentRun 是一次执行，Workspace 才是 Thread 持续拥有的施工空间。**
-
-不改 Runtime。
+不为了统一术语做全仓重命名，也不把实现细节提升为 Agent-facing contract。
 
 ### Phase 1 — Structured Decision Boundary
 
@@ -379,36 +399,32 @@ Runtime state transition
 
 至少覆盖 direct answer / retrieve / concrete tool / ask_user / invalid decision / compatibility provider。
 
-### Phase 2 — Conversation Workdir
 
-引入独立于 `ChatWorkspace` 的 Conversation Workdir：
+### Phase 2 — Thread-owned Workspace
+
+目标：
 
 ```text
-Thread / AgentRun
+Thread
   ↓
-Conversation Workdir
+Workspace
   ├─ user files
   ├─ downloads
-  ├─ temp outputs
+  ├─ temp / intermediate outputs
   ├─ scripts
   └─ final artifacts
 ```
 
 原则：
 
-- 每条 Agent Conversation 可天然拥有自己的目录；
-- 不是用户必须创建的 Project；
-- `ChatWorkspace` 继续表达用户显式工程根；
-- Workdir 内部自由度不等于 host filesystem 全开放；
-- 生命周期、清理、容量、Artifact 引用必须有合同。
+- 每个 Thread 拥有一个持续、可恢复、相对隔离的 Workspace；
+- Agent 的读取、写入、下载、脚本、中间产物与最终产物共享同一 Workspace ownership；
+- Workspace 内部可以有实现级 temporary / staging 区，但不形成第二套平行根目录；
+- path generation、lookup/recovery、cleanup、quota、Artifact reference 与 failure semantics 必须有明确合同；
+- Workspace 内部自由度不等于 host filesystem 全开放；
+- 不顺手放宽 Terminal、Edit、absolute path 或 external transfer 的既有治理边界。
 
-这一步涉及文件权限边界，不能顺手放宽 Terminal 或任意绝对路径。
-
-> 2026-09-19 产品决策校正：本节保留原方案，明确记录当时的设计错误和理解差别。这里把“Workspace”和“Conversation 自己的执行目录”拆成两个对象，实际违背了维护者一直强调的产品心智：一个线程一个工作空间、相对隔离。该问题在 v0.101.0 人工烟测时暴露出来。
-
-**正确决策：Phase 2 的目标改为「Thread-owned Workspace」。每个 Thread 拥有一个持续、可恢复、相对隔离的 Workspace；Agent 的临时文件、中间产物、脚本、下载与最终文件都在这一个 Workspace 语义下工作。若需要区分内部临时数据，可以在 Workspace 内使用实现级内部区域，但不再引入第二个平行根目录。**
-
-**v0.101.0 需要返工，但不回滚。已落地的 Conversation Workdir 相关实现按“保留有价值能力、修正所有权模型”的原则逐步收敛：可复用的持久化、恢复、路径校验、quota / cleanup、Artifact reference 等能力继续保留；独立 Workdir 身份与第二套目录语义需要重新接回 Thread Workspace。**
+这一步只解决 Workspace ownership 与生命周期，不把 Tool 设计、Artifact protocol 或权限模型混成同一个大包。
 
 ### Phase 3 — Chat 收敛到 Agent Runtime
 
@@ -422,9 +438,87 @@ Conversation Workdir
 
 不删除 Knowledge Base，不把所有任务派 SubAgent。
 
-### Phase 4 — Tool Core / MCP 解耦 + Deferred Discovery
 
-目标结构：
+### Phase 4 — Tool Foundation Hardening + Progressive Disclosure
+
+这一阶段负责硬化 Agent 的工具面，不以“把所有能力都包成 MCP”作为目标。
+
+#### 4.1 Agent-facing primitive：语义原子，而不是机械原子
+
+Agent-facing Tool 的“原子性”按模型决策语义定义：
+
+```text
+read
+write
+edit
+glob
+grep
+read_image
+
+bash
+job_list
+job_output
+job_kill
+
+web_search
+web_fetch
+```
+
+这是一版目标基线，不要求所有底层实现一一对应独立模块。
+
+例如：
+
+```text
+Agent sees: read(path, offset, limit)
+
+Runtime may use:
+- native fs
+- sandbox file API
+- remote filesystem adapter
+- shell-backed implementation
+```
+
+`bash` 既可以是 Agent-facing primitive，也可以作为其他 primitive 的 execution backend。不能因为某个动作可由 shell 实现，就迫使 Agent 每次通过 shell 重新发明 `read / grep / glob` 的语义、错误、权限与 trace。
+
+Core Tool hardening 至少要固定：
+
+- input / output schema；
+- deterministic failure semantics；
+- timeout / cancellation；
+- truncation / pagination；
+- permission / approval boundary；
+- cross-platform behavior；
+- trace / evidence projection。
+
+#### 4.2 Universal Core 与 Context Core 分层
+
+不是所有常用能力都应永久塞进 Universal Core。
+
+```text
+Universal Core
+  filesystem primitives
+  process execution
+  basic web access
+
+Context Core
+  activated by current work context
+```
+
+Code / Work Workspace 是第一类明确的 Context Core。进入代码工作上下文后，应优先具备：
+
+- Git：status / diff / history / blame / branch / commit 等 repository state；
+- Language Intelligence / LSP：definition / references / implementation / symbols；
+- diagnostics；
+- semantic code search / workspace index；
+- code graph / dependency graph infrastructure。
+
+其中 code graph 可以是 LSP、AST、semantic index、static analysis 等多种实现的组合，不要求暴露一个巨大的 `code_graph` 万能接口。Agent-facing surface 应优先保持“查定义、找引用、诊断、代码搜索”等可理解动作。
+
+Context Core 不可用时可以降级到 Universal Core，例如 `grep + read + bash`，但降级不应成为放弃代码语义能力的默认路径。
+
+#### 4.3 Protocol-neutral Tool Core
+
+内部稳定合同保持 protocol-neutral：
 
 ```text
 Mira Tool Core
@@ -439,27 +533,75 @@ Adapters
   ├─ MCP
   ├─ Browser
   ├─ Remote Capability
-  └─ domain runtime
+  └─ Domain Runtime
 ```
 
-原则：先抽核心类型 / alias / adapter，不以全仓重命名证明完成，不改变 Tool id、approval、trace、Evidence。
+原则：
 
-Discovery 从：
+- 内部 Core 不由 MCP vocabulary 反向定义；
+- MCP 是外部扩展 / integration 的优先协议，而不是所有基础工具的内部实现要求；
+- Native Core Tool 不需要为了“协议统一”先绕一层 MCP；
+- 外部能力如果已经天然适合 MCP，优先接 MCP，不轻易自造第二套插件协议；
+- Tool id、approval、trace、Evidence 的治理边界不因 adapter 类型改变。
+
+#### 4.4 Progressive Disclosure 是默认暴露范式
+
+Tool Exposure 从一次性 ranking 演进为逐层展开：
 
 ```text
->20 → embedding / rerank → top 20
+Universal Core
+  → eager full schema
+
+Context Core
+  → context-activated
+
+Dynamic Domains
+  → namespace / capability summary
+
+Relevant Domain
+  → tool group / tool metadata
+
+Selected Tool
+  → full schema
 ```
 
-演进为：
+Agent 决定“还需要看什么”，Runtime 负责按治理边界展开，而不是先把整个世界压成一个 top-K 工具列表。
+
+对于大型 MCP server、企业 connector 或未来 MicroApp：
+
+- discovered != exposed；
+- exposed != authorized；
+- discovery result 永远不是 invocation；
+- namespace / tool-group / tool schema 可以多级披露；
+- 加载、卸载与 cache 策略属于 Runtime，不改变 Tool 合同。
+
+#### 4.5 Tool Discovery 不再强依赖向量模型
+
+Embedding / rerank 可以继续用于：
+
+- Knowledge retrieval；
+- semantic code search；
+- 某些超大 catalog 的可选 search backend；
+- 其他明确需要语义检索的领域能力。
+
+但它们不再是 Tool Discovery 的基础依赖。
+
+Mira Desktop 不应仅为了 Tool Routing 而强制打包 embedding model、reranker model、对应 tokenizer / runtime 与常驻缓存。Tool Discovery 的最小可行路径可以只依赖：
 
 ```text
-Core Tools
-+ Deferred Capability Catalog
-+ Tool Search
+current context
++ user goal
++ namespace / capability descriptions
 + progressive disclosure
 ```
 
-Embedding / rerank 可以继续作为搜索后端；discovery result 永远不是 invocation。
+如果某一级 catalog 仍然过大，可以再使用 keyword / FTS / model-native tool search / semantic retrieval 等可替换策略，但这些策略不进入核心 Tool contract。
+
+#### 4.6 Benchmark 反哺 Tool Hardening
+
+Agent Core Benchmark 负责暴露 Tool choice、tool competition、recovery、delegation 与 boundary failure 的真实问题；Tool Hardening 根据可重复证据调整工具语义与暴露面。
+
+Benchmark 不规定唯一 Tool trajectory，也不为了方便评分反向绑定某个具体平台工具名。
 
 ### Phase 5 — Browser / Search Runtime
 
@@ -607,6 +749,7 @@ Forge / 淬行已经是真实的专业化流水线样本：
 - 通用 Plugin System 命名；
 - 通用 BPMN / Workflow Engine。
 
+
 ## 8. 依赖图
 
 ```text
@@ -614,11 +757,15 @@ P0 Terminology / Truth
       ↓
 P1 Structured Decision Boundary
       ↓
-P2 Conversation Workdir
+P2 Thread-owned Workspace
       ↓
 P3 Chat → Agent Runtime
       ↓
-P4 Tool Core / MCP + Deferred Discovery
+P4 Tool Foundation Hardening
+   ├─ Universal Core
+   ├─ Code / Work Context Core
+   ├─ protocol-neutral Tool Core
+   └─ progressive disclosure
       ├──────────────→ P5 Browser / Search
       ↓
 P6 MicroApp Platform V0
@@ -633,29 +780,22 @@ P9 Work Object / Board
   └─ 不阻塞 P1-P6
 ```
 
-## 9. 第一批工程包
+MCP 属于 P4 之后的外部扩展优先协议，不是 P4 之前的基础工具前置；Code / Work Context Core 也不依赖 MCP 才能成立。
 
-### Main — E01 Structured Decision Boundary
 
-目标：
+## 9. 工程推进约束
 
-> 在不改变 AgentRun、Normalize、Policy、Tool、Evidence 既有合同的前提下，把 Planner provider output decoding 收敛到单一 typed decision adapter，并保留显式 compatibility codec。
+Mira Next 的长期设计稿不维护“当前第一批 / 下一批任务”或具体版本的阶段性修复记录；这些状态由 GitHub Issue / Project 持有。
 
-这是最适合先施工的包：范围窄、不先改 Chat 产品行为，又直接为默认 Agent 稳定性打地基。
+工程推进只保留以下长期约束：
 
-### Candidate — E02 Conversation Workdir Design + Storage Contract
-
-目标：
-
-> 定义并验证 Conversation Workdir 与 ChatWorkspace 的不同所有权、路径、生命周期、Artifact 引用与清理合同，为默认 Agent Conversation 提供可控执行空间。
-
-先做 storage/path/ownership contract，不顺手放宽权限。
-
-### Blocked — E03 Chat Default Agent
-
-只有 E01 / E02 的必要合同成立后才开 route convergence。
-
-不能采用“先把所有 Chat 切 Agent，再在线补 Agent 稳定性与文件权限”的施工顺序。
+1. 先通过 Benchmark、current truth 与可重复 Runtime evidence 看见真实问题，再硬化 Tool contract；
+2. Universal Core 的新增必须证明它是跨任务高频、低语义、可组合的 Agent primitive；
+3. Context Core 的新增必须有明确上下文触发条件和降级路径；
+4. Dynamic Tool 默认走 progressive disclosure，不把完整 catalog 一次性塞给 Planner；
+5. MCP 优先解决外部扩展与互操作，不反向决定 Mira 内部基础工具颗粒度；
+6. 为 Tool Discovery 增加 heavyweight retrieval infrastructure 前，必须证明简单分层披露不足；
+7. 任何 Tool 设计变化都要保护 Policy / Approval / Evidence / trace 边界。
 
 ## 10. 后续每个 Work Item 必须回答
 
@@ -667,26 +807,25 @@ P9 Work Object / Board
 
 新的工程 Work Item 进入 GitHub Issue；不恢复 repository-local master ledger。
 
-## 11. 当前结论
 
-两篇 Mira Next 草案可以进入工程阶段，但不是作为一个“大重构”。
+## 11. 长期设计结论
 
-当前判断：
+Mira Next 的稳定方向是：
 
-- Pi Loop 和现有 Agent execution contract 是地基；
-- Structured Decision 是默认 Agent 前最值得先处理的可靠性边界；
-- Conversation Workdir 必须与 ChatWorkspace 分开；
+- Pi Loop 和现有 Agent execution contract 继续作为运行地基；
+- Structured Decision 收敛模型输出进入 Runtime 的边界；
+- 一个 Thread 一个 Workspace，Workspace 是持续施工空间；
+- Chat 逐步收敛到 Agent Runtime，但不以一次性删除旧路径为目标；
+- Agent-facing primitive 按语义原子设计，不按底层执行步骤拆分；
+- Universal Core 保持少量、稳定、可组合；
+- Code / Work 等高价值工作上下文拥有自己的 Context Core，例如 Git、Language Intelligence、diagnostics 与 code search；
+- Tool Exposure 默认采用 progressive disclosure；
+- Embedding / rerank 是可选检索实现，不再是 Tool Discovery 或 Desktop 打包的必需依赖；
+- Mira 内部 Tool Core 保持 protocol-neutral，MCP 作为外部扩展 / integration 的优先协议；
+- Browser / Search、MicroApp、Remote Capability 都通过同一套 Tool / Policy / Evidence 治理边界接入；
+- capability discovery 只能决定“看见什么候选”，不能直接获得 invocation authority；
+- Forge 继续作为专业持续工作流水线样本，只抽取被多个真实领域证明需要的通用对象。
 
-**2026-09-19 修正：上述结论保留为当时原话，但不再作为后续施工方向。正确决策是一个 Thread 一个 Workspace、默认相对隔离；v0.101.0 的独立 Conversation Workdir 方案需要返工，不需要版本回滚。**
-- Chat → Agent 是明确目标，但必须做行为等价迁移；
-- Tool / MCP 解耦有真实代码依据，应渐进迁移；
-- Deferred Tool Search 应替代 embedding 作为唯一候选裁判，但永远不能直接获得 invocation authority；
-- 触界已经足够真实，下一步是进入 Search Runtime；
-- MicroApp 平台方向成立，但必须与当前 Integration MicroApp contract 分开；
-- reusable capability approval 先研究并修清 exact approval identity；
-- Mobile 双链路与本地 Agent 已成为当前合同事实，Remote Capability 应建立在现有 manifest + scope 上，而不是重做 Remote Host；
-- Forge 已经是 Mira 内的真实专业流水线样本，未来只抽取被其他领域真正证明需要的通用 Work Object，而不是先造通用工作流引擎。
+目标不是让 Mira 多长几层名词，而是让 Agent 在恰当的时刻看见恰当的工具面，并让这些能力通过少量稳定合同协作。
 
-目标不是让 Mira 多长几层名词。
-
-> 是把已经存在的 Agent、Tool、Browser、MCP、MicroApp、Mobile 和 Forge 放回各自负责的位置，并让它们通过少量稳定合同协作。
+> **少量稳定核心，按上下文增强，按需披露外部世界；发现不等于授权，协议不反向绑架内部设计。**
