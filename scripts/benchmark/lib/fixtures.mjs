@@ -12,6 +12,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { coreV01FixtureBuilders } from "./core-v01-fixtures.mjs";
+
 const write = (root, relPath, content) => {
   const absolute = path.join(root, relPath);
   fs.mkdirSync(path.dirname(absolute), { recursive: true });
@@ -157,6 +159,7 @@ const BUILDERS = {
   "beginner-workspace-v0.1": () => beginnerWorkspace(),
   "i08-health-call-chain-v1": () => i08HealthCallChain(),
   "adv08-workspace-boundary-v1": (ctx) => adv08WorkspaceBoundary(ctx),
+  ...coreV01FixtureBuilders,
 };
 
 export const listFixtures = () => Object.keys(BUILDERS);
