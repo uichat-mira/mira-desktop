@@ -603,6 +603,48 @@ Agent Core Benchmark 负责暴露 Tool choice、tool competition、recovery、de
 
 Benchmark 不规定唯一 Tool trajectory，也不为了方便评分反向绑定某个具体平台工具名。
 
+#### 4.7 探索型能力必须 POC-first
+
+Phase 4 中凡是仍涉及架构取舍、产品心智或能力边界的事项，不得直接从设计草案跳到生产实现。
+
+典型对象包括：
+
+- Context Core 如何被识别与激活；
+- Git / LSP / diagnostics / semantic code search / code graph 如何组合成 Code / Work 能力面；
+- 大规模 Tool / MCP catalog 如何做 progressive disclosure；
+- namespace、tool group、schema resolver、model-native tool search 等发现机制如何取舍；
+- 工程验收 UI 与最终产品 UI 的边界。
+
+这类事项统一采用：
+
+```text
+Community / vendor research
+  ↓
+isolated POC
+  ↓
+representative task evidence
+  ↓
+maintainer discussion / decision
+  ↓
+freeze contract
+  ↓
+open implementation work item
+```
+
+POC 的职责是暴露事实、成本、失败模式与可选方案，不拥有最终产品或架构决定。不得因为某个 POC 已经能运行，就把其内部形状直接提升为 production contract。
+
+社区 / 厂商 POC 至少应比较两个以上真实实现或公开方案，并优先选择可直接验证的开源代码、官方文档与可运行样例。需要比较的证据包括：
+
+- Agent-facing tool surface；
+- schema / context cost；
+- discovery / disclosure path；
+- degraded / unavailable behavior；
+- latency / cache / token impact（可测时）；
+- permission / approval boundary；
+- 对现有 Mira Benchmark representative cases 的影响。
+
+涉及产品心智、长期架构或新的用户可见交互时，POC 结束后必须回到维护者讨论；未经明确决策，不得继续开生产实现或以“先做出来再说”冻结方向。
+
 ### Phase 5 — Browser / Search Runtime
 
 不新增和 `web_search` 抢语义的 Chrome Search Tool。
