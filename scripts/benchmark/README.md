@@ -199,3 +199,36 @@ repetitions do not leak state.
   `auto-approve` (approve the exact frozen invocation). A deny/reject policy is not
   implemented by the current Mira control surface, so selection rejects it instead
   of pretending a denial occurred.
+
+
+## Core v0.1 calibration batches
+
+Issue #249 extends the reference runner so #220 Batch 2-5 can be executed without inventing fixtures at run time.
+
+Selection files:
+
+- `selections/batch-2.json`
+- `selections/batch-3.json`
+- `selections/batch-4.json`
+- `selections/batch-5.json`
+
+Each selection contains 5 frozen RC1 cases and defaults to 3 repetitions. Run one batch at a time against the same pinned Mira `dev` commit/backend:
+
+```bash
+MIRA_BENCH_USERNAME=... MIRA_BENCH_PASSWORD=... \
+node scripts/benchmark/agent-core-runner.mjs \
+  --base-url http://127.0.0.1:8799 \
+  --selection scripts/benchmark/selections/batch-2.json
+```
+
+The shared `beginner-workspace-v0.1` remains the fixture for B03-B09. Added deterministic fixture ids are:
+
+- Intermediate: `i02-v1` through `i07-v1`
+- Advanced: `adv01-v1` through `adv07-v1`
+
+Multi-turn selection entries use explicit trigger semantics:
+
+- `when: "completed"` — submit the frozen follow-up after the prior AgentRun completes (B08, I05).
+- `when: "waiting_user"` — submit only the frozen missing fact after Mira reaches `waiting_user` (I07, ADV-07).
+
+The executor supplies only the frozen scripted user text; it does not add task-solving hints.
