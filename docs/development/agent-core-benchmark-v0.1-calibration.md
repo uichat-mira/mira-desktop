@@ -3,7 +3,7 @@
 Issue: #220  
 Working case-set version: `core-v0.1-rc1`  
 Base: `dev@3bafb964d3beeb7ce2635b25090969ca1c46c95b`  
-Status: **static calibration complete; final timing freeze pending canonical Windows evidence**
+Status: **static calibration complete; final timing freeze pending controlled reference-run evidence**
 
 This document records the cross-calibration decision for the Beginner, Intermediate, and Advanced candidate packs. It does not claim that Core v0.1 is finally frozen while per-case timing is still unsupported by measured reference runs.
 
@@ -18,13 +18,13 @@ Inputs are frozen by immutable Git blob identity in `agent-core-benchmark-v0.1-c
 
 Allowed here: case selection, difficulty calibration, scorer/Judge ownership review, alternate-valid-trajectory review, Judge handoff, public projection, and timing calibration policy.
 
-Forbidden here: changing Agent/Harness/Tool/approval/resume semantics, changing the system under test to fit a case, or inventing timing budgets without canonical Windows dry-run evidence.
+Forbidden here: changing Agent/Harness/Tool/approval/resume semantics, changing the system under test to fit a case, or inventing timing budgets without controlled reference dry-run evidence.
 
 ## 2. Selection result
 
 Static review keeps **all 25 candidates**: 9 Beginner, 8 Intermediate, 8 Advanced. This is within the #216 / #220 20–30 case target.
 
-No candidate is promoted, demoted, merged, or removed in the static pass. That is intentional rather than conservative-by-default: each overlap cluster below has a different observable failure mode or acceptance boundary. A later case may still be removed from automated Core if measured Windows runs show unstable timing, poor resetability, or recorder dependence that makes fair scoring impossible.
+No candidate is promoted, demoted, merged, or removed in the static pass. That is intentional rather than conservative-by-default: each overlap cluster below has a different observable failure mode or acceptance boundary. A later case may still be removed from automated Core if measured reference runs show unstable timing, poor resetability, or recorder dependence that makes fair scoring impossible.
 
 | Case | Title | Primary calibration cluster | Decision | Deterministic/Judge weight | Why it survives cross-calibration |
 | --- | --- | --- | --- | ---: | --- |
@@ -199,9 +199,9 @@ The website must display the exact case-set version. `core-v0.1-rc1` must not be
 
 ## 10. Timing calibration gate
 
-No canonical Windows timing evidence is currently present in the repository or Issue evidence. Candidate timing values are therefore **not promoted to frozen timing**. RC1 intentionally stores `tSoftMs=null` and `tHardMs=null` for every case.
+Per-case controlled timing evidence is not yet complete. Candidate timing values are therefore **not promoted to frozen timing**. RC1 intentionally stores `tSoftMs=null` and `tHardMs=null` for every case.
 
-Final freeze requires controlled Windows 11 + PowerShell 7 observations using the same frozen case identity and a recorded run manifest.
+Final freeze requires controlled reference observations using the same frozen case identity and a recorded run manifest. Timing acceptance is platform-neutral: the actual host platform, runtime and execution procedure must be recorded, and valid comparable runs may come from any supported desktop host.
 
 Calibration procedure:
 
@@ -215,8 +215,10 @@ Calibration procedure:
 
 This procedure gives observed runs headroom without deriving time from the Beginner/Intermediate/Advanced label.
 
+During RC calibration, `tSoftMs=null` / `tHardMs=null` means only that timing cutoffs are not frozen yet. The runner must stay in calibration mode and record real elapsed time without inventing cutoffs. This **does not prevent** recording `canonical | adapted | noncanonical` execution classification; classification is based on the actual procedure and comparability, not on whether timing has been frozen.
+
 ## 11. Remaining acceptance gap
 
 Static calibration, selection, scorer ownership, Judge handoff, alternate-path review, static replay, and public projection are ready for review.
 
-The only blocker to a truthful final `core-v0.1` freeze is per-case timing evidence from the canonical Windows environment. Until that evidence exists, #220 must remain open and this RC must not be treated as the formal benchmark release.
+The only blocker to a truthful final `core-v0.1` freeze is sufficient per-case controlled timing evidence under recorded comparable conditions. Until that evidence exists, #220 must remain open and this RC must not be treated as the formal benchmark release.
