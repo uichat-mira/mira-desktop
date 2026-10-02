@@ -141,23 +141,43 @@ export const serializeRawSnapshot = (bundle) => ({
   assistantTranscript: bundle.assistantTranscript,
 });
 
+const isPlainObject = (value) =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /** Re-hydrate an ingested bundle from a persisted raw snapshot (replay path). */
 export const bundleFromSnapshot = (snapshot) => {
-  if (!snapshot || typeof snapshot !== "object") {
-    throw new IngestError("raw snapshot must be an object");
+  // Blocker 3: missing evidence must stay missing. A snapshot is a plain object;
+  // an array (or primitive) is rejected rather than coerced.
+  if (!isPlainObject(snapshot)) {
+    throw new IngestError("raw snapshot must be a plain object (arrays are not accepted)");
   }
-  if (!snapshot.executorFacts || !Array.isArray(snapshot.executionEvents)) {
-    throw new IngestError("raw snapshot is missing executorFacts or executionEvents");
+  if (!isPlainObject(snapshot.executorFacts)) {
+    throw new IngestError("raw snapshot executorFacts must be a plain object");
   }
+  if (!Array.isArray(snapshot.executionEvents)) {
+    throw new IngestError("raw snapshot is missing executionEvents array");
+  }
+
+  // `missing evidence != observed empty workspace`. When the snapshot carries no
+  // workspace evidence we keep it `null` (unavailable) so deterministic
+  // derivation emits unknown/gap instead of an "observed empty" side effect.
+  const hasWorkspace = isPlainObject(snapshot.workspace);
+
   return {
     repDir: `<snapshot:${snapshot.source ?? "unknown"}>`,
     executorFacts: snapshot.executorFacts,
     executionEvents: snapshot.executionEvents,
-    streamFrames: snapshot.streamFrames ?? [],
-    agentRun: snapshot.agentRun ?? null,
-    workspace: snapshot.workspace ?? { before: {}, after: {}, diff: null },
-    assistantTranscript: snapshot.assistantTranscript ?? null,
-    provenance: snapshot.provenance ?? {},
+    streamFrames: Array.isArray(snapshot.streamFrames) ? snapshot.streamFrames : [],
+    agentRun: isPlainObject(snapshot.agentRun) ? snapshot.agentRun : null,
+    workspace: hasWorkspace
+      ? {
+          before: snapshot.workspace.before ?? null,
+          after: snapshot.workspace.after ?? null,
+          diff: snapshot.workspace.diff ?? null,
+        }
+      : null,
+    assistantTranscript: typeof snapshot.assistantTranscript === "string" ? snapshot.assistantTranscript : null,
+    provenance: isPlainObject(snapshot.provenance) ? snapshot.provenance : {},
   };
 };
 

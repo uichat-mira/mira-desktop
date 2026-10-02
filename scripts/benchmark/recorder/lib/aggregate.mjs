@@ -234,7 +234,7 @@ export const buildReportMarkdown = ({ manifest, summary, repetitions, recognized
   lines.push("");
   lines.push("## Semantic criteria awaiting a fresh blank Judge");
   lines.push("");
-  lines.push("- Case semantic questions/criteria are owned by the frozen case source pack and are not reconstructed here.");
-  lines.push("- `result.json.judge` and `judge-input.json.judgeFields` are `null`; a fresh blank judging thread (#224) fills them.");
+  lines.push("- Case semantic criteria/questions are extracted from the pinned frozen source blob and packaged into `case.json` / `judge-input.json` (`semanticCriteria.available = true`).");
+  lines.push("- Semantic *results* are still filled by a fresh blank Judge (#224); `result.json.judge` and `judge-input.json.judgeFields` remain `null` at recorder time.");
   return `${lines.join("\n")}\n`;
 };

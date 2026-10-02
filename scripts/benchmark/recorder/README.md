@@ -215,7 +215,7 @@ aggregate identity provenance.
 - No semantic scoring (fresh blank Judge, #224).
 - No environment startup / fixture setup / prompt submit / polling / approval /
   cancel / provider routing (all #221).
-- No database, dashboard, long-running service, phoneix/OTel collector, Agent
+- No database, dashboard, long-running service, Phoenix/OTel collector, Agent
   trace framework, benchmark SaaS, or GUI.
 - No website projection (#131). This directory only defines the sanitized
   machine-readable result schema.

@@ -45,17 +45,13 @@ export const buildExecution = ({ bundle, identity, caseEntry, correction, fixtur
   const facts = bundle.executorFacts ?? {};
   const interventions = Array.isArray(facts.executorInterventions) ? facts.executorInterventions : [];
 
-  const classifyInterventions = (list) => {
-    const isMiraAction = () => false; // Mira's own actions never live in executorInterventions
-    return {
-      executorMechanical: list.filter((i) => ["approval", "cancel", "user_reply"].includes(i.type)),
-      humanIntervention: list.filter((i) => i.type === "human").length
-        ? list.filter((i) => i.type === "human")
-        : [],
-      note: "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl",
-      _isMiraAction: isMiraAction,
-    };
-  };
+  const classifyInterventions = (list) => ({
+    executorMechanical: list.filter((i) => ["approval", "cancel", "user_reply"].includes(i.type)),
+    humanIntervention: list.filter((i) => i.type === "human").length
+      ? list.filter((i) => i.type === "human")
+      : [],
+    note: "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl",
+  });
 
   return {
     schemaVersion: EXECUTION_SCHEMA_VERSION,
@@ -130,6 +126,9 @@ export const buildResult = ({ deterministic }) => ({
     toolCallCount: deterministic.toolCallCount,
     parentToolCallCount: deterministic.parentToolCallCount,
     childToolCallCount: deterministic.childToolCallCount,
+    failedToolCallCount: deterministic.failedToolCallCount,
+    childFailureCount: deterministic.childFailureCount,
+    childStatusUnavailableCount: deterministic.childStatusUnavailableCount,
     delegationCount: deterministic.delegationCount,
     approvalCount: deterministic.approvalCount,
     childApprovalCount: deterministic.childApprovalCount,

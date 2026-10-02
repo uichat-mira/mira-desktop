@@ -32,7 +32,7 @@ import {
   parentToolDoneEvent,
   plannerDoneEvent,
 } from "./lib/test-fixtures.mjs";
-import { assertUniqueRepetitions, DuplicateRepetitionError, recordOne, RECORDER_VERSION } from "./agent-core-recorder.mjs";
+import { assertUniqueRepetitions, DuplicateRepetitionError, recordOne, RECORDER_VERSION, assertSafeOutputDir, UnsafeOutputError } from "./agent-core-recorder.mjs";
 import { loadBenchmarkIdentity, findCase } from "./lib/case-spec.mjs";
 import {
   extractCaseYamlBlock,
@@ -417,4 +417,128 @@ test("H2. aggregate identity does not silently pick the first when repetitions d
   assert.equal(manifest.benchmark.identityHeterogeneous.miraCommit, true);
   assert.equal(manifest.benchmark.identityHeterogeneous.modelProvider, true);
   assert.equal(manifest.benchmark.perRepetitionIdentity.length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Wrap-up regressions (output guard / child failure / replay missing workspace)
+// ---------------------------------------------------------------------------
+
+test("I. output guard rejects dangerous --out targets (temp dirs only)", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mira-outguard-"));
+  try {
+    const repoRoot = tmp;
+    const inputRoot = path.join(tmp, "dry-run", "stamp");
+    fs.mkdirSync(inputRoot, { recursive: true });
+
+    // repository root
+    assert.throws(() => assertSafeOutputDir({ out: tmp, inputs: [inputRoot], repoRoot }), UnsafeOutputError);
+    // filesystem root
+    assert.throws(
+      () => assertSafeOutputDir({ out: path.parse(tmp).root, inputs: [inputRoot], repoRoot }),
+      UnsafeOutputError,
+    );
+    // an input run root
+    assert.throws(
+      () => assertSafeOutputDir({ out: inputRoot, inputs: [inputRoot], repoRoot }),
+      UnsafeOutputError,
+    );
+    // an ancestor of the input
+    assert.throws(
+      () => assertSafeOutputDir({ out: path.join(tmp, "dry-run"), inputs: [inputRoot], repoRoot }),
+      UnsafeOutputError,
+    );
+    // a non-empty, unowned directory
+    const stranger = path.join(tmp, "stranger");
+    fs.mkdirSync(stranger);
+    fs.writeFileSync(path.join(stranger, "keep.txt"), "keep");
+    assert.throws(
+      () => assertSafeOutputDir({ out: stranger, inputs: [inputRoot], repoRoot }),
+      UnsafeOutputError,
+    );
+
+    // an empty directory is allowed
+    const empty = path.join(tmp, "empty-out");
+    fs.mkdirSync(empty);
+    assert.equal(assertSafeOutputDir({ out: empty, inputs: [inputRoot], repoRoot }), empty);
+
+    // a prior Recorder output (valid manifest marker) is allowed
+    const prior = path.join(tmp, "prior-out");
+    fs.mkdirSync(prior);
+    fs.writeFileSync(
+      path.join(prior, "manifest.json"),
+      JSON.stringify({ schemaVersion: "mira-agent-core-benchmark-manifest/0.1" }),
+    );
+    assert.equal(assertSafeOutputDir({ out: prior, inputs: [inputRoot], repoRoot }), prior);
+
+    // a directory with a same-named but wrong-schema manifest is NOT owned
+    const impostor = path.join(tmp, "impostor-out");
+    fs.mkdirSync(impostor);
+    fs.writeFileSync(path.join(impostor, "manifest.json"), JSON.stringify({ schemaVersion: "something-else" }));
+    assert.throws(
+      () => assertSafeOutputDir({ out: impostor, inputs: [inputRoot], repoRoot }),
+      UnsafeOutputError,
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("J. parent success + child failed surfaces the child failure", () => {
+  const events = [
+    ...simpleEvents,
+    {
+      nodeId: "subagent-trace:child-run:9",
+      nodeType: "tool",
+      phase: "done",
+      details: {
+        subAgentRunId: "child-run",
+        subAgentEventType: "tool.failed",
+        traceDetails: { toolId: "write_file", toolCallId: "child-9", status: "failed" },
+      },
+    },
+  ];
+  const result = deriveDeterministic(makeBundle({ events }));
+  assert.equal(result.childFailureCount, 1);
+  assert.equal(result.childFailures[0].source, "child");
+  assert.equal(result.childFailures[0].status, "failed");
+  assert.ok(result.failedToolCallCount >= 1);
+  assert.ok(result.toolFailures.some((call) => call.source === "child"));
+});
+
+test("J2. child status unavailable yields a structured gap, never a silent zero", () => {
+  const events = [...simpleEvents.slice(0, 2), childToolCompletedEvent({ seq: 1, toolId: "read_open" }), ...simpleEvents.slice(2)];
+  const result = deriveDeterministic(makeBundle({ events }));
+  assert.equal(result.childToolCallCount, 1);
+  assert.equal(result.childStatusUnavailableCount, 1);
+  const gap = result.observabilityGaps.find((g) => g.fact === "childFailureCount");
+  assert.ok(gap, "expected childFailureCount gap");
+  assert.ok(gap.requiredBy && gap.availableSources.length && gap.missingReason && gap.scoringImpact);
+});
+
+test("K. replay snapshot: missing workspace stays unavailable, not observed empty", () => {
+  const bundle = makeBundle({ events: simpleEvents });
+  const snapshot = serializeRawSnapshot(bundle);
+  delete snapshot.workspace;
+  const rehydrated = bundleFromSnapshot(snapshot);
+  assert.equal(rehydrated.workspace, null);
+  const result = deriveDeterministic(rehydrated);
+  assert.equal(result.sideEffects.status, "unknown");
+  assert.equal(result.sideEffects.workspaceChanged, null);
+});
+
+test("K2. replay snapshot rejects arrays / non-plain executorFacts", () => {
+  assert.throws(() => bundleFromSnapshot([]), /plain object/);
+  assert.throws(() => bundleFromSnapshot("nope"), /plain object/);
+  assert.throws(
+    () => bundleFromSnapshot({ executorFacts: [], executionEvents: [] }),
+    /executorFacts must be a plain object/,
+  );
+});
+
+test("L. an observed empty workspace is still reported as observed", () => {
+  const bundle = makeBundle({ events: simpleEvents });
+  bundle.workspace = { before: {}, after: {}, diff: { added: [], removed: [], modified: [], changed: false } };
+  const result = deriveDeterministic(bundle);
+  assert.equal(result.sideEffects.status, "observed");
+  assert.equal(result.sideEffects.workspaceChanged, false);
 });

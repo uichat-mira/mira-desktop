@@ -30,6 +30,8 @@ const indexEvents = (events) => {
   const toolExecutions = [];
   const childToolCompleted = [];
   const childToolStarted = [];
+  const childToolFailed = new Set();
+  const childStatusObserved = [];
   const toolNormalize = [];
   const approvals = [];
   const childApprovals = [];
@@ -50,6 +52,18 @@ const indexEvents = (events) => {
     if (event?.details?.subAgentEventType === "tool.completed") childToolCompleted.push(index);
     if (event?.details?.subAgentEventType === "tool.started") childToolStarted.push(index);
     if (event?.details?.subAgentEventType === "approval.required") childApprovals.push(index);
+    // Blocker 2: a child failure is only recorded when the trace actually
+    // exposes a definite failure fact. The current #221 contract emits only
+    // `tool.started` / `tool.completed` (no `tool.failed`, no `status`), so this
+    // stays a source-driven probe rather than a guessed 0.
+    if (event?.details?.subAgentEventType === "tool.failed") childToolFailed.add(index);
+    // A child `traceDetails.status` is an equivalent definite failure fact when
+    // the trace exposes it. A Set dedupes an event that carries BOTH signals.
+    const childStatus = event?.details?.traceDetails?.status;
+    if (event?.details?.subAgentEventType && typeof childStatus === "string") {
+      childStatusObserved.push(index);
+      if (TOOL_FAILURE_STATUSES.has(childStatus)) childToolFailed.add(index);
+    }
     if (nodeId === "agent-evaluate" && event.phase === "done") evaluateDone.push(index);
     if (nodeId === "agent-evidence" && event.phase === "done") evidenceDone.push(index);
     const isExecution =
@@ -67,6 +81,8 @@ const indexEvents = (events) => {
     toolExecutions,
     childToolCompleted,
     childToolStarted,
+    childToolFailed: [...childToolFailed].sort((a, b) => a - b),
+    childStatusObserved,
     childApprovals,
     toolNormalize,
     approvals,
@@ -130,9 +146,12 @@ const deriveTiming = (executorFacts, gaps) => {
   };
 };
 
-const deriveSideEffects = (executorFacts) => {
-  const diff = executorFacts?.workspace?.diff ?? null;
-  if (!diff) {
+const deriveSideEffects = (executorFacts, bundle) => {
+  // Blocker 3: absent workspace evidence (e.g. replay snapshot without workspace)
+  // must stay `unavailable`, never be reported as an observed empty workspace.
+  const workspaceEvidenceMissing = bundle?.workspace == null;
+  const diff = executorFacts?.workspace?.diff ?? bundle?.workspace?.diff ?? null;
+  if (workspaceEvidenceMissing || !diff) {
     return {
       status: "unknown",
       workspaceChanged: null,
@@ -202,21 +221,59 @@ export const deriveDeterministic = (bundle) => {
 
   // Delegated (child) tool executions, from `subagent-trace:*` tool.completed
   // events. A separate source, labelled as child, never merged into parent truth.
-  const childToolCalls = idx.childToolCompleted.map((i) => ({
+  // A child call's `status` is only populated when the trace exposes it; when it
+  // does not, `statusUnavailable` marks the gap (never a silent success).
+  const childToolCalls = idx.childToolCompleted.map((i) => {
+    const status = events[i]?.details?.traceDetails?.status ?? null;
+    return {
+      source: "child",
+      ref: trajectoryNodeRef(i, events[i].nodeId),
+      subAgentRunId: events[i]?.details?.subAgentRunId ?? null,
+      toolId: events[i]?.details?.traceDetails?.toolId ?? null,
+      toolCallId: events[i]?.details?.traceDetails?.toolCallId ?? null,
+      inputHash: events[i]?.details?.traceDetails?.inputHash ?? null,
+      artifactCount: isNum(events[i]?.details?.traceDetails?.artifactCount)
+        ? events[i].details.traceDetails.artifactCount
+        : null,
+      status,
+      statusUnavailable: status === null,
+      at: events[i]?.emittedAt ?? null,
+    };
+  });
+
+  // Blocker 2: delegated/child failures must not be dropped. A child failure is
+  // counted ONLY when a definite failure fact exists (`tool.failed` event or an
+  // explicit failing `traceDetails.status`). When the trace cannot prove a child
+  // call's outcome, we emit a structured gap instead of a fabricated success/0.
+  const childStatusProven = idx.childStatusObserved.length > 0;
+  const childFailures = idx.childToolFailed.map((i) => ({
     source: "child",
     ref: trajectoryNodeRef(i, events[i].nodeId),
     subAgentRunId: events[i]?.details?.subAgentRunId ?? null,
     toolId: events[i]?.details?.traceDetails?.toolId ?? null,
     toolCallId: events[i]?.details?.traceDetails?.toolCallId ?? null,
-    inputHash: events[i]?.details?.traceDetails?.inputHash ?? null,
-    artifactCount: isNum(events[i]?.details?.traceDetails?.artifactCount)
-      ? events[i].details.traceDetails.artifactCount
-      : null,
+    status: events[i]?.details?.traceDetails?.status ?? "failed",
     at: events[i]?.emittedAt ?? null,
   }));
 
+  const childFailureCount = childFailures.length;
+  if (childToolCalls.length > 0 && !childStatusProven) {
+    gaps.push({
+      fact: "childFailureCount",
+      requiredBy: "#216 §12/§13 delegated failure visibility; #221 subagent-trace contract",
+      availableSources: ["subagent-trace tool.completed", "subagent-trace tool.failed", "traceDetails.status"],
+      missingReason:
+        "the #221 subagent-trace contract exposes child tool.started/tool.completed but no definite child success/failure fact (no tool.failed, no traceDetails.status), so delegated failures cannot be mechanically proven",
+      scoringImpact:
+        "delegated (child) tool failures may be undercounted in failure facts; childFailureCount is asserted as 0 only for the provable subset",
+    });
+  }
+
   const toolCalls = [...parentToolCalls, ...childToolCalls];
-  const failedToolCalls = toolCalls.filter(
+  // Definite child failures (`tool.failed` events) are neither `agent-tool-N`
+  // nodes nor `tool.completed` traces, so they are folded into the failure facts
+  // explicitly instead of being silently dropped.
+  const failedToolCalls = [...toolCalls, ...childFailures].filter(
     (call) => call.status && TOOL_FAILURE_STATUSES.has(call.status),
   );
 
@@ -364,6 +421,9 @@ export const deriveDeterministic = (bundle) => {
     childToolCalls,
     failedToolCallCount: failedToolCalls.length,
     toolFailures: failedToolCalls,
+    childFailureCount,
+    childFailures,
+    childStatusUnavailableCount: childToolCalls.filter((call) => call.statusUnavailable).length,
     delegationCount: isNum(delegationStarts) ? delegationStarts : "unknown",
     approvalCount,
     childApprovalCount,
@@ -386,7 +446,7 @@ export const deriveDeterministic = (bundle) => {
         : null,
     },
     timing: deriveTiming(executorFacts, gaps),
-    sideEffects: deriveSideEffects(executorFacts),
+    sideEffects: deriveSideEffects(executorFacts, bundle),
     refs,
     observabilityGaps: [...executorGaps, ...gaps],
   };

@@ -94,17 +94,89 @@ const writeText = (file, value) => {
   fs.writeFileSync(file, value, "utf8");
 };
 
+/** True when `dir` is an ancestor of (or equal to) `target`. */
+const isAncestorOrSelf = (dir, target) => {
+  const rel = path.relative(dir, target);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+};
+
+/** A directory is "owned" by the Recorder only if it carries our manifest marker. */
+export const isRecorderOutput = (dir) => {
+  const manifestFile = path.join(dir, "manifest.json");
+  if (!fs.existsSync(manifestFile)) return false;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+    return parsed?.schemaVersion === "mira-agent-core-benchmark-manifest/0.1";
+  } catch {
+    return false;
+  }
+};
+
+export class UnsafeOutputError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UnsafeOutputError";
+  }
+}
+
+/**
+ * Guard `--out` against dangerous recursive deletion (Blocker 1).
+ *
+ * Rejected: filesystem root, repository root, any input run root, any input
+ * ancestor, and any NON-EMPTY directory that is not a prior Recorder output
+ * (recognized by a valid `manifest.json` marker, never by directory name).
+ * Allowed: a non-existent path, an empty directory, or a prior Recorder output.
+ *
+ * MUST run before any `rmSync`.
+ */
+export const assertSafeOutputDir = ({ out, inputs, repoRoot = REPO_ROOT }) => {
+  const resolved = path.resolve(out);
+  const parsed = path.parse(resolved);
+  if (resolved === parsed.root) {
+    throw new UnsafeOutputError(`refusing to use filesystem root as --out: ${resolved}`);
+  }
+  if (resolved === path.resolve(repoRoot)) {
+    throw new UnsafeOutputError(`refusing to use the repository root as --out: ${resolved}`);
+  }
+  for (const input of inputs) {
+    const resolvedInput = path.resolve(input);
+    if (resolved === resolvedInput) {
+      throw new UnsafeOutputError(`refusing to use an input run root as --out: ${resolved}`);
+    }
+    if (isAncestorOrSelf(resolved, resolvedInput)) {
+      throw new UnsafeOutputError(`refusing to use an ancestor of input ${resolvedInput} as --out: ${resolved}`);
+    }
+  }
+  if (!fs.existsSync(resolved)) return resolved;
+  if (!fs.statSync(resolved).isDirectory()) {
+    throw new UnsafeOutputError(`--out exists and is not a directory: ${resolved}`);
+  }
+  const entries = fs.readdirSync(resolved);
+  if (entries.length === 0) return resolved;
+  if (isRecorderOutput(resolved)) return resolved;
+  throw new UnsafeOutputError(
+    `refusing to recursively delete a non-empty directory that is not a prior Recorder output: ${resolved}`,
+  );
+};
+
 const parseArgs = (argv) => {
   const args = { inputs: [], out: null, manifest: null, strictMissing: false, replayFrom: null };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
-    const next = () => argv[(i += 1)];
+    const next = (flag) => {
+      const value = argv[(i += 1)];
+      if (value === undefined || value.startsWith("--")) {
+        i -= 1;
+        throw new Error(`${flag} requires a value`);
+      }
+      return value;
+    };
     switch (token) {
       case "--": break; // tolerate the `pnpm run --` separator
-      case "--input": args.inputs.push(path.resolve(next())); break;
-      case "--out": args.out = path.resolve(next()); break;
-      case "--manifest": args.manifest = path.resolve(next()); break;
-      case "--replay-from": args.replayFrom = path.resolve(next()); break;
+      case "--input": args.inputs.push(path.resolve(next("--input"))); break;
+      case "--out": args.out = path.resolve(next("--out")); break;
+      case "--manifest": args.manifest = path.resolve(next("--manifest")); break;
+      case "--replay-from": args.replayFrom = path.resolve(next("--replay-from")); break;
       case "--strict-missing": args.strictMissing = true; break;
       case "--help":
       case "-h":
@@ -286,6 +358,11 @@ const main = async () => {
       );
     }
   }
+
+  // Blocker 1: refuse to recursively delete a dangerous/unowned --out BEFORE
+  // any destructive operation. Runs on the raw input args (not just the
+  // expanded bundle dirs) so an ancestor of an input root is also rejected.
+  assertSafeOutputDir({ out: args.out, inputs: args.inputs });
 
   fs.rmSync(args.out, { recursive: true, force: true });
   const publicResults = [];
