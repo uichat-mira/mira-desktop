@@ -309,7 +309,7 @@ export const runRepetition = async ({
   const fixtureDir = path.join(repDir, "workspace");
   const externalDir = path.join(repDir, "external");
 
-  const prompt = selectionEntry.turns?.[0] ?? caseEntry.public?.prompt ?? "";
+  const prompt = selectionEntry.initialPrompt ?? selectionEntry.turns?.[0] ?? caseEntry.public?.prompt ?? "";
   const followUps =
     selectionEntry.followUps ??
     (selectionEntry.turns?.slice(1).map((text) => ({ when: "waiting_user", text })) ?? []);
