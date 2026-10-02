@@ -23,7 +23,8 @@
           "when": "completed",
           "text": "那 timeoutMs 呢？"
         }
-      ]
+      ],
+      "initialPrompt": "看一下 config/service.json 里的 region 是什么。"
     },
     {
       "id": "intermediate-inspect-then-continue",
