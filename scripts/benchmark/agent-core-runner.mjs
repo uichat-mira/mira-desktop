@@ -353,6 +353,7 @@ export const runRepetition = async ({
     client.streamChatTurn(
       {
         threadId: thread.id,
+        provider: selectionEntry.provider,
         agentEnabled: true,
         signal: clientAbort.signal,
         messages: [{ role: "user", parts: [{ type: "text", text }] }],
@@ -449,20 +450,6 @@ export const runRepetition = async ({
         }
 
         if (run.status === "waiting_approval") {
-          if (selectionEntry.approvalPolicy === "deny") {
-            interventions.push({
-              at: nowIso(),
-              type: "approval",
-              decision: "deny",
-              toolId: run.pendingApproval?.toolId ?? null,
-              toolCallId: run.pendingApproval?.toolCallId ?? null,
-              inputHash: run.pendingApproval?.inputHash ?? null,
-              note: "selection policy = deny",
-            });
-            // No reject endpoint is used in the default dry-run; record and stop.
-            notes.push("approval requested but selection policy denies approval control");
-            break;
-          }
           interventions.push({
             at: nowIso(),
             type: "approval",
@@ -580,12 +567,13 @@ export const runRepetition = async ({
       hostPlatform: hostPlatform(),
       actualProcedure: {
         transport: "http",
+        provider: selectionEntry.provider,
         baseUrl: args.baseUrl,
         endpoints: [
           "POST /login",
           "POST /chat-workspaces",
           "POST /threads",
-          "POST /proxy/chat/default",
+          `POST /proxy/chat/${selectionEntry.provider}`,
           "GET /agent/runs/:runId",
           "POST /agent/runs/:runId/approve",
           "POST /agent/runs/:runId/cancel",
@@ -604,6 +592,7 @@ export const runRepetition = async ({
       },
       referenceProcedure: {
         baseline: "Windows 11 + PowerShell 7 reference runner",
+        provider: selectionEntry.provider,
         deviations: [
           "executor host is macOS (Intel) instead of Windows 11",
           "control flow implemented as a Node script instead of PowerShell",
