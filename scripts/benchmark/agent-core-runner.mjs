@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 
 import { createClient } from "./lib/http.mjs";
 import {
+  cleanupFixture,
   diffManifest,
   fileSha256,
   hashManifest,
@@ -704,6 +705,11 @@ export const runRepetition = async ({
     return { repDir, executorFacts };
   } finally {
     // --- cleanup (also covers partial setup failures) ---
+    try {
+      cleanupFixture(fixtureSpec, { destDir: fixtureDir, externalDir });
+    } catch (error) {
+      notes.push(`fixture cleanup failed: ${error.message}`);
+    }
     if (thread) {
       try {
         await client.archiveThread(thread.id);
