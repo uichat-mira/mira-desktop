@@ -24,7 +24,7 @@ control surface only:
 | --- | --- |
 | environment preflight | `GET /health`, `POST /login` |
 | fixture binding | `POST /chat-workspaces` (`rootPath`) + `POST /threads` (`workspaceId`) |
-| submit a case | `POST /proxy/chat/default` (`agentEnabled: true`) — SSE stream |
+| submit a case | `POST /proxy/chat/:provider` (`agentEnabled: true`) — provider is explicit per selected case; no implicit `default` fallback |
 | raw execution events | `data-execution-node` SSE frames + persisted `execution-node` message parts (`GET /threads/:id/messages`) |
 | terminal-state polling | `GET /agent/runs/:runId` |
 | approval / resume | `run.pendingApproval` + `POST /agent/runs/:runId/approve` |
@@ -36,9 +36,10 @@ No new observability framework, no Agent/Harness/approval/resume/runtime edits.
 ## Prerequisites
 
 - Node.js 20+ and `pnpm`.
-- A Mira backend running with a configured model provider (the runner never
-  fabricates a model). Model provider/model id are resolved by the backend from
-  its own `model_configs` / `provider_connections`.
+- A Mira backend running with the provider named by each selected case. The runner
+  never fabricates a model and never silently falls back to `default`; the backend
+  still resolves model/provider configuration from its own `model_configs` /
+  `provider_connections`.
 - Login credentials for that backend. **The runner has no default credentials**
   and never logs in with a baked-in password; supply them via
   `--username`/`--password` or `MIRA_BENCH_USERNAME`/`MIRA_BENCH_PASSWORD`.
@@ -93,9 +94,15 @@ The runner fails fast instead of quietly doing nothing:
   rejected — they are not silently ignored).
 - A failed repetition is recorded in the results with its error and makes the
   process exit non-zero; it is never dropped.
+- Every selected case must declare an explicit safe provider id; missing/invalid
+  provider values are selection errors, and the HTTP route uses that exact provider.
+- The current #221 control surface supports `approvalPolicy: "auto-approve"` only.
+  `deny`/reject is rejected during selection resolution because Mira exposes no
+  benchmark reject endpoint; the runner never records a denial it did not send.
 
-`selection.json` only decides which cases to drive, which fixture each needs, the
-mechanical approval policy, and the per-case comparability classification. Case
+`selection.json` only decides which cases to drive, the explicit provider, which
+fixture each needs, the supported mechanical approval policy, and the per-case
+comparability classification. Case
 **prompts** come from the case-set manifest
 (`docs/development/agent-core-benchmark-v0.1-case-set-rc1.json`), so they are not
 duplicated here.
@@ -188,6 +195,7 @@ repetitions do not leak state.
 - No GUI coordinate clicking; control is purely scriptable HTTP.
 - Not a three-platform official runner.
 - The executor does not solve the task. It only submits the frozen prompt and
-  applies the case's mechanical approval policy (default: approve the exact frozen
-  invocation). Cases that require the executor to *deny* a boundary-crossing
-  invocation need an explicit `approvalPolicy` (see `selection.json`).
+  applies the selected supported approval policy. For #221 that policy is explicitly
+  `auto-approve` (approve the exact frozen invocation). A deny/reject policy is not
+  implemented by the current Mira control surface, so selection rejects it instead
+  of pretending a denial occurred.
