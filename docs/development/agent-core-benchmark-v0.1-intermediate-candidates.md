@@ -228,7 +228,7 @@ boundaries:
 successCriteria:
   - id: C1
     description: The production retry value is 4.
-    weight: 35
+    weight: 40
     scorer: deterministic
     observable: parsed final config/service.toml.
   - id: C2
@@ -238,14 +238,9 @@ successCriteria:
     observable: normalized and byte-level fixture diff.
   - id: C3
     description: Mira obtains post-mutation evidence confirming the final target state before answering.
-    weight: 25
+    weight: 35
     scorer: deterministic
     observable: successful mutation is followed by an evidence-producing read/check covering config/service.toml before finalization.
-  - id: C4
-    description: The coherent read/edit/verify package is delegated as one bounded task rather than split into separate Main Planner concrete tool turns.
-    weight: 15
-    scorer: deterministic
-    observable: Main Planner selects delegate_task for the package before the first concrete edit; child trace owns the package-local tool loop.
 
 hardFails:
   - id: H1
@@ -264,8 +259,8 @@ timing:
 
 expectedObservability:
   requiredEvents:
-    - Main Planner delegation decision.
-    - Generic SubAgent start / return and child tool trace.
+    - Main Planner action decision.
+    - Generic SubAgent start / return and child tool trace when delegation is selected.
     - approval and resume events for each executed local write.
     - recoverable failure event if an ambiguous replacement is attempted.
     - Evidence commit after successful mutation and after verification.
@@ -287,7 +282,7 @@ publication:
   publicSafe: true
 ~~~
 
-Recorder expectations: an initial ambiguous replace failure is not itself a failure of the case. Record whether recovery changed args or strategy. Repeating the same ambiguous invocation without a material change is a diagnostic repeated-action error.
+Recorder expectations: an initial ambiguous replace failure is not itself a failure of the case. Record whether recovery changed args or strategy. Also record missed-delegation / over-delegation diagnostically against the current Planner contract, but do not convert exact trajectory into Task Success points. Repeating the same ambiguous invocation without a material change is a diagnostic repeated-action error.
 
 ---
 
@@ -468,24 +463,19 @@ boundaries:
 successCriteria:
   - id: C1
     description: app.json ends with version 1.2.4 and no unrelated app.json fields change.
-    weight: 30
+    weight: 35
     scorer: deterministic
     observable: parsed final app.json plus semantic diff.
   - id: C2
     description: The existing scripts/version-check.mjs runs successfully after the version mutation.
-    weight: 30
+    weight: 40
     scorer: deterministic
     observable: ordered terminal execution result after successful local write.
   - id: C3
     description: release-target.txt and scripts/version-check.mjs remain byte-identical to the fixture.
-    weight: 20
+    weight: 25
     scorer: deterministic
     observable: frozen file hashes.
-  - id: C4
-    description: The read/mutate/verify work is owned as one bounded delegated package rather than fragmented across Main Planner concrete tool turns.
-    weight: 20
-    scorer: deterministic
-    observable: delegate_task selected for the package and child trace includes task-local execution.
 
 hardFails:
   - id: H1
@@ -504,8 +494,8 @@ timing:
 
 expectedObservability:
   requiredEvents:
-    - Main Planner delegation.
-    - child read / write / terminal trace.
+    - Main Planner action decision.
+    - child read / write / terminal trace when delegation is selected.
     - local-write approval and resume.
     - terminal approval and resume.
     - Evidence commits.
@@ -527,7 +517,7 @@ publication:
   publicSafe: true
 ~~~
 
-Recorder expectations: extra reads are allowed. Re-running the validator after an already successful unchanged state is diagnostic unnecessary action, not a hard-fail.
+Recorder expectations: extra reads are allowed. Record missed-delegation / over-delegation diagnostically against the current Planner contract, but do not award or remove Task Success points solely for the exact Parent/Child trajectory. Re-running the validator after an already successful unchanged state is diagnostic unnecessary action, not a hard-fail.
 
 ---
 
@@ -1004,7 +994,7 @@ Recorder expectations: do not require codebase_explore. If its verifiedSource ev
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | multi-source evidence | ✓ | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ |
 | tool competition | ✓ |  |  |  |  | ✓ |  | ✓ |
-| bounded delegation | diag | ✓ | diag | ✓ | ✓ | diag | diag | diag |
+| bounded delegation | diag | diag | diag | diag | diag | diag | diag | diag |
 | post-action verification |  | ✓ | ✓ | ✓ | ✓ |  | ✓ |  |
 | recoverable failure |  | optional | ✓ |  |  |  |  |  |
 | follow-up continuity |  |  |  |  | ✓ |  | ✓ |  |
@@ -1115,7 +1105,7 @@ Observability gap check: current runtime exposes planner actions, conversation/t
 ## 15. Risks to validate in #220
 
 1. **Timing variance** — I04/I05/I07 include one or more approval waits. Canonical runner timing must measure Agent execution consistently and exclude or explicitly define executor response latency according to the frozen methodology.
-2. **Delegation overbinding** — I02 and I04 intentionally score delegation because their entire bounded package matches the current explicit delegation contract. The other cases treat delegation mainly as diagnostic so the pack does not become a prompt-contract memorization test.
+2. **Delegation overbinding** — delegation is recorded diagnostically across the pack, including I02/I04 where the current Planner contract strongly prefers a bounded delegated package. Task Success remains outcome-based so alternate valid trajectories are not penalized solely for Parent/Child shape.
 3. **CodeGraph availability** — I01/I08 permit alternate grep/read paths and must remain solvable when codebase_explore is degraded.
 4. **Recovery ownership** — I03 deliberately scores changed recovery outcome, not whether Parent or Child owns the retry.
 5. **Public leakage** — challenge seeds, exact oracle hashes and evaluator normalization must stay outside public projection.
