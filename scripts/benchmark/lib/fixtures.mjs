@@ -246,3 +246,10 @@ export const hashManifest = (manifest) =>
 
 export const fileSha256 = (absolute) =>
   fs.existsSync(absolute) ? sha256(fs.readFileSync(absolute)) : null;
+
+
+export const cleanupFixture = (spec, ctx = {}) => {
+  if (typeof spec?.cleanup === "function") {
+    spec.cleanup(ctx);
+  }
+};
