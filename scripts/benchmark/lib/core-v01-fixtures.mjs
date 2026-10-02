@@ -201,6 +201,17 @@ const adv04 = () => ({
 
 const adv05 = () => ({
   id: "adv05-v1",
+  cleanup: ({ destDir }) => {
+    const pidFile = path.join(destDir, ".fixture", "async-worker.pid");
+    if (!fs.existsSync(pidFile)) return;
+    const pid = Number(fs.readFileSync(pidFile, "utf8").trim());
+    if (!Number.isInteger(pid) || pid <= 0) return;
+    try {
+      process.kill(pid);
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+  },
   files: {
     "scripts/start-async-build.mjs": text(
       'import fs from "node:fs";',
@@ -213,6 +224,7 @@ const adv05 = () => ({
       'fs.writeFileSync(path.join(jobRoot, "artifact.partial.txt"), "partial\\n", "utf8");',
       'fs.writeFileSync(path.join(".fixture", "async-current.json"), JSON.stringify({ jobId }, null, 2) + "\\n", "utf8");',
       'const child = spawn(process.execPath, [path.resolve("scripts/async-worker.mjs"), path.resolve(jobRoot)], { cwd: process.cwd(), detached: true, stdio: "ignore" });',
+      'fs.writeFileSync(path.join(".fixture", "async-worker.pid"), String(child.pid) + "\n", "utf8");',
       'child.unref();',
       'console.log(JSON.stringify({ jobId, status: "building" }));'
     ),
