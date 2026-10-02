@@ -448,6 +448,13 @@ export const runRepetition = async ({
           runId = activeFollowUp.runId;
         }
         if (activeFollowUp && !activeFollowUp.runId && !activeFollowUp.settled) {
+          if (elapsedMs() >= args.maxWaitMs) {
+            runnerSafetyCapReached = true;
+            notes.push(
+              `runner safety bound ${args.maxWaitMs}ms reached before follow-up runId surfaced`,
+            );
+            break;
+          }
           await sleep(50);
           continue;
         }
