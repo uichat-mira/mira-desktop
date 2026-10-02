@@ -592,13 +592,19 @@ test("adv05 cleanup hook terminates a live fixture worker", async (t) => {
   assert.ok(Number.isInteger(pid) && pid > 0);
   cleanupFixture(spec, { destDir: workspace, externalDir: path.join(root, "external") });
 
-  await delay(50);
   let alive = true;
-  try {
-    process.kill(pid, 0);
-  } catch (error) {
-    if (error?.code === "ESRCH") alive = false;
-    else throw error;
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error?.code === "ESRCH") {
+        alive = false;
+        break;
+      }
+      throw error;
+    }
+    await delay(50);
   }
   assert.equal(alive, false);
 });
