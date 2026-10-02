@@ -452,10 +452,15 @@ test("adv05 fixture reaches ready and verifier passes for the same job", async (
   const started = JSON.parse(kickoff.stdout.trim());
   assert.equal(started.status, "building");
 
-  await delay(1200);
-  const status = JSON.parse((await execFileAsync(process.execPath, ["scripts/show-async-status.mjs"], { cwd: workspace })).stdout.trim());
-  assert.equal(status.jobId, started.jobId);
-  assert.equal(status.status, "ready");
+  let status = null;
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    status = JSON.parse((await execFileAsync(process.execPath, ["scripts/show-async-status.mjs"], { cwd: workspace })).stdout.trim());
+    if (status.status === "ready") break;
+    await delay(100);
+  }
+  assert.equal(status?.jobId, started.jobId);
+  assert.equal(status?.status, "ready");
 
   const verified = await execFileAsync(process.execPath, ["scripts/verify-async-build.mjs"], { cwd: workspace });
   assert.match(verified.stdout, new RegExp(started.jobId));
