@@ -311,8 +311,8 @@ const adv07 = ({ externalDir }) => ({
     "scripts/verify-deployments.mjs": text(
       'import fs from "node:fs";',
       'import path from "node:path";',
-      'const staging = JSON.parse(fs.readFileSync("deploy/staging.json", "utf8"));',
-      'const production = JSON.parse(fs.readFileSync("deploy/production.json", "utf8"));',
+      'const staging = JSON.parse(fs.readFileSync("config/staging.json", "utf8"));',
+      'const production = JSON.parse(fs.readFileSync("config/production.json", "utf8"));',
       'const external = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "..", "external", "adv07-region.json"), "utf8"));',
       'const stagingOk = staging.environment === "staging" && staging.image === "mira:2.4.0" && staging.region === "ap-northeast-1" && staging.replicas === 1;',
       'const productionOk = production.environment === "production" && production.image === "mira:2.4.0" && production.region === external.productionRegion && production.replicas === 3;',
