@@ -39,6 +39,8 @@ import {
   isTimingFrozen,
   loadCaseSet,
 } from "./lib/manifest.mjs";
+import { caseIdsOf, resolveSelection } from "./lib/selection.mjs";
+import { collectObservability } from "./lib/observability.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -50,8 +52,8 @@ const RUNNER_VERSION = "agent-core-runner/0.1";
 const parseArgs = (argv) => {
   const args = {
     baseUrl: "http://127.0.0.1:8787",
-    username: "Tomz",
-    password: "123456",
+    username: process.env.MIRA_BENCH_USERNAME ?? null,
+    password: process.env.MIRA_BENCH_PASSWORD ?? null,
     selection: path.join(__dirname, "selection.json"),
     out: path.join(REPO_ROOT, ".test-artifact", "agent-core-benchmark", "runs"),
     cases: null,
@@ -72,7 +74,7 @@ const parseArgs = (argv) => {
       case "--selection": args.selection = path.resolve(next()); break;
       case "--out": args.out = path.resolve(next()); break;
       case "--cases": args.cases = next().split(",").map((s) => s.trim()).filter(Boolean); break;
-      case "--repetitions": args.repetitions = Number(next()); break;
+      case "--repetitions": args.repetitions = next(); break;
       case "--keep-fixture": args.keepFixture = true; break;
       case "--preflight-only": args.preflightOnly = true; break;
       case "--max-wait-ms": args.maxWaitMs = Number(next()); break;
@@ -99,12 +101,12 @@ const printHelp = () => {
       "",
       "Options:",
       "  --base-url <url>       Running Mira backend base URL (default http://127.0.0.1:8787)",
-      "  --username <name>      Login username (default Tomz)",
-      "  --password <pw>        Login password (default 123456)",
+      "  --username <name>      Login username (or MIRA_BENCH_USERNAME); required",
+      "  --password <pw>        Login password (or MIRA_BENCH_PASSWORD); required",
       "  --selection <file>     Runner selection config (default scripts/benchmark/selection.json)",
       "  --out <dir>            Output root for raw run bundles",
-      "  --cases <a,b>          Override selection case ids",
-      "  --repetitions <n>      Override repetition count per case",
+      "  --cases <a,b>          Subset of selection case ids (all ids must exist; empty result is an error)",
+      "  --repetitions <n>      Override repetition count per case (must be a positive integer)",
       "  --keep-fixture         Keep the materialized fixture workspace after the run",
       "  --preflight-only       Only run environment preflight, then exit",
       "  --max-wait-ms <n>      Runner safety bound for terminal polling (NOT a case cutoff)",
@@ -247,6 +249,21 @@ const mechanicalFactsFromEvents = (events) => {
 
 const runPreflight = async ({ client, args, caseSet, selection }) => {
   const report = { ok: false, checks: [] };
+
+  // Credentials are never defaulted. They must be supplied explicitly so the
+  // runner never logs in with a baked-in dev password.
+  if (!args.username || !args.password) {
+    report.checks.push({
+      name: "credentials",
+      ok: false,
+      detail:
+        "username/password are required via --username/--password or MIRA_BENCH_USERNAME/MIRA_BENCH_PASSWORD",
+    });
+    report.ok = false;
+    report.hostPlatform = hostPlatform();
+    return report;
+  }
+
   const health = await client.health();
   report.checks.push({ name: "backend_health", ok: true, detail: health?.data ?? health });
 
@@ -310,15 +327,11 @@ const runRepetition = async ({
   const interventions = [];
   const notes = [];
 
-  const workspace = await client.createWorkspace({
-    name: `bench-${selectionEntry.id}-rep${repetitionIndex}`,
-    rootPath: fixtureDir,
-  });
-  const thread = await client.createThread({
-    title: `bench-${selectionEntry.id}-rep${repetitionIndex}`,
-    workspaceId: workspace.id,
-    agentEnabled: true,
-  });
+  // Workspace/thread are created *inside* the cleanup scope so a partial setup
+  // failure cannot leak a workspace record or a materialized fixture and pollute
+  // the next repetition.
+  let workspace = null;
+  let thread = null;
 
   // --- monotonic timer starts immediately before submitting the case to Mira ---
   const monotonicStartNs = process.hrtime.bigint();
@@ -363,6 +376,16 @@ const runRepetition = async ({
   const elapsedMs = () => Number((process.hrtime.bigint() - monotonicStartNs) / 1_000_000n);
 
   try {
+    workspace = await client.createWorkspace({
+      name: `bench-${selectionEntry.id}-rep${repetitionIndex}`,
+      rootPath: fixtureDir,
+    });
+    thread = await client.createThread({
+      title: `bench-${selectionEntry.id}-rep${repetitionIndex}`,
+      workspaceId: workspace.id,
+      agentEnabled: true,
+    });
+
     // Start the first turn in the background so the executor can poll terminal
     // state and apply timeout/cancel control while the run is still executing.
     const firstTurn = { runId: null, settled: false, error: null };
@@ -499,15 +522,9 @@ const runRepetition = async ({
     );
 
     terminalRun = terminalRun ?? (runId ? await client.getRun(runId) : null);
-    const evaluateNode = [...persistedEvents]
-      .reverse()
-      .find((event) => event?.nodeId === "agent-evaluate" && event.phase === "done");
-    const plannerDoneNodes = persistedEvents.filter(
-      (event) => event?.nodeId === "agent-next-action-planner" && event.phase === "done",
-    );
-    const finalizationEvidenceRefs =
-      [...plannerDoneNodes].reverse().find((event) => "finalizationEvidenceRefs" in (event.details ?? {}))
-        ?.details?.finalizationEvidenceRefs ?? null;
+    // Expected execution-node facts are extracted together with a structured
+    // gap list, so a missing field is exposed instead of silently becoming null.
+    const observability = collectObservability({ persistedEvents, terminalRun });
 
     // --- raw run bundle (NOT the #223 Recorder schema) ---
     writeNdjson(path.join(repDir, "execution-events.ndjson"), persistedEvents);
@@ -526,10 +543,11 @@ const runRepetition = async ({
       caseId: selectionEntry.id,
       difficulty: caseEntry.difficulty,
       repetition: repetitionIndex,
-      executionMode: selectionEntry.executionMode ?? "adapted",
+      executionMode: selectionEntry.executionMode ?? "canonical",
       classificationRationale:
         selectionEntry.classificationRationale ??
         "Driven through the product HTTP control surface on macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline; only the executor script/host differ.",
+      comparabilityImpact: selectionEntry.comparabilityImpact ?? null,
       hostPlatform: hostPlatform(),
       actualProcedure: {
         transport: "http",
@@ -592,9 +610,9 @@ const runRepetition = async ({
         : null,
       streamFinishReason: finishReason,
       finalization: {
-        hasRequiredFinalization: evaluateNode?.details?.hasRequiredFinalization ?? null,
-        plannerTerminalType: evaluateNode?.details?.plannerTerminalType ?? null,
-        finalizationEvidenceRefs,
+        hasRequiredFinalization: observability.hasRequiredFinalization,
+        plannerTerminalType: observability.plannerTerminalType,
+        finalizationEvidenceRefs: observability.finalizationEvidenceRefs,
       },
       elapsed: {
         startedAt: startedAtIso,
@@ -628,7 +646,11 @@ const runRepetition = async ({
         })),
       },
       notes,
-      observerGaps: [],
+      observability: {
+        signals: observability.signals,
+        gaps: observability.gaps,
+      },
+      observerGaps: observability.gaps,
       rawArtifacts: {
         executionEvents: path.relative(REPO_ROOT, path.join(repDir, "execution-events.ndjson")),
         streamFrames: path.relative(REPO_ROOT, path.join(repDir, "stream-frames.ndjson")),
@@ -639,16 +661,20 @@ const runRepetition = async ({
 
     return { repDir, executorFacts };
   } finally {
-    // --- cleanup ---
-    try {
-      await client.archiveThread(thread.id);
-    } catch (error) {
-      notes.push(`archive thread failed: ${error.message}`);
+    // --- cleanup (also covers partial setup failures) ---
+    if (thread) {
+      try {
+        await client.archiveThread(thread.id);
+      } catch (error) {
+        notes.push(`archive thread failed: ${error.message}`);
+      }
     }
-    try {
-      await client.deleteWorkspace(workspace.id);
-    } catch (error) {
-      notes.push(`delete workspace failed: ${error.message}`);
+    if (workspace) {
+      try {
+        await client.deleteWorkspace(workspace.id);
+      } catch (error) {
+        notes.push(`delete workspace failed: ${error.message}`);
+      }
     }
     if (!args.keepFixture) {
       fs.rmSync(fixtureDir, { recursive: true, force: true });
@@ -658,13 +684,14 @@ const runRepetition = async ({
 
 const main = async () => {
   const args = parseArgs(process.argv.slice(2));
-  const selection = JSON.parse(fs.readFileSync(args.selection, "utf8"));
-  if (args.cases) {
-    selection.cases = selection.cases.filter((entry) => args.cases.includes(entry.id));
-  }
-  if (args.repetitions) selection.repetitions = args.repetitions;
-
+  const rawSelection = JSON.parse(fs.readFileSync(args.selection, "utf8"));
   const caseSet = loadCaseSet(REPO_ROOT);
+  const selection = resolveSelection(
+    rawSelection,
+    { cases: args.cases, repetitions: args.repetitions },
+    { knownCaseIds: caseIdsOf(caseSet) },
+  );
+
   const client = createClient({ baseUrl: args.baseUrl });
 
   const preflight = await runPreflight({ client, args, caseSet, selection });
@@ -681,35 +708,52 @@ const main = async () => {
   fs.mkdirSync(outputRoot, { recursive: true });
 
   const results = [];
+  let hadError = false;
   for (const entry of selection.cases) {
-    for (let rep = 1; rep <= (selection.repetitions ?? 1); rep += 1) {
-      const result = await runRepetition({
-        args,
-        client,
-        caseSet,
-        selectionEntry: entry,
-        outputRoot,
-        repetitionIndex: rep,
-      });
-      results.push({
-        caseId: entry.id,
-        repetition: rep,
-        repDir: path.relative(REPO_ROOT, result.repDir),
-        terminal: result.executorFacts.terminal,
-        elapsedMs: result.executorFacts.elapsed.elapsedMs,
-        interventions: result.executorFacts.executorInterventions.length,
-      });
+    for (let rep = 1; rep <= selection.repetitions; rep += 1) {
+      try {
+        const result = await runRepetition({
+          args,
+          client,
+          caseSet,
+          selectionEntry: entry,
+          outputRoot,
+          repetitionIndex: rep,
+        });
+        results.push({
+          caseId: entry.id,
+          repetition: rep,
+          repDir: path.relative(REPO_ROOT, result.repDir),
+          terminal: result.executorFacts.terminal,
+          elapsedMs: result.executorFacts.elapsed.elapsedMs,
+          interventions: result.executorFacts.executorInterventions.length,
+        });
+      } catch (error) {
+        // A failed repetition must never disappear silently; record it and make
+        // the process exit non-zero so the run cannot look green.
+        hadError = true;
+        results.push({
+          caseId: entry.id,
+          repetition: rep,
+          error: error?.message ?? String(error),
+        });
+      }
     }
   }
 
   process.stdout.write(
     `${JSON.stringify({ outputRoot: path.relative(REPO_ROOT, outputRoot), results }, null, 2)}\n`,
   );
+  if (hadError) process.exitCode = 1;
 };
 
 const startedStamp = () => new Date().toISOString().replace(/[:.]/g, "-");
 
 main().catch((error) => {
-  process.stderr.write(`${error?.stack ?? error}\n`);
+  if (error?.name === "SelectionError") {
+    process.stderr.write(`selection error: ${error.message}\n`);
+  } else {
+    process.stderr.write(`${error?.stack ?? error}\n`);
+  }
   process.exitCode = 1;
 });

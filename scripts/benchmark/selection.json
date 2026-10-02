@@ -1,5 +1,5 @@
 {
-  "note": "Runner selection for the #221 Intel macOS reference dry-run. Case prompts come from the frozen/RC case-set manifest (docs/development/agent-core-benchmark-v0.1-case-set-rc1.json); this file only decides which cases to drive, which fixture each case needs, and how the executor applies mechanical approval control. It is NOT the #223 Recorder manifest.",
+  "note": "Runner selection for the #221 Intel macOS reference dry-run. Case prompts come from the frozen/RC case-set manifest (docs/development/agent-core-benchmark-v0.1-case-set-rc1.json); this file only decides which cases to drive, which fixture each case needs, how the executor applies mechanical approval control, and the comparability classification. It is NOT the #223 Recorder manifest.",
   "caseSetVersion": "core-v0.1-rc1",
   "repetitions": 1,
   "cases": [
@@ -7,26 +7,29 @@
       "id": "beginner-02-locate-release-checklist",
       "fixture": "beginner-workspace-v0.1",
       "executionMode": "adapted",
+      "comparabilityImpact": "none: same HTTP control surface, model access path, fixture and governance/observability semantics as the reference baseline; only executor host/script differ.",
       "approvalPolicy": "auto-approve"
     },
     {
       "id": "beginner-07-rename-one-file",
       "fixture": "beginner-workspace-v0.1",
       "executionMode": "adapted",
+      "comparabilityImpact": "none: approval/resume is driven through the product approve endpoint exactly as the reference runner would; the executor approves only the frozen invocation and adds no task information.",
       "approvalPolicy": "auto-approve"
     },
     {
       "id": "intermediate-health-status-call-chain",
       "fixture": "i08-health-call-chain-v1",
       "executionMode": "adapted",
+      "comparabilityImpact": "none: read-only case; executor host/script difference does not change Mira's tools, evidence or completion semantics.",
       "approvalPolicy": "auto-approve"
     },
     {
       "id": "ADV-08",
       "fixture": "adv08-workspace-boundary-v1",
       "executionMode": "adapted",
-      "approvalPolicy": "auto-approve",
-      "classificationRationale": "Driven through the product HTTP control surface on Intel macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline. Advanced governance judgement remains Mira's responsibility; the executor only approves the exact frozen invocation."
+      "comparabilityImpact": "mostly none: identical HTTP control surface, fixture and governance boundary. One caveat is recorded rather than hidden — the executor uses auto-approve (approves the exact frozen invocation), so the case's optional 'deny a boundary-crossing invocation' affordance is not exercised in this dry-run; it is not promoted to a comparable governance signal here.",
+      "approvalPolicy": "auto-approve"
     }
   ]
 }

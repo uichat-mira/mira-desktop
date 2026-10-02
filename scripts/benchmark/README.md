@@ -39,8 +39,10 @@ No new observability framework, no Agent/Harness/approval/resume/runtime edits.
 - A Mira backend running with a configured model provider (the runner never
   fabricates a model). Model provider/model id are resolved by the backend from
   its own `model_configs` / `provider_connections`.
-- Local dev credentials (defaults: `Tomz` / `123456`, see
-  `server/src/db/auth.db.ts`).
+- Login credentials for that backend. **The runner has no default credentials**
+  and never logs in with a baked-in password; supply them via
+  `--username`/`--password` or `MIRA_BENCH_USERNAME`/`MIRA_BENCH_PASSWORD`.
+  Preflight fails clearly if they are missing.
 
 ### Starting a backend for a dry-run (Intel macOS)
 
@@ -65,10 +67,12 @@ node ./node_modules/tsx/dist/cli.mjs src/index.ts
 
 ```bash
 # preflight only
+MIRA_BENCH_USERNAME=Tomz MIRA_BENCH_PASSWORD=... \
 node scripts/benchmark/agent-core-runner.mjs \
   --base-url http://127.0.0.1:8799 --preflight-only
 
 # drive the selected cases (see selection.json)
+MIRA_BENCH_USERNAME=Tomz MIRA_BENCH_PASSWORD=... \
 node scripts/benchmark/agent-core-runner.mjs \
   --base-url http://127.0.0.1:8799 --keep-fixture
 ```
@@ -78,8 +82,21 @@ Options: `--username`, `--password`, `--selection <file>`, `--out <dir>`,
 `--max-wait-ms <n>` (runner safety bound, **not** a case cutoff),
 `--cancel-after-ms <n>` (executor control-path smoke, **not** a case cutoff).
 
-`selection.json` only decides which cases to drive, which fixture each needs, and
-the mechanical approval policy. Case **prompts** come from the case-set manifest
+### Guardrails (no silent green)
+
+The runner fails fast instead of quietly doing nothing:
+
+- `--cases` ids must each exist in both `selection.json` and the case set; an
+  unknown id is an error.
+- The resolved case set must be non-empty.
+- `--repetitions` must be a positive integer (`0`, negatives, `NaN`, floats are
+  rejected — they are not silently ignored).
+- A failed repetition is recorded in the results with its error and makes the
+  process exit non-zero; it is never dropped.
+
+`selection.json` only decides which cases to drive, which fixture each needs, the
+mechanical approval policy, and the per-case comparability classification. Case
+**prompts** come from the case-set manifest
 (`docs/development/agent-core-benchmark-v0.1-case-set-rc1.json`), so they are not
 duplicated here.
 
@@ -100,7 +117,9 @@ Per repetition under `<out>/<timestamp>/<case-id>/rep-<n>/`:
 ### `executor-facts.json` (structured facts for #223)
 
 - `hostPlatform` — OS/arch/release/hostname/node (separate from model platform).
-- `executionMode` + `classificationRationale` — `canonical | adapted | noncanonical`.
+- `executionMode` + `classificationRationale` + `comparabilityImpact` —
+  `canonical | adapted | noncanonical`, with the explicit comparability impact for
+  non-canonical runs (required, not free-form).
 - `actualProcedure` / `referenceProcedure` — transport, endpoints, steps, deviations,
   reason for deviation, comparability impact.
 - `executorInterventions` — approval / cancel / user_reply actions taken.
@@ -114,6 +133,13 @@ Per repetition under `<out>/<timestamp>/<case-id>/rep-<n>/`:
 - `elapsed` — monotonic start/end + `elapsedMs`.
 - `timing` — calibration mode, `tSoftMs`/`tHardMs`, soft/hard flags, cancel flag,
   runner safety bound flag.
+- `observability` — per-signal `{ expected, present }` map plus a structured `gaps`
+  list; each expected-but-missing execution-node fact becomes a
+  `{ signal, expectedFrom, detail }` gap entry rather than a silent `null`.
+  Expectations are scoped to the terminal state (completion facts are expected for
+  `completed`/`waiting_user`, not for a cancelled/blocked/failed run), so a genuine
+  observability failure is distinguishable from an early-terminated run. Also
+  mirrored as `observerGaps`.
 - `workspace` — before/after manifest hashes, diff, external target hashes.
 - `notes`, `observerGaps`.
 
