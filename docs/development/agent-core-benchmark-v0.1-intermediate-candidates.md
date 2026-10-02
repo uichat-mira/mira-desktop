@@ -548,9 +548,8 @@ difficultyRationale: >
   verify it.
 
 public:
-  prompt: |
-    Turn 1: smoke target 和文档对不上。先查清楚原因，给我最小修法，这一轮不要改任何文件。
-    Turn 2: 按你刚才的最小方案改掉并确认。
+  prompt: >
+    smoke target 和文档对不上。先查清楚原因，给我最小修法，这一轮不要改任何文件。
   intentSummary: >
     Diagnose a configuration/document mismatch without changing files, then continue the same
     task on follow-up and apply/verify the previously identified minimal fix.
@@ -558,6 +557,8 @@ public:
 fixture:
   version: i05-v1
   setup:
+    - After the Turn 1 answer is complete, executor submits the fixed follow-up user message:
+      按你刚才的最小方案改掉并确认。
     - Create docs/SMOKE.md stating the supported smoke target is preview.
     - Create config/smoke.json with target = staging.
     - Create src/smoke-loader.ts showing runtime reads config/smoke.json directly.
@@ -778,9 +779,8 @@ difficultyRationale: >
   governed edit/verify package.
 
 public:
-  prompt: |
-    Turn 1: 把 deploy/staging.yaml 的 endpoint 对齐到 docs/release-regions.md 里这次发布区域对应的地址。
-    Executor reply when asked for the missing region: 这次是 ap-southeast-1。
+  prompt: >
+    把 deploy/staging.yaml 的 endpoint 对齐到 docs/release-regions.md 里这次发布区域对应的地址。
   intentSummary: >
     Resolve a region-dependent staging endpoint, request the genuinely missing release region,
     then apply and verify the correct mapping.
@@ -788,6 +788,8 @@ public:
 fixture:
   version: i07-v1
   setup:
+    - When Mira asks for the missing release region, executor submits exactly:
+      这次是 ap-southeast-1。
     - Create docs/release-regions.md with at least ap-southeast-1 and ap-northeast-1 endpoint mappings.
     - Create deploy/staging.yaml with an obsolete endpoint.
     - Ensure no file, environment variable, message, or metadata identifies the current release region.
