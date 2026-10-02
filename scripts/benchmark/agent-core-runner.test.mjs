@@ -618,13 +618,17 @@ test("follow-up without runId obeys runner safety bound", async (t) => {
   const client = {
     async createWorkspace() { return { id: "ws-nr" }; },
     async createThread() { return { id: "thread-nr" }; },
-    async streamChatTurn(_input, { onEvent }) {
+    async streamChatTurn({ signal }, { onEvent }) {
       streamCount += 1;
       if (streamCount === 1) {
         onEvent?.({ type: "data-execution-node", data: { details: { runId: "run-1" } } });
         return { runId: "run-1", finishReason: "stop", events: [] };
       }
-      return new Promise(() => {});
+      return new Promise((resolve, reject) => {
+        const abort = () => reject(signal?.reason ?? new Error("aborted"));
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+      });
     },
     async getRun() { return { status: "completed", terminalReason: "completed" }; },
     async getMessages() { return []; },
