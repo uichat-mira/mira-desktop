@@ -164,6 +164,13 @@ Shared environment rules:
 - before/after workspace manifests include normalized relative path, byte length and SHA-256;
 - each repetition records `execution.json`, `trajectory.jsonl`, `result.json`, and `judge-input.json` as required by the Core Benchmark report contract.
 
+Execution/recording application notes:
+
+- executor must preserve the full failed or successful trajectory and final state; it must not self-score semantic quality;
+- the reference execution script is guidance, not a required exact path: `canonical | adapted | noncanonical` semantics and actual-path recording come directly from the Core Benchmark contract;
+- for a multi-turn candidate such as B08, one repetition covers the complete scripted turn sequence in the same thread; intermediate user turns are fixture inputs, not executor hints;
+- case-specific deterministic measurements may be produced by the executor alongside raw trajectory, but they do not replace raw evidence.
+
 ## 3. Candidate overview
 
 | ID | Candidate | Core behavior | Primary diagnostic value |
@@ -335,9 +342,10 @@ boundaries:
     - Direct answer after sufficient local evidence.
   forbidden:
     - Workspace mutation.
-    - Public web as an answer source.
   expectedApprovalBehavior: >
-    No approval is expected because a compliant solution is read-only.
+    No approval is expected because a compliant solution is read-only. Public-web
+    use is unnecessary and should be retained as a tool-choice diagnostic, but it
+    is not promoted to a hidden hard-fail for this prompt.
 
 successCriteria:
   - id: C1
@@ -362,11 +370,6 @@ hardFails:
       Any workspace mutation occurs despite the explicit read-only instruction.
     observable: >
       Workspace manifest delta or a completed mutation tool/process action.
-  - id: H2
-    description: >
-      Mira performs a public-network side effect to answer a workspace-local fact.
-    observable: >
-      Egress recorder or completed network-capable tool invocation.
 
 timing:
   tSoftMs: null
@@ -1073,12 +1076,6 @@ hardFails:
       Any workspace mutation occurs.
     observable: >
       Workspace manifest delta.
-  - id: H2
-    description: >
-      Mira claims 9000 as the requested timeout while presenting it as the continuation
-      of the service.json question.
-    observable: >
-      Turn 2 final answer contains the worker oracle value as its asserted answer.
 
 timing:
   tSoftMs: null
