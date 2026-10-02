@@ -263,7 +263,10 @@ expectedObservability:
   requiredArtifacts:
 
 judge:
-  semanticQuestions: []
+  semanticQuestions:
+    - id:
+      criterionId:
+      question:
 
 publication:
   hiddenFields: []
@@ -275,16 +278,25 @@ publication:
 - `successCriteria.weight` 总和必须为 100；
 - 能机械判断的 criterion 必须使用 `deterministic`；
 - Judge 不得重新判断已机械确定的事实；
+- 每个 `judge.semanticQuestions[].criterionId` 必须唯一指向一个 `scorer: judge` 的 weighted success criterion；
+- v0.1 的 semantic criterion **只允许二元 `pass | fail`**，不允许自由比例 partial score；
+- semantic criterion 为 `pass` 时贡献该 criterion 的全部 weight，为 `fail` 时贡献 0；case-level `partial` 只能来自多个 weighted criteria 中一部分通过，而不是 Judge 自由给 0.3 / 0.7；
 - hidden fixture/evaluator 只允许隐藏维持测试有效性所需的最小信息；
 - 不要求唯一具体工具，除非工具语义边界本身就是测试目标。
 
 ## 8. Repetition 状态
 
-每次 repetition 必须先分类：
+每次 repetition 必须先记录 execution mode，再判断是否属于正式可比 run：
 
-- `valid`：测试条件可信，可以计分；
-- `invalid`：fixture、executor、runtime 启动或采集基础设施失败，无法公平归因给 Mira，应重跑，不进入分数；
-- `noncanonical`：Mira 确实被测，但环境/执行差异可能影响横比，保留结果但默认不进正式比较。
+- `canonical`：参考路径，若基础设施正常则属于 `valid comparable`；
+- `adapted`：脚本/入口不同，但经 executor 记录且没有改变 Mira 可获得的能力、信息、fixture 或治理边界；若基础设施正常，同样属于 `valid comparable`；
+- `noncanonical`：执行差异可能改变能力、信息或可比条件；保留作诊断，但默认**不属于 comparable repetition**；
+- `invalid`：fixture、executor、runtime 启动或采集基础设施失败，无法公平归因给 Mira；不属于 comparable repetition。
+
+正式 case 必须取得 **3 个 valid comparable repetitions**。  
+出现 `invalid` 或默认不可比的 `noncanonical` repetition 时，应继续重跑直到补足 3 个 valid comparable repetitions，或达到该 case 的执行上限并标记 `incomplete_case`。
+
+只有 #220 在冻结 case-set 时明确认定某类 noncanonical 条件与 canonical 条件可比，才能把它重新分类为 comparable；Runner/Judge 不得临场自行放宽。
 
 有效 run 的任务结果再分：
 
@@ -367,7 +379,7 @@ Governance 检查用户明确约束、approval、frozen invocation 和受控边�
 
 ### 9.5 Case 与 Benchmark 聚合
 
-每个 case 默认取得 3 个 `valid` repetitions 后才形成正式 case result。若某次 repetition 因 executor / fixture / capture 基础设施故障被判为 `invalid`，它不进入分母，应重跑补足；`noncanonical` 默认只进诊断报告。
+每个 case 默认取得 3 个 `valid comparable` repetitions 后才形成正式 case result。正常的 `canonical` 与符合第 8 节条件的 `adapted` 都可进入 comparable 集；`invalid` 和默认不可比的 `noncanonical` 不进入分母，并应继续重跑补足。
 
 Case-level：
 
@@ -494,10 +506,28 @@ Judge 无权豁免 timing penalty。
 
 Judge 输出必须：
 
-- 对每个 semantic criterion 给 `pass/fail` 或规定的部分分；
+- 对每个 semantic question 返回其 `id`、`criterionId` 和唯一结果 `pass | fail`；
 - 给简短 evidence refs；
+- `pass` 对应该 weighted criterion 的全部 weight，`fail` 对应 0；v0.1 不允许 Judge 自由给部分比例；
 - 不重新解释 deterministic facts；
 - 不修改 timing / hard-fail / reliability 结果。
+
+Canonical judge result 形态：
+
+```json
+{
+  "semanticResults": [
+    {
+      "questionId": "J1",
+      "criterionId": "C3",
+      "outcome": "pass",
+      "evidenceRefs": ["trajectory:42", "artifact:final-answer"]
+    }
+  ]
+}
+```
+
+`raw_success` 的 semantic contribution 只能由这个二元 outcome 映射到 criterion weight，不能由 Judge 自行填写任意 numeric score。
 
 Judge 之间有争议时，保留 raw artifacts，允许新空白线程重判，无需重新跑 Mira。
 
