@@ -107,6 +107,15 @@ export const resolveSelection = (selection, overrides, context = {}) => {
       );
     }
 
+    if (
+      entry.initialPrompt !== undefined &&
+      (typeof entry.initialPrompt !== "string" || !entry.initialPrompt.trim())
+    ) {
+      throw new SelectionError(
+        `case "${entry.id}" initialPrompt must be a non-empty string`,
+      );
+    }
+
     if (entry.turns !== undefined && entry.followUps !== undefined) {
       throw new SelectionError(
         `case "${entry.id}" must not declare both legacy turns and followUps`,
