@@ -1,0 +1,59 @@
+{
+  "note": "#220 timing calibration Batch 4; #249 runner-ready selection.",
+  "caseSetVersion": "core-v0.1-rc1",
+  "repetitions": 3,
+  "cases": [
+    {
+      "id": "beginner-07-rename-one-file",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "beginner-08-contextual-config-follow-up",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve",
+      "followUps": [
+        {
+          "when": "completed",
+          "text": "那 timeoutMs 呢？"
+        }
+      ]
+    },
+    {
+      "id": "intermediate-inspect-then-continue",
+      "fixture": "i05-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve",
+      "followUps": [
+        {
+          "when": "completed",
+          "text": "按你刚才的最小方案改掉并确认。"
+        }
+      ]
+    },
+    {
+      "id": "ADV-04",
+      "fixture": "adv04-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-05",
+      "fixture": "adv05-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    }
+  ]
+}
