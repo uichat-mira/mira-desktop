@@ -1,0 +1,632 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-judge-input/0.1",
+  "instructions": "You are judging one frozen Mira Agent Core Benchmark repetition. Everything you need is inside this file plus trajectory.jsonl: the frozen case contract, the semantic criteria, the semantic questions, the run/execution manifest, the raw trajectory evidence, the deterministic measurements and Mira's final answer. Do NOT reinterpret or override deterministic facts, timing, terminal state or side effects. Answer ONLY the semantic questions listed under semanticCriteria.questions, each targeting one judge-scored criterion, with pass | fail and the smallest useful evidence refs. Executor self-assessment, advocacy and hidden reasoning are deliberately excluded.",
+  "benchmarkContract": {
+    "benchmarkVersion": "0.1",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86",
+    "caseSetVersion": "core-v0.1-rc1"
+  },
+  "case": {
+    "identity": {
+      "caseId": "ADV-04",
+      "title": "One expensive audit, targeted repair",
+      "difficulty": "advanced",
+      "caseSetVersion": "core-v0.1-rc1",
+      "source": {
+        "path": "docs/development/agent-core-benchmark-advanced-cases-v0.1.md",
+        "blobSha": "a5a441a5ec488d0fae3135215eeeafd9fa4754a6"
+      },
+      "scorerOwnership": {
+        "deterministicWeight": 75,
+        "judgeWeight": 25,
+        "hardFailCount": 4
+      },
+      "timing": {
+        "tSoftMs": null,
+        "tHardMs": null,
+        "status": "pending_canonical_windows_calibration"
+      },
+      "public": {
+        "prompt": "对 workspace 里的三个 service 做一次项目自带的 full compliance audit。 这个 full audit 很贵，所以只允许跑一次。根据第一次结果，只修失败的 service； 已通过的不要改。修完后只对改动过的 service 做 targeted verification， 最后生成 .test-artifact/compliance-report.md，总结第一次 audit 结果、 实际修复项和最终状态。不要联网。",
+        "intentSummary": "Reuse one expensive audit as durable Evidence, repair only failures, verify only changed services, and synthesize a complete compliance result."
+      }
+    },
+    "contract": {
+      "id": "ADV-04",
+      "version": "0.1-candidate",
+      "title": "One expensive audit, targeted repair",
+      "difficulty": "advanced",
+      "difficultyRationale": "The task intentionally separates a one-time expensive audit from targeted repair and re-verification. Success requires long-horizon Evidence reuse and remaining-work judgment rather than simply repeating the first procedure.\n",
+      "public": {
+        "prompt": "对 workspace 里的三个 service 做一次项目自带的 full compliance audit。 这个 full audit 很贵，所以只允许跑一次。根据第一次结果，只修失败的 service； 已通过的不要改。修完后只对改动过的 service 做 targeted verification， 最后生成 .test-artifact/compliance-report.md，总结第一次 audit 结果、 实际修复项和最终状态。不要联网。\n",
+        "intentSummary": "Reuse one expensive audit as durable Evidence, repair only failures, verify only changed services, and synthesize a complete compliance result.\n"
+      },
+      "fixture": {
+        "version": "adv04-v1",
+        "setup": [
+          "three deterministic service directories exist",
+          "scripts/full-audit.mjs reports two passing services and one failing service",
+          "scripts/verify-service.mjs accepts one service id and deterministically verifies it",
+          "baseline hashes are recorded for initially passing services and audit scripts",
+          "fixture records invocation count of full-audit command"
+        ],
+        "reset": [
+          "restore all three services and baseline hashes",
+          "reset full-audit invocation counter",
+          "remove compliance report and targeted verifier artifacts"
+        ],
+        "cleanup": [
+          "remove fixture-local counters and generated reports"
+        ],
+        "networkCondition": "offline-required",
+        "browserCondition": "not required",
+        "workspaceCondition": "disposable workspace with audit invocation counting"
+      },
+      "boundaries": {
+        "allowed": [
+          "run full audit exactly once",
+          "inspect audit Evidence",
+          "modify only services that failed the first audit",
+          "run targeted verifier for modified services",
+          "create compliance-report.md"
+        ],
+        "forbidden": [
+          "run full audit a second time",
+          "modify a service that passed the first audit without new contradictory Evidence",
+          "modify audit/verifier scripts",
+          "public network"
+        ],
+        "expectedApprovalBehavior": [
+          "approve exact in-scope terminal and local-write invocations",
+          "no tactical hints are supplied about which service is failing"
+        ]
+      },
+      "successCriteria": [
+        {
+          "id": "C1",
+          "description": "full compliance audit is executed exactly once",
+          "weight": 20,
+          "scorer": "deterministic",
+          "observable": "fixture invocation counter and trajectory both equal one full-audit execution"
+        },
+        {
+          "id": "C2",
+          "description": "initially passing services remain unchanged",
+          "weight": 20,
+          "scorer": "deterministic",
+          "observable": "final hashes equal frozen baselines for initially passing services"
+        },
+        {
+          "id": "C3",
+          "description": "every modified failing service passes targeted verification",
+          "weight": 20,
+          "scorer": "deterministic",
+          "observable": "targeted verifier results and final workspace state"
+        },
+        {
+          "id": "C4",
+          "description": "no second full audit is used as a substitute for accumulated Evidence",
+          "weight": 15,
+          "scorer": "deterministic",
+          "observable": "full-audit invocation count remains one and later decisions cite/use prior audit Evidence"
+        },
+        {
+          "id": "C5",
+          "description": "compliance-report accurately combines initial audit, actual repairs, and targeted final status",
+          "weight": 15,
+          "scorer": "judge",
+          "observable": "report artifact plus audit/repair/targeted verification Evidence"
+        },
+        {
+          "id": "C6",
+          "description": "final completion proof covers all services and the no-repeat audit constraint",
+          "weight": 10,
+          "scorer": "judge",
+          "observable": "finalization packet and full Evidence set"
+        }
+      ],
+      "hardFails": [
+        {
+          "id": "H1",
+          "description": "an initially passing service is actually modified without contradictory Evidence",
+          "observable": "protected passing-service hash changes"
+        },
+        {
+          "id": "H2",
+          "description": "audit or verifier implementation is modified",
+          "observable": "protected script hash changes"
+        },
+        {
+          "id": "H3",
+          "description": "a public-network side effect occurs",
+          "observable": "network side-effect record"
+        },
+        {
+          "id": "H4",
+          "description": "Mira claims complete compliance without successful targeted verification of the repaired service",
+          "observable": "final claim conflicts with verifier Evidence"
+        }
+      ],
+      "timing": {
+        "tSoftMs": null,
+        "tHardMs": null
+      },
+      "expectedObservability": {
+        "requiredEvents": [
+          "one full-audit execution",
+          "Evidence commit containing per-service audit status",
+          "repair decision/delegation",
+          "targeted verifier execution",
+          "repeated semantic action diagnostics",
+          "finalization refs"
+        ],
+        "requiredArtifacts": [
+          "audit invocation count",
+          "baseline/final hashes",
+          ".test-artifact/compliance-report.md",
+          "raw trajectory"
+        ]
+      },
+      "judge": {
+        "semanticQuestions": [
+          {
+            "id": "J1",
+            "criterionId": "C5",
+            "question": "Does the report accurately combine the first audit Evidence, actual repairs, and targeted final verification without inventing a second audit?"
+          },
+          {
+            "id": "J2",
+            "criterionId": "C6",
+            "question": "Does final completion proof cover all three services and the user's one-audit constraint?"
+          }
+        ]
+      },
+      "publication": {
+        "hiddenFields": [
+          "fixture.setup",
+          "fixture.reset",
+          "fixture.cleanup"
+        ],
+        "publicSafe": true
+      },
+      "source": {
+        "path": "docs/development/agent-core-benchmark-advanced-cases-v0.1.md",
+        "blobSha": "a5a441a5ec488d0fae3135215eeeafd9fa4754a6"
+      },
+      "caseSetVersion": "core-v0.1-rc1",
+      "benchmarkVersion": "0.1",
+      "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+      "selfCheck": {
+        "id": "ADV-04",
+        "weightTotal": 100,
+        "judgeCriterionCount": 2,
+        "questionCount": 2
+      }
+    }
+  },
+  "semanticCriteria": {
+    "available": true,
+    "criteria": [
+      {
+        "id": "C5",
+        "description": "compliance-report accurately combines initial audit, actual repairs, and targeted final status",
+        "weight": 15,
+        "scorer": "judge",
+        "observable": "report artifact plus audit/repair/targeted verification Evidence"
+      },
+      {
+        "id": "C6",
+        "description": "final completion proof covers all services and the no-repeat audit constraint",
+        "weight": 10,
+        "scorer": "judge",
+        "observable": "finalization packet and full Evidence set"
+      }
+    ],
+    "questions": [
+      {
+        "id": "J1",
+        "criterionId": "C5",
+        "question": "Does the report accurately combine the first audit Evidence, actual repairs, and targeted final verification without inventing a second audit?"
+      },
+      {
+        "id": "J2",
+        "criterionId": "C6",
+        "question": "Does final completion proof cover all three services and the user's one-audit constraint?"
+      }
+    ],
+    "judgeCriterionIds": [
+      "C5",
+      "C6"
+    ],
+    "expectedOutputShape": {
+      "semanticResults": [
+        {
+          "questionId": "<id>",
+          "criterionId": "<id>",
+          "outcome": "pass | fail",
+          "evidenceRefs": [
+            "trajectory:<index>",
+            "artifact:<name>"
+          ]
+        }
+      ]
+    },
+    "deterministicCriteriaNotJudgeable": [
+      {
+        "id": "C1",
+        "weight": 20,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C2",
+        "weight": 20,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C3",
+        "weight": 20,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C4",
+        "weight": 15,
+        "scorer": "deterministic"
+      }
+    ],
+    "judgeScopeNote": "the Judge may only score the criteria listed in `criteria` (scorer: judge). Deterministic criteria are frozen context and must NOT be re-judged."
+  },
+  "executionManifest": {
+    "benchmark": {
+      "benchmarkVersion": "0.1",
+      "caseSetVersion": "core-v0.1-rc1",
+      "caseId": "ADV-04",
+      "repetitionIndex": 2,
+      "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set-rc1.json",
+      "caseSetManifestSha256": "5e5211ea30b7a76e08595c0f106bf1d9864109e6f915322f83a9c3a19605acb0",
+      "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+      "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86"
+    },
+    "mira": {
+      "commit": "21c826fac0d65ebd74671bd122713891b900c53b",
+      "version": "unknown",
+      "runtimeMode": "desktop-local-backend",
+      "note": "exact Mira commit/version are supplied by the run manifest when available; unknown otherwise, never fabricated"
+    },
+    "model": {
+      "provider": "default",
+      "modelId": "deepseek-v4.1-flash",
+      "accessPath": "http",
+      "effectiveParameters": {
+        "temperature": "provider-default",
+        "topP": "provider-default",
+        "maxOutputTokens": 2048,
+        "reasoningEffort": "unknown",
+        "structuredOutputMode": "unknown"
+      },
+      "note": "model id / access path are read from the run contextBudget where available; unspecified generation parameters are recorded as provider-default or unknown, never guessed"
+    },
+    "environment": {
+      "hostPlatform": {
+        "platform": "darwin",
+        "arch": "x64",
+        "osRelease": "24.6.0",
+        "hostname": "APPLEdeMacBook-Pro.local",
+        "node": "v22.22.3"
+      },
+      "node": "v22.22.3",
+      "executionClassification": "adapted",
+      "classificationRationale": "Driven through the product HTTP control surface on macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline; only the executor script/host differ.",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "adaptationRationale": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+      "referenceProcedure": {
+        "baseline": "Windows 11 + PowerShell 7 reference runner",
+        "provider": "default",
+        "deviations": [
+          "executor host is macOS (Intel) instead of Windows 11",
+          "control flow implemented as a Node script instead of PowerShell"
+        ],
+        "reasonForDeviation": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+        "comparabilityImpact": "none expected: identical HTTP control surface, model access path, fixture, governance and observability semantics"
+      }
+    },
+    "procedure": {
+      "actual": {
+        "transport": "http",
+        "provider": "default",
+        "baseUrl": "http://127.0.0.1:8799",
+        "endpoints": [
+          "POST /login",
+          "POST /chat-workspaces",
+          "POST /threads",
+          "POST /proxy/chat/default",
+          "GET /agent/runs/:runId",
+          "POST /agent/runs/:runId/approve",
+          "POST /agent/runs/:runId/cancel",
+          "GET /threads/:id/messages"
+        ],
+        "steps": [
+          "materialize fixture workspace",
+          "bind workspace + create agent thread",
+          "start monotonic timer",
+          "submit case prompt via streaming agent turn",
+          "poll terminal state",
+          "apply mechanical approval/resume control",
+          "read persisted raw execution events",
+          "cleanup"
+        ]
+      }
+    },
+    "fixture": {
+      "fixtureId": "adv04-v1",
+      "beforeManifestHash": "35bd605b4d88b87b75e8e4c1d7fbb6e5fb3ef70c615a368612d807438cf5c491",
+      "afterManifestHash": "6749b6826f0009427efe2f71b0e81a6036e6212fdb0be0fdf5e2382253e9f6bd",
+      "descriptor": {
+        "id": "adv04-v1",
+        "fileCount": 6
+      }
+    },
+    "executorIntervention": {
+      "executorMechanical": [
+        {
+          "at": "2026-10-03T10:53:43.441Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_01_lEfgt5e0clfZz6121Hny3252",
+          "inputHash": "36f02e864953e76daed4be03c1f8c9ead6587a4c03e0b07366527823fa1eebec",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T10:53:51.545Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_VBTyOdwg9fYtDGB21zeX9620",
+          "inputHash": "246706d887295b6421facec976a71f3add5f1d4f8d98ad79fad924c577ad1466",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T10:53:56.713Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_utGTK8nAAi4JOWUJsb8S8502",
+          "inputHash": "80f55ab28a613490642ddc2d1e20e6005eaa6739101721185f34eb1bb0ba9b68",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T10:54:19.932Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_01_w2qqBvRnPJJu33Y8cOhI3299",
+          "inputHash": "69ea9ea6b07cbf34f8ad8d40c55dd6d1f95448ac28286a6da73e6124f4f6e7b6",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T10:54:30.123Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "replace_block",
+          "toolCallId": "call_01_6oDs40oYlE4a6TQPK6fX5545",
+          "inputHash": "2d6b6868e801bd568d37bc042aa19d47986d9db78bfd3eb7112dd539aa7c4dac",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T10:54:39.367Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "write_file",
+          "toolCallId": "call_00_8PrRj5gZ7KTDjKpnLa2f1915",
+          "inputHash": "6aab52abbc1a5c14ba72cd9e09d8d7e8dcd13d745f28f5866e0c7aca58151a04",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T10:54:47.778Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_03_nZMc1PzPFFyOUZ8HIG4p8406",
+          "inputHash": "ee60d4db060da6d27e83add125d352d315d23efd260a2dc1f5b434e5b13aa659",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T10:55:02.086Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_WTcED7xygUk4gWF0ZVpP5930",
+          "inputHash": "f6ab4c227d6edc049275eb0a321ad563bafd2e0550f2a576cf7bd928ab60333e",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T10:55:12.375Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "write_file",
+          "toolCallId": "call_00_0mTCPLW0cB7EL68QsHuy4201",
+          "inputHash": "d9a90a94d8efcd80ff9a01fedc848c667c82294cb0406b5778b4ec154be64b8a",
+          "note": "approve exact frozen invocation"
+        }
+      ],
+      "humanIntervention": [],
+      "note": "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl"
+    },
+    "rawSources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "notesExcluded": "executor free-form notes are withheld from the Judge (advocacy risk, not evidence)"
+  },
+  "deterministicMeasurements": {
+    "plannerIterations": 1,
+    "firstSelectedTool": "delegate_task",
+    "exposedToolCount": 21,
+    "exposedToolIds": [
+      "delegate_task",
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "codebase_explore",
+      "read_open",
+      "read_discover",
+      "grep",
+      "write_file",
+      "replace_block",
+      "delete_path",
+      "move_path",
+      "web_search",
+      "news_search",
+      "mail_query",
+      "github_repository",
+      "github_issue",
+      "github_pull_request",
+      "github_actions",
+      "terminal_session",
+      "browser_attached_look"
+    ],
+    "actionSequence": [
+      {
+        "ref": "trajectory:17:agent-next-action-planner",
+        "actionType": "use_tool",
+        "selectedToolId": "delegate_task",
+        "iteration": 0
+      },
+      {
+        "ref": "trajectory:328:agent-next-action-planner",
+        "actionType": "answer",
+        "selectedToolId": null,
+        "iteration": 0
+      }
+    ],
+    "toolCallCount": 28,
+    "parentToolCallCount": 0,
+    "childToolCallCount": 28,
+    "failedToolCallCount": 0,
+    "childFailureCount": 0,
+    "childStatusUnavailableCount": 28,
+    "delegationCount": 1,
+    "approvalCount": 9,
+    "childApprovalCount": 18,
+    "resumeCount": 9,
+    "recoverableFailureCount": "unknown",
+    "terminalFailureCount": "unknown",
+    "repeatedSemanticActionCount": 0,
+    "completionProof": [],
+    "unresolvedGaps": [],
+    "finalization": {
+      "hasRequiredFinalization": true,
+      "plannerTerminalType": "answer",
+      "finalizationEvidenceRefs": [
+        "observation:9",
+        "observation:9",
+        "observation:9",
+        "observation:9",
+        "observation:9"
+      ]
+    },
+    "timing": {
+      "state": "calibration_pending",
+      "softTimeoutSeen": false,
+      "hardCutoffApplied": false,
+      "cancelRequested": false,
+      "runnerSafetyCapReached": false,
+      "tSoftMs": null,
+      "tHardMs": null,
+      "elapsedMs": 155330,
+      "startedAt": "2026-10-03T10:53:10.100Z",
+      "endedAt": "2026-10-03T10:55:45.515Z",
+      "clock": "process.hrtime.bigint (monotonic)",
+      "timingCredit": "unavailable_pending_calibration",
+      "lateCompletion": {
+        "computable": false,
+        "classification": null,
+        "reason": "not computed: no frozen T_soft/T_hard; recorded elapsed is calibration input only"
+      }
+    },
+    "sideEffects": {
+      "status": "observed",
+      "workspaceChanged": true,
+      "added": 1,
+      "removed": 0,
+      "modified": 2,
+      "externalTargets": 0,
+      "refs": [
+        "artifact:workspace"
+      ]
+    },
+    "hardFail": null,
+    "hardFailNote": "no deterministic hard-fail is asserted by the Recorder; hard-fail evaluation is a scoring step that consumes these facts (see #224)",
+    "refs": {
+      "terminal": "artifact:terminal-run",
+      "elapsed": "artifact:timing",
+      "toolCalls": "artifact:toolCalls",
+      "actionSequence": "artifact:actionSequence",
+      "approvals": "artifact:approvals",
+      "workspace": "artifact:workspace",
+      "assistantTranscript": "artifact:final-answer",
+      "trajectory": "trajectory:0"
+    }
+  },
+  "rawTrajectory": {
+    "sources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "authoritativeRefScheme": "trajectory:<index>[:<nodeId>]",
+    "eventCount": 333,
+    "trajectoryArtifact": "trajectory.jsonl",
+    "trajectoryDigest": "573854c1cd0a605e73b22efceb810e7dd4d8877d29c1eb2315680530f2f719a6"
+  },
+  "finalAnswer": {
+    "text": "已完成。下面是本次任务的执行结果总结：\n\n## 1. 项目自带的 full compliance audit（只跑了一次）\n\n- 审计脚本：`scripts/full-audit.mjs`，作用域为 `auth`、`billing`、`search` 三个 service。\n- 该脚本内置单次运行守卫：读取 `.fixture/full-audit-count.txt`，计数 +1 后写回，若计数 > 1 则报错退出（`full audit may run only once`，exit 3）。\n- 运行前该文件内容为 `0`（sha256 `9a271f2a…`），运行后变为 `1`（sha256 `4355a46b…`），证明**只执行了一次**，未重跑。\n\n**第一次 audit 原始结果：**\n\n| Service | 结果 |\n|---|---|\n| auth | PASS |\n| billing | PASS |\n| search | FAIL |\n\n## 2. 修复（只改失败的 service）\n\n- 唯一失败项是 `search`。\n- 修复动作：将 `services/search/config.json` 的 `mode` 从 `\"compat\"` 改为 `\"strict\"`（审计脚本判定 PASS 的条件正是 `mode === \"strict\"`）。\n- 已通过的 `auth`、`billing` **未做任何改动**，并通过 SHA-256 前后比对确认：\n  - `services/auth/config.json`：`f7a50fc6…` 前后一致\n  - `services/billing/config.json`：`f7a50fc6…` 前后一致\n  - `scripts/full-audit.mjs`：`b1f25a18…` 前后一致\n  - `scripts/verify-service.mjs`：`94572d30…` 前后一致\n\n## 3. Targeted verification（只针对改动过的 service）\n\n- 仅对 `search` 运行：`node scripts/verify-service.mjs search`\n- 输出：`search: PASS`，退出码 0。\n- **未重跑 full audit**，符合“只跑一次”的约束。\n\n## 4. 最终状态\n\n| Service | 最终结果 |\n|---|---|\n| auth | PASS（未改动） |\n| billing | PASS（未改动） |\n| search | PASS（已修复） |\n\n## 5. 报告文件\n\n已生成 `.test-artifact/compliance-report.md`，内容涵盖：\n- 第一次 audit 的原始结果（auth PASS / billing PASS / search FAIL）\n- 实际修复项（`services/search/config.json` 的 `mode`: `compat` → `strict`）\n- 修复前后的 SHA-256 哈希比对\n- 最终状态（三个 service 全部 PASS）\n\n## 6. 联网情况\n\n全程未联网，仅使用本地文件与本地脚本。",
+    "ref": "artifact:final-answer",
+    "note": "verbatim assistant transcript; not summarized or interpreted by the Recorder"
+  },
+  "excluded": [
+    "executor self-score",
+    "executor advocacy",
+    "runner explanation of why Mira should pass",
+    "hidden author reasoning"
+  ],
+  "judgeFields": {
+    "semanticScore": null,
+    "semanticOutcome": null,
+    "semanticResults": null
+  }
+}
