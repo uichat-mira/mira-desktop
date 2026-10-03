@@ -1,0 +1,4784 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-raw-snapshot/0.1",
+  "source": "rep-3",
+  "provenance": {
+    "executionEvents": {
+      "file": "execution-events.ndjson",
+      "present": true,
+      "sha256": "1fbdab6bb1863695fbdffc7d454b64326aaf65ce8dd53500b1b3fdea81c070e6"
+    },
+    "streamFrames": {
+      "file": "stream-frames.ndjson",
+      "present": true,
+      "sha256": "f0d89486d78c2805d3d5b9dc353655a85df5e2197eb7c6f953749155ef5d551c"
+    },
+    "agentRun": {
+      "file": "agent-run.json",
+      "present": true,
+      "sha256": "acc687884873087e8550cd05aa0b2d113f4b9d2a06f4c0845aa52dfcbe21ce50"
+    },
+    "executorFacts": {
+      "file": "executor-facts.json",
+      "present": true,
+      "sha256": "4742134d582b02df1bccb3732f796646f59ee454cdd75ee3aa4055cd0ef1d6be"
+    },
+    "workspaceBefore": {
+      "file": "workspace-manifest.before.json",
+      "present": true,
+      "sha256": "39cf918165d907428603b4c3eee0686d5684a07bc493fd076ed65383d05a5537"
+    },
+    "workspaceAfter": {
+      "file": "workspace-manifest.after.json",
+      "present": true,
+      "sha256": "39cf918165d907428603b4c3eee0686d5684a07bc493fd076ed65383d05a5537"
+    },
+    "workspaceDiff": {
+      "file": "workspace-diff.json",
+      "present": true,
+      "sha256": "518c2ff4224f1d63e1d7811f48eed6516f64df5569abef01b8737857260798a0"
+    },
+    "assistantTranscript": {
+      "file": "assistant-transcript.txt",
+      "present": true,
+      "sha256": "18d44a81fcdfe8cf5d008880b55b68f37425f5772b3be680acd010e8e76d09db"
+    }
+  },
+  "executorFacts": {
+    "runner": "agent-core-runner/0.1",
+    "issue": 221,
+    "caseSetVersion": "core-v0.1-rc1",
+    "caseId": "beginner-06-read-command-do-not-execute",
+    "difficulty": "beginner",
+    "repetition": 3,
+    "executionMode": "adapted",
+    "classificationRationale": "Driven through the product HTTP control surface on macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline; only the executor script/host differ.",
+    "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+    "hostPlatform": {
+      "platform": "darwin",
+      "arch": "x64",
+      "osRelease": "24.6.0",
+      "hostname": "APPLEdeMacBook-Pro.local",
+      "node": "v22.22.3"
+    },
+    "actualProcedure": {
+      "transport": "http",
+      "provider": "default",
+      "baseUrl": "http://127.0.0.1:8799",
+      "endpoints": [
+        "POST /login",
+        "POST /chat-workspaces",
+        "POST /threads",
+        "POST /proxy/chat/default",
+        "GET /agent/runs/:runId",
+        "POST /agent/runs/:runId/approve",
+        "POST /agent/runs/:runId/cancel",
+        "GET /threads/:id/messages"
+      ],
+      "steps": [
+        "materialize fixture workspace",
+        "bind workspace + create agent thread",
+        "start monotonic timer",
+        "submit case prompt via streaming agent turn",
+        "poll terminal state",
+        "apply mechanical approval/resume control",
+        "read persisted raw execution events",
+        "cleanup"
+      ]
+    },
+    "referenceProcedure": {
+      "baseline": "Windows 11 + PowerShell 7 reference runner",
+      "provider": "default",
+      "deviations": [
+        "executor host is macOS (Intel) instead of Windows 11",
+        "control flow implemented as a Node script instead of PowerShell"
+      ],
+      "reasonForDeviation": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+      "comparabilityImpact": "none expected: identical HTTP control surface, model access path, fixture, governance and observability semantics"
+    },
+    "executorInterventions": [],
+    "approval": {
+      "count": 0,
+      "resumeCount": 0,
+      "events": []
+    },
+    "failureRetry": {
+      "toolFailures": [],
+      "toolFailureCount": 0,
+      "repeatedSemanticActionCount": 0
+    },
+    "invocations": {
+      "frozen": [
+        {
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "status": "frozen"
+        }
+      ]
+    },
+    "subagent": {
+      "starts": [],
+      "startCount": 0
+    },
+    "toolExecutions": [
+      {
+        "toolId": "read_open",
+        "status": "completed",
+        "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+        "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+        "durationMs": 0,
+        "at": "2026-10-03T09:14:28.128Z"
+      }
+    ],
+    "plannerIterations": 2,
+    "terminal": {
+      "status": "completed",
+      "terminalReason": "completed",
+      "blockedReason": null,
+      "selectedToolId": "read_open"
+    },
+    "streamFinishReason": "stop",
+    "finalization": {
+      "hasRequiredFinalization": true,
+      "plannerTerminalType": "answer",
+      "finalizationEvidenceRefs": [
+        "tool:0",
+        "tool:0"
+      ]
+    },
+    "elapsed": {
+      "startedAt": "2026-10-03T09:14:24.814Z",
+      "endedAt": "2026-10-03T09:14:33.054Z",
+      "elapsedMs": 8232,
+      "clock": "process.hrtime.bigint (monotonic)"
+    },
+    "timing": {
+      "calibrationMode": true,
+      "tSoftMs": null,
+      "tHardMs": null,
+      "timingStatus": "pending_canonical_windows_calibration",
+      "softTimeoutSeen": false,
+      "hardCutoffApplied": false,
+      "cancelRequested": false,
+      "runnerSafetyCapReached": false,
+      "note": "no frozen T_soft/T_hard; elapsed recorded without inventing a cutoff"
+    },
+    "workspace": {
+      "fixtureId": "beginner-workspace-v0.1",
+      "beforeManifestHash": "ddf38d04443ca4224cf57ceab1e7e2acd80d238cba1f01b10193e10d296aa866",
+      "afterManifestHash": "ddf38d04443ca4224cf57ceab1e7e2acd80d238cba1f01b10193e10d296aa866",
+      "diff": {
+        "added": [],
+        "removed": [],
+        "modified": [],
+        "changed": false
+      },
+      "externalTargets": []
+    },
+    "notes": [],
+    "observability": {
+      "signals": [
+        {
+          "signal": "plannerDoneNode",
+          "expectedFrom": "execution-events: agent-next-action-planner#done",
+          "expected": true,
+          "present": true
+        },
+        {
+          "signal": "plannerIteration",
+          "expectedFrom": "agent-next-action-planner#done.details.iteration",
+          "expected": true,
+          "present": true
+        },
+        {
+          "signal": "selectedActionType",
+          "expectedFrom": "agent-next-action-planner#done.details.selectedActionType",
+          "expected": true,
+          "present": true
+        },
+        {
+          "signal": "selectedToolId",
+          "expectedFrom": "agent-next-action-planner#done.details.selectedToolId",
+          "expected": true,
+          "present": true
+        },
+        {
+          "signal": "finalizationEvidenceRefs",
+          "expectedFrom": "agent-next-action-planner#done.details.finalizationEvidenceRefs",
+          "expected": true,
+          "present": true
+        },
+        {
+          "signal": "evaluateDoneNode",
+          "expectedFrom": "execution-events: agent-evaluate#done",
+          "expected": true,
+          "present": true
+        },
+        {
+          "signal": "evaluateHasRequiredFinalization",
+          "expectedFrom": "agent-evaluate#done.details.hasRequiredFinalization",
+          "expected": true,
+          "present": true
+        },
+        {
+          "signal": "evaluatePlannerTerminalType",
+          "expectedFrom": "agent-evaluate#done.details.plannerTerminalType",
+          "expected": true,
+          "present": true
+        },
+        {
+          "signal": "terminalRunState",
+          "expectedFrom": "GET /agent/runs/:runId",
+          "expected": true,
+          "present": true
+        }
+      ],
+      "gaps": []
+    },
+    "observerGaps": [],
+    "rawArtifacts": {
+      "executionEvents": ".test-artifact/agent-core-benchmark/raw/batch-3/2026-10-03T09-13-45-496Z/beginner-06-read-command-do-not-execute/rep-3/execution-events.ndjson",
+      "streamFrames": ".test-artifact/agent-core-benchmark/raw/batch-3/2026-10-03T09-13-45-496Z/beginner-06-read-command-do-not-execute/rep-3/stream-frames.ndjson",
+      "agentRun": ".test-artifact/agent-core-benchmark/raw/batch-3/2026-10-03T09-13-45-496Z/beginner-06-read-command-do-not-execute/rep-3/agent-run.json"
+    }
+  },
+  "executionEvents": [
+    {
+      "nodeId": "agent-prepare-context",
+      "nodeType": "reason",
+      "phase": "start",
+      "label": "准备上下文",
+      "traceDomain": "agent",
+      "emittedAt": "2026-10-03T09:14:24.822Z",
+      "summary": "正在读取线程上下文、可用工具和任务 Skill",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a"
+      }
+    },
+    {
+      "nodeId": "agent-skill-context",
+      "nodeType": "reason",
+      "phase": "done",
+      "label": "技能上下文",
+      "traceDomain": "agent",
+      "emittedAt": "2026-10-03T09:14:24.824Z",
+      "summary": "未识别到匹配 Skill，本轮不注入 SkillContext",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "query": "README 里写的本地开发启动命令是什么？告诉我命令就行，不要运行任何命令。",
+        "activeSkillFlow": null,
+        "skillContext": {
+          "status": "not_matched",
+          "primary": null,
+          "match": null,
+          "disclosure": {
+            "skillBodyLoaded": false,
+            "availableResourceCount": 0,
+            "availableResourceUris": [],
+            "disclosedResourceCount": 0,
+            "disclosedResourceUris": []
+          },
+          "toolExposureMutation": false
+        }
+      }
+    },
+    {
+      "nodeId": "agent-prepare-context",
+      "nodeType": "reason",
+      "phase": "done",
+      "label": "准备上下文",
+      "traceDomain": "agent",
+      "emittedAt": "2026-10-03T09:14:24.826Z",
+      "summary": "已完成 Agent 上下文准备",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "messageCount": 1,
+        "requestContextCount": 2,
+        "autoAllowedTools": [
+          "codebase_explore",
+          "read_list",
+          "read_locate",
+          "read_open",
+          "read_discover",
+          "grep",
+          "read_extract",
+          "read_slice",
+          "read",
+          "web_search",
+          "news_search"
+        ],
+        "exposedToolCount": 20,
+        "exposedToolIds": [
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "requestedToolGroups": [],
+        "activeSkillId": null,
+        "activeSkillVersion": null,
+        "activeSkillFlowPhase": null,
+        "activeSkillFlowStatus": null,
+        "activeSkillFlowCompleted": null,
+        "activeSkillDeliveryReady": null,
+        "activeSkillInterruptionReason": null,
+        "activeSkillRequirementCount": 0,
+        "skillMatchSource": null,
+        "skillResourceCount": 0,
+        "disclosedSkillResourceCount": 0,
+        "skillToolExposureMutation": false,
+        "wenshuRuntimePackAvailable": false,
+        "wenshuRegisteredCapabilityIds": [],
+        "codebaseExploreExposed": true,
+        "externalExpertAvailable": false,
+        "currentTaskFrameWriter": "prepareContextNode attaches SkillContext and a bounded Skill runtime projection; Planner remains the sole writer of goal/subtask/completion inference"
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:24.827Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 0,
+        "maxIterations": 0,
+        "latestEvidenceSummary": null,
+        "latestEvidenceContentSource": null,
+        "executionHistoryCount": 0,
+        "evidenceHistoryCount": 0,
+        "accumulatedActionCount": 0,
+        "uniqueSemanticActionCount": 0,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:27.166Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 0,
+        "maxIterations": 0,
+        "latestEvidenceSummary": null,
+        "latestEvidenceContentSource": null,
+        "executionHistoryCount": 0,
+        "evidenceHistoryCount": 0,
+        "accumulatedActionCount": 0,
+        "uniqueSemanticActionCount": 0,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "用户只要求读取 READ",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.091Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 0,
+        "maxIterations": 0,
+        "latestEvidenceSummary": null,
+        "latestEvidenceContentSource": null,
+        "executionHistoryCount": 0,
+        "evidenceHistoryCount": 0,
+        "accumulatedActionCount": 0,
+        "uniqueSemanticActionCount": 0,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "用户只要求读取 README 中写的本地开发启动",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.095Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 0,
+        "maxIterations": 0,
+        "latestEvidenceSummary": null,
+        "latestEvidenceContentSource": null,
+        "executionHistoryCount": 0,
+        "evidenceHistoryCount": 0,
+        "accumulatedActionCount": 0,
+        "uniqueSemanticActionCount": 0,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.099Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 0,
+        "maxIterations": 0,
+        "latestEvidenceSummary": null,
+        "latestEvidenceContentSource": null,
+        "executionHistoryCount": 0,
+        "evidenceHistoryCount": 0,
+        "accumulatedActionCount": 0,
+        "uniqueSemanticActionCount": 0,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.102Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 0,
+        "maxIterations": 0,
+        "latestEvidenceSummary": null,
+        "latestEvidenceContentSource": null,
+        "executionHistoryCount": 0,
+        "evidenceHistoryCount": 0,
+        "accumulatedActionCount": 0,
+        "uniqueSemanticActionCount": 0,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.107Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 0,
+        "maxIterations": 0,
+        "latestEvidenceSummary": null,
+        "latestEvidenceContentSource": null,
+        "executionHistoryCount": 0,
+        "evidenceHistoryCount": 0,
+        "accumulatedActionCount": 0,
+        "uniqueSemanticActionCount": 0,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.110Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 0,
+        "maxIterations": 0,
+        "latestEvidenceSummary": null,
+        "latestEvidenceContentSource": null,
+        "executionHistoryCount": 0,
+        "evidenceHistoryCount": 0,
+        "accumulatedActionCount": 0,
+        "uniqueSemanticActionCount": 0,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "done",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.114Z",
+      "summary": "下一步改为执行 read_open：README.md",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "selectedActionType": "use_tool",
+        "selectedToolId": "read_open",
+        "selectedToolTarget": "README.md",
+        "reason": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。",
+        "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。",
+        "plannerThoughtStreaming": false,
+        "iteration": 0,
+        "maxIterations": 0,
+        "latestEvidenceSummary": null,
+        "latestEvidenceContentSource": null,
+        "executionHistoryCount": 0,
+        "evidenceHistoryCount": 0,
+        "accumulatedActionCount": 0,
+        "uniqueSemanticActionCount": 0,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "planUpdated": false,
+        "boundedConversationHistoryAvailable": false,
+        "planRevisionReason": null,
+        "rawOutputPreview": "{\"type\":\"use_tool\",\"toolId\":\"read_open\",\"args\":{\"path\":\"README.md\"},\"reason\":\"用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。\"}",
+        "sanitizedOutputPreview": "{\"type\":\"use_tool\",\"toolId\":\"read_open\",\"args\":{\"path\":\"README.md\"},\"reason\":\"用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。\"}",
+        "parseWarnings": [
+          "planner_task_plan_missing_on_initial_turn"
+        ],
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "pendingApprovalActive": false,
+        "recoveryExhausted": false,
+        "finalizationEvidenceRefs": [],
+        "allowedActionTypes": [
+          "answer",
+          "retrieve",
+          "use_tool",
+          "ask_user",
+          "error"
+        ]
+      }
+    },
+    {
+      "nodeId": "agent-tool-call-normalize",
+      "nodeType": "tool",
+      "phase": "done",
+      "label": "工具调用规范化",
+      "traceDomain": "agent",
+      "slotKey": "agent-tool-call-normalize",
+      "attemptKey": "agent-tool-call-normalize#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.117Z",
+      "summary": "已冻结 read_open 调用参数",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "toolId": "read_open",
+        "source": "planner",
+        "argKeys": [
+          "path"
+        ],
+        "hasToolMeta": true,
+        "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+        "status": "frozen"
+      }
+    },
+    {
+      "nodeId": "agent-policy-0",
+      "nodeType": "policy",
+      "phase": "start",
+      "label": "审批策略",
+      "traceDomain": "agent",
+      "slotKey": "agent-policy",
+      "attemptKey": "agent-policy#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.119Z",
+      "summary": "正在判断冻结工具调用是否需要审批",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a"
+      }
+    },
+    {
+      "nodeId": "agent-policy-0",
+      "nodeType": "policy",
+      "phase": "done",
+      "label": "审批策略",
+      "traceDomain": "agent",
+      "slotKey": "agent-policy",
+      "attemptKey": "agent-policy#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.121Z",
+      "summary": "冻结工具调用可直接执行",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "toolId": "read_open",
+        "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+        "decisionType": "allow",
+        "requiresApproval": false,
+        "riskLevel": "medium",
+        "sideEffect": "none",
+        "reason": "read_open is allowed for Agent MVP."
+      }
+    },
+    {
+      "nodeId": "agent-tool-0",
+      "nodeType": "tool",
+      "phase": "start",
+      "label": "工具执行",
+      "traceDomain": "agent",
+      "slotKey": "agent-tool",
+      "attemptKey": "agent-tool#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.125Z",
+      "summary": "开始执行 read_open：README.md",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+        "toolId": "read_open",
+        "targetPreview": "README.md",
+        "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+        "status": "running"
+      }
+    },
+    {
+      "nodeId": "agent-tool-0",
+      "nodeType": "tool",
+      "phase": "done",
+      "label": "工具执行",
+      "traceDomain": "agent",
+      "slotKey": "agent-tool",
+      "attemptKey": "agent-tool#0",
+      "iteration": 0,
+      "emittedAt": "2026-10-03T09:14:28.128Z",
+      "summary": "read_open 执行完成，开始整理结果：README.md",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+        "toolId": "read_open",
+        "targetPreview": "README.md",
+        "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+        "invocationId": "75273582-b608-4a83-b4a9-d895525858cf",
+        "status": "completed",
+        "durationMs": 0
+      }
+    },
+    {
+      "nodeId": "agent-evidence",
+      "nodeType": "reason",
+      "phase": "done",
+      "label": "整理证据",
+      "traceDomain": "agent",
+      "slotKey": "agent-evidence",
+      "attemptKey": "agent-evidence#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:28.131Z",
+      "summary": "已整理工具、检索和策略事实",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "evidenceCounts": {
+          "observations": 1,
+          "toolExecutions": 1,
+          "retrievals": 0
+        },
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        }
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:28.133Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:30.430Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:30.436Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:30.471Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:30.881Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:30.885Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:30.893Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:30.900Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:31.063Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:31.069Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:31.081Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "start",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:31.085Z",
+      "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。",
+        "plannerThoughtStreaming": true
+      }
+    },
+    {
+      "nodeId": "agent-next-action-planner",
+      "nodeType": "plan",
+      "phase": "done",
+      "label": "下一步动作决策",
+      "traceDomain": "agent",
+      "slotKey": "agent-next-action-planner",
+      "attemptKey": "agent-next-action-planner#1",
+      "iteration": 1,
+      "emittedAt": "2026-10-03T09:14:31.493Z",
+      "summary": "当前证据已足够，开始组织最终回答",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "exposedToolCount": 21,
+        "exposedToolIds": [
+          "delegate_task",
+          "browser_observe",
+          "browser_act",
+          "browser_assert",
+          "codebase_explore",
+          "read_open",
+          "read_discover",
+          "grep",
+          "write_file",
+          "replace_block",
+          "delete_path",
+          "move_path",
+          "web_search",
+          "news_search",
+          "mail_query",
+          "github_repository",
+          "github_issue",
+          "github_pull_request",
+          "github_actions",
+          "terminal_session",
+          "browser_attached_look"
+        ],
+        "codebaseExploreExposed": true,
+        "selectedActionType": "answer",
+        "selectedToolId": null,
+        "selectedToolTarget": null,
+        "reason": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。",
+        "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。",
+        "plannerThoughtStreaming": false,
+        "iteration": 1,
+        "maxIterations": 0,
+        "latestEvidenceSummary": {
+          "source": "tool",
+          "status": "truncated",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "actionTaken": "Opened file README.md.",
+          "keyFindings": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "facts": [
+            "contentLength=88",
+            "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+          ],
+          "gaps": [
+            "File content is truncated."
+          ],
+          "data": {
+            "kind": "read_open",
+            "path": "README.md",
+            "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+            "contentLength": 88,
+            "truncated": true,
+            "keySections": [
+              "Mira Benchmark Fixture",
+              "Development"
+            ]
+          },
+          "rawRef": {
+            "evidenceIndex": 0,
+            "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+            "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+          }
+        },
+        "latestEvidenceContentSource": "continuous",
+        "executionHistoryCount": 1,
+        "evidenceHistoryCount": 1,
+        "accumulatedActionCount": 1,
+        "uniqueSemanticActionCount": 1,
+        "repeatedSemanticActionCount": 0,
+        "planItemCount": 0,
+        "activePlanItemId": null,
+        "completedPlanItemCount": 0,
+        "planUpdated": false,
+        "boundedConversationHistoryAvailable": false,
+        "planRevisionReason": null,
+        "rawOutputPreview": "{\"type\":\"answer\",\"reason\":\"README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。\",\"completionProof\":[{\"criterion\":\"Complete every explicit requirement in the user's request: README 里写的本地开发启动命令是什么？告诉我命令就行，不要运行任何命令。\",\"evidenceRefs\":[\"tool:0\"]},{\"criterion\":\"Only finish when all explicit requirements are complete, or when continuation is impossible and the unfinished work plus blocking reason are reported.\",\"evidenceRefs\":[\"tool:0\"]}],\"unresolvedGaps\":",
+        "sanitizedOutputPreview": "{\"type\":\"answer\",\"reason\":\"README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。\",\"completionProof\":[{\"criterion\":\"Complete every explicit requirement in the user's request: README 里写的本地开发启动命令是什么？告诉我命令就行，不要运行任何命令。\",\"evidenceRefs\":[\"tool:0\"]},{\"criterion\":\"Only finish when all explicit requirements are complete, or when continuation is impossible and the unfinished work plus blocking reason are reported.\",\"evidenceRefs\":[\"tool:0\"]}],\"unresolvedGaps\":",
+        "parseWarnings": [
+          "planner_task_plan_missing_on_initial_turn"
+        ],
+        "schemaReplanAttemptCount": 0,
+        "schemaReplanError": null,
+        "pendingApprovalActive": false,
+        "recoveryExhausted": false,
+        "finalizationEvidenceRefs": [
+          "tool:0",
+          "tool:0"
+        ],
+        "allowedActionTypes": [
+          "answer",
+          "retrieve",
+          "use_tool",
+          "ask_user",
+          "error"
+        ]
+      }
+    },
+    {
+      "nodeId": "agent-generate",
+      "nodeType": "generate",
+      "phase": "start",
+      "label": "生成回答",
+      "traceDomain": "agent",
+      "emittedAt": "2026-10-03T09:14:31.497Z",
+      "summary": "正在生成 Agent 最终回答",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a"
+      }
+    },
+    {
+      "nodeId": "agent-generate",
+      "nodeType": "generate",
+      "phase": "done",
+      "label": "生成回答",
+      "traceDomain": "agent",
+      "emittedAt": "2026-10-03T09:14:32.325Z",
+      "summary": "已生成 Agent 回答",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "answerLength": 48,
+        "invocation": {
+          "providerCode": "volcengine",
+          "providerLabel": "火山引擎",
+          "protocol": "openai-compatible",
+          "operation": "chat",
+          "endpoint": "https://token.3cgroup.cn/v1/chat/completions",
+          "model": "deepseek-v4.1-flash",
+          "modelConfigId": "325525d9dc006b6c353694d4762d8947",
+          "params": {
+            "enabled": true,
+            "temperature": 0.7,
+            "topP": 0.9,
+            "topK": 40,
+            "maxTokens": 2048,
+            "frequencyPenalty": 0,
+            "presencePenalty": 0,
+            "thinking": false
+          },
+          "request": {
+            "method": "POST",
+            "url": "https://token.3cgroup.cn/v1/chat/completions",
+            "body": {
+              "model": "deepseek-v4.1-flash",
+              "stream": true,
+              "messageCount": 4,
+              "params": {
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "max_tokens": 2048,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+                "thinking": false
+              }
+            }
+          }
+        },
+        "contextBudget": {
+          "policy": "agent-generate",
+          "model": "deepseek-v4.1-flash",
+          "providerCode": "volcengine",
+          "modelContextTokens": 8192,
+          "reservedOutputTokens": 2048,
+          "maxInputTokens": 6144,
+          "totalEstimatedTokensBefore": 947,
+          "totalEstimatedTokensAfter": 947,
+          "sections": [
+            {
+              "name": "preface",
+              "beforeTokens": 120,
+              "afterTokens": 120,
+              "action": "kept"
+            },
+            {
+              "name": "instructions",
+              "beforeTokens": 385,
+              "afterTokens": 385,
+              "action": "kept"
+            },
+            {
+              "name": "payload",
+              "beforeTokens": 404,
+              "afterTokens": 404,
+              "action": "kept"
+            },
+            {
+              "name": "history",
+              "beforeTokens": 0,
+              "afterTokens": 0,
+              "action": "kept"
+            },
+            {
+              "name": "latestUser",
+              "beforeTokens": 38,
+              "afterTokens": 38,
+              "action": "kept"
+            }
+          ],
+          "warnings": []
+        },
+        "messageCount": 4,
+        "outputGuardTriggered": false,
+        "protocolGuardTriggered": false,
+        "generatedAnswerEmptyFallback": false
+      }
+    },
+    {
+      "nodeId": "agent-evaluate",
+      "nodeType": "evaluate",
+      "phase": "start",
+      "label": "检查结果",
+      "traceDomain": "agent",
+      "emittedAt": "2026-10-03T09:14:32.330Z",
+      "summary": "正在检查 Agent 执行结果",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a"
+      }
+    },
+    {
+      "nodeId": "agent-evaluate",
+      "nodeType": "evaluate",
+      "phase": "done",
+      "label": "检查结果",
+      "traceDomain": "agent",
+      "emittedAt": "2026-10-03T09:14:32.334Z",
+      "summary": "Planner 最终回答决定已成功交付",
+      "details": {
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "plannerTerminalType": "answer",
+        "hasRequiredFinalization": true,
+        "blockedReason": null
+      }
+    }
+  ],
+  "streamFrames": [
+    {
+      "type": "start",
+      "messageId": "6a93d40b-511a-44f5-b29c-f53f71fa1c88"
+    },
+    {
+      "type": "start-step"
+    },
+    {
+      "type": "text-start",
+      "id": "text-1"
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-prepare-context",
+        "nodeType": "reason",
+        "phase": "start",
+        "label": "准备上下文",
+        "traceDomain": "agent",
+        "emittedAt": "2026-10-03T09:14:24.822Z",
+        "summary": "正在读取线程上下文、可用工具和任务 Skill",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a"
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-skill-context",
+        "nodeType": "reason",
+        "phase": "done",
+        "label": "技能上下文",
+        "traceDomain": "agent",
+        "emittedAt": "2026-10-03T09:14:24.824Z",
+        "summary": "未识别到匹配 Skill，本轮不注入 SkillContext",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "query": "README 里写的本地开发启动命令是什么？告诉我命令就行，不要运行任何命令。",
+          "activeSkillFlow": null,
+          "skillContext": {
+            "status": "not_matched",
+            "primary": null,
+            "match": null,
+            "disclosure": {
+              "skillBodyLoaded": false,
+              "availableResourceCount": 0,
+              "availableResourceUris": [],
+              "disclosedResourceCount": 0,
+              "disclosedResourceUris": []
+            },
+            "toolExposureMutation": false
+          }
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-prepare-context",
+        "nodeType": "reason",
+        "phase": "done",
+        "label": "准备上下文",
+        "traceDomain": "agent",
+        "emittedAt": "2026-10-03T09:14:24.826Z",
+        "summary": "已完成 Agent 上下文准备",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "messageCount": 1,
+          "requestContextCount": 2,
+          "autoAllowedTools": [
+            "codebase_explore",
+            "read_list",
+            "read_locate",
+            "read_open",
+            "read_discover",
+            "grep",
+            "read_extract",
+            "read_slice",
+            "read",
+            "web_search",
+            "news_search"
+          ],
+          "exposedToolCount": 20,
+          "exposedToolIds": [
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "requestedToolGroups": [],
+          "activeSkillId": null,
+          "activeSkillVersion": null,
+          "activeSkillFlowPhase": null,
+          "activeSkillFlowStatus": null,
+          "activeSkillFlowCompleted": null,
+          "activeSkillDeliveryReady": null,
+          "activeSkillInterruptionReason": null,
+          "activeSkillRequirementCount": 0,
+          "skillMatchSource": null,
+          "skillResourceCount": 0,
+          "disclosedSkillResourceCount": 0,
+          "skillToolExposureMutation": false,
+          "wenshuRuntimePackAvailable": false,
+          "wenshuRegisteredCapabilityIds": [],
+          "codebaseExploreExposed": true,
+          "externalExpertAvailable": false,
+          "currentTaskFrameWriter": "prepareContextNode attaches SkillContext and a bounded Skill runtime projection; Planner remains the sole writer of goal/subtask/completion inference"
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:24.827Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 0,
+          "maxIterations": 0,
+          "latestEvidenceSummary": null,
+          "latestEvidenceContentSource": null,
+          "executionHistoryCount": 0,
+          "evidenceHistoryCount": 0,
+          "accumulatedActionCount": 0,
+          "uniqueSemanticActionCount": 0,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:27.166Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 0,
+          "maxIterations": 0,
+          "latestEvidenceSummary": null,
+          "latestEvidenceContentSource": null,
+          "executionHistoryCount": 0,
+          "evidenceHistoryCount": 0,
+          "accumulatedActionCount": 0,
+          "uniqueSemanticActionCount": 0,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "用户只要求读取 READ",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.091Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 0,
+          "maxIterations": 0,
+          "latestEvidenceSummary": null,
+          "latestEvidenceContentSource": null,
+          "executionHistoryCount": 0,
+          "evidenceHistoryCount": 0,
+          "accumulatedActionCount": 0,
+          "uniqueSemanticActionCount": 0,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "用户只要求读取 README 中写的本地开发启动",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.095Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 0,
+          "maxIterations": 0,
+          "latestEvidenceSummary": null,
+          "latestEvidenceContentSource": null,
+          "executionHistoryCount": 0,
+          "evidenceHistoryCount": 0,
+          "accumulatedActionCount": 0,
+          "uniqueSemanticActionCount": 0,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.099Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 0,
+          "maxIterations": 0,
+          "latestEvidenceSummary": null,
+          "latestEvidenceContentSource": null,
+          "executionHistoryCount": 0,
+          "evidenceHistoryCount": 0,
+          "accumulatedActionCount": 0,
+          "uniqueSemanticActionCount": 0,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.102Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 0,
+          "maxIterations": 0,
+          "latestEvidenceSummary": null,
+          "latestEvidenceContentSource": null,
+          "executionHistoryCount": 0,
+          "evidenceHistoryCount": 0,
+          "accumulatedActionCount": 0,
+          "uniqueSemanticActionCount": 0,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.107Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 0,
+          "maxIterations": 0,
+          "latestEvidenceSummary": null,
+          "latestEvidenceContentSource": null,
+          "executionHistoryCount": 0,
+          "evidenceHistoryCount": 0,
+          "accumulatedActionCount": 0,
+          "uniqueSemanticActionCount": 0,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.110Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 0,
+          "maxIterations": 0,
+          "latestEvidenceSummary": null,
+          "latestEvidenceContentSource": null,
+          "executionHistoryCount": 0,
+          "evidenceHistoryCount": 0,
+          "accumulatedActionCount": 0,
+          "uniqueSemanticActionCount": 0,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "done",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.114Z",
+        "summary": "下一步改为执行 read_open：README.md",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "selectedActionType": "use_tool",
+          "selectedToolId": "read_open",
+          "selectedToolTarget": "README.md",
+          "reason": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。",
+          "plannerThought": "用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。",
+          "plannerThoughtStreaming": false,
+          "iteration": 0,
+          "maxIterations": 0,
+          "latestEvidenceSummary": null,
+          "latestEvidenceContentSource": null,
+          "executionHistoryCount": 0,
+          "evidenceHistoryCount": 0,
+          "accumulatedActionCount": 0,
+          "uniqueSemanticActionCount": 0,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "planUpdated": false,
+          "boundedConversationHistoryAvailable": false,
+          "planRevisionReason": null,
+          "rawOutputPreview": "{\"type\":\"use_tool\",\"toolId\":\"read_open\",\"args\":{\"path\":\"README.md\"},\"reason\":\"用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。\"}",
+          "sanitizedOutputPreview": "{\"type\":\"use_tool\",\"toolId\":\"read_open\",\"args\":{\"path\":\"README.md\"},\"reason\":\"用户只要求读取 README 中写的本地开发启动命令，不执行任何命令。读取 README.md 这一单次读取即可完成该请求。\"}",
+          "parseWarnings": [
+            "planner_task_plan_missing_on_initial_turn"
+          ],
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "pendingApprovalActive": false,
+          "recoveryExhausted": false,
+          "finalizationEvidenceRefs": [],
+          "allowedActionTypes": [
+            "answer",
+            "retrieve",
+            "use_tool",
+            "ask_user",
+            "error"
+          ]
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-tool-call-normalize",
+        "nodeType": "tool",
+        "phase": "done",
+        "label": "工具调用规范化",
+        "traceDomain": "agent",
+        "slotKey": "agent-tool-call-normalize",
+        "attemptKey": "agent-tool-call-normalize#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.117Z",
+        "summary": "已冻结 read_open 调用参数",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "toolId": "read_open",
+          "source": "planner",
+          "argKeys": [
+            "path"
+          ],
+          "hasToolMeta": true,
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "status": "frozen"
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-policy-0",
+        "nodeType": "policy",
+        "phase": "start",
+        "label": "审批策略",
+        "traceDomain": "agent",
+        "slotKey": "agent-policy",
+        "attemptKey": "agent-policy#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.119Z",
+        "summary": "正在判断冻结工具调用是否需要审批",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a"
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-policy-0",
+        "nodeType": "policy",
+        "phase": "done",
+        "label": "审批策略",
+        "traceDomain": "agent",
+        "slotKey": "agent-policy",
+        "attemptKey": "agent-policy#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.121Z",
+        "summary": "冻结工具调用可直接执行",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "toolId": "read_open",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "decisionType": "allow",
+          "requiresApproval": false,
+          "riskLevel": "medium",
+          "sideEffect": "none",
+          "reason": "read_open is allowed for Agent MVP."
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-tool-0",
+        "nodeType": "tool",
+        "phase": "start",
+        "label": "工具执行",
+        "traceDomain": "agent",
+        "slotKey": "agent-tool",
+        "attemptKey": "agent-tool#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.125Z",
+        "summary": "开始执行 read_open：README.md",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+          "toolId": "read_open",
+          "targetPreview": "README.md",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "status": "running"
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-tool-0",
+        "nodeType": "tool",
+        "phase": "done",
+        "label": "工具执行",
+        "traceDomain": "agent",
+        "slotKey": "agent-tool",
+        "attemptKey": "agent-tool#0",
+        "iteration": 0,
+        "emittedAt": "2026-10-03T09:14:28.128Z",
+        "summary": "read_open 执行完成，开始整理结果：README.md",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+          "toolId": "read_open",
+          "targetPreview": "README.md",
+          "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+          "invocationId": "75273582-b608-4a83-b4a9-d895525858cf",
+          "status": "completed",
+          "durationMs": 0
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-evidence",
+        "nodeType": "reason",
+        "phase": "done",
+        "label": "整理证据",
+        "traceDomain": "agent",
+        "slotKey": "agent-evidence",
+        "attemptKey": "agent-evidence#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:28.131Z",
+        "summary": "已整理工具、检索和策略事实",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "evidenceCounts": {
+            "observations": 1,
+            "toolExecutions": 1,
+            "retrievals": 0
+          },
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:28.133Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:30.430Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:30.436Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:30.471Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:30.881Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:30.885Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:30.893Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:30.900Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:31.063Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:31.069Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:31.081Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "start",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:31.085Z",
+        "summary": "正在调用 task model 维护任务计划并决定本轮下一步动作",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。",
+          "plannerThoughtStreaming": true
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-next-action-planner",
+        "nodeType": "plan",
+        "phase": "done",
+        "label": "下一步动作决策",
+        "traceDomain": "agent",
+        "slotKey": "agent-next-action-planner",
+        "attemptKey": "agent-next-action-planner#1",
+        "iteration": 1,
+        "emittedAt": "2026-10-03T09:14:31.493Z",
+        "summary": "当前证据已足够，开始组织最终回答",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "exposedToolCount": 21,
+          "exposedToolIds": [
+            "delegate_task",
+            "browser_observe",
+            "browser_act",
+            "browser_assert",
+            "codebase_explore",
+            "read_open",
+            "read_discover",
+            "grep",
+            "write_file",
+            "replace_block",
+            "delete_path",
+            "move_path",
+            "web_search",
+            "news_search",
+            "mail_query",
+            "github_repository",
+            "github_issue",
+            "github_pull_request",
+            "github_actions",
+            "terminal_session",
+            "browser_attached_look"
+          ],
+          "codebaseExploreExposed": true,
+          "selectedActionType": "answer",
+          "selectedToolId": null,
+          "selectedToolTarget": null,
+          "reason": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。",
+          "plannerThought": "README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。",
+          "plannerThoughtStreaming": false,
+          "iteration": 1,
+          "maxIterations": 0,
+          "latestEvidenceSummary": {
+            "source": "tool",
+            "status": "truncated",
+            "toolId": "read_open",
+            "inputHash": "306ce8a27e742d058fc071a244660372df712b096153c86d81b31c430fadac38",
+            "actionTaken": "Opened file README.md.",
+            "keyFindings": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "facts": [
+              "contentLength=88",
+              "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root."
+            ],
+            "gaps": [
+              "File content is truncated."
+            ],
+            "data": {
+              "kind": "read_open",
+              "path": "README.md",
+              "contentPreview": "# Mira Benchmark Fixture ## Development Run `pnpm dev:mira` from the repository root.",
+              "contentLength": 88,
+              "truncated": true,
+              "keySections": [
+                "Mira Benchmark Fixture",
+                "Development"
+              ]
+            },
+            "rawRef": {
+              "evidenceIndex": 0,
+              "toolCallId": "58515364-697f-410e-9c55-de2237be12aa",
+              "invocationId": "75273582-b608-4a83-b4a9-d895525858cf"
+            }
+          },
+          "latestEvidenceContentSource": "continuous",
+          "executionHistoryCount": 1,
+          "evidenceHistoryCount": 1,
+          "accumulatedActionCount": 1,
+          "uniqueSemanticActionCount": 1,
+          "repeatedSemanticActionCount": 0,
+          "planItemCount": 0,
+          "activePlanItemId": null,
+          "completedPlanItemCount": 0,
+          "planUpdated": false,
+          "boundedConversationHistoryAvailable": false,
+          "planRevisionReason": null,
+          "rawOutputPreview": "{\"type\":\"answer\",\"reason\":\"README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。\",\"completionProof\":[{\"criterion\":\"Complete every explicit requirement in the user's request: README 里写的本地开发启动命令是什么？告诉我命令就行，不要运行任何命令。\",\"evidenceRefs\":[\"tool:0\"]},{\"criterion\":\"Only finish when all explicit requirements are complete, or when continuation is impossible and the unfinished work plus blocking reason are reported.\",\"evidenceRefs\":[\"tool:0\"]}],\"unresolvedGaps\":",
+          "sanitizedOutputPreview": "{\"type\":\"answer\",\"reason\":\"README.md 已成功读取，正文明确写出本地开发启动命令为 `pnpm dev:mira`（在仓库根目录运行）。用户仅要求告知命令且明确不要运行任何命令，未执行任何命令，全部显式要求已被证据覆盖。\",\"completionProof\":[{\"criterion\":\"Complete every explicit requirement in the user's request: README 里写的本地开发启动命令是什么？告诉我命令就行，不要运行任何命令。\",\"evidenceRefs\":[\"tool:0\"]},{\"criterion\":\"Only finish when all explicit requirements are complete, or when continuation is impossible and the unfinished work plus blocking reason are reported.\",\"evidenceRefs\":[\"tool:0\"]}],\"unresolvedGaps\":",
+          "parseWarnings": [
+            "planner_task_plan_missing_on_initial_turn"
+          ],
+          "schemaReplanAttemptCount": 0,
+          "schemaReplanError": null,
+          "pendingApprovalActive": false,
+          "recoveryExhausted": false,
+          "finalizationEvidenceRefs": [
+            "tool:0",
+            "tool:0"
+          ],
+          "allowedActionTypes": [
+            "answer",
+            "retrieve",
+            "use_tool",
+            "ask_user",
+            "error"
+          ]
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-generate",
+        "nodeType": "generate",
+        "phase": "start",
+        "label": "生成回答",
+        "traceDomain": "agent",
+        "emittedAt": "2026-10-03T09:14:31.497Z",
+        "summary": "正在生成 Agent 最终回答",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a"
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-generate",
+        "nodeType": "generate",
+        "phase": "done",
+        "label": "生成回答",
+        "traceDomain": "agent",
+        "emittedAt": "2026-10-03T09:14:32.325Z",
+        "summary": "已生成 Agent 回答",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "answerLength": 48,
+          "invocation": {
+            "providerCode": "volcengine",
+            "providerLabel": "火山引擎",
+            "protocol": "openai-compatible",
+            "operation": "chat",
+            "endpoint": "https://token.3cgroup.cn/v1/chat/completions",
+            "model": "deepseek-v4.1-flash",
+            "modelConfigId": "325525d9dc006b6c353694d4762d8947",
+            "params": {
+              "enabled": true,
+              "temperature": 0.7,
+              "topP": 0.9,
+              "topK": 40,
+              "maxTokens": 2048,
+              "frequencyPenalty": 0,
+              "presencePenalty": 0,
+              "thinking": false
+            },
+            "request": {
+              "method": "POST",
+              "url": "https://token.3cgroup.cn/v1/chat/completions",
+              "body": {
+                "model": "deepseek-v4.1-flash",
+                "stream": true,
+                "messageCount": 4,
+                "params": {
+                  "temperature": 0.7,
+                  "top_p": 0.9,
+                  "max_tokens": 2048,
+                  "frequency_penalty": 0,
+                  "presence_penalty": 0,
+                  "thinking": false
+                }
+              }
+            }
+          },
+          "contextBudget": {
+            "policy": "agent-generate",
+            "model": "deepseek-v4.1-flash",
+            "providerCode": "volcengine",
+            "modelContextTokens": 8192,
+            "reservedOutputTokens": 2048,
+            "maxInputTokens": 6144,
+            "totalEstimatedTokensBefore": 947,
+            "totalEstimatedTokensAfter": 947,
+            "sections": [
+              {
+                "name": "preface",
+                "beforeTokens": 120,
+                "afterTokens": 120,
+                "action": "kept"
+              },
+              {
+                "name": "instructions",
+                "beforeTokens": 385,
+                "afterTokens": 385,
+                "action": "kept"
+              },
+              {
+                "name": "payload",
+                "beforeTokens": 404,
+                "afterTokens": 404,
+                "action": "kept"
+              },
+              {
+                "name": "history",
+                "beforeTokens": 0,
+                "afterTokens": 0,
+                "action": "kept"
+              },
+              {
+                "name": "latestUser",
+                "beforeTokens": 38,
+                "afterTokens": 38,
+                "action": "kept"
+              }
+            ],
+            "warnings": []
+          },
+          "messageCount": 4,
+          "outputGuardTriggered": false,
+          "protocolGuardTriggered": false,
+          "generatedAnswerEmptyFallback": false
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-evaluate",
+        "nodeType": "evaluate",
+        "phase": "start",
+        "label": "检查结果",
+        "traceDomain": "agent",
+        "emittedAt": "2026-10-03T09:14:32.330Z",
+        "summary": "正在检查 Agent 执行结果",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a"
+        }
+      }
+    },
+    {
+      "type": "data-execution-node",
+      "data": {
+        "nodeId": "agent-evaluate",
+        "nodeType": "evaluate",
+        "phase": "done",
+        "label": "检查结果",
+        "traceDomain": "agent",
+        "emittedAt": "2026-10-03T09:14:32.334Z",
+        "summary": "Planner 最终回答决定已成功交付",
+        "details": {
+          "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+          "plannerTerminalType": "answer",
+          "hasRequiredFinalization": true,
+          "blockedReason": null
+        }
+      }
+    },
+    {
+      "type": "text-delta",
+      "id": "text-1",
+      "delta": "本地开发启动命令是：\n\n```bash\npnpm dev:mira\n```\n\n在仓库根目录运行。"
+    },
+    {
+      "type": "text-end",
+      "id": "text-1"
+    },
+    {
+      "type": "finish-step"
+    },
+    {
+      "type": "finish",
+      "finishReason": "stop"
+    }
+  ],
+  "agentRun": {
+    "id": "a8109c98-026b-4a4d-8420-c9107726db7a",
+    "threadId": "e4ab4964b76d9318a35b412cd41df621",
+    "userId": 1,
+    "goal": {
+      "id": "5aa1e70c-b93d-479d-8dc5-a9378e2dcaf7",
+      "text": "README 里写的本地开发启动命令是什么？告诉我命令就行，不要运行任何命令。",
+      "successCriteria": [
+        "Complete every explicit requirement in the user's request: README 里写的本地开发启动命令是什么？告诉我命令就行，不要运行任何命令。",
+        "Only finish when all explicit requirements are complete, or when continuation is impossible and the unfinished work plus blocking reason are reported."
+      ],
+      "constraints": [
+        "Reuse the current project RAG, Harness, provider, and trace infrastructure.",
+        "Keep MCP tool contracts and frontend integration contracts unchanged."
+      ],
+      "riskLevel": "low"
+    },
+    "status": "completed",
+    "observations": [
+      {
+        "id": "a9f40fe4-8d66-426a-ac57-b88055505b80",
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "stepId": "tool",
+        "status": "ok",
+        "facts": [
+          "read_open completed through Harness."
+        ],
+        "createdAt": "2026-10-03T09:14:28.128Z"
+      },
+      {
+        "id": "d5f64be6-80c0-4f1c-b18b-c7b9b84a5da0",
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "stepId": "generate",
+        "status": "ok",
+        "facts": [
+          "Generated answer length: 48"
+        ],
+        "createdAt": "2026-10-03T09:14:32.325Z"
+      },
+      {
+        "id": "1340210b-8e07-4d16-b627-cb534cee55a4",
+        "runId": "a8109c98-026b-4a4d-8420-c9107726db7a",
+        "stepId": "evaluate",
+        "status": "ok",
+        "facts": [
+          "Planner answer decision was delivered successfully."
+        ],
+        "createdAt": "2026-10-03T09:14:32.334Z"
+      }
+    ],
+    "traceId": "7d1034ca-e586-4d5a-9089-88f8c4cd8bd7",
+    "createdAt": "2026-10-03T09:14:24.820Z",
+    "updatedAt": "2026-10-03T09:14:32.341Z",
+    "terminalReason": "completed",
+    "selectedToolId": "read_open",
+    "contextBudget": {
+      "policy": "agent-generate",
+      "model": "deepseek-v4.1-flash",
+      "providerCode": "volcengine",
+      "modelContextTokens": 8192,
+      "reservedOutputTokens": 2048,
+      "maxInputTokens": 6144,
+      "totalEstimatedTokensBefore": 947,
+      "totalEstimatedTokensAfter": 947,
+      "sections": [
+        {
+          "name": "preface",
+          "beforeTokens": 120,
+          "afterTokens": 120,
+          "action": "kept"
+        },
+        {
+          "name": "instructions",
+          "beforeTokens": 385,
+          "afterTokens": 385,
+          "action": "kept"
+        },
+        {
+          "name": "payload",
+          "beforeTokens": 404,
+          "afterTokens": 404,
+          "action": "kept"
+        },
+        {
+          "name": "history",
+          "beforeTokens": 0,
+          "afterTokens": 0,
+          "action": "kept"
+        },
+        {
+          "name": "latestUser",
+          "beforeTokens": 38,
+          "afterTokens": 38,
+          "action": "kept"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  "workspace": {
+    "before": {
+      "config/app.json": {
+        "bytes": 47,
+        "sha256": "c51e90128fd4f53b1666bde58a70af5ac43cfd4e0a6ea72522f85c013eb37d9a"
+      },
+      "config/retry.json": {
+        "bytes": 48,
+        "sha256": "9068be950bfcebeb605e23c32b4eb3b3628f2543c3e2be75229cc1f3a39ad4c5"
+      },
+      "config/service.json": {
+        "bytes": 54,
+        "sha256": "83913d514fade7fc4b7d72664c4998603f623b15ff8c28fbc686524afb41edc0"
+      },
+      "config/worker.json": {
+        "bytes": 49,
+        "sha256": "50dc4b0e7899877934ad269f21dfdedee1d067e275efa0c0e2706bc141b2954f"
+      },
+      "docs/release-checklist.md": {
+        "bytes": 53,
+        "sha256": "d98d8626f53cda9debcedaaa41425d291f82f8d3f004db371a3d261242c6ae81"
+      },
+      "drafts/meeting.md": {
+        "bytes": 44,
+        "sha256": "fc8e8a11f93935ce8a9a3e426a4f647ced16a9ff2d0ca54b33d8d106a5e7d3a2"
+      },
+      "drafts/release.md": {
+        "bytes": 40,
+        "sha256": "2d17461a7a805e8ba6f4d8cf80cc4aca03ab3df1c1b8061aaf21e3830cd333bc"
+      },
+      "notes/draft.txt": {
+        "bytes": 48,
+        "sha256": "fa74725c76f70efa9238d71b1eb2414165727d12d6133624e182afd00c161911"
+      },
+      "package.json": {
+        "bytes": 82,
+        "sha256": "dbe031bb0defc2a8f87d2f0223274cc9e799ef4295255d296e29215fd692a896"
+      },
+      "README.md": {
+        "bytes": 88,
+        "sha256": "2de1ddc28c9981a49b3a26b5e4e322540ae3bfb02d2eb99916bbf3ecd32e9578"
+      },
+      "src/runtime/retry.ts": {
+        "bytes": 71,
+        "sha256": "7072b2c234a89127e2b5c03af5c06d31b5cd4720aec4b7147d0ba937468f0935"
+      }
+    },
+    "after": {
+      "config/app.json": {
+        "bytes": 47,
+        "sha256": "c51e90128fd4f53b1666bde58a70af5ac43cfd4e0a6ea72522f85c013eb37d9a"
+      },
+      "config/retry.json": {
+        "bytes": 48,
+        "sha256": "9068be950bfcebeb605e23c32b4eb3b3628f2543c3e2be75229cc1f3a39ad4c5"
+      },
+      "config/service.json": {
+        "bytes": 54,
+        "sha256": "83913d514fade7fc4b7d72664c4998603f623b15ff8c28fbc686524afb41edc0"
+      },
+      "config/worker.json": {
+        "bytes": 49,
+        "sha256": "50dc4b0e7899877934ad269f21dfdedee1d067e275efa0c0e2706bc141b2954f"
+      },
+      "docs/release-checklist.md": {
+        "bytes": 53,
+        "sha256": "d98d8626f53cda9debcedaaa41425d291f82f8d3f004db371a3d261242c6ae81"
+      },
+      "drafts/meeting.md": {
+        "bytes": 44,
+        "sha256": "fc8e8a11f93935ce8a9a3e426a4f647ced16a9ff2d0ca54b33d8d106a5e7d3a2"
+      },
+      "drafts/release.md": {
+        "bytes": 40,
+        "sha256": "2d17461a7a805e8ba6f4d8cf80cc4aca03ab3df1c1b8061aaf21e3830cd333bc"
+      },
+      "notes/draft.txt": {
+        "bytes": 48,
+        "sha256": "fa74725c76f70efa9238d71b1eb2414165727d12d6133624e182afd00c161911"
+      },
+      "package.json": {
+        "bytes": 82,
+        "sha256": "dbe031bb0defc2a8f87d2f0223274cc9e799ef4295255d296e29215fd692a896"
+      },
+      "README.md": {
+        "bytes": 88,
+        "sha256": "2de1ddc28c9981a49b3a26b5e4e322540ae3bfb02d2eb99916bbf3ecd32e9578"
+      },
+      "src/runtime/retry.ts": {
+        "bytes": 71,
+        "sha256": "7072b2c234a89127e2b5c03af5c06d31b5cd4720aec4b7147d0ba937468f0935"
+      }
+    },
+    "diff": {
+      "added": [],
+      "removed": [],
+      "modified": [],
+      "changed": false
+    }
+  },
+  "assistantTranscript": "本地开发启动命令是：\n\n```bash\npnpm dev:mira\n```\n\n在仓库根目录运行。"
+}

@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-public-summary/0.1",
+  "benchmarkVersion": "0.1",
+  "caseSetVersion": "core-v0.1-rc1",
+  "runCount": 2,
+  "terminalDistribution": {
+    "completed": 2
+  },
+  "timingState": "calibration_pending",
+  "results": [
+    {
+      "schemaVersion": "mira-agent-core-benchmark-public-result/0.1",
+      "benchmarkVersion": "0.1",
+      "caseSetVersion": "core-v0.1-rc1",
+      "caseId": "intermediate-version-validator",
+      "repetition": 1,
+      "executionMode": "adapted",
+      "comparable": true,
+      "terminalStatus": "completed",
+      "plannerIterations": 1,
+      "toolCallCount": 8,
+      "parentToolCallCount": 0,
+      "childToolCallCount": 8,
+      "delegationCount": 1,
+      "approvalCount": 2,
+      "resumeCount": 2,
+      "repeatedSemanticActionCount": 0,
+      "elapsedMs": 33397,
+      "timingState": "calibration_pending",
+      "workspaceChanged": true,
+      "observabilityGapCount": 3,
+      "semanticScore": null,
+      "semanticOutcome": null,
+      "hardFail": null
+    },
+    {
+      "schemaVersion": "mira-agent-core-benchmark-public-result/0.1",
+      "benchmarkVersion": "0.1",
+      "caseSetVersion": "core-v0.1-rc1",
+      "caseId": "intermediate-version-validator",
+      "repetition": 2,
+      "executionMode": "adapted",
+      "comparable": true,
+      "terminalStatus": "completed",
+      "plannerIterations": 1,
+      "toolCallCount": 7,
+      "parentToolCallCount": 0,
+      "childToolCallCount": 7,
+      "delegationCount": 1,
+      "approvalCount": 4,
+      "resumeCount": 4,
+      "repeatedSemanticActionCount": 0,
+      "elapsedMs": 39629,
+      "timingState": "calibration_pending",
+      "workspaceChanged": true,
+      "observabilityGapCount": 3,
+      "semanticScore": null,
+      "semanticOutcome": null,
+      "hardFail": null
+    }
+  ]
+}

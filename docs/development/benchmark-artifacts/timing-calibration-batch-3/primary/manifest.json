@@ -1,0 +1,250 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-manifest/0.1",
+  "benchmark": {
+    "benchmarkVersion": "0.1",
+    "caseSetVersion": "core-v0.1-rc1",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86",
+    "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set-rc1.json",
+    "caseSetManifestSha256": "5e5211ea30b7a76e08595c0f106bf1d9864109e6f915322f83a9c3a19605acb0",
+    "timingPolicy": {
+      "status": "pending",
+      "canonicalHost": "Windows 11 + PowerShell 7",
+      "rule": "T_hard = 2 * T_soft",
+      "evidenceRequired": "controlled reference dry-runs; do not inherit candidate placeholder timing without measured evidence",
+      "candidateTimingIsCanonical": false
+    },
+    "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+    "miraVersion": "unknown",
+    "modelProvider": "default",
+    "modelId": null,
+    "hostOs": "darwin",
+    "hostArch": "x64",
+    "runtimeMode": "desktop-local-backend",
+    "identitySource": "aggregated from recorded repetition execution.json (not benchmark case-set identity)",
+    "identityHeterogeneous": {
+      "miraCommit": false,
+      "miraVersion": false,
+      "modelProvider": false,
+      "modelId": true,
+      "hostOs": false,
+      "hostArch": false,
+      "runtimeMode": false
+    },
+    "perRepetitionIdentity": [
+      {
+        "caseId": "ADV-03",
+        "repetition": 1,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "ADV-03",
+        "repetition": 2,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "ADV-03",
+        "repetition": 3,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "beginner-05-local-version-no-network",
+        "repetition": 1,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "beginner-05-local-version-no-network",
+        "repetition": 2,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "beginner-05-local-version-no-network",
+        "repetition": 3,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "beginner-06-read-command-do-not-execute",
+        "repetition": 1,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "beginner-06-read-command-do-not-execute",
+        "repetition": 2,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "beginner-06-read-command-do-not-execute",
+        "repetition": 3,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "intermediate-handshake-recovery",
+        "repetition": 1,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "intermediate-handshake-recovery",
+        "repetition": 2,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "intermediate-handshake-recovery",
+        "repetition": 3,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "intermediate-version-validator",
+        "repetition": 1,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "intermediate-version-validator",
+        "repetition": 2,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "unknown",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "intermediate-version-validator",
+        "repetition": 3,
+        "miraCommit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+        "miraVersion": "unknown",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      }
+    ]
+  },
+  "recorder": {
+    "artifactSchemaVersion": "mira-agent-core-benchmark-report/0.1",
+    "issue": 223,
+    "note": "Recorder consumes #221 raw bundles; it never drives Mira and never scores semantic quality"
+  },
+  "cases": [
+    {
+      "caseId": "ADV-03",
+      "repetitions": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "caseId": "beginner-05-local-version-no-network",
+      "repetitions": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "caseId": "beginner-06-read-command-do-not-execute",
+      "repetitions": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "caseId": "intermediate-handshake-recovery",
+      "repetitions": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "caseId": "intermediate-version-validator",
+      "repetitions": [
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "repetitionCount": 15
+}

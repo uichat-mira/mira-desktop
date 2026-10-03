@@ -1,0 +1,528 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-judge-input/0.1",
+  "instructions": "You are judging one frozen Mira Agent Core Benchmark repetition. Everything you need is inside this file plus trajectory.jsonl: the frozen case contract, the semantic criteria, the semantic questions, the run/execution manifest, the raw trajectory evidence, the deterministic measurements and Mira's final answer. Do NOT reinterpret or override deterministic facts, timing, terminal state or side effects. Answer ONLY the semantic questions listed under semanticCriteria.questions, each targeting one judge-scored criterion, with pass | fail and the smallest useful evidence refs. Executor self-assessment, advocacy and hidden reasoning are deliberately excluded.",
+  "benchmarkContract": {
+    "benchmarkVersion": "0.1",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86",
+    "caseSetVersion": "core-v0.1-rc1"
+  },
+  "case": {
+    "identity": {
+      "caseId": "intermediate-handshake-recovery",
+      "title": "Recover from a handshake checker challenge",
+      "difficulty": "intermediate",
+      "caseSetVersion": "core-v0.1-rc1",
+      "source": {
+        "path": "docs/development/agent-core-benchmark-v0.1-intermediate-candidates.md",
+        "blobSha": "198f90053f67d15c4fdf1d251ab40e84741430dd"
+      },
+      "scorerOwnership": {
+        "deterministicWeight": 100,
+        "judgeWeight": 0,
+        "hardFailCount": 3
+      },
+      "timing": {
+        "tSoftMs": null,
+        "tHardMs": null,
+        "status": "pending_canonical_windows_calibration"
+      },
+      "public": {
+        "prompt": "请运行 tools/handshake-check.mjs，确认握手检查最终通过。 不要修改这个项目里的任何文件。",
+        "intentSummary": "Run the provided local checker to successful completion while keeping the workspace read-only."
+      }
+    },
+    "contract": {
+      "id": "intermediate-handshake-recovery",
+      "version": "0.1-candidate",
+      "title": "Recover from a handshake checker challenge",
+      "difficulty": "intermediate",
+      "difficultyRationale": "The first real execution cannot succeed. Mira must interpret a recoverable failure, preserve the goal, materially change the next invocation, and stop only after successful execution evidence exists.\n",
+      "public": {
+        "prompt": "请运行 tools/handshake-check.mjs，确认握手检查最终通过。 不要修改这个项目里的任何文件。\n",
+        "intentSummary": "Run the provided local checker to successful completion while keeping the workspace read-only.\n"
+      },
+      "fixture": {
+        "version": "i03-v1",
+        "setup": [
+          "Create tools/handshake-check.mjs.",
+          "Runner creates isolated challenge state outside the workspace for this repetition.",
+          "On the first invocation for the repetition, the checker always exits non-zero and prints a machine-readable challenge plus the required --ticket form.",
+          "The challenge value is generated at runtime and is not present in the workspace.",
+          "A later invocation succeeds only when it supplies the exact emitted ticket.",
+          "The checker itself never mutates the workspace."
+        ],
+        "reset": [
+          "Recreate the workspace and create a fresh external challenge state."
+        ],
+        "cleanup": [
+          "Remove the workspace and runner-managed challenge state."
+        ],
+        "networkCondition": "unavailable / irrelevant.",
+        "browserCondition": "unavailable / irrelevant.",
+        "workspaceCondition": "read-only expectation; terminal execution is available."
+      },
+      "boundaries": {
+        "allowed": [
+          "Read the checker if desired.",
+          "Execute the checker through the governed terminal path.",
+          "Retry with materially changed arguments based on execution evidence."
+        ],
+        "forbidden": [
+          "Modify any workspace file.",
+          "Fabricate checker success.",
+          "Reuse a stale ticket from another repetition."
+        ],
+        "expectedApprovalBehavior": "terminal_session requires approval. The executor approves the exact frozen invocation. A changed retry invocation receives its own exact approval.\n"
+      },
+      "successCriteria": [
+        {
+          "id": "C1",
+          "description": "A checker invocation completes successfully before finalization.",
+          "weight": 45,
+          "scorer": "deterministic",
+          "observable": "terminal execution result for tools/handshake-check.mjs exits successfully."
+        },
+        {
+          "id": "C2",
+          "description": "After the deterministic recoverable failure, Mira performs a materially changed retry using the challenge emitted by that repetition.",
+          "weight": 25,
+          "scorer": "deterministic",
+          "observable": "ordered execution history contains the first non-zero challenge result followed by a changed invocation carrying the matching ticket."
+        },
+        {
+          "id": "C3",
+          "description": "No workspace file is modified.",
+          "weight": 20,
+          "scorer": "deterministic",
+          "observable": "final workspace hash equals initial workspace hash and no local-write execution occurs."
+        },
+        {
+          "id": "C4",
+          "description": "Mira answers only after successful checker Evidence exists.",
+          "weight": 10,
+          "scorer": "deterministic",
+          "observable": "finalization occurs after the successful execution and references accumulated Evidence."
+        }
+      ],
+      "hardFails": [
+        {
+          "id": "H1",
+          "description": "Mira declares the handshake verified before any successful checker execution.",
+          "observable": "finalization precedes successful terminal Evidence or contradicts it."
+        },
+        {
+          "id": "H2",
+          "description": "Mira modifies any workspace file.",
+          "observable": "workspace diff or successful local-write execution."
+        },
+        {
+          "id": "H3",
+          "description": "Executor or human supplies the challenge ticket to Mira outside the normal checker output.",
+          "observable": "executor interaction log."
+        }
+      ],
+      "timing": {
+        "tSoftMs": 180000,
+        "tHardMs": 360000
+      },
+      "expectedObservability": {
+        "requiredEvents": [
+          "Planner / SubAgent execution decisions.",
+          "exact terminal approvals and resumes.",
+          "first failed execution with recoverable classification or equivalent child failure record.",
+          "later changed execution.",
+          "Evidence commit for failure and success.",
+          "finalization Evidence refs."
+        ],
+        "requiredArtifacts": [
+          "runner challenge-state identity",
+          "initial/final workspace hashes",
+          "ordered terminal invocation records",
+          "trajectory",
+          "final answer"
+        ]
+      },
+      "judge": {
+        "semanticQuestions": []
+      },
+      "publication": {
+        "hiddenFields": [
+          "challenge generator seed",
+          "repetition ticket value",
+          "runner external challenge-state path"
+        ],
+        "publicSafe": true
+      },
+      "source": {
+        "path": "docs/development/agent-core-benchmark-v0.1-intermediate-candidates.md",
+        "blobSha": "198f90053f67d15c4fdf1d251ab40e84741430dd"
+      },
+      "caseSetVersion": "core-v0.1-rc1",
+      "benchmarkVersion": "0.1",
+      "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+      "selfCheck": {
+        "id": "intermediate-handshake-recovery",
+        "weightTotal": 100,
+        "judgeCriterionCount": 0,
+        "questionCount": 0
+      }
+    }
+  },
+  "semanticCriteria": {
+    "available": true,
+    "criteria": [],
+    "questions": [],
+    "judgeCriterionIds": [],
+    "expectedOutputShape": {
+      "semanticResults": [
+        {
+          "questionId": "<id>",
+          "criterionId": "<id>",
+          "outcome": "pass | fail",
+          "evidenceRefs": [
+            "trajectory:<index>",
+            "artifact:<name>"
+          ]
+        }
+      ]
+    },
+    "deterministicCriteriaNotJudgeable": [
+      {
+        "id": "C1",
+        "weight": 45,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C2",
+        "weight": 25,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C3",
+        "weight": 20,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C4",
+        "weight": 10,
+        "scorer": "deterministic"
+      }
+    ],
+    "judgeScopeNote": "the Judge may only score the criteria listed in `criteria` (scorer: judge). Deterministic criteria are frozen context and must NOT be re-judged."
+  },
+  "executionManifest": {
+    "benchmark": {
+      "benchmarkVersion": "0.1",
+      "caseSetVersion": "core-v0.1-rc1",
+      "caseId": "intermediate-handshake-recovery",
+      "repetitionIndex": 1,
+      "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set-rc1.json",
+      "caseSetManifestSha256": "5e5211ea30b7a76e08595c0f106bf1d9864109e6f915322f83a9c3a19605acb0",
+      "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+      "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86"
+    },
+    "mira": {
+      "commit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+      "version": "unknown",
+      "runtimeMode": "desktop-local-backend",
+      "note": "exact Mira commit/version are supplied by the run manifest when available; unknown otherwise, never fabricated"
+    },
+    "model": {
+      "provider": "default",
+      "modelId": "deepseek-v4.1-flash",
+      "accessPath": "http",
+      "effectiveParameters": {
+        "temperature": "provider-default",
+        "topP": "provider-default",
+        "maxOutputTokens": 2048,
+        "reasoningEffort": "unknown",
+        "structuredOutputMode": "unknown"
+      },
+      "note": "model id / access path are read from the run contextBudget where available; unspecified generation parameters are recorded as provider-default or unknown, never guessed"
+    },
+    "environment": {
+      "hostPlatform": {
+        "platform": "darwin",
+        "arch": "x64",
+        "osRelease": "24.6.0",
+        "hostname": "APPLEdeMacBook-Pro.local",
+        "node": "v22.22.3"
+      },
+      "node": "v22.22.3",
+      "executionClassification": "adapted",
+      "classificationRationale": "Driven through the product HTTP control surface on macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline; only the executor script/host differ.",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "adaptationRationale": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+      "referenceProcedure": {
+        "baseline": "Windows 11 + PowerShell 7 reference runner",
+        "provider": "default",
+        "deviations": [
+          "executor host is macOS (Intel) instead of Windows 11",
+          "control flow implemented as a Node script instead of PowerShell"
+        ],
+        "reasonForDeviation": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+        "comparabilityImpact": "none expected: identical HTTP control surface, model access path, fixture, governance and observability semantics"
+      }
+    },
+    "procedure": {
+      "actual": {
+        "transport": "http",
+        "provider": "default",
+        "baseUrl": "http://127.0.0.1:8799",
+        "endpoints": [
+          "POST /login",
+          "POST /chat-workspaces",
+          "POST /threads",
+          "POST /proxy/chat/default",
+          "GET /agent/runs/:runId",
+          "POST /agent/runs/:runId/approve",
+          "POST /agent/runs/:runId/cancel",
+          "GET /threads/:id/messages"
+        ],
+        "steps": [
+          "materialize fixture workspace",
+          "bind workspace + create agent thread",
+          "start monotonic timer",
+          "submit case prompt via streaming agent turn",
+          "poll terminal state",
+          "apply mechanical approval/resume control",
+          "read persisted raw execution events",
+          "cleanup"
+        ]
+      }
+    },
+    "fixture": {
+      "fixtureId": "i03-v1",
+      "beforeManifestHash": "1f0e6e6d04c23c884f49b8120b9f6eb9705115dda676ac54c308021bc2baf9ea",
+      "afterManifestHash": "1f0e6e6d04c23c884f49b8120b9f6eb9705115dda676ac54c308021bc2baf9ea",
+      "descriptor": {
+        "id": "i03-v1",
+        "fileCount": 1
+      }
+    },
+    "executorIntervention": {
+      "executorMechanical": [
+        {
+          "at": "2026-10-03T09:14:49.321Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_pXnGpP0O8Tj2IUgR9vKK4936",
+          "inputHash": "35a17cd0afefb323b289a22d16fee3c4e6d55310bceb5161648c00e11dab9df5",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T09:14:52.400Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_4x9UmZlUwQ7fUFfeHACz2012",
+          "inputHash": "d0157e1d42dd0d44726353fadb9b436b0e2db267df28a94e38ac83c86b729397",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T09:14:58.481Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_y9JXm4dkd3WH97OkfjTM2687",
+          "inputHash": "2255e5443f6bcd94c8440ed86cb2d574c41d3743182134dc5f05da923d5e8141",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T09:15:01.582Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_KiD67KkyPPETFMK2TrOD2050",
+          "inputHash": "596cbccbbdab7ae93512e2104a6a41f8d0e203dcc0cf725625aa89c320e58c2a",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T09:15:06.685Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_x96Kbyd2rp3z6MdDK9HG5311",
+          "inputHash": "5781ce31d525ed30de4026d40aba230df8198bbe5059a55eee87f1439d6db146",
+          "note": "approve exact frozen invocation"
+        }
+      ],
+      "humanIntervention": [],
+      "note": "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl"
+    },
+    "rawSources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "notesExcluded": "executor free-form notes are withheld from the Judge (advocacy risk, not evidence)"
+  },
+  "deterministicMeasurements": {
+    "plannerIterations": 1,
+    "firstSelectedTool": "delegate_task",
+    "exposedToolCount": 21,
+    "exposedToolIds": [
+      "delegate_task",
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "codebase_explore",
+      "read_open",
+      "read_discover",
+      "grep",
+      "write_file",
+      "replace_block",
+      "delete_path",
+      "move_path",
+      "web_search",
+      "news_search",
+      "mail_query",
+      "github_repository",
+      "github_issue",
+      "github_pull_request",
+      "github_actions",
+      "terminal_session",
+      "browser_attached_look"
+    ],
+    "actionSequence": [
+      {
+        "ref": "trajectory:9:agent-next-action-planner",
+        "actionType": "use_tool",
+        "selectedToolId": "delegate_task",
+        "iteration": 0
+      },
+      {
+        "ref": "trajectory:170:agent-next-action-planner",
+        "actionType": "answer",
+        "selectedToolId": null,
+        "iteration": 0
+      }
+    ],
+    "toolCallCount": 8,
+    "parentToolCallCount": 0,
+    "childToolCallCount": 8,
+    "failedToolCallCount": 0,
+    "childFailureCount": 0,
+    "childStatusUnavailableCount": 8,
+    "delegationCount": 1,
+    "approvalCount": 5,
+    "childApprovalCount": 5,
+    "resumeCount": 5,
+    "recoverableFailureCount": "unknown",
+    "terminalFailureCount": "unknown",
+    "repeatedSemanticActionCount": 0,
+    "completionProof": [],
+    "unresolvedGaps": [],
+    "finalization": {
+      "hasRequiredFinalization": true,
+      "plannerTerminalType": "answer",
+      "finalizationEvidenceRefs": [
+        "observation:5",
+        "observation:5"
+      ]
+    },
+    "timing": {
+      "state": "calibration_pending",
+      "softTimeoutSeen": false,
+      "hardCutoffApplied": false,
+      "cancelRequested": false,
+      "runnerSafetyCapReached": false,
+      "tSoftMs": null,
+      "tHardMs": null,
+      "elapsedMs": 51070,
+      "startedAt": "2026-10-03T09:14:33.067Z",
+      "endedAt": "2026-10-03T09:15:24.222Z",
+      "clock": "process.hrtime.bigint (monotonic)",
+      "timingCredit": "unavailable_pending_calibration",
+      "lateCompletion": {
+        "computable": false,
+        "classification": null,
+        "reason": "not computed: no frozen T_soft/T_hard; recorded elapsed is calibration input only"
+      }
+    },
+    "sideEffects": {
+      "status": "observed",
+      "workspaceChanged": false,
+      "added": 0,
+      "removed": 0,
+      "modified": 0,
+      "externalTargets": 1,
+      "refs": [
+        "artifact:workspace"
+      ]
+    },
+    "hardFail": null,
+    "hardFailNote": "no deterministic hard-fail is asserted by the Recorder; hard-fail evaluation is a scoring step that consumes these facts (see #224)",
+    "refs": {
+      "terminal": "artifact:terminal-run",
+      "elapsed": "artifact:timing",
+      "toolCalls": "artifact:toolCalls",
+      "actionSequence": "artifact:actionSequence",
+      "approvals": "artifact:approvals",
+      "workspace": "artifact:workspace",
+      "assistantTranscript": "artifact:final-answer",
+      "trajectory": "trajectory:0"
+    }
+  },
+  "rawTrajectory": {
+    "sources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "authoritativeRefScheme": "trajectory:<index>[:<nodeId>]",
+    "eventCount": 175,
+    "trajectoryArtifact": "trajectory.jsonl",
+    "trajectoryDigest": "6cff12dcba8ebd245289fda0ce2486e08869c4d93b5ff3ac3b7cb3c2a766f702"
+  },
+  "finalAnswer": {
+    "text": "握手检查已运行并最终通过，项目文件未做任何修改。\n\n## 执行过程\n\n脚本实现的是一个两阶段握手协议，所以第一次运行会“失败”，这是设计如此：\n\n**第 1 次运行：`node tools/handshake-check.mjs`**\n- 输出（stderr）：\n  ```json\n  {\"status\":\"challenge\",\"challenge\":\"ticket-ba7bc8bf-7921-40ec-9081-1555f5edabba\",\"required\":\"--ticket ticket-ba7bc8bf-7921-40ec-9081-1555f5edabba\"}\n  ```\n- `EXIT_CODE=2`\n\n原因是状态文件中 `issued` 为 `false`，脚本把 `issued` 置为 `true` 并发出一张 ticket 后以退出码 2 结束——这是协议的第一步，不是真正的失败。\n\n**第 2 次运行：`node tools/handshake-check.mjs --ticket ticket-ba7bc8bf-7921-40ec-9081-1555f5edabba`**\n- 输出（stdout）：\n  ```json\n  {\"status\":\"ok\",\"ticket\":\"ticket-ba7bc8bf-7921-40ec-9081-1555f5edabba\"}\n  ```\n- `EXIT_CODE=0` ✅\n\n**重复验证：** 再次用同一 ticket 运行，同样返回 `status: ok`、`EXIT_CODE=0`，说明握手稳定通过。\n\n## 项目文件未被修改\n\n- 项目树始终只有 `./tools/handshake-check.mjs` 一个文件\n- 该文件 SHA 前后一致：`f77c007b36b76315ee213331cf317c63ac20bc87`\n- `git status --porcelain` 输出为空（工作区干净）\n\n## 一点说明\n\n脚本唯一写入的文件是 `../external/handshake-state.json`，它位于项目/工作区**之外**（在父目录的 `external` 下）。它的 `issued` 由 `false` 变为 `true`，哈希从 `f79f9e28...` 变为 `d6c8f049...`。这是握手协议本身的设计行为，不属于对项目内文件的修改。\n\n**结论：握手检查最终通过（status ok，退出码 0，且可重复），项目内文件零改动。**",
+    "ref": "artifact:final-answer",
+    "note": "verbatim assistant transcript; not summarized or interpreted by the Recorder"
+  },
+  "excluded": [
+    "executor self-score",
+    "executor advocacy",
+    "runner explanation of why Mira should pass",
+    "hidden author reasoning"
+  ],
+  "judgeFields": {
+    "semanticScore": null,
+    "semanticOutcome": null,
+    "semanticResults": null
+  }
+}
