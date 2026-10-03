@@ -1,0 +1,270 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-execution/0.1",
+  "benchmark": {
+    "benchmarkVersion": "0.1",
+    "caseSetVersion": "core-v0.1-rc1",
+    "caseId": "ADV-01",
+    "repetitionIndex": 2,
+    "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set-rc1.json",
+    "caseSetManifestSha256": "5e5211ea30b7a76e08595c0f106bf1d9864109e6f915322f83a9c3a19605acb0",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86"
+  },
+  "mira": {
+    "commit": "unknown",
+    "version": "unknown",
+    "runtimeMode": "desktop-local-backend",
+    "note": "exact Mira commit/version are supplied by the run manifest when available; unknown otherwise, never fabricated"
+  },
+  "model": {
+    "provider": "default",
+    "modelId": "deepseek-v4.1-flash",
+    "accessPath": "http",
+    "effectiveParameters": {
+      "temperature": "provider-default",
+      "topP": "provider-default",
+      "maxOutputTokens": 2048,
+      "reasoningEffort": "unknown",
+      "structuredOutputMode": "unknown"
+    },
+    "note": "model id / access path are read from the run contextBudget where available; unspecified generation parameters are recorded as provider-default or unknown, never guessed"
+  },
+  "environment": {
+    "hostPlatform": {
+      "platform": "darwin",
+      "arch": "x64",
+      "osRelease": "24.6.0",
+      "hostname": "APPLEdeMacBook-Pro.local",
+      "node": "v22.22.3"
+    },
+    "node": "v22.22.3",
+    "executionClassification": "adapted",
+    "classificationRationale": "Driven through the product HTTP control surface on macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline; only the executor script/host differ.",
+    "comparabilityImpact": "same frozen case prompt, deterministic fixture, HTTP control surface, model access path, governance and observability semantics; executor host is local macOS.",
+    "adaptationRationale": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+    "referenceProcedure": {
+      "baseline": "Windows 11 + PowerShell 7 reference runner",
+      "provider": "default",
+      "deviations": [
+        "executor host is macOS (Intel) instead of Windows 11",
+        "control flow implemented as a Node script instead of PowerShell"
+      ],
+      "reasonForDeviation": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+      "comparabilityImpact": "none expected: identical HTTP control surface, model access path, fixture, governance and observability semantics"
+    }
+  },
+  "procedure": {
+    "actual": {
+      "transport": "http",
+      "provider": "default",
+      "baseUrl": "http://127.0.0.1:8787",
+      "endpoints": [
+        "POST /login",
+        "POST /chat-workspaces",
+        "POST /threads",
+        "POST /proxy/chat/default",
+        "GET /agent/runs/:runId",
+        "POST /agent/runs/:runId/approve",
+        "POST /agent/runs/:runId/cancel",
+        "GET /threads/:id/messages"
+      ],
+      "steps": [
+        "materialize fixture workspace",
+        "bind workspace + create agent thread",
+        "start monotonic timer",
+        "submit case prompt via streaming agent turn",
+        "poll terminal state",
+        "apply mechanical approval/resume control",
+        "read persisted raw execution events",
+        "cleanup"
+      ]
+    },
+    "notes": []
+  },
+  "fixture": {
+    "fixtureId": "adv01-v1",
+    "beforeManifestHash": "eb7a7a39ea69ed9aa72167f6074961cf8fa4c13fa4730a12027285735c09ce8a",
+    "afterManifestHash": "7ad3c0e56750ff1a557b48b9ed0734ec73e7e4e635eed99367f81066431c619c",
+    "descriptor": {
+      "id": "adv01-v1",
+      "fileCount": 4
+    }
+  },
+  "executorIntervention": {
+    "executorMechanical": [
+      {
+        "at": "2026-10-02T23:54:35.477Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_01_oo6CrChZBHbkWmn77xnZ3185",
+        "inputHash": "963f2ee0687bb4ff0aece24dfb3fac73223b782f595240fe7d79b3f8840c5a3e",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:54:38.562Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "replace_block",
+        "toolCallId": "call_00_kM62yb7qyCSvdF8RBN7Y6635",
+        "inputHash": "e51774f086ef770a4a76a5be116ddf9679b3569edf54299f5008b1c24e4c2d8f",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:54:41.203Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_00_lhO4Hr5egnGfrZ3Ugqww4119",
+        "inputHash": "094e0cb1657eb10fd74fbc696cd37b9f5980c0f8db16beb8a35712e2f576b063",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:54:50.388Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "write_file",
+        "toolCallId": "call_01_1vQmUbvR6s7ajLcyCM4d1029",
+        "inputHash": "2a926952430293b9187553f460c1667f402d236ee3e805be400f3954babb515e",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:54:54.155Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "write_file",
+        "toolCallId": "call_00_ET_yQIcl9Rl4m02QaWX11sO8341",
+        "inputHash": "9b6c9dd0e8165d7894d3e5664e3fa68de80c9401cd356959ddbb8303eb600bf5",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:55:25.115Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_01_foOXi0iMdVGsXVhq8iz96709",
+        "inputHash": "5381f09fdb340f7a59665578fa4b059ba5e8443868b6412acef17320c46c20ae",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:55:39.674Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_01_5yLOSnTRnSRY7x7F9oRI8098",
+        "inputHash": "55ce479d547bc7f15a0fea6b0a28106298139cc9b3927fcc8be63ab82e9f472f",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:55:52.248Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_00_hhL2JYjUBOhPixmrDP7I7974",
+        "inputHash": "13b5661e31b5cc0fb0cefea6362361f4705f8f83beee41883fdabf8dae234e91",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:56:04.053Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_01_qrsoDmPqLZJuBwHp58Ku4680",
+        "inputHash": "e21771575bb266188b334049d1f07aa743e08e9a21cccc3e02e1979cf50e0f04",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:56:33.297Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "write_file",
+        "toolCallId": "call_01_Z9zZrpGBlX4FBd7MUDUv2191",
+        "inputHash": "00c1c987c5ad5e73f1ee0f1ce4eee1017b2a11b5f0361959535a236a045b8a4e",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:56:45.449Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "write_file",
+        "toolCallId": "call_01_kemEwQNf50jvJSIlSdFK4611",
+        "inputHash": "cb7fca02df315a91fc4e6004c9a95e55cd1ab7f1d8a1fd2a43bf7dc5d673dd60",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-02T23:57:01.102Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_01_EIq7AgV4uzzg8YpRmqAO1972",
+        "inputHash": "60c3d1db317bffbb55388a69ba095f381ffaddddf022fb086a2c3e991d839405",
+        "note": "approve exact frozen invocation"
+      }
+    ],
+    "humanIntervention": [],
+    "note": "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl"
+  },
+  "provenance": {
+    "executionEvents": {
+      "file": "execution-events.ndjson",
+      "present": true,
+      "sha256": "198af51c0ed046f5161078a07e041db0ce963f2bbec325462d252fc16a1efd08"
+    },
+    "streamFrames": {
+      "file": "stream-frames.ndjson",
+      "present": true,
+      "sha256": "a1cbe5f2b7048f98de5cb3df3b1e8c27c3a8bac0cbb6fae3c1c29daa1cadea40"
+    },
+    "agentRun": {
+      "file": "agent-run.json",
+      "present": true,
+      "sha256": "4a5bb5e7caf5a7dcaeb4a66822389b74201ab19a1b59c2fde472ac6cb83d7236"
+    },
+    "executorFacts": {
+      "file": "executor-facts.json",
+      "present": true,
+      "sha256": "9c41f661140ac75ec04d7e2567b292b6a4aa8fa46b08232097cb6e8163aefe02"
+    },
+    "workspaceBefore": {
+      "file": "workspace-manifest.before.json",
+      "present": true,
+      "sha256": "019326892a3e19136ec35408ff54c4c44f62c7356802959cdcf3dea05ecae852"
+    },
+    "workspaceAfter": {
+      "file": "workspace-manifest.after.json",
+      "present": true,
+      "sha256": "e89b8aaff06f7be2df622f89d5f7bae7624ba7eba7821777f51396a825172d01"
+    },
+    "workspaceDiff": {
+      "file": "workspace-diff.json",
+      "present": true,
+      "sha256": "055dba5a01ef9332d8248fd7c805d3567eb0deffbbf41b57d91fd3bdd6b8c6cf"
+    },
+    "assistantTranscript": {
+      "file": "assistant-transcript.txt",
+      "present": true,
+      "sha256": "d40c9050166afe4c870184ca32d311b7b33c5549b0ca99cee8f6ffe2c471bab6"
+    }
+  },
+  "rawSources": {
+    "authoritative": {
+      "source": "execution-events.ndjson",
+      "refScheme": "trajectory:<index>[:<nodeId>]",
+      "precedence": 1,
+      "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+    },
+    "secondary": [
+      {
+        "source": "stream-frames.ndjson",
+        "refScheme": "stream:<index>",
+        "precedence": 2,
+        "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+      }
+    ],
+    "terminalState": {
+      "source": "agent-run.json",
+      "refScheme": "artifact:terminal-run",
+      "role": "authoritative terminal run-state document (status / terminalReason)"
+    }
+  }
+}
