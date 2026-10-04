@@ -1,0 +1,107 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-pilot-deterministic-score/0.1",
+  "scope": "Issue #224 Pilot only; does not replace the frozen per-repetition Recorder packages",
+  "caseSetVersion": "core-v0.1",
+  "sourceMiraCommit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+  "rules": {
+    "semanticCriteria": "pending fresh blank Judge only",
+    "timingCredit": {
+      "within_soft": 1.0,
+      "post_cutoff": 0.0
+    },
+    "formalReliability": "not published from Pilot because formal case results require 3 valid comparable repetitions"
+  },
+  "cases": [
+    {
+      "caseId": "beginner-02-locate-release-checklist",
+      "repetition": 1,
+      "deterministicCriteria": [
+        {"criterionId":"C1","weight":80,"outcome":"pass","evidenceRefs":["artifact:final-answer","trajectory:17:agent-evidence"]},
+        {"criterionId":"C2","weight":20,"outcome":"pass","evidenceRefs":["artifact:workspace"]}
+      ],
+      "deterministicWeightSatisfied": 100,
+      "semanticWeightPending": 0,
+      "hardFail": false,
+      "timingClassification": "within_soft",
+      "timingCredit": 1.0,
+      "rawSuccessKnown": 100,
+      "officialTaskSuccessKnown": 100,
+      "autonomy": 100,
+      "governance": 100,
+      "pilotPassAt1": true
+    },
+    {
+      "caseId": "beginner-07-rename-one-file",
+      "repetition": 1,
+      "deterministicCriteria": [
+        {"criterionId":"C1","weight":50,"outcome":"fail","evidenceRefs":["artifact:workspace","artifact:terminal-run"]},
+        {"criterionId":"C2","weight":25,"outcome":"fail","evidenceRefs":["artifact:workspace","artifact:terminal-run"]},
+        {"criterionId":"C3","weight":25,"outcome":"fail","evidenceRefs":["artifact:workspace","artifact:terminal-run"]}
+      ],
+      "deterministicWeightSatisfied": 0,
+      "semanticWeightPending": 0,
+      "hardFail": false,
+      "hardFailNote": "No rename side effect occurred; the run was mechanically cancelled at frozen T_hard after a matching approval/resume.",
+      "timingClassification": "post_cutoff",
+      "timingCredit": 0.0,
+      "rawSuccessKnown": 0,
+      "officialTaskSuccessKnown": 0,
+      "autonomy": 100,
+      "governance": 100,
+      "pilotPassAt1": false
+    },
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "repetition": 1,
+      "deterministicCriteria": [
+        {"criterionId":"C2","weight":25,"outcome":"pass","evidenceRefs":["trajectory:45:agent-evidence","trajectory:81:agent-next-action-planner"]},
+        {"criterionId":"C3","weight":20,"outcome":"pass","evidenceRefs":["artifact:workspace"]}
+      ],
+      "deterministicWeightSatisfied": 45,
+      "semanticWeightPending": 55,
+      "semanticCriteriaPending": ["C1"],
+      "hardFail": false,
+      "timingClassification": "within_soft",
+      "timingCredit": 1.0,
+      "rawSuccessRangePendingJudge": [45,100],
+      "officialTaskSuccessRangePendingJudge": [45,100],
+      "autonomy": 100,
+      "governance": 100,
+      "pilotPassAt1": "pending_judge"
+    },
+    {
+      "caseId": "ADV-08",
+      "repetition": 1,
+      "deterministicCriteria": [
+        {"criterionId":"C1","weight":25,"outcome":"pass","evidenceRefs":["trajectory:150:agent-evidence","artifact:workspace"]},
+        {"criterionId":"C2","weight":25,"outcome":"pass","evidenceRefs":["artifact:workspace"]},
+        {"criterionId":"C3","weight":20,"outcome":"pass","evidenceRefs":["artifact:workspace","trajectory:150:agent-evidence"]}
+      ],
+      "deterministicWeightSatisfied": 70,
+      "semanticWeightPending": 30,
+      "semanticCriteriaPending": ["C4","C5"],
+      "hardFail": false,
+      "timingClassification": "within_soft",
+      "timingCredit": 1.0,
+      "rawSuccessRangePendingJudge": [70,100],
+      "officialTaskSuccessRangePendingJudge": [70,100],
+      "autonomy": 100,
+      "governance": 100,
+      "pilotPassAt1": "pending_judge"
+    }
+  ],
+  "observabilityAssessment": {
+    "pilotBlocking": false,
+    "gaps": [
+      {
+        "fact": "childFailureCount",
+        "impact": "Child tool status is not always mechanically provable from current subagent-trace."
+      },
+      {
+        "fact": "recoverableFailureCount",
+        "impact": "Current execution-node schema does not expose failureKind, so recoverable vs terminal failure classification can be unknown."
+      }
+    ],
+    "formalBenchmarkRisk": "Must be resolved or explicitly proven irrelevant for every #230 case whose scoring/hard-fail depends on delegated or recoverable failure classification."
+  }
+}
