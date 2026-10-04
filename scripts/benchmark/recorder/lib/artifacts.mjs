@@ -20,15 +20,17 @@ const JUDGE_SCHEMA_VERSION = "mira-agent-core-benchmark-judge-input/0.1";
 const EXECUTION_SCHEMA_VERSION = "mira-agent-core-benchmark-execution/0.1";
 
 const modelIdentityFrom = (bundle) => {
-  // Provider is explicit per selected case (#221). Model id / parameters are
-  // resolved by the backend and are NOT exposed verbatim on the run document,
-  // so anything not provable is `unknown` (never inferred).
-  const provider = bundle?.executorFacts?.actualProcedure?.provider ?? null;
+  // The runner route/provider selector (for example "default") is an access
+  // choice, not necessarily the provider that actually served the model. When
+  // the runtime exposes providerCode in contextBudget it is the stronger model
+  // provider identity. Keep the transport/route identity separate.
+  const routeProvider = bundle?.executorFacts?.actualProcedure?.provider ?? null;
   const ctx = bundle?.agentRun?.contextBudget ?? null;
   return {
-    provider: provider ?? "unknown",
+    provider: ctx?.providerCode ?? "unknown",
     modelId: ctx?.model ?? "unknown",
     accessPath: bundle?.executorFacts?.actualProcedure?.transport ?? "unknown",
+    routeProvider: routeProvider ?? "unknown",
     effectiveParameters: {
       temperature: "provider-default",
       topP: "provider-default",
