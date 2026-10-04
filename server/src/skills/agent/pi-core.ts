@@ -6,6 +6,7 @@ import {
   type AgentTool,
   type AgentToolResult,
 } from "@earendil-works/pi-agent-core";
+import { streamSimple as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { createProviderVisibleInputSchema } from "@/mcp/core/provider-visible-schema.js";
 import { getProviderDefinition } from "@/providers/catalog.js";
@@ -40,6 +41,15 @@ const asNonEmptyString = (value: unknown) =>
 
 type PiModel = NonNullable<NonNullable<AgentOptions["initialState"]>["model"]>;
 type BindingExecution = Awaited<ReturnType<SkillAgentToolBinding["execute"]>>;
+
+// Pi 1.0 requires an explicit streamFn. Mira deliberately shapes its Pi model as
+// `api: "openai-completions"` (see resolvePiModel), so it pairs that model with
+// Pi's official OpenAI-completions stream function instead of Pi's provider
+// catalog. AgentOptions.streamFn is typed against the generic `Model<Api>`, while
+// the exported implementation accepts the narrower `Model<"openai-completions">`
+// it is meant to serve; this cast only bridges that generic slot and does not
+// change the runtime pairing.
+const piStreamFn = streamOpenAICompletions as unknown as AgentOptions["streamFn"];
 
 const isArkPlanProvider = (providerTemplateCode: string) =>
   providerTemplateCode === "volcengine-code-plan" ||
@@ -251,7 +261,7 @@ const buildSystemPrompt = (input: SkillAgentExecutionInput) => {
 const toAgentToolResult = (
   binding: SkillAgentToolBinding,
   executed: BindingExecution,
-): AgentToolResult<Record<string, unknown>> => ({
+): AgentToolResult<any> => ({
   content: [
     {
       type: "text",
@@ -624,7 +634,7 @@ const replaceApprovalPlaceholder = (input: {
   messages: AgentMessage[];
   toolCallId: string;
   toolId: string;
-  result: AgentToolResult<Record<string, unknown>>;
+  result: AgentToolResult<any>;
 }): AgentMessage[] => {
   const messages = structuredClone(input.messages);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -893,6 +903,7 @@ export const runPiSkillAgent = async (input: {
     getApiKey: () => apiKey || undefined,
     toolExecution: "sequential",
     sessionId: `mira-subagent:${primary.id}:${ledger.runId}`,
+    streamFn: piStreamFn,
   });
 
   try {
