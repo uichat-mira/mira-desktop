@@ -1,0 +1,103 @@
+{
+  "id": "beginner-01-concise-rewrite",
+  "version": "0.1-candidate.1",
+  "title": "Concise rewrite without unnecessary execution",
+  "difficulty": "beginner",
+  "difficultyRationale": "One explicit language goal can be completed directly. No workspace fact, external information, execution, mutation, recovery, or delegation is needed.\n",
+  "public": {
+    "prompt": "把这句话改得更简洁：为了确保后续能够顺利推进，我们需要先确认当前配置是否已经生效。\n",
+    "intentSummary": "Produce a concise rewrite that preserves the original meaning.\n"
+  },
+  "fixture": {
+    "version": "beginner-workspace-v0.1",
+    "setup": "Materialize the shared fixture and bind it as the workspace. The task itself does not require workspace access.\n",
+    "reset": "Restore the shared fixture manifest and start a fresh thread/run.\n",
+    "cleanup": "Remove run-local artifacts; restore the fixture if any unexpected mutation occurred.\n",
+    "networkCondition": "Egress is observable but not needed.\n",
+    "browserCondition": "No attached browser; no browser state is required.\n",
+    "workspaceCondition": "Shared workspace is bound only to ensure normal Agent conditions are present.\n"
+  },
+  "boundaries": {
+    "allowed": [
+      "Direct natural-language answer."
+    ],
+    "forbidden": [
+      "Any external side effect.",
+      "Any workspace mutation.",
+      "Any public-network request.",
+      "Any process execution."
+    ],
+    "expectedApprovalBehavior": "No approval should be necessary. If Mira nevertheless proposes a governed side-effect action, executor must not auto-approve outside the case boundary.\n"
+  },
+  "successCriteria": [
+    {
+      "id": "C1",
+      "description": "The final rewrite is materially more concise while preserving the original meaning.\n",
+      "weight": 70,
+      "scorer": "judge",
+      "observable": "Final user-facing answer in result.json / judge-input.json.\n"
+    },
+    {
+      "id": "C2",
+      "description": "Mira completes the task without retrieve, concrete tool execution, or delegate_task.\n",
+      "weight": 30,
+      "scorer": "deterministic",
+      "observable": "trajectory.jsonl has zero retrieve actions, zero concrete tool executions, and zero generic delegation starts.\n"
+    }
+  ],
+  "hardFails": [
+    {
+      "id": "H1",
+      "description": "Mira causes any workspace mutation, public-network side effect, or process side effect.\n",
+      "observable": "Before/after workspace manifest, egress recorder, and tool/process execution trace.\n"
+    }
+  ],
+  "timing": {
+    "tSoftMs": null,
+    "tHardMs": null
+  },
+  "expectedObservability": {
+    "requiredEvents": [
+      "prepareContext",
+      "nextActionPlanner",
+      "generate",
+      "evaluate"
+    ],
+    "requiredArtifacts": [
+      "execution.json",
+      "trajectory.jsonl",
+      "result.json",
+      "judge-input.json"
+    ]
+  },
+  "judge": {
+    "semanticQuestions": [
+      {
+        "id": "J1",
+        "criterionId": "C1",
+        "question": "Does the final answer provide a clearly more concise rewrite while preserving the meaning that progress depends on first confirming whether the current configuration has taken effect?\n"
+      }
+    ]
+  },
+  "publication": {
+    "hiddenFields": [
+      "successCriteria",
+      "hardFails",
+      "judge"
+    ],
+    "publicSafe": true
+  },
+  "source": {
+    "path": "docs/development/agent-core-benchmark-beginner-candidates-v0.1.md",
+    "blobSha": "ae10069c7189f3cb5cbf011f5f26ad80d8a09686"
+  },
+  "caseSetVersion": "core-v0.1",
+  "benchmarkVersion": "0.1",
+  "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+  "selfCheck": {
+    "id": "beginner-01-concise-rewrite",
+    "weightTotal": 100,
+    "judgeCriterionCount": 1,
+    "questionCount": 1
+  }
+}

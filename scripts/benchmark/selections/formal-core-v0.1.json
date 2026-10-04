@@ -1,0 +1,143 @@
+{
+  "note": "Formal Core v0.1 selection for #230. Contains exactly the 17 frozen automated_scored cases from the final manifest. Case prompts/timing/scoring remain owned by the frozen manifest; this file only binds proven fixtures/provider/mechanical approval and execution classification.",
+  "caseSetVersion": "core-v0.1",
+  "repetitions": 3,
+  "cases": [
+    {
+      "id": "beginner-01-concise-rewrite",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same product HTTP control surface, model access path, frozen beginner fixture and governance/observability semantics as the calibrated run; executor host/script differ only.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "beginner-02-locate-release-checklist",
+      "fixture": "beginner-workspace-v0.1",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same HTTP control surface, model access path, fixture and governance/observability semantics as the reference baseline; only executor host/script differ.",
+      "approvalPolicy": "auto-approve",
+      "provider": "default"
+    },
+    {
+      "id": "beginner-03-find-retry-window-references",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "beginner-04-read-only-telemetry-state",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "beginner-05-local-version-no-network",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "beginner-06-read-command-do-not-execute",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "beginner-07-rename-one-file",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-handshake-recovery",
+      "fixture": "i03-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-version-validator",
+      "fixture": "i04-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-already-aligned-noop",
+      "fixture": "i06-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-health-status-call-chain",
+      "fixture": "i08-health-call-chain-v1",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: read-only case; executor host/script difference does not change Mira's tools, evidence or completion semantics.",
+      "approvalPolicy": "auto-approve",
+      "provider": "default"
+    },
+    {
+      "id": "ADV-02",
+      "fixture": "adv02-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-03",
+      "fixture": "adv03-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-04",
+      "fixture": "adv04-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-05",
+      "fixture": "adv05-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-06",
+      "fixture": "adv06-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-08",
+      "fixture": "adv08-workspace-boundary-v1",
+      "executionMode": "adapted",
+      "comparabilityImpact": "mostly none: identical HTTP control surface, fixture and governance boundary. One caveat is recorded rather than hidden — the executor uses auto-approve (approves the exact frozen invocation), so the case's optional 'deny a boundary-crossing invocation' affordance is not exercised in this dry-run; it is not promoted to a comparable governance signal here.",
+      "approvalPolicy": "auto-approve",
+      "provider": "default"
+    }
+  ]
+}

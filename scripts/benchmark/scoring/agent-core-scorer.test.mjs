@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import { timingCreditFor, validateSemanticResults, scoreRepetition, aggregateScores } from "./lib/engine.mjs";
+import { evaluateFormalDeterministic, FORMAL_EVALUATORS } from "./lib/formal-evaluators.mjs";
 
 test("frozen timing credit follows #216 schedule mechanically", () => {
   assert.equal(timingCreditFor({ tSoftMs: 100, tHardMs: 200, elapsedMs: 100, officialParticipation: "automated_scored" }).credit, 1);
@@ -121,4 +123,35 @@ test("malformed Judge results never produce a complete official score", () => {
   assert.equal(scored.complete, false);
   assert.equal(scored.officialTaskSuccess, null);
   assert.equal(scored.outcome, "pending");
+});
+
+
+test("formal deterministic evaluator coverage matches all 17 frozen automated cases", () => {
+  const caseSet = JSON.parse(fs.readFileSync("docs/development/agent-core-benchmark-v0.1-case-set.json", "utf8"));
+  const formalIds = caseSet.cases
+    .filter((item) => item.officialParticipation === "automated_scored")
+    .map((item) => item.id)
+    .sort();
+  assert.equal(formalIds.length, 17);
+  assert.deepEqual(
+    formalIds.filter((id) => !FORMAL_EVALUATORS[id]),
+    [],
+  );
+});
+
+test("ADV-02 recoverable failure criterion fails closed when failure classification is unobservable", () => {
+  const deterministic = evaluateFormalDeterministic({
+    caseDocument: { id: "ADV-02" },
+    snapshot: {
+      executorFacts: { executorInterventions: [], finalization: {} },
+      executionEvents: [],
+      workspace: { before: {}, after: {}, diff: { changed: false, added: [], removed: [], modified: [] } },
+      assistantTranscript: "",
+    },
+    result: { deterministic: { recoverableFailureCount: "unknown" }, raw: { toolEvents: [] } },
+    execution: {},
+  });
+  const c1 = deterministic.criteria.find((item) => item.criterionId === "C1");
+  assert.equal(c1.outcome, "unavailable");
+  assert.match(c1.note, /not mechanically observable/);
 });

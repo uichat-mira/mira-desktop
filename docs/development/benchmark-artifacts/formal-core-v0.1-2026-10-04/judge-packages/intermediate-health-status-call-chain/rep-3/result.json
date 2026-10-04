@@ -1,0 +1,405 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-result/0.1",
+  "raw": {
+    "terminal": {
+      "status": "completed",
+      "terminalReason": "completed",
+      "blockedReason": null,
+      "streamFinishReason": "stop",
+      "authority": {
+        "statusSource": "agent-run.json",
+        "note": "agent-run.json is authoritative terminal state; executor-facts.terminal is only a fallback when agent-run.json lacks the field"
+      },
+      "refs": [
+        "artifact:terminal-run"
+      ]
+    },
+    "elapsedMs": 45505,
+    "startedAt": "2026-10-04T06:21:41.771Z",
+    "endedAt": "2026-10-04T06:22:27.355Z",
+    "toolEvents": [
+      {
+        "source": "child",
+        "ref": "trajectory:19:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:5",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_discover",
+        "toolCallId": "call_01_NKsqgZ6thejxmWomdtu26841",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:48.443Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:21:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:7",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "grep",
+        "toolCallId": "call_02_TFJEE9XVNgEEt8RCIcDj2860",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:48.453Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:23:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:9",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_discover",
+        "toolCallId": "call_00_zk7P7eF0PHNZBu6irWIn6263",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:51.095Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:25:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:11",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_discover",
+        "toolCallId": "call_01_aETBlGLmO2Gujyn7XFt01247",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:51.104Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:27:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:13",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_open",
+        "toolCallId": "call_02_A8nD2Rj5NVB2Qx8hoe3t3696",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:51.112Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:29:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:15",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_open",
+        "toolCallId": "call_03_ueC55s2frueTRMP66CwD8691",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:51.120Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:31:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:17",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_open",
+        "toolCallId": "call_04_uw2jli0Hxzw8xA63BfXO2948",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:51.128Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:33:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:19",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_open",
+        "toolCallId": "call_05_zN6Dgb6YQLvtYGHcsp6Y3561",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:51.134Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:35:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:21",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_open",
+        "toolCallId": "call_00_YznC9PkdODe8PX8QZfBk2575",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:53.893Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:37:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:23",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_discover",
+        "toolCallId": "call_01_7cR1lABoOcK2phoSDVVe3595",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:53.967Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:39:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:25",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_discover",
+        "toolCallId": "call_02_XutUAEe9mKMX2bjP3dcM3718",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:53.981Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:41:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:27",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_discover",
+        "toolCallId": "call_03_oyWmpPPsbTdYpsHf91qd8787",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:53.996Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:43:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:29",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "grep",
+        "toolCallId": "call_00_MNHMSCgMMNV8LxnuY37k3105",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:56.969Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:45:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:31",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "grep",
+        "toolCallId": "call_01_CFzoNyaCczcMrpB7Xb7b2603",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:56.980Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:47:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:33",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_discover",
+        "toolCallId": "call_02_8cNnPPwihCk5l25E4nuw9468",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:56.990Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:49:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:35",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "codebase_explore",
+        "toolCallId": "call_03_dYYCTdeDV31RHJItE9rv6183",
+        "inputHash": null,
+        "artifactCount": 0,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:21:56.999Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:51:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:37",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "read_discover",
+        "toolCallId": "call_00_e7p6GF9JUhNwd5Q05AZ79574",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:22:00.227Z"
+      },
+      {
+        "source": "child",
+        "ref": "trajectory:53:subagent-trace:5e929686-9fe9-45b6-94e3-d10cc9ff2c3a:39",
+        "subAgentRunId": "5e929686-9fe9-45b6-94e3-d10cc9ff2c3a",
+        "toolId": "grep",
+        "toolCallId": "call_01_60JCdFnbMoD2UZD3oLp52906",
+        "inputHash": null,
+        "artifactCount": 1,
+        "status": null,
+        "statusUnavailable": true,
+        "at": "2026-10-04T06:22:00.238Z"
+      }
+    ],
+    "approvals": {
+      "count": 0,
+      "childApprovalCount": 0,
+      "resumeCount": 0,
+      "refs": [],
+      "childRefs": []
+    },
+    "workspaceChanges": {
+      "status": "observed",
+      "workspaceChanged": false,
+      "added": 0,
+      "removed": 0,
+      "modified": 0,
+      "externalTargets": 0,
+      "refs": [
+        "artifact:workspace"
+      ]
+    },
+    "refs": {
+      "terminal": "artifact:terminal-run",
+      "elapsed": "artifact:timing",
+      "toolCalls": "artifact:toolCalls",
+      "actionSequence": "artifact:actionSequence",
+      "approvals": "artifact:approvals",
+      "workspace": "artifact:workspace",
+      "assistantTranscript": "artifact:final-answer",
+      "trajectory": "trajectory:0"
+    }
+  },
+  "deterministic": {
+    "plannerIterations": 1,
+    "firstSelectedTool": "delegate_task",
+    "exposedToolCount": 21,
+    "exposedToolIds": [
+      "delegate_task",
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "codebase_explore",
+      "read_open",
+      "read_discover",
+      "grep",
+      "write_file",
+      "replace_block",
+      "delete_path",
+      "move_path",
+      "web_search",
+      "news_search",
+      "mail_query",
+      "github_repository",
+      "github_issue",
+      "github_pull_request",
+      "github_actions",
+      "terminal_session",
+      "browser_attached_look"
+    ],
+    "actionSequence": [
+      {
+        "ref": "trajectory:10:agent-next-action-planner",
+        "actionType": "use_tool",
+        "selectedToolId": "delegate_task",
+        "iteration": 0
+      },
+      {
+        "ref": "trajectory:117:agent-next-action-planner",
+        "actionType": "answer",
+        "selectedToolId": null,
+        "iteration": 0
+      }
+    ],
+    "toolCallCount": 18,
+    "parentToolCallCount": 0,
+    "childToolCallCount": 18,
+    "failedToolCallCount": 0,
+    "childFailureCount": 0,
+    "childStatusUnavailableCount": 18,
+    "delegationCount": 1,
+    "approvalCount": 0,
+    "childApprovalCount": 0,
+    "resumeCount": 0,
+    "recoverableFailureCount": "unknown",
+    "terminalFailureCount": "unknown",
+    "repeatedSemanticActionCount": 0,
+    "completionProof": [],
+    "unresolvedGaps": [],
+    "finalization": {
+      "hasRequiredFinalization": true,
+      "plannerTerminalType": "answer",
+      "finalizationEvidenceRefs": [
+        "observation:0",
+        "observation:0",
+        "observation:0",
+        "observation:0"
+      ]
+    },
+    "timing": {
+      "state": "frozen",
+      "softTimeoutSeen": false,
+      "hardCutoffApplied": false,
+      "cancelRequested": false,
+      "runnerSafetyCapReached": false,
+      "tSoftMs": 60000,
+      "tHardMs": 120000,
+      "elapsedMs": 45505,
+      "startedAt": "2026-10-04T06:21:41.771Z",
+      "endedAt": "2026-10-04T06:22:27.355Z",
+      "clock": "process.hrtime.bigint (monotonic)",
+      "timingCredit": null,
+      "lateCompletion": {
+        "computable": true,
+        "classification": "within_soft",
+        "reason": null
+      }
+    },
+    "sideEffects": {
+      "status": "observed",
+      "workspaceChanged": false,
+      "added": 0,
+      "removed": 0,
+      "modified": 0,
+      "externalTargets": 0,
+      "refs": [
+        "artifact:workspace"
+      ]
+    },
+    "hardFail": null,
+    "hardFailNote": "no deterministic hard-fail is asserted by the Recorder; hard-fail evaluation is a scoring step that consumes these facts (see #224)",
+    "refs": {
+      "terminal": "artifact:terminal-run",
+      "elapsed": "artifact:timing",
+      "toolCalls": "artifact:toolCalls",
+      "actionSequence": "artifact:actionSequence",
+      "approvals": "artifact:approvals",
+      "workspace": "artifact:workspace",
+      "assistantTranscript": "artifact:final-answer",
+      "trajectory": "trajectory:0"
+    }
+  },
+  "judge": {
+    "semanticScore": null,
+    "semanticOutcome": null,
+    "semanticResults": null,
+    "note": "reserved for a future fresh blank judging thread; the Recorder never scores semantic quality"
+  },
+  "observabilityGaps": [
+    {
+      "fact": "childFailureCount",
+      "requiredBy": "#216 §12/§13 delegated failure visibility; #221 subagent-trace contract",
+      "availableSources": [
+        "subagent-trace tool.completed",
+        "subagent-trace tool.failed",
+        "traceDetails.status"
+      ],
+      "missingReason": "the #221 subagent-trace contract exposes child tool.started/tool.completed but no definite child success/failure fact (no tool.failed, no traceDetails.status), so delegated failures cannot be mechanically proven",
+      "scoringImpact": "delegated (child) tool failures may be undercounted in failure facts; childFailureCount is asserted as 0 only for the provable subset"
+    },
+    {
+      "fact": "recoverableFailureCount",
+      "requiredBy": "#216 §12/§13 recoverable-failure diagnostic; #221 failureRetry",
+      "availableSources": [
+        "execution-events tool node details.status",
+        "artifact:toolCalls"
+      ],
+      "missingReason": "current #221 execution-node schema exposes per-tool `status` but not `failureKind`, so recoverable vs terminal failure cannot be proven from the raw trajectory alone",
+      "scoringImpact": "recoverable-failure diagnostics and any hard-fail that depends on failure classification stay unresolved for this repetition"
+    }
+  ]
+}
