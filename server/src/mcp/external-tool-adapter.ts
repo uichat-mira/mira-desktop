@@ -13,6 +13,11 @@ export type ExternalMcpProjectedKind = "tool";
  * This is the canonical adapter boundary: everything below already speaks the
  * neutral Mira Tool vocabulary, so nothing in the registry/harness generic
  * execution path needs to know about External MCP protocol records.
+ *
+ * `title`, `description`, `inputSchema` and `outputSchema` carry the discovered
+ * values unchanged. The description fallback is applied only when building the
+ * neutral `ToolDefinition`, so the persisted discovery record keeps its original
+ * shape.
  */
 export interface ExternalMcpProjectedTool {
   id: string;
@@ -35,70 +40,72 @@ export interface ExternalMcpProjectedToolInput {
   outputSchema?: Record<string, unknown>;
 }
 
-const clampText = (value: string, maxLength: number) =>
-  value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+const slugifyToolName = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
 
 /**
  * Canonical projected Tool id for a discovered MCP protocol tool.
  *
- * The persisted/wire format is `mcp:<serverId>:tool:<toolName>` and must not
- * change: it is stored in `external_mcp_servers.discovered_tools_json`, shown
- * in the desktop MCP panel and used as the Harness Registry tool id.
+ * Reproduces the legacy `toProjectedCapabilityId` semantics exactly, including
+ * the slugify rule for the remote tool name. The persisted/wire format is
+ * `mcp:<serverId>:tool:<slugifiedToolName>` and must not change: it is stored in
+ * `external_mcp_servers.discovered_tools_json`, shown in the desktop MCP panel,
+ * and used as the Harness Registry tool id.
  */
 export const deriveProjectedToolId = (
   serverId: string,
   remoteToolName: string,
-) => `mcp:${serverId}:tool:${remoteToolName}`;
+) => `mcp:${serverId}:tool:${slugifyToolName(remoteToolName)}`;
 
+/**
+ * Adapt a discovered MCP protocol tool into the neutral projection record.
+ *
+ * Carries `title`, `description`, `inputSchema` and `outputSchema` through
+ * unchanged so discovery keeps its original persisted shape.
+ */
 export const toProjectedTool = (
   input: ExternalMcpProjectedToolInput,
-): ExternalMcpProjectedTool => {
-  const id = deriveProjectedToolId(input.serverId, input.remoteToolName);
-  const remoteName = clampText(input.remoteToolName, 120);
-  const description = input.description.trim()
-    ? clampText(input.description, 1200)
-    : `MCP capability ${remoteName} from ${input.serverDisplayName}`;
-
-  return {
-    id,
-    serverId: input.serverId,
-    serverDisplayName: input.serverDisplayName,
-    remoteToolName: input.remoteToolName,
-    title: input.title,
-    description,
-    inputSchema: input.inputSchema,
-    ...(input.outputSchema ? { outputSchema: input.outputSchema } : {}),
-  };
-};
-
-const SAFE_TAG = /^[a-z0-9._-]+$/u;
+): ExternalMcpProjectedTool => ({
+  id: deriveProjectedToolId(input.serverId, input.remoteToolName),
+  serverId: input.serverId,
+  serverDisplayName: input.serverDisplayName,
+  remoteToolName: input.remoteToolName,
+  title: input.title,
+  description: input.description,
+  inputSchema: input.inputSchema,
+  ...(input.outputSchema ? { outputSchema: input.outputSchema } : {}),
+});
 
 /**
  * Project an adapted External MCP tool into a neutral Mira ToolDefinition.
  *
- * Preserves the existing contract: canonical projected id, `source="external"`,
+ * Preserves the legacy contract: canonical projected id, `source="external"`,
  * `domain="external_mcp"`, display labels, input/output schema, the `mcp` /
- * `external` discovery tags plus a safe server-id tag, and the network/approval
- * policy metadata. The `sourceLabel` is redacted by the generic invocation path
- * when it emits events, so the adapter does not inject server config here.
+ * `external` / server-id tags, the description fallback keyed off the server
+ * display name, and the network/approval policy metadata. The `sourceLabel` is
+ * redacted by the generic invocation path when it emits events, so the adapter
+ * does not inject server config here.
  */
 export const toExternalMcpToolDefinition = (
   tool: ExternalMcpProjectedTool,
 ): ToolDefinition => ({
   id: tool.id,
   title: tool.title,
-  description: tool.description,
+  description:
+    tool.description ||
+    `MCP capability ${tool.remoteToolName} from ${tool.serverDisplayName}`,
   domain: "external_mcp",
   source: "external",
   sourceLabel: tool.serverDisplayName,
   mode: "sync",
   inputSchema: tool.inputSchema,
   ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
-  tags: [
-    "mcp",
-    "external",
-    ...(SAFE_TAG.test(tool.serverId) ? [tool.serverId] : []),
-  ],
+  tags: ["mcp", "external", tool.serverId],
   capabilities: {
     sideEffect: "network",
     requiresApproval: true,

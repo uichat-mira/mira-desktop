@@ -82,6 +82,45 @@ describe("External MCP neutral Tool adapter boundary", () => {
     expect(projectedTool.id).toBe("mcp:docs-server:tool:search_docs");
   });
 
+  it("reproduces the legacy slugify rule for remote tool names", () => {
+    const legacyToProjectedCapabilityId = (serverId: string, toolName: string) =>
+      `mcp:${serverId}:tool:${toolName
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80)}`;
+
+    const cases: string[] = [
+      "search_docs",
+      "Read Local Docs",
+      "  Search.Docs  ",
+      "Search/Docs",
+      "Get_User.Profile",
+      "weather:forecast",
+      "A  B   C",
+      "--trim--me--",
+      "Ünïcode Nàme",
+      "x".repeat(100),
+    ];
+
+    for (const toolName of cases) {
+      expect(deriveProjectedToolId("srv", toolName)).toBe(
+        legacyToProjectedCapabilityId("srv", toolName),
+      );
+    }
+
+    expect(deriveProjectedToolId("docs-server", "Read Local Docs")).toBe(
+      "mcp:docs-server:tool:read-local-docs",
+    );
+    expect(deriveProjectedToolId("docs-server", "Search/Docs")).toBe(
+      "mcp:docs-server:tool:search-docs",
+    );
+    expect(deriveProjectedToolId("docs-server", "Ünïcode Nàme")).toBe(
+      "mcp:docs-server:tool:n-code-n-me",
+    );
+  });
+
   it("projects MCP protocol records into a neutral ToolDefinition without MCP-specific fields", () => {
     const definition = toExternalMcpToolDefinition(projectedTool);
 
@@ -102,29 +141,52 @@ describe("External MCP neutral Tool adapter boundary", () => {
     assertNeutralToolDefinition(definition);
   });
 
-  it("falls back to a redaction-safe server label instead of carrying server config", () => {
-    const withOmittedLabel = toExternalMcpToolDefinition(
-      toProjectedTool({
-        serverId: "secrets-server",
-        serverDisplayName: "secrets-server",
-        remoteToolName: "lookup",
-        title: "Lookup",
-        description: "",
-        inputSchema: { type: "object" },
-      }),
-    );
+  it("applies the legacy description fallback only when building the ToolDefinition", () => {
+    const withoutDescription = toProjectedTool({
+      serverId: "secrets-server",
+      serverDisplayName: "Secrets Server",
+      remoteToolName: "lookup",
+      title: "Lookup",
+      description: "",
+      inputSchema: { type: "object" },
+    });
 
-    expect(withOmittedLabel.description).toBe(
-      "MCP capability lookup from secrets-server",
+    // Discovery keeps the empty description unchanged.
+    expect(withoutDescription.description).toBe("");
+
+    const definition = toExternalMcpToolDefinition(withoutDescription);
+    expect(definition.description).toBe(
+      "MCP capability lookup from Secrets Server",
     );
-    expect(withOmittedLabel.tags).toEqual([
-      "mcp",
-      "external",
-      "secrets-server",
-    ]);
+    expect(definition.tags).toEqual(["mcp", "external", "secrets-server"]);
   });
 
-  it("never injects raw remote tool names that contain characters outside a safe tag", () => {
+  it("does not clamp or rewrite discovery fields on the projected record", () => {
+    const longDescription = "d".repeat(2000);
+    const inputSchema = {
+      type: "object",
+      properties: { q: { type: "string" } },
+    };
+    const outputSchema = { type: "object" };
+
+    const projected = toProjectedTool({
+      serverId: "shape-server",
+      serverDisplayName: "Shape Server",
+      remoteToolName: "  Weird.Name  ",
+      title: "Weird.Name",
+      description: longDescription,
+      inputSchema,
+      outputSchema,
+    });
+
+    expect(projected.remoteToolName).toBe("  Weird.Name  ");
+    expect(projected.title).toBe("Weird.Name");
+    expect(projected.description).toBe(longDescription);
+    expect(projected.inputSchema).toBe(inputSchema);
+    expect(projected.outputSchema).toBe(outputSchema);
+  });
+
+  it("keeps the legacy tag list verbatim, including a server id with spaces", () => {
     const definition = toExternalMcpToolDefinition(
       toProjectedTool({
         serverId: "bad server id",
@@ -136,7 +198,87 @@ describe("External MCP neutral Tool adapter boundary", () => {
       }),
     );
 
-    expect(definition.tags).toEqual(["mcp", "external"]);
+    expect(definition.tags).toEqual(["mcp", "external", "bad server id"]);
+  });
+
+  it("matches the legacy discovery mapping for name, title, description and schema", () => {
+    type RawTool = {
+      name?: string;
+      title?: string;
+      description?: string;
+      inputSchema?: Record<string, unknown>;
+      outputSchema?: Record<string, unknown>;
+    };
+
+    const legacyNormalize = (serverId: string, tools: RawTool[]) =>
+      (tools ?? [])
+        .filter((tool) => typeof tool.name === "string" && tool.name.trim())
+        .map((tool) => ({
+          name: tool.name!.trim(),
+          title: tool.title?.trim() || tool.name!.trim(),
+          description: tool.description ?? "",
+          inputSchema:
+            tool.inputSchema ?? { type: "object", additionalProperties: true },
+          ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+          projectedCapabilityId: `mcp:${serverId}:tool:${tool.name!
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9._-]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 80)}`,
+        }));
+
+    const normalizeViaAdapter = (serverId: string, tools: RawTool[]) =>
+      (tools ?? [])
+        .filter((tool) => typeof tool.name === "string" && tool.name.trim())
+        .map((tool) => {
+          const remoteToolName = tool.name!.trim();
+          const projected = toProjectedTool({
+            serverId,
+            serverDisplayName: serverId,
+            remoteToolName,
+            title: tool.title?.trim() || remoteToolName,
+            description: tool.description ?? "",
+            inputSchema:
+              tool.inputSchema ?? { type: "object", additionalProperties: true },
+            ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+          });
+          return {
+            name: projected.remoteToolName,
+            title: projected.title,
+            description: projected.description,
+            inputSchema: projected.inputSchema,
+            ...(projected.outputSchema
+              ? { outputSchema: projected.outputSchema }
+              : {}),
+            projectedCapabilityId: projected.id,
+          };
+        });
+
+    const rawTools: RawTool[] = [
+      {
+        name: "Read Local Docs",
+        title: "  Read Local Docs  ",
+        description: "Reads docs",
+        inputSchema: { type: "object" },
+      },
+      {
+        name: "has/no-schema",
+        description: "",
+      },
+      {
+        name: "  ",
+        title: "blank",
+      },
+      {
+        name: "punct.tool:v2",
+        outputSchema: { type: "object" },
+      },
+    ];
+
+    expect(normalizeViaAdapter("docs-server", rawTools)).toEqual(
+      legacyNormalize("docs-server", rawTools),
+    );
   });
 
   it("puts a native tool and an External MCP projected tool in one neutral registry", () => {
