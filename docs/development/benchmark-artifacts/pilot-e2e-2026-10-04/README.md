@@ -51,10 +51,12 @@ The canonical Recorder tree remains under cases/<case-id>/. For semantic handoff
 
 Only I08 (C1) and ADV-08 (C4, C5) require semantic judging. B02 and B07 are fully deterministic. The transport files are byte-identical copies of their canonical Recorder artifacts; package-audit.json verifies this before publication.
 
-The fresh blank Judge must read only the exact repetition package plus its case contract and answer only semanticCriteria.questions. It must not override timing, terminal, hard-fail, side-effect, or deterministic criterion facts.
+The standard fresh blank Judge must read only the exact repetition package plus its case contract and answer only semanticCriteria.questions. It must not override timing, terminal, hard-fail, side-effect, or deterministic criterion facts.
+
+For this Pilot closeout, the maintainer explicitly authorized the current thread to perform semantic judging after an earlier handoff used a `judge-packages/` path with a commit that predated those packages. `judge-results.json` records this as `independentBlank: false`; this result is not an independent blank-thread review.
 
 ## Audit
 
-package-audit.json records the pre-publication identity and secret audit. Publication was allowed only after both audits passed.
+package-audit.json records the package identity and secret audit. Publication is allowed only after both audits pass.
 
-scoring/ contains the deterministic pre-Judge scoring projection. Semantic-dependent repetitions remain pending until a fresh blank Judge result is supplied.
+`scoring/` contains the final Pilot scoring after semantic-result backfill. All four selected repetitions are complete; the headline is Task Success 96.25, Autonomy 100, Reliability 75, Governance 100.

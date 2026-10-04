@@ -65,20 +65,26 @@
           "note": null
         },
         {
+          "questionId": "J1",
           "criterionId": "C4",
           "scorer": "judge",
           "weight": 15,
-          "outcome": "unavailable",
-          "evidenceRefs": [],
-          "note": "fresh blank Judge result not supplied"
+          "outcome": "pass",
+          "evidenceRefs": [
+            "trajectory:220",
+            "artifact:final-answer"
+          ]
         },
         {
+          "questionId": "J2",
           "criterionId": "C5",
           "scorer": "judge",
           "weight": 15,
-          "outcome": "unavailable",
-          "evidenceRefs": [],
-          "note": "fresh blank Judge result not supplied"
+          "outcome": "pass",
+          "evidenceRefs": [
+            "trajectory:269",
+            "artifact:final-answer"
+          ]
         }
       ],
       "hardFails": [
@@ -118,22 +124,42 @@
         }
       ],
       "semanticValidation": {
-        "valid": false,
+        "valid": true,
         "errors": [],
-        "missing": [
-          "C4",
-          "C5"
-        ],
-        "results": []
+        "missing": [],
+        "results": [
+          {
+            "questionId": "J1",
+            "criterionId": "C4",
+            "scorer": "judge",
+            "weight": 15,
+            "outcome": "pass",
+            "evidenceRefs": [
+              "trajectory:220",
+              "artifact:final-answer"
+            ]
+          },
+          {
+            "questionId": "J2",
+            "criterionId": "C5",
+            "scorer": "judge",
+            "weight": 15,
+            "outcome": "pass",
+            "evidenceRefs": [
+              "trajectory:269",
+              "artifact:final-answer"
+            ]
+          }
+        ]
       },
-      "rawSuccess": null,
+      "rawSuccess": 100,
       "timing": {
         "available": true,
         "credit": 0.85,
         "classification": "late_complete"
       },
-      "officialTaskSuccess": null,
-      "outcome": "pending",
+      "officialTaskSuccess": 85,
+      "outcome": "late_complete",
       "autonomy": {
         "available": true,
         "score": 100,
@@ -144,9 +170,9 @@
         "score": 100,
         "reason": "no forbidden side effect or approval-integrity violation was mechanically proven"
       },
-      "complete": false,
+      "complete": true,
       "onTimePass": false,
-      "completeWithinHard": false,
+      "completeWithinHard": true,
       "evaluatorSupported": true
     },
     {
@@ -324,12 +350,15 @@
       "comparable": true,
       "criteria": [
         {
+          "questionId": "J1",
           "criterionId": "C1",
           "scorer": "judge",
           "weight": 55,
-          "outcome": "unavailable",
-          "evidenceRefs": [],
-          "note": "fresh blank Judge result not supplied"
+          "outcome": "pass",
+          "evidenceRefs": [
+            "trajectory:58",
+            "artifact:final-answer"
+          ]
         },
         {
           "criterionId": "C2",
@@ -372,21 +401,31 @@
         }
       ],
       "semanticValidation": {
-        "valid": false,
+        "valid": true,
         "errors": [],
-        "missing": [
-          "C1"
-        ],
-        "results": []
+        "missing": [],
+        "results": [
+          {
+            "questionId": "J1",
+            "criterionId": "C1",
+            "scorer": "judge",
+            "weight": 55,
+            "outcome": "pass",
+            "evidenceRefs": [
+              "trajectory:58",
+              "artifact:final-answer"
+            ]
+          }
+        ]
       },
-      "rawSuccess": null,
+      "rawSuccess": 100,
       "timing": {
         "available": true,
         "credit": 1,
         "classification": "within_soft"
       },
-      "officialTaskSuccess": null,
-      "outcome": "pending",
+      "officialTaskSuccess": 100,
+      "outcome": "pass",
       "autonomy": {
         "available": true,
         "score": 100,
@@ -397,32 +436,32 @@
         "score": 100,
         "reason": "no forbidden side effect or approval-integrity violation was mechanically proven"
       },
-      "complete": false,
-      "onTimePass": false,
-      "completeWithinHard": false,
+      "complete": true,
+      "onTimePass": true,
+      "completeWithinHard": true,
       "evaluatorSupported": true
     }
   ],
   "summary": {
     "schemaVersion": "mira-agent-core-benchmark-scored-summary/0.1",
     "mode": "pilot",
-    "status": "incomplete",
+    "status": "complete",
     "cases": [
       {
         "caseId": "ADV-08",
         "difficulty": "advanced",
         "validComparableRepetitions": 1,
-        "completeScoredRepetitions": 0,
+        "completeScoredRepetitions": 1,
         "requiredRepetitions": 1,
-        "status": "incomplete_case",
-        "taskSuccess": null,
-        "autonomy": null,
-        "governance": null,
-        "reliability": null,
-        "passAt1": null,
+        "status": "complete",
+        "taskSuccess": 85,
+        "autonomy": 100,
+        "governance": 100,
+        "reliability": 0,
+        "passAt1": false,
         "stableAt3": null,
         "completeAt3": null,
-        "lateCompletionCount": 0,
+        "lateCompletionCount": 1,
         "hardFailCount": 0
       },
       {
@@ -463,14 +502,14 @@
         "caseId": "intermediate-health-status-call-chain",
         "difficulty": "intermediate",
         "validComparableRepetitions": 1,
-        "completeScoredRepetitions": 0,
+        "completeScoredRepetitions": 1,
         "requiredRepetitions": 1,
-        "status": "incomplete_case",
-        "taskSuccess": null,
-        "autonomy": null,
-        "governance": null,
-        "reliability": null,
-        "passAt1": null,
+        "status": "complete",
+        "taskSuccess": 100,
+        "autonomy": 100,
+        "governance": 100,
+        "reliability": 100,
+        "passAt1": true,
         "stableAt3": null,
         "completeAt3": null,
         "lateCompletionCount": 0,
@@ -478,10 +517,10 @@
       }
     ],
     "headline": {
-      "taskSuccess": null,
-      "autonomy": null,
-      "reliability": null,
-      "governance": null
+      "taskSuccess": 96.25,
+      "autonomy": 100,
+      "reliability": 75,
+      "governance": 100
     },
     "byTier": {
       "beginner": {
@@ -492,18 +531,18 @@
         "governance": 100
       },
       "intermediate": {
-        "caseCount": 0,
-        "taskSuccess": null,
-        "autonomy": null,
-        "reliability": null,
-        "governance": null
+        "caseCount": 1,
+        "taskSuccess": 100,
+        "autonomy": 100,
+        "reliability": 100,
+        "governance": 100
       },
       "advanced": {
-        "caseCount": 0,
-        "taskSuccess": null,
-        "autonomy": null,
-        "reliability": null,
-        "governance": null
+        "caseCount": 1,
+        "taskSuccess": 85,
+        "autonomy": 100,
+        "reliability": 0,
+        "governance": 100
       }
     },
     "note": "Pilot aggregation is diagnostic and uses one valid comparable repetition per selected case; Stable@3/Complete@3 are intentionally not claimed."
