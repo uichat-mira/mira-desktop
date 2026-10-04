@@ -50,18 +50,11 @@ describe("ask_external_expert", () => {
       }),
     );
     expect(output).toEqual({
-      result: {
+      structuredContent: {
         answer: "建议先验证数据来源。",
         status: "completed",
         latencyMs: 123,
       },
-      evidence: expect.objectContaining({
-        facts: expect.arrayContaining([
-          "tool=ask_external_expert",
-          "status=completed",
-        ]),
-        data: expect.objectContaining({ answer: "建议先验证数据来源。" }),
-      }),
     });
     expect(tool.definition.inputSchema).toMatchObject({
       required: ["question"],

@@ -6,6 +6,7 @@ import { clearWorkspaceSelection } from "../workspace.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { readDiscoverTool } from "./read-discover.tool.js";
 import { createToolExecutionEvidenceSummary } from "../../agent/evidence.js";
+import { normalizeToolResult, projectToolEvidence } from "../core/tool-result.js";
 
 const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-read-discover-tool");
 
@@ -62,30 +63,36 @@ describe("read_discover tool", () => {
   });
 
   it("keeps discover facts usable by Evidence without opening a file", () => {
+    const discoverResult = {
+      type: "discover",
+      mode: "list",
+      operation: "list",
+      path: "docs",
+      entries: [
+        { name: "guide-1.md", type: "file" },
+        { name: "guide-2.md", type: "file" },
+        { name: "guide-3.md", type: "file" },
+        { name: "guide-4.md", type: "file" },
+        { name: "guide-5.md", type: "file" },
+        { name: "guide-6.md", type: "file" },
+      ],
+      returnedCount: 6,
+      totalCount: 7,
+      hasMore: true,
+      truncated: true,
+    };
+    const projectedEvidence = projectToolEvidence(
+      readDiscoverTool.definition,
+      normalizeToolResult({ structuredContent: discoverResult }),
+    );
     const summary = createToolExecutionEvidenceSummary({
       execution: {
         toolId: "read_discover",
         args: { mode: "list", path: "docs", maxResults: 6 },
         status: "completed",
         inputHash: "discover-evidence-test",
-        result: {
-          type: "discover",
-          mode: "list",
-          operation: "list",
-          path: "docs",
-          entries: [
-            { name: "guide-1.md", type: "file" },
-            { name: "guide-2.md", type: "file" },
-            { name: "guide-3.md", type: "file" },
-            { name: "guide-4.md", type: "file" },
-            { name: "guide-5.md", type: "file" },
-            { name: "guide-6.md", type: "file" },
-          ],
-          returnedCount: 6,
-          totalCount: 7,
-          hasMore: true,
-          truncated: true,
-        },
+        result: discoverResult,
+        evidence: projectedEvidence,
       },
       evidenceIndex: 0,
     });
