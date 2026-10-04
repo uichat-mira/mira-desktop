@@ -1,6 +1,6 @@
 {
-  "note": "Runner selection for the #221 Intel macOS reference dry-run. Case prompts come from the frozen/RC case-set manifest (docs/development/agent-core-benchmark-v0.1-case-set-rc1.json); this file decides which cases to drive, the explicit chat provider, which fixture each case needs, how the executor applies supported mechanical approval control, and the comparability classification. It is NOT the #223 Recorder manifest.",
-  "caseSetVersion": "core-v0.1-rc1",
+  "note": "Runner selection for the #221 Intel macOS reference dry-run. Case prompts come from the frozen case-set manifest (docs/development/agent-core-benchmark-v0.1-case-set.json); this file decides which cases to drive, the explicit chat provider, which fixture each case needs, how the executor applies supported mechanical approval control, and the comparability classification. It is NOT the #223 Recorder manifest.",
+  "caseSetVersion": "core-v0.1",
   "repetitions": 1,
   "cases": [
     {
