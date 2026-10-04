@@ -1,7 +1,7 @@
 // #223 Recorder — case / benchmark identity resolution.
 //
 // The Recorder must freeze, per repetition: which benchmark contract, which
-// case-set, and which case identity the execution belongs to. It reads the RC
+// case-set, and which case identity the execution belongs to. It reads the frozen Core v0.1
 // case-set manifest and the contract identity recorded there. It does NOT
 // redefine the case-set (owned by #220) or the contract (owned by #216).
 
