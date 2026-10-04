@@ -34,4 +34,4 @@ After this directory is committed, the immutable locator is:
 - `public-result.json` is the sanitized website-facing projection.
 - `report.md` explains the incomplete case and the semantic-Judge methodology deviation.
 
-The semantic batch was completed in one newly opened blank ChatGPT thread with per-repetition evidence isolation. Because #230's stricter handoff wording describes fresh-thread isolation per repetition, this is recorded as a methodology deviation instead of being hidden or retroactively reclassified.
+Semantic judging used two blank-thread contexts: `ADV-02 / rep-1` in its own fresh blank thread, then the remaining 29 repetitions in one newly opened blank batch thread with per-repetition evidence isolation. Because #230's stricter handoff wording describes fresh-thread isolation per repetition, the batch portion is recorded as a methodology deviation instead of being hidden or retroactively reclassified.

@@ -31,7 +31,7 @@ All three ADV-02 repetitions have semantic C5/C6 judged and the remaining determ
 
 ## Semantic Judge procedure
 
-The 30 semantic repetitions were judged from the frozen packages committed at `b3bf52a7b6b3dadbb9ad672e8534c759c0df309a`. One fresh blank ChatGPT thread performed the batch, with explicit per-repetition evidence isolation. This is recorded as a methodology deviation from the stricter per-repetition fresh-thread wording in #230; it is not hidden or retroactively reclassified.
+The 30 semantic repetitions were judged from the frozen packages committed at `b3bf52a7b6b3dadbb9ad672e8534c759c0df309a`. `ADV-02 / rep-1` was judged in its own fresh blank ChatGPT thread; the remaining 29 repetitions were judged in one newly opened blank batch thread with explicit per-repetition evidence isolation. The batch portion is recorded as a methodology deviation from the stricter per-repetition fresh-thread wording in #230; it is not hidden or retroactively reclassified.
 
 ## Files
 
