@@ -56,7 +56,7 @@ describe("edit_file tool", () => {
     const result = await editFileTool.execute(invocation.context);
 
     expect(fs.readFileSync(path.join(tempRoot, "notes.txt"), "utf-8")).toBe("hello edit");
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       path: "notes.txt",
       operation: "write_file",
       dryRun: false,
@@ -84,7 +84,7 @@ describe("edit_file tool", () => {
 
     expect(fs.existsSync(targetPath)).toBe(true);
     expect(fs.readFileSync(targetPath, "utf-8")).toBe("");
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       path: "empty.txt",
       operation: "write_file",
       dryRun: false,
@@ -105,7 +105,7 @@ describe("edit_file tool", () => {
     const result = await editFileTool.execute(invocation.context);
 
     expect(fs.readFileSync(targetPath, "utf-8")).toBe("existing content");
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       path: "notes.txt",
       operation: "write_file",
       dryRun: true,
@@ -137,7 +137,7 @@ describe("edit_file tool", () => {
     const result = await editFileTool.execute(invocation.context);
 
     expect(fs.readFileSync(path.join(tempRoot, "notes.txt"), "utf-8")).toBe("old value");
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       path: "notes.txt",
       operation: "replace_block",
       dryRun: true,

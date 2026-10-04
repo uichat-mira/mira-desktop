@@ -82,7 +82,7 @@ describe("web search tool", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     expect(fetchSpy.mock.calls[0]?.[0]).toBe("https://api.tavily.com/search");
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       query: "example",
       provider: "tavily",
       capabilityId: "tavily-search",
@@ -187,7 +187,7 @@ describe("web search tool", () => {
     expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
       "http://localhost:8080/search?",
     );
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       query: "example",
       provider: "searxng",
       capabilityId: "searxng-search",
@@ -237,7 +237,7 @@ describe("web search tool", () => {
     expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
       "http://localhost:8080/search?",
     );
-    expect(result.result).toMatchObject({
+    expect(result.structuredContent).toMatchObject({
       provider: "searxng",
       query: "fallback search",
     });
@@ -336,7 +336,7 @@ describe("web search tool", () => {
     expect(String(fetchSpy.mock.calls[1]?.[0])).toContain(
       "http://localhost:8080/search?",
     );
-    expect(result.result).toMatchObject({
+    expect(result.structuredContent).toMatchObject({
       provider: "searxng",
       query: "fallback search",
     });

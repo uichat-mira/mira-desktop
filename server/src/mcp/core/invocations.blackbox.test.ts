@@ -36,7 +36,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H1 blocks unapproved high-risk tools before execute", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -73,7 +73,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H2 executes only after exact toolId + inputHash approval", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -118,7 +118,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H3 does not reuse approval when the args hash changes", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -175,7 +175,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H4 uses workspaceBoundary.argKeys as the only workspace boundary source", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -226,7 +226,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H5 keeps POSIX absolute slash paths visible to the workspace boundary", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -293,7 +293,7 @@ describe("harness invocation boundary blackbox", () => {
 
   async function assertExternalPathIsBlocked(targetPath: string) {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -371,7 +371,7 @@ describe("harness invocation boundary blackbox", () => {
         });
         span.end();
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     });
@@ -422,7 +422,7 @@ describe("harness invocation boundary blackbox", () => {
       },
       execute() {
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     });

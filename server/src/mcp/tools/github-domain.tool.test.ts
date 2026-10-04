@@ -348,7 +348,7 @@ describe("GitHub domain capability package", () => {
         true,
       ),
     );
-    expect(branch.result).toMatchObject({
+    expect(branch.structuredContent).toMatchObject({
       operation: "create_branch",
       branch: "feature/domain",
       sha: "base-sha",
@@ -365,7 +365,7 @@ describe("GitHub domain capability package", () => {
         true,
       ),
     );
-    expect(issue.result).toMatchObject({
+    expect(issue.structuredContent).toMatchObject({
       operation: "create",
       number: 42,
       state: "open",
@@ -383,7 +383,7 @@ describe("GitHub domain capability package", () => {
         true,
       ),
     );
-    expect(pull.result).toMatchObject({
+    expect(pull.structuredContent).toMatchObject({
       operation: "create",
       number: 43,
       state: "open",
@@ -401,7 +401,7 @@ describe("GitHub domain capability package", () => {
         true,
       ),
     );
-    expect(dispatch.result).toMatchObject({
+    expect(dispatch.structuredContent).toMatchObject({
       operation: "dispatch",
       workflow: "ci.yml",
       ref: "main",

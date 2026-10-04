@@ -56,7 +56,7 @@ export const readLocateTool: ToolImplementation = {
     emitArtifacts(context, result.artifacts);
 
     return {
-      result: result.contents,
+      structuredContent: result.contents,
     };
   },
 };

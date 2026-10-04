@@ -18,6 +18,7 @@ import * as policyModule from "../policy";
 import * as runnablesModule from "../runnables";
 import { agentGraph } from "../graph";
 import type { AgentGraphOutput } from "../types";
+import { normalizeToolResult, projectToolEvidence } from "@/mcp/core/tool-result.js";
 
 const baseGoal = {
   id: "goal-1",
@@ -172,28 +173,34 @@ const completedReadOpenInvocation = (text = "# README\n\nUIChat Mira runtime doc
     finishedAt: "2026-07-05T00:00:01.000Z",
   }) as const;
 
-const completedTimedOutTerminalInvocation = () =>
-  ({
+const completedTimedOutTerminalInvocation = () => {
+  const result = {
+    sessionId: "terminal-session-timeout-1",
+    command: "pwd",
+    cwd: "D:\\workspace\\rag-demo",
+    exitCode: null,
+    output: "",
+    stdout: "",
+    stderr: "Command timed out",
+    timedOut: true,
+    reusedSession: false,
+    sessionMode: "ephemeral",
+    streamMode: "split",
+    stderrSeparated: true,
+  };
+  return ({
     id: "invocation-terminal-timeout-1",
     toolId: "terminal_session",
     status: "completed" as const,
-    result: {
-      sessionId: "terminal-session-timeout-1",
-      command: "pwd",
-      cwd: "D:\\workspace\\rag-demo",
-      exitCode: null,
-      output: "",
-      stdout: "",
-      stderr: "Command timed out",
-      timedOut: true,
-      reusedSession: false,
-      sessionMode: "ephemeral",
-      streamMode: "split",
-      stderrSeparated: true,
-    },
+    result,
+    evidence: projectToolEvidence(
+      { id: "terminal_session", source: "internal", domain: "terminal" },
+      normalizeToolResult({ structuredContent: result }),
+    ),
     startedAt: "2026-07-05T00:00:00.000Z",
     finishedAt: "2026-07-05T00:00:30.000Z",
   }) as const;
+};
 
 const runToolLoop = (input: {
   runId: string;

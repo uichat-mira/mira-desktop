@@ -25,8 +25,8 @@ describe("read_slice tool", () => {
       },
     });
 
-    expect((result.result as { type: string }).type).toBe("slice");
-    expect((result.result as { slice: { text: string } }).slice.text).toBe("line2\nline3");
+    expect((result.structuredContent as { type: string }).type).toBe("slice");
+    expect((result.structuredContent as { slice: { text: string } }).slice.text).toBe("line2\nline3");
     expect(events[0]).toContain("Slice plan:");
     expect(artifacts).toHaveLength(1);
   });

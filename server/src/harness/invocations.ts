@@ -2,6 +2,7 @@ import type {
   ToolInvocation,
   ToolTrace,
   ToolInvocationEvent,
+  ToolContentBlock,
 } from "../mcp/core/definitions.js";
 import {
   clearInvocations,
@@ -14,6 +15,7 @@ import {
 import { getHarnessEnvironmentSnapshot } from "./environment.js";
 import {
   projectHarnessResultForLlm,
+  projectHarnessContentForLlm,
   type HarnessLlmContent,
 } from "./llm-content.js";
 
@@ -24,16 +26,38 @@ export type HarnessInvocationRecord = ToolInvocation & {
 export const executeHarnessInvocation = async (
   input: ExecuteInvocationInput,
 ): Promise<HarnessInvocationRecord> => {
+  let modelContent: ToolContentBlock[] | undefined;
+  let toolIsError = false;
   const record = await executeInvocation({
     ...input,
     environment: input.environment ?? getHarnessEnvironmentSnapshot(),
+    onResultContent: (content, isError) => {
+      modelContent = content;
+      toolIsError = isError;
+    },
   });
 
   if (record.status !== "completed") {
     return record;
   }
 
-  const llmContent = projectHarnessResultForLlm(record.result);
+  const projected =
+    projectHarnessContentForLlm(modelContent) ??
+    projectHarnessResultForLlm(record.result) ??
+    (toolIsError
+      ? projectHarnessResultForLlm("Tool returned an error outcome without content.")
+      : undefined);
+  const llmContent =
+    projected && toolIsError
+      ? {
+          ...projected,
+          blocks: projected.blocks.map((block, index) =>
+            index === 0
+              ? { ...block, text: `toolOutcome=error\n${block.text}` }
+              : block,
+          ),
+        }
+      : projected;
   return llmContent ? { ...record, llmContent } : record;
 };
 
@@ -48,4 +72,6 @@ export const getHarnessInvocationTrace = (
   invocationId: string,
 ): ToolTrace | undefined => getInvocationTraceRecord(invocationId);
 
-export const clearHarnessInvocations = () => clearInvocations();
+export const clearHarnessInvocations = () => {
+  clearInvocations();
+};

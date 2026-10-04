@@ -57,7 +57,7 @@ describe("grep tool", () => {
       },
     });
 
-    const output = result.result as {
+    const output = result.structuredContent as {
       type: string;
       searchMode: string;
       matches: Array<{ path: string; matchType: string }>;

@@ -64,7 +64,7 @@ describe("web/news search separation", () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
     expect(newsSearchMock.hasNewsIntent).not.toHaveBeenCalled();
     expect(newsSearchMock.searchNewsHubCache).not.toHaveBeenCalled();
-    expect(result.result).toMatchObject({
+    expect(result.structuredContent).toMatchObject({
       provider: "tavily",
       capabilityId: "tavily-search",
       query: "latest AI news",

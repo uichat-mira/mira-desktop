@@ -145,7 +145,7 @@ test("codebaseExploreTool returns controlled exposure traces and verified eviden
     }),
   });
 
-  const payload = result.result as Record<string, unknown>;
+  const payload = result.structuredContent as Record<string, unknown>;
   const retrieval = payload.verifiedEvidenceInput as Record<string, unknown>;
   const trace = payload.trace as Record<string, unknown>;
   const exploreTrace = trace.explore as Record<string, unknown>;
@@ -196,7 +196,7 @@ test("codebaseExploreTool keeps provider unavailable runs degraded and does not 
     }),
   });
 
-  const payload = result.result as Record<string, unknown>;
+  const payload = result.structuredContent as Record<string, unknown>;
   const exploreResult = payload.exploreResult as Record<string, unknown>;
   const retrieval = payload.verifiedEvidenceInput as Record<string, unknown>;
   const trace = payload.trace as Record<string, unknown>;
@@ -244,7 +244,7 @@ test("codebaseExploreTool reports blocked provider status when app-data root can
     }),
   });
 
-  const payload = result.result as Record<string, unknown>;
+  const payload = result.structuredContent as Record<string, unknown>;
   const exploreTrace = (payload.trace as Record<string, unknown>)
     .explore as Record<string, unknown>;
 
@@ -301,7 +301,7 @@ test("real CodeGraph Agent workspace does not inherit Studio workspace mismatch"
     }),
   });
 
-  const payload = result.result as Record<string, unknown>;
+  const payload = result.structuredContent as Record<string, unknown>;
   const exploreResult = payload.exploreResult as Record<string, unknown>;
   const hints = (exploreResult.followUpHints as string[] | undefined) ?? [];
   const serialized = JSON.stringify(result);

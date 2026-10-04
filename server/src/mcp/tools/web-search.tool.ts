@@ -453,6 +453,6 @@ export const webSearchTool: ToolImplementation = {
       },
     });
 
-    return { result: normalizedResult };
+    return { structuredContent: normalizedResult };
   },
 };

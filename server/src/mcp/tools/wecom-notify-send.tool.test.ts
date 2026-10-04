@@ -123,7 +123,7 @@ describe("wecom_notify_send tool", () => {
       title: "Summary",
       content: "hello",
     });
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       success: true,
       target: "robot-webhook",
       summary: "WeCom robot notification sent",
@@ -217,7 +217,7 @@ describe("wecom_notify_send tool", () => {
       userId: "tomz",
       content: "Summary\n\nhello",
     });
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       success: true,
       target: "tomz",
       summary: "WeCom notification sent to tomz",

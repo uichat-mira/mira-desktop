@@ -5,6 +5,7 @@ import { getHarnessEnvironmentSnapshot } from "@/harness/environment.js";
 import { executeHarnessInvocation } from "@/harness/invocations.js";
 import { getToolImplementation } from "@/harness/registry.js";
 import type { ToolArtifact, ToolImplementation } from "@/mcp/core/definitions.js";
+import { normalizeToolResult, projectToolEvidence } from "@/mcp/core/tool-result.js";
 import { officeDocumentTool } from "@/mcp/tools/office-document.tool.js";
 import { officePdfTool } from "@/mcp/tools/office-pdf.tool.js";
 import { officePresentationTool } from "@/mcp/tools/office-presentation.tool.js";
@@ -181,7 +182,7 @@ const verifyCreatedPdf = async (input: {
         }),
       },
     });
-    const extracted = normalizeExtractedText(verification.result);
+    const extracted = normalizeExtractedText(verification.structuredContent);
     const missing = collectExpectedPdfText(spec).filter(
       (expected) =>
         !extracted.includes(expected.normalize("NFKC").replace(/\s+/g, "").toLowerCase()),
@@ -361,9 +362,10 @@ export const createPrivateWenShuRuntimeToolBinding = (input: {
         },
       );
 
+      const normalized = normalizeToolResult(response);
       return {
-        result: response.result,
-        evidence: response.evidence,
+        result: normalized.structuredContent,
+        evidence: projectToolEvidence(definition, normalized),
         artifacts,
       };
     },

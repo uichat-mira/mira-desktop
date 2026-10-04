@@ -61,7 +61,7 @@ export const wecomRobotNotifyTool: ToolImplementation = {
     await sendWecomRobotMarkdownMessage({ title, content });
 
     return {
-      result: {
+      structuredContent: {
         success: true,
         target: "robot-webhook",
         summary: `WeCom robot notification sent: ${title}`,

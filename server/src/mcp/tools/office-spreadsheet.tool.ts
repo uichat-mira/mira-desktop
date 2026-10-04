@@ -76,13 +76,8 @@ export const officeSpreadsheetTool: ToolImplementation = {
       const { inputPath, resolved } = resolveExistingWorkbook(context.args.inputPath);
       const result = await executeSpreadsheetSkillRuntime({ operation, inputPath: resolved });
       return {
-        result: { operation, inputPath, data: result },
-        evidence: {
-          status: "completed",
-          actionTaken: `${operation === "inspect" ? "Inspected" : "Verified"} spreadsheet ${inputPath}`,
-          facts: [`Source: ${inputPath}`, `Result: ${summaryPreview(result)}`],
-          data: { kind: "office_spreadsheet", operation, inputPath, result },
-        },
+        structuredContent: { operation, inputPath, data: result },
+
       };
     }
 
@@ -118,23 +113,8 @@ export const officeSpreadsheetTool: ToolImplementation = {
         },
       });
       return {
-        result: { operation, inputPath, outputPath, recalculation, verification },
-        evidence: {
-          status: "completed",
-          actionTaken: `Prepared recalculated workbook ${outputPath}`,
-          facts: [
-            `Source: ${inputPath}`,
-            `Output: ${outputPath}`,
-            `Recalculation: ${summaryPreview(recalculation)}`,
-          ],
-          data: {
-            kind: "office_spreadsheet",
-            operation,
-            inputPath,
-            outputPath,
-            verification,
-          },
-        },
+        structuredContent: { operation, inputPath, outputPath, recalculation, verification },
+
       };
     }
 

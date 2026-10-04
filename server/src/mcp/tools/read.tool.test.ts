@@ -45,8 +45,8 @@ describe("read tool", () => {
       },
     });
 
-    expect((result.result as { type: string }).type).toBe("open");
-    expect((result.result as { source: { text: string } }).source.text).toContain("hello read tool");
+    expect((result.structuredContent as { type: string }).type).toBe("open");
+    expect((result.structuredContent as { source: { text: string } }).source.text).toContain("hello read tool");
     expect(artifacts).toHaveLength(1);
     expect(events).toContain("invocation:progress");
   });
@@ -82,7 +82,7 @@ describe("read tool", () => {
       },
     });
 
-    expect((result.result as { source: { text: string } }).source.text).toContain("alias target");
+    expect((result.structuredContent as { source: { text: string } }).source.text).toContain("alias target");
   });
 
   it("rejects execution without harness environment", async () => {

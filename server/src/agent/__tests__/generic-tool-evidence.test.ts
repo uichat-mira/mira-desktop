@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMailCenterService } from "@/microapps/mail-center/index.js";
 import { createComputerUseBrowserTools } from "@/mcp/tools/browser-tools.tool.js";
+import { normalizeToolResult, projectToolEvidence } from "@/mcp/core/tool-result.js";
 import { createToolExecutionEvidenceSummary } from "../evidence";
 
 vi.mock("@/microapps/mail-center/index.js", () => ({
@@ -89,7 +90,7 @@ describe("generic MCP tool evidence", () => {
         toolId: "mail_query",
         args: {},
         status: "completed",
-        result: adapterOutput.result,
+        result: adapterOutput.structuredContent,
         startedAt: "2026-07-15T00:00:00.000Z",
         finishedAt: "2026-07-15T00:00:01.000Z",
       },
@@ -136,8 +137,11 @@ describe("generic MCP tool evidence", () => {
         toolId: "browser_observe",
         args: { url: "https://example.com" },
         status: "completed",
-        result: adapterOutput.result,
-        evidence: adapterOutput.evidence,
+        result: adapterOutput.structuredContent,
+        evidence: projectToolEvidence(
+          tools.find((tool) => tool.definition.id === "browser_observe")!.definition,
+          normalizeToolResult(adapterOutput),
+        ),
         startedAt: "2026-07-15T00:00:00.000Z",
         finishedAt: "2026-07-15T00:00:01.000Z",
       },

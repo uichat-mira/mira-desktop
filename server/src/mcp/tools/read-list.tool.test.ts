@@ -40,8 +40,8 @@ describe("read_list tool", () => {
       },
     });
 
-    expect((result.result as { type: string }).type).toBe("list");
-    expect((result.result as { entries: Array<{ name: string }> }).entries[0]?.name).toBe("a.txt");
+    expect((result.structuredContent as { type: string }).type).toBe("list");
+    expect((result.structuredContent as { entries: Array<{ name: string }> }).entries[0]?.name).toBe("a.txt");
     expect(events[0]).toContain("Directory listing plan");
     expect(artifacts).toHaveLength(1);
   });

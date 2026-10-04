@@ -1544,8 +1544,18 @@ const registerProjectedTool = (
           { name: tool.name, arguments: context.args },
           current.sessionId,
         );
+        const remote = response.result && typeof response.result === "object"
+          ? response.result as {
+              content?: Array<{ type: string; [key: string]: unknown }>;
+              structuredContent?: unknown;
+              isError?: boolean;
+              [key: string]: unknown;
+            }
+          : {};
         return {
-          result: {
+          content: remote.content,
+          isError: remote.isError === true,
+          structuredContent: {
             type: "external_mcp",
             serverId: current.id,
             remoteToolName: tool.name,

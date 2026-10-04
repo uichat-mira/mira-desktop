@@ -40,6 +40,16 @@ test("toolNode executes the frozen pendingToolCall without rebuilding args", asy
       toolId: "web_search",
       status: "completed",
       result: { ok: true },
+      llmContent: {
+        version: 1,
+        source: "harness_result",
+        blocks: [{ type: "text", text: "explicit harness content" }],
+        truncated: false,
+        originalCharCount: 24,
+        includedCharCount: 24,
+        omittedArrayItems: 0,
+        omittedObjectKeys: 0,
+      },
       startedAt: "2026-06-30T00:00:00.000Z",
       finishedAt: "2026-06-30T00:00:01.000Z",
     });
@@ -78,6 +88,10 @@ test("toolNode executes the frozen pendingToolCall without rebuilding args", asy
     assert.equal(result.lastToolExecution?.inputHash, "hash-frozen-query");
     assert.deepEqual(result.lastToolExecution?.args, { query: "frozen query" });
     assert.equal(result.lastToolExecution?.toolId, "web_search");
+    const llmContent = (result.lastToolExecution as typeof result.lastToolExecution & {
+      llmContent?: { blocks: Array<{ text: string }> };
+    })?.llmContent;
+    assert.equal(llmContent?.blocks[0]?.text, "explicit harness content");
     assert.equal(result.errorMessage, undefined);
     assert.equal(result.pendingToolCall, undefined);
   } finally {

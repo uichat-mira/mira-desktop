@@ -1,6 +1,6 @@
 import type {
   ToolInvocationContext,
-  ToolExecutionResult,
+  ToolResult,
   ToolImplementation,
 } from "../core/definitions.js";
 import {
@@ -40,30 +40,18 @@ export const runReadDelegate = async (
   toolId: string,
   operation: string,
   args: Record<string, unknown>,
-): Promise<ToolExecutionResult> => {
+): Promise<ToolResult> => {
   const delegated = await tool.execute({
     ...context,
     args,
     addArtifact: rewriteArtifactToolId(context, toolId),
   });
   return {
-    ...delegated,
-    ...(delegated.result !== undefined
-      ? { result: withOperation(operation, delegated.result) }
+    ...(delegated.structuredContent !== undefined
+      ? { structuredContent: withOperation(operation, delegated.structuredContent) }
       : {}),
-    ...(delegated.evidence
-      ? {
-          evidence: {
-            ...delegated.evidence,
-            data: {
-              ...(isRecord(delegated.evidence.data)
-                ? delegated.evidence.data
-                : {}),
-              operation,
-            },
-          },
-        }
-      : {}),
+    ...(delegated.content ? { content: delegated.content } : {}),
+    ...(delegated.isError ? { isError: true } : {}),
   };
 };
 
@@ -142,14 +130,8 @@ export const completed = (
   repository: string,
   result: unknown,
   facts: string[],
-): ToolExecutionResult => ({
-  result: withOperation(operation, result),
-  evidence: {
-    actionTaken: `Executed GitHub ${operation} for ${repository}`,
-    facts,
-    status: "completed",
-    data: { operation, repository },
-  },
+): ToolResult => ({
+  structuredContent: withOperation(operation, result),
 });
 
 export type RepoContentResponse = {

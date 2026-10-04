@@ -89,8 +89,8 @@ describe("read_extract tool", () => {
       },
     });
 
-    expect((result.result as { type: string }).type).toBe("extract");
-    expect((result.result as { slice: { text: string } }).slice.text).toContain("line2");
+    expect((result.structuredContent as { type: string }).type).toBe("extract");
+    expect((result.structuredContent as { slice: { text: string } }).slice.text).toContain("line2");
     expect(events[0]).toContain("Extract plan:");
     expect(events[0]).not.toContain("@");
     expect(artifacts).toHaveLength(1);
@@ -115,7 +115,7 @@ describe("read_extract tool", () => {
         return { id: "artifact-1", ...artifact };
       },
     });
-    expect((docxResult.result as { source: { text: string } }).source.text).toContain("Hello Docx");
+    expect((docxResult.structuredContent as { source: { text: string } }).source.text).toContain("Hello Docx");
 
     const pptxResult = await readExtractTool.execute({
       invocationId: "read-extract-3",
@@ -127,7 +127,7 @@ describe("read_extract tool", () => {
         return { id: "artifact-1", ...artifact };
       },
     });
-    expect((pptxResult.result as { source: { text: string } }).source.text).toContain("Hello Pptx");
+    expect((pptxResult.structuredContent as { source: { text: string } }).source.text).toContain("Hello Pptx");
 
     const xlsxResult = await readExtractTool.execute({
       invocationId: "read-extract-4",
@@ -139,6 +139,6 @@ describe("read_extract tool", () => {
         return { id: "artifact-1", ...artifact };
       },
     });
-    expect((xlsxResult.result as { source: { text: string } }).source.text).toContain("Sheet Sheet1");
+    expect((xlsxResult.structuredContent as { source: { text: string } }).source.text).toContain("Sheet Sheet1");
   });
 });

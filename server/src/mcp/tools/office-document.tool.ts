@@ -229,25 +229,14 @@ export const officeDocumentTool: ToolImplementation = {
         },
       });
       return {
-        result: {
+        structuredContent: {
           operation: "create",
           outputPath,
           byteSize: artifact.byteSize,
           summary: result.summary,
           warnings: result.warnings,
         },
-        evidence: {
-          status: "completed",
-          actionTaken: `Created Word document at ${outputPath}`,
-          facts: [result.summary, `Output: ${outputPath}`, `Bytes: ${artifact.byteSize}`],
-          gaps: result.warnings,
-          data: {
-            kind: "office_document",
-            operation: "create",
-            outputPath,
-            byteSize: artifact.byteSize,
-          },
-        },
+
       };
     }
 
@@ -324,7 +313,7 @@ export const officeDocumentTool: ToolImplementation = {
       },
     });
     return {
-      result: {
+      structuredContent: {
         operation: "review",
         inputPath,
         outputPath,
@@ -332,24 +321,7 @@ export const officeDocumentTool: ToolImplementation = {
         summary: runtimeResult.summary,
         warnings: runtimeResult.warnings,
       },
-      evidence: {
-        status: "completed",
-        actionTaken: `Reviewed Word document ${inputPath} and wrote ${outputPath}`,
-        facts: [
-          runtimeResult.summary,
-          `Source: ${inputPath}`,
-          `Output: ${outputPath}`,
-          `Bytes: ${artifact.byteSize}`,
-        ],
-        gaps: runtimeResult.warnings,
-        data: {
-          kind: "office_document",
-          operation: "review",
-          inputPath,
-          outputPath,
-          byteSize: artifact.byteSize,
-        },
-      },
+
     };
   },
 };

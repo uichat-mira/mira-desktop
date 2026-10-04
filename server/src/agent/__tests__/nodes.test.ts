@@ -7,6 +7,7 @@ import { createToolExecutionEvidenceSummary } from "../evidence";
 import { generateNode } from "../nodes/index";
 import type { AgentNodeState } from "../node-runtime";
 import type { AgentEvidenceReference } from "../types";
+import { normalizeToolResult, projectToolEvidence } from "@/mcp/core/tool-result.js";
 
 const baseGoal = {
   id: "goal-1",
@@ -65,6 +66,16 @@ const createBaseState = (message: string): AgentNodeState => {
 
 const citeFirstTool = (state: AgentNodeState) =>
   setPlannerAnswer(state, ["tool:0"]);
+
+const normalizedEvidence = (toolId: string, result: unknown) =>
+  projectToolEvidence(
+    {
+      id: toolId,
+      source: "internal",
+      domain: toolId === "terminal_session" ? "terminal" : toolId === "edit_file" ? "edit" : toolId === "workspace_mutation" ? "edit" : "read",
+    },
+    normalizeToolResult({ structuredContent: result }),
+  );
 
 vi.spyOn(contextBudgetService, "pack").mockImplementation((input) => ({
   messages: [
@@ -140,6 +151,17 @@ test("createToolExecutionEvidenceSummary prioritizes documentation content over 
           },
         ],
       },
+      evidence: normalizedEvidence("read_locate", {
+        type: "locate",
+        scope: ".",
+        query: "UIChat Mira",
+        searchMode: "auto",
+        matches: [
+          { path: "release/v0.7.1_20260704_205127/electron/UIChat Mira Setup 0.7.1.exe", matchType: "path" },
+          { path: "README.md", matchType: "content", line: 3, column: 1, preview: "UIChat Mira is a local-first desktop workspace for chat, knowledge, tools, and docs." },
+          { path: "AGENTS.md", matchType: "content", line: 5, column: 1, preview: "UIChat Mira is a local-first desktop workspace with an Electron shell, a React renderer, and a bundled Fastify backend." },
+        ],
+      }),
       startedAt: "2026-07-04T00:00:00.000Z",
       finishedAt: "2026-07-04T00:00:01.000Z",
     },
@@ -175,6 +197,17 @@ test("createToolExecutionEvidenceSummary preserves read_discover facts and trunc
         hasMore: true,
         truncated: true,
       },
+      evidence: normalizedEvidence("read_discover", {
+        type: "discover",
+        mode: "list",
+        operation: "list",
+        path: "docs",
+        entries: [{ name: "settings.md", type: "file" }],
+        returnedCount: 1,
+        totalCount: 3,
+        hasMore: true,
+        truncated: true,
+      }),
       startedAt: "2026-07-11T00:00:00.000Z",
       finishedAt: "2026-07-11T00:00:01.000Z",
     },
@@ -224,6 +257,24 @@ test("createToolExecutionEvidenceSummary limits read_discover candidatePaths to 
         hasMore: true,
         truncated: true,
       },
+      evidence: normalizedEvidence("read_discover", {
+        type: "discover",
+        mode: "locate",
+        operation: "locate",
+        root: "workspace-root",
+        query: "settings",
+        matches: [
+          { path: "docs/settings-1.md", matchType: "path" },
+          { path: "docs/settings-2.md", matchType: "path" },
+          { path: "docs/settings-3.md", matchType: "path" },
+          { path: "docs/settings-4.md", matchType: "path" },
+          { path: "docs/settings-5.md", matchType: "path" },
+          { path: "docs/settings-6.md", matchType: "path" },
+        ],
+        returnedCount: 6,
+        hasMore: true,
+        truncated: true,
+      }),
       startedAt: "2026-07-11T00:00:00.000Z",
       finishedAt: "2026-07-11T00:00:01.000Z",
     },
@@ -581,6 +632,16 @@ test("createToolExecutionEvidenceSummary marks applied edit_file replacement as 
           bytes: Buffer.byteLength("new", "utf-8"),
         },
       },
+      evidence: normalizedEvidence("edit_file", {
+        actionProfileId: "edit_replace_block",
+        runtimeToolId: "edit_file",
+        result: {
+          path: "notes.txt",
+          operation: "replace_block",
+          dryRun: false,
+          bytes: Buffer.byteLength("new", "utf-8"),
+        },
+      }),
       startedAt: "2026-07-07T00:00:00.000Z",
       finishedAt: "2026-07-07T00:00:01.000Z",
     },
@@ -617,6 +678,13 @@ test("createToolExecutionEvidenceSummary maps workspace_mutation delete to compl
         deletedType: "file",
         recursive: false,
       },
+      evidence: normalizedEvidence("workspace_mutation", {
+        operation: "delete",
+        targetPath: "notes.txt",
+        dryRun: false,
+        deletedType: "file",
+        recursive: false,
+      }),
       startedAt: "2026-07-07T00:00:00.000Z",
       finishedAt: "2026-07-07T00:00:01.000Z",
     },
@@ -898,6 +966,17 @@ test("terminal evidence quality flags remain available to Generate without outpu
       truncated: false,
       binaryDetected: false,
     },
+    evidence: normalizedEvidence("terminal_session", {
+      command: "Get-Content README.md",
+      exitCode: 0,
+      stdout: "锟斤拷锟斤拷",
+      stderr: "",
+      stdoutEncoding: "unknown",
+      stderrEncoding: "utf8",
+      timedOut: false,
+      truncated: false,
+      binaryDetected: false,
+    }),
     startedAt: "2026-07-04T00:00:00.000Z",
     finishedAt: "2026-07-04T00:00:01.000Z",
   };

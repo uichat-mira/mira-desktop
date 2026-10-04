@@ -755,17 +755,8 @@ const createRepoReadTool = (client: GitHubReadClient): ToolImplementation => ({
       toolId: "github_repo_read",
     });
     return {
-      result,
-      evidence: {
-        actionTaken: `Read GitHub repository ${authorized.repository.fullName}`,
-        facts: [
-          `Repository is authorized through GitHub App installation ${authorized.repository.installationId}.`,
-          `Default branch is ${result.metadata.defaultBranch || "unknown"}.`,
-          `Returned ${result.commits.length} commit(s) and ${result.branches.length} branch(es).`,
-        ],
-        status: "completed",
-        data: { repository: authorized.repository.fullName },
-      },
+      structuredContent: result,
+
     };
   },
 });
@@ -946,16 +937,8 @@ const createIssueReadTool = (client: GitHubReadClient): ToolImplementation => ({
         toolId: "github_issue_read",
       });
       return {
-        result,
-        evidence: {
-          actionTaken: `Read GitHub Issue #${number}`,
-          facts: [
-            `Issue state is ${issue.state}.`,
-            `Returned ${comments.length} comment(s).`,
-          ],
-          status: "completed",
-          data: { repository: authorized.repository.fullName, number },
-        },
+        structuredContent: result,
+
       };
     }
 
@@ -1043,16 +1026,8 @@ const createIssueReadTool = (client: GitHubReadClient): ToolImplementation => ({
       toolId: "github_issue_read",
     });
     return {
-      result,
-      evidence: {
-        actionTaken: `Listed GitHub Issues for ${authorized.repository.fullName}`,
-        facts: [
-          `Returned ${items.length} Issue(s) from page ${page}.`,
-          `GitHub reported ${result.total} matching Issue(s).`,
-        ],
-        status: "completed",
-        data: { repository: authorized.repository.fullName, page },
-      },
+      structuredContent: result,
+
     };
   },
 });
@@ -1286,16 +1261,8 @@ const createPullRequestReadTool = (
         toolId: "github_pr_read",
       });
       return {
-        result,
-        evidence: {
-          actionTaken: `Read GitHub Pull Request #${number}`,
-          facts: [
-            `Pull Request state is ${pull.state}.`,
-            `Returned ${result.files.length} file(s), ${result.conversationComments.length + result.reviewComments.length} comment(s), and ${result.reviews.length} review(s).`,
-          ],
-          status: "completed",
-          data: { repository: authorized.repository.fullName, number },
-        },
+        structuredContent: result,
+
       };
     }
 
@@ -1360,13 +1327,8 @@ const createPullRequestReadTool = (
       toolId: "github_pr_read",
     });
     return {
-      result,
-      evidence: {
-        actionTaken: `Listed GitHub Pull Requests for ${authorized.repository.fullName}`,
-        facts: [`Returned ${items.length} Pull Request(s) from page ${page}.`],
-        status: "completed",
-        data: { repository: authorized.repository.fullName, page },
-      },
+      structuredContent: result,
+
     };
   },
 });
@@ -1556,17 +1518,8 @@ const createActionsStatusTool = (
         toolId: "github_actions_status",
       });
       return {
-        result,
-        evidence: {
-          actionTaken: `Read GitHub Actions run ${runId}`,
-          facts: [
-            `Run status is ${run.status ?? "unknown"}.`,
-            `Run conclusion is ${run.conclusion ?? "not completed"}.`,
-            `Returned ${result.jobs.length} Job(s).`,
-          ],
-          status: "completed",
-          data: { repository: authorized.repository.fullName, runId },
-        },
+        structuredContent: result,
+
       };
     }
 
@@ -1665,16 +1618,8 @@ const createActionsStatusTool = (
       toolId: "github_actions_status",
     });
     return {
-      result,
-      evidence: {
-        actionTaken: `Listed GitHub Actions runs for ${authorized.repository.fullName}`,
-        facts: [
-          `Returned ${runs.length} workflow run(s) from page ${page}.`,
-          `GitHub reported ${result.total} matching run(s).`,
-        ],
-        status: "completed",
-        data: { repository: authorized.repository.fullName, page },
-      },
+      structuredContent: result,
+
     };
   },
 });

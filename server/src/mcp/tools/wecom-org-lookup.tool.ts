@@ -148,7 +148,7 @@ export const wecomOrgLookupTool: ToolImplementation = {
     }));
 
     return {
-      result: {
+      structuredContent: {
         success: true,
         departments: departmentSummaries,
         summary:

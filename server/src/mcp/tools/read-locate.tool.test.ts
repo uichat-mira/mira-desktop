@@ -54,7 +54,7 @@ describe("read_locate tool", () => {
       },
     });
 
-    const matches = (result.result as { matches: Array<{ path: string; matchType: string }> }).matches;
+    const matches = (result.structuredContent as { matches: Array<{ path: string; matchType: string }> }).matches;
     expect(matches).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -98,7 +98,7 @@ describe("read_locate tool", () => {
       },
     });
 
-    const matches = (result.result as { matches: Array<{ path: string; matchType: string; preview?: string }> }).matches;
+    const matches = (result.structuredContent as { matches: Array<{ path: string; matchType: string; preview?: string }> }).matches;
     expect(matches).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

@@ -95,7 +95,7 @@ export const grepTool: ToolImplementation = {
     emitArtifacts(context, result.artifacts);
 
     return {
-      result: result.contents,
+      structuredContent: result.contents,
     };
   },
 };

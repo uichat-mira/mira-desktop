@@ -7,7 +7,7 @@ import type {
   StructuredInvocationErrorDetail,
   ToolInvocationEvent,
   ToolInvocationEventInput,
-  ToolExecutionResult,
+  ToolContentBlock,
 } from "./definitions.js";
 import { withEventMeta } from "./events.js";
 import { ToolApprovalRequiredError, mcpBadRequest, mcpNotFound } from "./errors.js";
@@ -33,6 +33,7 @@ import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { validateInvocationArgs } from "./schema.js";
 import { redactExternalMcpValue } from "../external-redaction.js";
 import { computerUseRepository } from "@/db/repositories/computer-use/repository.js";
+import { normalizeToolResult, projectToolEvidence } from "./tool-result.js";
 
 const COMPUTER_USE_TOOL_IDS = new Set([
   "browser_observe",
@@ -257,6 +258,8 @@ export interface ExecuteInvocationInput {
   turnId?: string;
   signal?: AbortSignal;
   environment?: ToolExecutionEnvironment;
+  /** Internal callback for model-facing content; never serialized onto ToolInvocation. */
+  onResultContent?: (content: ToolContentBlock[], isError: boolean) => void;
   approvedInvocations?: Array<{
     toolId: string;
     inputHash: string;
@@ -410,15 +413,24 @@ export const executeInvocation = async (
               : {}),
           }),
       },
-    })) as ToolExecutionResult;
-
-    if (response.evidence !== undefined) {
+    }));
+    const normalized = normalizeToolResult(response);
+    const safeNormalized = tool.definition.source === "external"
+      ? {
+          ...normalized,
+          content: redactExternalMcpValue(normalized.content) as typeof normalized.content,
+          structuredContent: redactExternalMcpValue(normalized.structuredContent),
+        }
+      : normalized;
+    input.onResultContent?.(safeNormalized.content, safeNormalized.isError);
+    const projectedEvidence = projectToolEvidence(tool.definition, safeNormalized);
+    if (projectedEvidence !== undefined) {
       record.evidence = tool.definition.source === "external"
-        ? redactExternalMcpValue(response.evidence) as typeof response.evidence
-        : response.evidence;
+        ? redactExternalMcpValue(projectedEvidence) as typeof projectedEvidence
+        : projectedEvidence;
     }
 
-    if (response.result !== undefined) {
+    if (safeNormalized.structuredContent !== undefined) {
       const resultSpan = startTraceSpan({
         invocationId,
         parentSpanId: invocationSpan.spanId,
@@ -426,8 +438,8 @@ export const executeInvocation = async (
         kind: "result_normalization",
       });
       record.result = tool.definition.source === "external"
-        ? redactExternalMcpValue(response.result)
-        : response.result;
+        ? redactExternalMcpValue(safeNormalized.structuredContent)
+        : safeNormalized.structuredContent;
       await emit({
         type: "invocation:result",
         result: record.result,

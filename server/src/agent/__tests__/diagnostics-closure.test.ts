@@ -6,6 +6,7 @@ import * as harnessInvocations from "@/harness/invocations";
 import * as registry from "@/harness/registry";
 import { clearHarnessRegistry, registerTool } from "@/harness/registry";
 import { resolveHarnessCapabilityDiagnostics } from "@/harness/capability-diagnostics";
+import { normalizeToolResult, projectToolEvidence } from "@/mcp/core/tool-result.js";
 import { contextBudgetService } from "@/services/context-budget/index";
 import { providerProxyService } from "@/services/provider-proxy.service/index";
 import * as intentMatcherModule from "../intent/embedding-capability-matcher";
@@ -405,24 +406,30 @@ test("diagnostics closure records runtime timedOut evidence as not answer-ready"
     type: "allow",
     reason: "Diagnostics regression allows terminal execution.",
   });
+  const timedOutResult = {
+    sessionId: "terminal-session-timeout-1",
+    command: "pwd",
+    cwd: "D:\\workspace\\rag-demo",
+    exitCode: null,
+    output: "",
+    stdout: "",
+    stderr: "Command timed out",
+    timedOut: true,
+    reusedSession: false,
+    sessionMode: "ephemeral",
+    streamMode: "split",
+    stderrSeparated: true,
+  };
+  const timedOutEvidence = projectToolEvidence(
+    terminalSession,
+    normalizeToolResult({ structuredContent: timedOutResult }),
+  );
   vi.spyOn(harnessInvocations, "executeHarnessInvocation").mockResolvedValue({
     id: "invocation-terminal-timeout-1",
     toolId: "terminal_session",
     status: "completed",
-    result: {
-      sessionId: "terminal-session-timeout-1",
-      command: "pwd",
-      cwd: "D:\\workspace\\rag-demo",
-      exitCode: null,
-      output: "",
-      stdout: "",
-      stderr: "Command timed out",
-      timedOut: true,
-      reusedSession: false,
-      sessionMode: "ephemeral",
-      streamMode: "split",
-      stderrSeparated: true,
-    },
+    result: timedOutResult,
+    evidence: timedOutEvidence,
     startedAt: "2026-07-05T00:00:00.000Z",
     finishedAt: "2026-07-05T00:00:30.000Z",
   } as never);

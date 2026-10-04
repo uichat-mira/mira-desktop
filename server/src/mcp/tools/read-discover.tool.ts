@@ -71,7 +71,7 @@ export const readDiscoverTool: ToolImplementation = {
         mode,
         operation: "list",
       } as ReadDiscoverResult;
-      return { result: discover };
+      return { structuredContent: discover };
     }
 
     if (mode === "locate") {
@@ -97,7 +97,7 @@ export const readDiscoverTool: ToolImplementation = {
         operation: "locate",
         ...(typeof context.args.root === "string" ? { root: context.args.root } : {}),
       } as ReadDiscoverResult;
-      return { result: discover };
+      return { structuredContent: discover };
     }
 
     throw mcpBadRequest("mode must be one of: list, locate");

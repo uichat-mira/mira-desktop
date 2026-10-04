@@ -6,6 +6,7 @@ import { clearWorkspaceSelection } from "../workspace.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { readDiscoverTool } from "./read-discover.tool.js";
 import { createToolExecutionEvidenceSummary } from "../../agent/evidence.js";
+import { normalizeToolResult, projectToolEvidence } from "../core/tool-result.js";
 
 const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-read-discover-tool");
 
@@ -34,21 +35,21 @@ describe("read_discover tool", () => {
 
   it("mechanically dispatches list without returning file contents", async () => {
     const result = await readDiscoverTool.execute(context({ mode: "list", path: "docs" }));
-    expect(result.result).toMatchObject({ type: "discover", mode: "list", operation: "list" });
-    expect(JSON.stringify(result.result)).not.toContain("guide contents");
-    expect(result.result).toMatchObject({ returnedCount: 1, totalCount: 1, hasMore: false, truncated: false });
+    expect(result.structuredContent).toMatchObject({ type: "discover", mode: "list", operation: "list" });
+    expect(JSON.stringify(result.structuredContent)).not.toContain("guide contents");
+    expect(result.structuredContent).toMatchObject({ returnedCount: 1, totalCount: 1, hasMore: false, truncated: false });
   });
 
   it("mechanically dispatches locate and returns candidates only", async () => {
     const result = await readDiscoverTool.execute(context({ mode: "locate", query: "guide" }));
-    expect(result.result).toMatchObject({ type: "discover", mode: "locate", operation: "locate" });
-    expect(result.result).not.toHaveProperty("source");
-    const matches = (result.result as { matches: Array<{ preview?: string }> }).matches;
+    expect(result.structuredContent).toMatchObject({ type: "discover", mode: "locate", operation: "locate" });
+    expect(result.structuredContent).not.toHaveProperty("source");
+    const matches = (result.structuredContent as { matches: Array<{ preview?: string }> }).matches;
     expect(matches.every((match) => (match.preview?.length ?? 0) <= 120)).toBe(true);
     // read_discover locate intentionally dispatches searchMode="path", so
     // only the fast-glob path provider participates. The single guide.md
     // fixture must therefore produce exactly one candidate on every host.
-    expect(result.result).toMatchObject({
+    expect(result.structuredContent).toMatchObject({
       returnedCount: 1,
       hasMore: false,
       truncated: false,
@@ -58,34 +59,40 @@ describe("read_discover tool", () => {
   it("reports truncation when list results exceed maxResults", async () => {
     fs.writeFileSync(path.join(tempRoot, "docs", "second.md"), "second contents");
     const result = await readDiscoverTool.execute(context({ mode: "list", path: "docs", maxResults: 1 }));
-    expect(result.result).toMatchObject({ returnedCount: 1, totalCount: 2, hasMore: true, truncated: true });
+    expect(result.structuredContent).toMatchObject({ returnedCount: 1, totalCount: 2, hasMore: true, truncated: true });
   });
 
   it("keeps discover facts usable by Evidence without opening a file", () => {
+    const discoverResult = {
+      type: "discover",
+      mode: "list",
+      operation: "list",
+      path: "docs",
+      entries: [
+        { name: "guide-1.md", type: "file" },
+        { name: "guide-2.md", type: "file" },
+        { name: "guide-3.md", type: "file" },
+        { name: "guide-4.md", type: "file" },
+        { name: "guide-5.md", type: "file" },
+        { name: "guide-6.md", type: "file" },
+      ],
+      returnedCount: 6,
+      totalCount: 7,
+      hasMore: true,
+      truncated: true,
+    };
+    const projectedEvidence = projectToolEvidence(
+      readDiscoverTool.definition,
+      normalizeToolResult({ structuredContent: discoverResult }),
+    );
     const summary = createToolExecutionEvidenceSummary({
       execution: {
         toolId: "read_discover",
         args: { mode: "list", path: "docs", maxResults: 6 },
         status: "completed",
         inputHash: "discover-evidence-test",
-        result: {
-          type: "discover",
-          mode: "list",
-          operation: "list",
-          path: "docs",
-          entries: [
-            { name: "guide-1.md", type: "file" },
-            { name: "guide-2.md", type: "file" },
-            { name: "guide-3.md", type: "file" },
-            { name: "guide-4.md", type: "file" },
-            { name: "guide-5.md", type: "file" },
-            { name: "guide-6.md", type: "file" },
-          ],
-          returnedCount: 6,
-          totalCount: 7,
-          hasMore: true,
-          truncated: true,
-        },
+        result: discoverResult,
+        evidence: projectedEvidence,
       },
       evidenceIndex: 0,
     });

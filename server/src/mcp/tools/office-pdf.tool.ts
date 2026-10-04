@@ -181,13 +181,8 @@ export const officePdfTool: ToolImplementation = {
       });
       addPdfArtifact(context, outputPath, { officeOperation: operation });
       return {
-        result: { operation, outputPath, runtime: result },
-        evidence: {
-          status: "completed",
-          actionTaken: `Created PDF at ${outputPath}`,
-          facts: [`Output: ${outputPath}`, `Runtime: ${summarize(result)}`],
-          data: { kind: "office_pdf", operation, outputPath },
-        },
+        structuredContent: { operation, outputPath, runtime: result },
+
       };
     }
 
@@ -210,21 +205,13 @@ export const officePdfTool: ToolImplementation = {
         sources: inputPaths.map((item) => item.inputPath),
       });
       return {
-        result: {
+        structuredContent: {
           operation,
           inputPaths: inputPaths.map((item) => item.inputPath),
           outputPath,
           runtime: result,
         },
-        evidence: {
-          status: "completed",
-          actionTaken: `Merged ${inputPaths.length} PDFs into ${outputPath}`,
-          facts: [
-            `Output: ${outputPath}`,
-            `Sources: ${inputPaths.map((item) => item.inputPath).join(", ")}`,
-          ],
-          data: { kind: "office_pdf", operation, outputPath },
-        },
+
       };
     }
 
@@ -246,13 +233,8 @@ export const officePdfTool: ToolImplementation = {
         sourcePath: inputPath,
       });
       return {
-        result: { operation, inputPath, outputPath, runtime: result },
-        evidence: {
-          status: "completed",
-          actionTaken: `Converted ${inputPath} to PDF ${outputPath}`,
-          facts: [`Source: ${inputPath}`, `Output: ${outputPath}`],
-          data: { kind: "office_pdf", operation, inputPath, outputPath },
-        },
+        structuredContent: { operation, inputPath, outputPath, runtime: result },
+
       };
     }
 
@@ -269,13 +251,8 @@ export const officePdfTool: ToolImplementation = {
         pages,
       });
       return {
-        result: { operation, inputPath, data: result },
-        evidence: {
-          status: "completed",
-          actionTaken: `${operation} on ${inputPath}`,
-          facts: [`Source: ${inputPath}`, `Result: ${summarize(result)}`],
-          data: { kind: "office_pdf", operation, inputPath, result },
-        },
+        structuredContent: { operation, inputPath, data: result },
+
       };
     }
 
@@ -308,29 +285,14 @@ export const officePdfTool: ToolImplementation = {
         });
       }
       return {
-        result: {
+        structuredContent: {
           operation,
           inputPath,
           outputDir,
           files: outputFiles,
           runtime: result,
         },
-        evidence: {
-          status: "completed",
-          actionTaken: `${operation} from ${inputPath} into ${outputDir}`,
-          facts: [
-            `Source: ${inputPath}`,
-            `Output directory: ${outputDir}`,
-            `Files: ${outputFiles.length}`,
-          ],
-          data: {
-            kind: "office_pdf",
-            operation,
-            inputPath,
-            outputDir,
-            fileCount: outputFiles.length,
-          },
-        },
+
       };
     }
 
@@ -394,17 +356,8 @@ export const officePdfTool: ToolImplementation = {
       sourcePath: inputPath,
     });
     return {
-      result: { operation, inputPath, outputPath, runtime: result },
-      evidence: {
-        status: "completed",
-        actionTaken: `${operation} on ${inputPath} and wrote ${outputPath}`,
-        facts: [
-          `Source: ${inputPath}`,
-          `Output: ${outputPath}`,
-          `Runtime: ${summarize(result)}`,
-        ],
-        data: { kind: "office_pdf", operation, inputPath, outputPath },
-      },
+      structuredContent: { operation, inputPath, outputPath, runtime: result },
+
     };
   },
 };
