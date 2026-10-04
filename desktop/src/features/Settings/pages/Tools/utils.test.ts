@@ -6,17 +6,17 @@ import {
   getToolGroups,
   getTerminalResultSummary,
 } from "./utils";
-import type { McpArtifact, McpToolDefinition } from "@/shared/api/tools";
+import type { HarnessToolDefinition, ToolArtifact } from "@/shared/api/tools";
 import type { WorkbenchToolDefinition } from "./types";
 
-const createArtifact = (kind: McpArtifact["kind"]): McpArtifact => ({
+const createArtifact = (kind: ToolArtifact["kind"]): ToolArtifact => ({
   id: `${kind}-1`,
   kind,
   title: kind,
 });
 
 const createTool = (
-  id: McpToolDefinition["id"],
+  id: HarnessToolDefinition["id"],
   groupId = "read",
   groupOrder = 10,
 ): WorkbenchToolDefinition => ({
@@ -129,11 +129,11 @@ describe("buildToolDraft", () => {
     ["web_search", "{}"],
     ["terminal_session", "{}"],
   ])("builds draft for %s", (id, expected) => {
-    expect(buildToolDraft(createTool(id as McpToolDefinition["id"]))).toBe(expected);
+    expect(buildToolDraft(createTool(id as HarnessToolDefinition["id"]))).toBe(expected);
   });
 
   it("returns empty JSON for unknown tool ids", () => {
-    expect(buildToolDraft(createTool("unknown" as McpToolDefinition["id"]))).toBe(
+    expect(buildToolDraft(createTool("unknown" as HarnessToolDefinition["id"]))).toBe(
       "{}",
     );
   });

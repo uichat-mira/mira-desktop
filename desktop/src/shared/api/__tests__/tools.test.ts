@@ -42,8 +42,8 @@ import {
   type ExternalMcpServerRecord,
   type McpWorkspaceSelection,
   type McpWebSearchConfig,
-  type McpToolDefinition,
-  type McpInvocationTrace,
+  type HarnessToolDefinition,
+  type ToolTrace,
 } from "../tools";
 
 const sampleTool: ToolDefinition = {
@@ -104,7 +104,7 @@ const sampleWebSearchConfig: McpWebSearchConfig = {
   maxResults: 10,
 };
 
-const sampleMcpTool: McpToolDefinition = {
+const sampleMcpTool: HarnessToolDefinition = {
   id: "mcp-tool-1",
   title: "Read File",
   description: "read",
@@ -120,7 +120,7 @@ const sampleMcpTool: McpToolDefinition = {
   },
 };
 
-const sampleTrace: McpInvocationTrace = {
+const sampleTrace: ToolTrace = {
   traceId: "trace-1",
   invocationId: "inv-1",
   toolId: "mcp-tool-1",

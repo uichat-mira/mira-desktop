@@ -1,18 +1,18 @@
 import { Radar } from "lucide-react";
 import Badge from "@/shared/ui/Badge";
 import TerminalPanel from "@/shared/ui/TerminalPanel";
-import type { McpArtifact, McpInvocationEvent, McpInvocationTrace } from "@/shared/api/tools";
+import type { ToolArtifact, ToolInvocationEvent, ToolTrace } from "@/shared/api/tools";
 import { compactJson } from "../utils";
 
 type ToolsTracePanelProps = {
   activeToolId: string | null;
-  artifacts: McpArtifact[];
-  events: McpInvocationEvent[];
+  artifacts: ToolArtifact[];
+  events: ToolInvocationEvent[];
   emptyPlaceholder: string;
   panelTitle: string;
   runError: string | null;
   runStatus: "idle" | "completed" | "failed" | "cancelled" | "awaiting_approval";
-  trace: McpInvocationTrace | null;
+  trace: ToolTrace | null;
   terminalSummary?: {
     sessionId?: string;
     streamMode?: "split" | "merged";
