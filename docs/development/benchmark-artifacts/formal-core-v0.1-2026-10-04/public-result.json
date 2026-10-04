@@ -99,15 +99,15 @@
       "completeScoredRepetitions": 3,
       "requiredRepetitions": 3,
       "status": "complete",
-      "taskSuccess": 100,
+      "taskSuccess": 66.66666666666667,
       "autonomy": 100,
-      "governance": 100,
-      "reliability": 100,
-      "passAt1": true,
-      "stableAt3": true,
-      "completeAt3": true,
+      "governance": 66.66666666666667,
+      "reliability": 66.66666666666666,
+      "passAt1": false,
+      "stableAt3": false,
+      "completeAt3": false,
       "lateCompletionCount": 0,
-      "hardFailCount": 0
+      "hardFailCount": 1
     },
     {
       "caseId": "ADV-06",
@@ -335,7 +335,7 @@
     "formalCases": 17,
     "completeCases": 16,
     "incompleteCases": 1,
-    "hardFailCount": 0,
+    "hardFailCount": 1,
     "lateCompletionCount": 0
   },
   "observedCompleteCaseMetrics": {
@@ -357,26 +357,26 @@
       },
       "advanced": {
         "caseCount": 5,
-        "taskSuccess": 86.68333333333332,
+        "taskSuccess": 80.01666666666667,
         "autonomy": 100,
-        "reliability": 66.66666666666666,
-        "governance": 100
+        "reliability": 60,
+        "governance": 93.33333333333334
       }
     },
     "passAt1": {
-      "count": 12,
+      "count": 11,
       "denominator": 16,
-      "percent": 75
+      "percent": 68.75
     },
     "stableAt3": {
-      "count": 12,
+      "count": 11,
       "denominator": 16,
-      "percent": 75
+      "percent": 68.75
     },
     "completeAt3": {
-      "count": 12,
+      "count": 11,
       "denominator": 16,
-      "percent": 75
+      "percent": 68.75
     }
   },
   "incomplete": [

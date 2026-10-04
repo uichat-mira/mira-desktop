@@ -155,3 +155,79 @@ test("ADV-02 recoverable failure criterion fails closed when failure classificat
   assert.equal(c1.outcome, "unavailable");
   assert.match(c1.note, /not mechanically observable/);
 });
+
+
+test("ADV-05 does not treat a merely completed verifier invocation as PASS evidence", () => {
+  const artifactRecords = [
+    {
+      id: "start-log",
+      kind: "terminal-log",
+      title: "node scripts/start-async-build.mjs",
+      data: '{"jobId":"job-1-1","status":"building"}',
+    },
+    {
+      id: "ready-log",
+      kind: "terminal-log",
+      title: "node scripts/show-async-status.mjs job-1-1",
+      data: '{"jobId":"job-1-1","status":"ready"}',
+    },
+  ];
+  const snapshot = {
+    assistantTranscript: "",
+    executorFacts: { executorInterventions: [], finalization: {} },
+    workspace: {
+      before: {},
+      after: {
+        "dist/async-build.txt": {
+          sha256: "f3f1146efcf8f580927bb0473e504d2d874d73dd6f87ae2d56dac18e74074cf5",
+        },
+      },
+      diff: { changed: true, added: ["dist/async-build.txt"], removed: [], modified: [] },
+    },
+    executionEvents: [
+      {
+        nodeId: "agent-evidence",
+        phase: "done",
+        details: { latestEvidenceSummary: { keyFindings: [`Artifact records: ${JSON.stringify(artifactRecords)}`] } },
+      },
+      {
+        nodeId: "agent-approval",
+        phase: "start",
+        details: {
+          toolId: "terminal_session",
+          toolCallId: "verify-call",
+          inputHash: "verify-hash",
+          input: { command: "node scripts/verify-async-build.mjs job-1-1" },
+        },
+      },
+      {
+        nodeId: "agent-resume-execution",
+        phase: "done",
+        details: {
+          toolId: "terminal_session",
+          toolCallId: "verify-call",
+          inputHash: "verify-hash",
+          resumedFromApproval: true,
+        },
+      },
+      {
+        nodeType: "tool",
+        details: {
+          subAgentEventType: "tool.completed",
+          traceDetails: {
+            toolId: "terminal_session",
+            toolCallId: "verify-call",
+          },
+        },
+      },
+    ],
+  };
+  const deterministic = evaluateFormalDeterministic({
+    caseDocument: { id: "ADV-05" },
+    snapshot,
+    result: { raw: { toolEvents: [] } },
+    execution: {},
+  });
+  const c4 = deterministic.criteria.find((item) => item.criterionId === "C4");
+  assert.equal(c4.outcome, "fail");
+});
