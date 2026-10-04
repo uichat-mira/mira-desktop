@@ -225,6 +225,28 @@ test("offline deterministic replay is identical from a saved snapshot", () => {
   assert.deepEqual(second, first);
 });
 
+
+test("aggregate timing is terminal-descriptive and does not pretend failed runs are successful completion timing", () => {
+  const completed = makeRecord("ADV-08", 1);
+  completed.comparable = true;
+  completed.executionClassification = "adapted";
+  completed.deterministic.terminal = { status: "completed" };
+  completed.deterministic.timing = { state: "calibration_pending", elapsedMs: 1000 };
+
+  const failed = makeRecord("ADV-08", 2);
+  failed.comparable = true;
+  failed.executionClassification = "adapted";
+  failed.deterministic.terminal = { status: "failed" };
+  failed.deterministic.timing = { state: "calibration_pending", elapsedMs: 9000 };
+
+  const summary = buildSummary({ repetitions: [completed, failed] });
+  assert.equal(summary.timingObservations.scope, "valid_comparable_terminal_elapsed_not_success_filtered");
+  assert.deepEqual(summary.timingObservations.elapsedMs.values, [1000, 9000]);
+  assert.deepEqual(summary.timingObservations.elapsedMsByTerminal.completed.values, [1000]);
+  assert.deepEqual(summary.timingObservations.elapsedMsByTerminal.failed.values, [9000]);
+  assert.match(summary.timingObservations.note, /case-defined success boundary/);
+});
+
 test("public projection contains no secret-shaped content and keeps judge null", () => {
   const deterministic = deriveDeterministic(makeBundle({ events: simpleEvents }));
   const projection = toPublicResult({
