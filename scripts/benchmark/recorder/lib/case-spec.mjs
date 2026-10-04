@@ -9,20 +9,20 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadCaseSet, RC_MANIFEST_RELATIVE_PATH } from "../../lib/manifest.mjs";
+import { CASE_SET_MANIFEST_RELATIVE_PATH, loadCaseSet } from "../../lib/manifest.mjs";
 
 const sha256 = (buffer) => crypto.createHash("sha256").update(buffer).digest("hex");
 
 export const loadBenchmarkIdentity = (repoRoot) => {
   const caseSet = loadCaseSet(repoRoot);
-  const manifestPath = path.join(repoRoot, RC_MANIFEST_RELATIVE_PATH);
+  const manifestPath = path.join(repoRoot, CASE_SET_MANIFEST_RELATIVE_PATH);
   const manifestSha = sha256(fs.readFileSync(manifestPath));
   const contract = caseSet.generatedFrom?.contract ?? null;
   return {
     caseSet,
     caseSetVersion: caseSet.caseSetVersion,
     benchmarkVersion: caseSet.benchmarkVersion ?? null,
-    caseSetManifestPath: RC_MANIFEST_RELATIVE_PATH,
+    caseSetManifestPath: CASE_SET_MANIFEST_RELATIVE_PATH,
     caseSetManifestSha256: manifestSha,
     contractPath: contract?.path ?? null,
     contractBlobSha: contract?.blobSha ?? null,
@@ -44,7 +44,7 @@ export const findCase = (caseSet, caseId) => {
  * Criteria/hard-fail detail is NOT sourced from here: it is extracted from the
  * exact pinned Git blob by `frozen-source.mjs` and embedded in `case.json` /
  * `judge-input.json`, so the Judge needs no repository access. This identity
- * document only carries the RC-manifest-level facts.
+ * document only carries the frozen-manifest-level facts.
  */
 export const frozenCaseIdentity = (caseEntry, identity) => ({
   caseId: caseEntry.id,
