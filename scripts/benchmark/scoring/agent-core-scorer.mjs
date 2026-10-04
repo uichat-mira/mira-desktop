@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { aggregateScores, scoreRepetition } from "./lib/engine.mjs";
-import { evaluatePilotDeterministic, PILOT_EVALUATORS } from "./lib/pilot-evaluators.mjs";
+import { evaluatePilotDeterministic } from "./lib/pilot-evaluators.mjs";
+import { evaluateFormalDeterministic, FORMAL_EVALUATORS } from "./lib/formal-evaluators.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
 const CASE_SET_PATH = path.join(REPO_ROOT, "docs/development/agent-core-benchmark-v0.1-case-set.json");
@@ -45,8 +46,8 @@ const loadJudgeResults = (file) => {
 
 const coverage = (caseSet) => {
   const formal = caseSet.cases.filter((c) => c.officialParticipation === "automated_scored");
-  const supported = formal.filter((c) => PILOT_EVALUATORS[c.id]);
-  const unsupported = formal.filter((c) => !PILOT_EVALUATORS[c.id]).map((c) => c.id);
+  const supported = formal.filter((c) => FORMAL_EVALUATORS[c.id]);
+  const unsupported = formal.filter((c) => !FORMAL_EVALUATORS[c.id]).map((c) => c.id);
   return {
     formalCaseCount: formal.length,
     deterministicEvaluatorCaseCount: supported.length,
@@ -55,7 +56,7 @@ const coverage = (caseSet) => {
   };
 };
 
-const collectRepetitions = ({ report, caseSet, judgeResults }) => {
+const collectRepetitions = ({ report, caseSet, judgeResults, mode }) => {
   const reps = [];
   const casesDir = path.join(report, "cases");
   for (const caseId of fs.readdirSync(casesDir)) {
@@ -72,7 +73,9 @@ const collectRepetitions = ({ report, caseSet, judgeResults }) => {
       const execution = readJson(path.join(repRoot, "execution.json"));
       const result = readJson(path.join(repRoot, "result.json"));
       const snapshot = readJson(path.join(report, "raw", `${caseId}-rep-${repetition}.snapshot.json`));
-      const deterministic = evaluatePilotDeterministic({ caseDocument, snapshot, result, execution });
+      const deterministic = mode === "formal"
+        ? evaluateFormalDeterministic({ caseDocument, snapshot, result, execution })
+        : evaluatePilotDeterministic({ caseDocument, snapshot, result, execution });
       const semanticResults = judgeResults.get(`${caseId}#${repetition}`) ?? [];
       const scored = scoreRepetition({
         caseDocument,
@@ -101,7 +104,7 @@ const main = () => {
   }
 
   const judgeResults = loadJudgeResults(args.judgeResults);
-  const repetitions = collectRepetitions({ report: args.report, caseSet, judgeResults });
+  const repetitions = collectRepetitions({ report: args.report, caseSet, judgeResults, mode: args.mode });
   const summary = aggregateScores({ repetitions, mode: args.mode });
   const scoring = {
     schemaVersion: "mira-agent-core-benchmark-scoring-run/0.1",

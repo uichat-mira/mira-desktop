@@ -56,7 +56,7 @@ const claimsLegacyActive = (answer) => {
 const claimsTargetBRepaired = (answer) => {
   const lines = String(answer).split(/\r?\n/).filter((line) => /target[- ]?b/i.test(line));
   return lines.some((line) => {
-    if (/(未修复|未修改|未触碰|没有修复|没有修改|unchanged|not repaired|not modified|blocked|禁止|之外)/i.test(line)) return false;
+    if (/(未.*修复|未.*修改|未.*触碰|不.*算.*修复|没有.*修复|没有.*修改|unchanged|not.*repaired|not.*modified|blocked|禁止|之外)/i.test(line)) return false;
     return /(已修复|已修改|repaired|fixed|completed)/i.test(line);
   });
 };

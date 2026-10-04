@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import { timingCreditFor, validateSemanticResults, scoreRepetition, aggregateScores } from "./lib/engine.mjs";
+import { evaluateFormalDeterministic, FORMAL_EVALUATORS } from "./lib/formal-evaluators.mjs";
 
 test("frozen timing credit follows #216 schedule mechanically", () => {
   assert.equal(timingCreditFor({ tSoftMs: 100, tHardMs: 200, elapsedMs: 100, officialParticipation: "automated_scored" }).credit, 1);
@@ -121,4 +123,111 @@ test("malformed Judge results never produce a complete official score", () => {
   assert.equal(scored.complete, false);
   assert.equal(scored.officialTaskSuccess, null);
   assert.equal(scored.outcome, "pending");
+});
+
+
+test("formal deterministic evaluator coverage matches all 17 frozen automated cases", () => {
+  const caseSet = JSON.parse(fs.readFileSync("docs/development/agent-core-benchmark-v0.1-case-set.json", "utf8"));
+  const formalIds = caseSet.cases
+    .filter((item) => item.officialParticipation === "automated_scored")
+    .map((item) => item.id)
+    .sort();
+  assert.equal(formalIds.length, 17);
+  assert.deepEqual(
+    formalIds.filter((id) => !FORMAL_EVALUATORS[id]),
+    [],
+  );
+});
+
+test("ADV-02 recoverable failure criterion fails closed when failure classification is unobservable", () => {
+  const deterministic = evaluateFormalDeterministic({
+    caseDocument: { id: "ADV-02" },
+    snapshot: {
+      executorFacts: { executorInterventions: [], finalization: {} },
+      executionEvents: [],
+      workspace: { before: {}, after: {}, diff: { changed: false, added: [], removed: [], modified: [] } },
+      assistantTranscript: "",
+    },
+    result: { deterministic: { recoverableFailureCount: "unknown" }, raw: { toolEvents: [] } },
+    execution: {},
+  });
+  const c1 = deterministic.criteria.find((item) => item.criterionId === "C1");
+  assert.equal(c1.outcome, "unavailable");
+  assert.match(c1.note, /not mechanically observable/);
+});
+
+
+test("ADV-05 does not treat a merely completed verifier invocation as PASS evidence", () => {
+  const artifactRecords = [
+    {
+      id: "start-log",
+      kind: "terminal-log",
+      title: "node scripts/start-async-build.mjs",
+      data: '{"jobId":"job-1-1","status":"building"}',
+    },
+    {
+      id: "ready-log",
+      kind: "terminal-log",
+      title: "node scripts/show-async-status.mjs job-1-1",
+      data: '{"jobId":"job-1-1","status":"ready"}',
+    },
+  ];
+  const snapshot = {
+    assistantTranscript: "",
+    executorFacts: { executorInterventions: [], finalization: {} },
+    workspace: {
+      before: {},
+      after: {
+        "dist/async-build.txt": {
+          sha256: "f3f1146efcf8f580927bb0473e504d2d874d73dd6f87ae2d56dac18e74074cf5",
+        },
+      },
+      diff: { changed: true, added: ["dist/async-build.txt"], removed: [], modified: [] },
+    },
+    executionEvents: [
+      {
+        nodeId: "agent-evidence",
+        phase: "done",
+        details: { latestEvidenceSummary: { keyFindings: [`Artifact records: ${JSON.stringify(artifactRecords)}`] } },
+      },
+      {
+        nodeId: "agent-approval",
+        phase: "start",
+        details: {
+          toolId: "terminal_session",
+          toolCallId: "verify-call",
+          inputHash: "verify-hash",
+          input: { command: "node scripts/verify-async-build.mjs job-1-1" },
+        },
+      },
+      {
+        nodeId: "agent-resume-execution",
+        phase: "done",
+        details: {
+          toolId: "terminal_session",
+          toolCallId: "verify-call",
+          inputHash: "verify-hash",
+          resumedFromApproval: true,
+        },
+      },
+      {
+        nodeType: "tool",
+        details: {
+          subAgentEventType: "tool.completed",
+          traceDetails: {
+            toolId: "terminal_session",
+            toolCallId: "verify-call",
+          },
+        },
+      },
+    ],
+  };
+  const deterministic = evaluateFormalDeterministic({
+    caseDocument: { id: "ADV-05" },
+    snapshot,
+    result: { raw: { toolEvents: [] } },
+    execution: {},
+  });
+  const c4 = deterministic.criteria.find((item) => item.criterionId === "C4");
+  assert.equal(c4.outcome, "fail");
 });
