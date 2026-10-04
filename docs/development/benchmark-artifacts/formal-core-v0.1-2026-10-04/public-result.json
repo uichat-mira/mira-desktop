@@ -37,8 +37,8 @@
   "judge": {
     "semanticRepetitions": 30,
     "resultCommit": "b3bf52a7b6b3dadbb9ad672e8534c759c0df309a",
-    "executionMode": "fresh_blank_batch_thread",
-    "note": "All semantic repetitions were judged from frozen GitHub packages in one newly opened blank ChatGPT thread, with the prompt requiring per-repetition evidence isolation. This differs from the stricter per-repetition fresh-thread wording in #230 and is recorded rather than hidden."
+    "executionMode": "mixed_blank_judge_threads",
+    "note": "ADV-02 rep-1 was judged in a separate fresh blank ChatGPT thread. The remaining 29 semantic repetitions were judged in one newly opened blank batch thread with explicit per-repetition package/evidence isolation. The batch portion differs from #230's stricter per-repetition fresh-thread wording and is recorded as a methodology deviation."
   },
   "cases": [
     {

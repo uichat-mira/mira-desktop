@@ -112,6 +112,7 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[development/agent-observability]]：Agent / SubAgent 观测与诊断；
 - [[development/agent-core-benchmark-v0.1]]：Mira Agent Core Benchmark v0.1 设计合同、评分与记录语义；
 - [[development/agent-core-benchmark-v0.1-calibration]]：#220 Core v0.1 交叉校准、alternate-path / replay / Judge handoff 与 Timing gate；
+- [[development/agent-core-benchmark-testing-playbook]]：#222 Pilot / Formal 实跑后的 Benchmark Testing Playbook、经验集与下一轮最短启动 checklist；
 - [[development/agent-core-benchmark-v0.1-case-set-rc1.json]]：Core v0.1 machine-readable case-set RC（25 题；Timing 尚未冻结，不能当正式 v0.1）；
 - [[development/agent-core-benchmark-advanced-cases-v0.1]]：Advanced 候选题包（Proposed；由 #220 校准冻结，不是正式题库）；
 - [[development/agent-core-benchmark-beginner-candidates-v0.1]]：Core Benchmark v0.1 Beginner 候选题包（#217，待 #220 校准冻结）；
