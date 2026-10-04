@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { McpInvocationContext } from "../core/definitions.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
 import { executeHarnessInvocation } from "@/harness/invocations.js";
 import { registerCapability, unregisterCapability } from "@/harness/registry.js";
 import {
@@ -14,7 +14,7 @@ import {
   createAskExternalExpertTool,
 } from "./ask-external-expert.tool.js";
 
-const context = (args: Record<string, unknown>): McpInvocationContext => ({
+const context = (args: Record<string, unknown>): ToolInvocationContext => ({
   invocationId: "invocation-external-expert",
   args,
   userId: 7,

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubConnectionRecord } from "@/db/repositories/github-connection.repository.js";
-import type { McpInvocationContext } from "../core/definitions.js";
-import { McpApprovalRequiredError } from "../core/errors.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
+import { ToolApprovalRequiredError } from "../core/errors.js";
 import { validateInvocationArgs } from "../core/schema.js";
 import { createGitHubDomainRuntime } from "./github-domain.shared.js";
 import {
@@ -66,7 +66,7 @@ const jsonResponse = (body: unknown, status = 200) =>
 const createContext = (
   args: Record<string, unknown>,
   approvalGranted = false,
-): McpInvocationContext => ({
+): ToolInvocationContext => ({
   invocationId: "github-repository-extended-test",
   args,
   ...(approvalGranted
@@ -174,8 +174,8 @@ const expectApproval = async (invocation: Promise<unknown>) => {
     await invocation;
     throw new Error("Expected GitHub write approval");
   } catch (error) {
-    expect(error).toBeInstanceOf(McpApprovalRequiredError);
-    expect((error as McpApprovalRequiredError).scope).toBe("github.remote_write");
+    expect(error).toBeInstanceOf(ToolApprovalRequiredError);
+    expect((error as ToolApprovalRequiredError).scope).toBe("github.remote_write");
   }
 };
 

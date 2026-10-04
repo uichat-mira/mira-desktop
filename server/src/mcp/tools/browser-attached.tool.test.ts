@@ -18,7 +18,7 @@ import {
   initializeHarnessRuntime,
   resetHarnessRuntime,
 } from "@/harness/runtime.js";
-import type { McpInvocationContext } from "../core/definitions.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
 import {
   WebBridgeInvocationError,
   toWebBridgeInvocationError,
@@ -45,7 +45,7 @@ const executeDirectly = (
   args: Record<string, unknown>,
   signal = new AbortController().signal,
   userId: number | undefined = trustedUserId,
-) => tool.execute({ args, signal, userId } as McpInvocationContext);
+) => tool.execute({ args, signal, userId } as ToolInvocationContext);
 
 describe("Attached Browser Harness tools", () => {
   beforeEach(() => {
@@ -153,7 +153,7 @@ describe("Attached Browser Harness tools", () => {
         args: { mode: "page" },
         signal: new AbortController().signal,
         userId: undefined,
-      } as McpInvocationContext),
+      } as ToolInvocationContext),
     ).rejects.toThrow(/trusted authenticated user context/i);
     expect(invokeWebBridgeMock).not.toHaveBeenCalled();
 

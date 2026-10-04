@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { resolveHarnessCapabilityProfiles } from "./capability-profiles.js";
-import type { McpToolDefinition } from "../mcp/core/definitions.js";
+import type { ToolDefinition } from "../mcp/core/definitions.js";
 
 const createDefinition = (
   id: string,
-  domain: McpToolDefinition["domain"] = "browser_action",
-): McpToolDefinition => ({
+  domain: ToolDefinition["domain"] = "browser_action",
+): ToolDefinition => ({
   id,
   title: id,
   description: id,

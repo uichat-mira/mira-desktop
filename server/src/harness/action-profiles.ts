@@ -1,11 +1,11 @@
 import { mcpBadRequest } from "../mcp/core/errors.js";
-import type { McpToolDefinition } from "../mcp/core/definitions.js";
+import type { ToolDefinition } from "../mcp/core/definitions.js";
 
 export interface HarnessActionProfile {
   id: string;
   title: string;
   description: string;
-  domain: McpToolDefinition["domain"];
+  domain: ToolDefinition["domain"];
   source: "internal";
   tags: string[];
   runtimeToolId: string;
@@ -16,7 +16,7 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
   id: string;
   title: string;
   description: string;
-  domain: McpToolDefinition["domain"];
+  domain: ToolDefinition["domain"];
   tags: string[];
   runtimeToolId: string;
   inputSchema: Record<string, unknown>;
@@ -122,7 +122,7 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
 ];
 
 export const resolveHarnessActionProfiles = (
-  definitions: McpToolDefinition[],
+  definitions: ToolDefinition[],
 ): HarnessActionProfile[] => {
   const definitionIds = new Set(definitions.map((definition) => definition.id));
 

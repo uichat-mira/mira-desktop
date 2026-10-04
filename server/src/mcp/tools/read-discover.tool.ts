@@ -1,10 +1,10 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { executeReadList, executeReadLocateRuntime } from "../read/runtime.js";
 import { emitArtifacts } from "./artifact-utils.js";
 import type { ReadDiscoverResult } from "../read/types.js";
 
-export const readDiscoverTool: McpToolImplementation = {
+export const readDiscoverTool: ToolImplementation = {
   definition: {
     id: "read_discover",
     title: "Read Discover",

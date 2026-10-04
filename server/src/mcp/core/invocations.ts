@@ -1,16 +1,16 @@
 import { createArtifact } from "./artifacts.js";
 import type {
-  McpArtifact,
-  McpExecutionEnvironment,
-  McpInvocationFailureCode,
-  McpInvocationRecord,
-  McpStructuredInvocationErrorDetail,
-  McpStreamEvent,
-  McpStreamEventInput,
-  McpToolExecutionResult,
+  ToolArtifact,
+  ToolExecutionEnvironment,
+  ToolInvocationFailureCode,
+  ToolInvocation,
+  StructuredInvocationErrorDetail,
+  ToolInvocationEvent,
+  ToolInvocationEventInput,
+  ToolExecutionResult,
 } from "./definitions.js";
 import { withEventMeta } from "./events.js";
-import { McpApprovalRequiredError, mcpBadRequest, mcpNotFound } from "./errors.js";
+import { ToolApprovalRequiredError, mcpBadRequest, mcpNotFound } from "./errors.js";
 import { getToolImplementation } from "./registry.js";
 import {
   clearInvocationTraces,
@@ -44,7 +44,7 @@ const isComputerUseInvocation = (toolId: string) =>
 
 const getStructuredInvocationError = (
   error: unknown,
-): Omit<McpStructuredInvocationErrorDetail, "message"> | undefined => {
+): Omit<StructuredInvocationErrorDetail, "message"> | undefined => {
   if (!error || typeof error !== "object") {
     return undefined;
   }
@@ -62,18 +62,18 @@ const getStructuredInvocationError = (
       : {}),
   };
 };
-const persistComputerUseInvocation = (record: McpInvocationRecord) => {
+const persistComputerUseInvocation = (record: ToolInvocation) => {
   if (!isComputerUseInvocation(record.toolId) || !process.env.DATABASE_URL) return;
   try { computerUseRepository.persistInvocation(record); } catch { /* database initialization is completed by server startup */ }
 };
 
-const invocationMap = new Map<string, McpInvocationRecord>();
-const invocationEvents = new Map<string, McpStreamEvent[]>();
+const invocationMap = new Map<string, ToolInvocation>();
+const invocationEvents = new Map<string, ToolInvocationEvent[]>();
 let invocationRetentionConfig: RetentionConfig = {
   ...DEFAULT_RETENTION_CONFIG,
 };
 
-const appendEvent = (invocationId: string, event: McpStreamEvent) => {
+const appendEvent = (invocationId: string, event: ToolInvocationEvent) => {
   const events = invocationEvents.get(invocationId) ?? [];
   events.push(event);
   invocationEvents.set(invocationId, events);
@@ -256,17 +256,17 @@ export interface ExecuteInvocationInput {
   threadId?: string;
   turnId?: string;
   signal?: AbortSignal;
-  environment?: McpExecutionEnvironment;
+  environment?: ToolExecutionEnvironment;
   approvedInvocations?: Array<{
     toolId: string;
     inputHash: string;
   }>;
-  onEvent?: (event: McpStreamEvent) => void | Promise<void>;
+  onEvent?: (event: ToolInvocationEvent) => void | Promise<void>;
 }
 
 export const executeInvocation = async (
   input: ExecuteInvocationInput,
-): Promise<McpInvocationRecord> => {
+): Promise<ToolInvocation> => {
   const tool = getToolImplementation(input.toolId);
   if (!tool) {
     throw mcpNotFound(`Tool not found: ${input.toolId}`);
@@ -282,7 +282,7 @@ export const executeInvocation = async (
   const invocationId = crypto.randomUUID();
   sweepInvocations();
   const startedAt = new Date().toISOString();
-  const artifacts: McpArtifact[] = [];
+  const artifacts: ToolArtifact[] = [];
   const signal = input.signal ?? new AbortController().signal;
   const trace = createInvocationTrace({
     invocationId,
@@ -290,7 +290,7 @@ export const executeInvocation = async (
     startedAt,
   });
 
-  const record: McpInvocationRecord = {
+  const record: ToolInvocation = {
     id: invocationId,
     toolId: input.toolId,
     status: "running",
@@ -308,9 +308,9 @@ export const executeInvocation = async (
   invocationMap.set(invocationId, record);
   persistComputerUseInvocation(record);
 
-  const emit = async (event: McpStreamEventInput) => {
+  const emit = async (event: ToolInvocationEventInput) => {
     const safeEvent = tool.definition.source === "external"
-      ? redactExternalMcpValue(event) as McpStreamEventInput
+      ? redactExternalMcpValue(event) as ToolInvocationEventInput
       : event;
     const full = withEventMeta(invocationId, safeEvent);
     appendEvent(invocationId, full);
@@ -344,7 +344,7 @@ export const executeInvocation = async (
       inputHash,
     });
     if (approvalDecision.type === "require_approval") {
-      throw new McpApprovalRequiredError(
+      throw new ToolApprovalRequiredError(
         approvalDecision.reason ?? `${input.toolId} requires approval.`,
         {
           scope: approvalDecision.scope,
@@ -410,7 +410,7 @@ export const executeInvocation = async (
               : {}),
           }),
       },
-    })) as McpToolExecutionResult;
+    })) as ToolExecutionResult;
 
     if (response.evidence !== undefined) {
       record.evidence = tool.definition.source === "external"
@@ -458,7 +458,7 @@ export const executeInvocation = async (
     const safeMessage = tool.definition.source === "external"
       ? String(redactExternalMcpValue(message))
       : message;
-    if (error instanceof McpApprovalRequiredError) {
+    if (error instanceof ToolApprovalRequiredError) {
       record.status = "awaiting_approval";
       record.approval = {
         required: true,
@@ -533,7 +533,7 @@ const inferInvocationFailureCode = (input: {
   error: unknown;
   message: string;
   signal: AbortSignal;
-}): McpInvocationFailureCode => {
+}): ToolInvocationFailureCode => {
   if (input.signal.aborted) {
     return "cancelled";
   }

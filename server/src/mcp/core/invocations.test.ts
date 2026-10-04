@@ -7,8 +7,8 @@ import {
 } from "../../harness/invocations.js";
 import { clearHarnessRegistry, registerCapability } from "../../harness/registry.js";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
-import { McpApprovalRequiredError } from "./errors.js";
-import type { McpToolImplementation } from "./definitions.js";
+import { ToolApprovalRequiredError } from "./errors.js";
+import type { ToolImplementation } from "./definitions.js";
 import { configureInvocationRetention, sweepStoredInvocations } from "./invocations.js";
 
 describe("mcp invocations", () => {
@@ -22,7 +22,7 @@ describe("mcp invocations", () => {
   });
 
   it("records result, artifact and events", async () => {
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "test_tool",
         title: "Test Tool",
@@ -91,7 +91,7 @@ describe("mcp invocations", () => {
   });
 
   it("records awaiting_approval when preflight approval gating stops execution", async () => {
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "approval_tool",
         title: "Approval Tool",
@@ -106,7 +106,7 @@ describe("mcp invocations", () => {
         },
       },
       execute() {
-        throw new McpApprovalRequiredError("Need explicit approval", {
+        throw new ToolApprovalRequiredError("Need explicit approval", {
           scope: "command",
         });
       },
@@ -185,7 +185,7 @@ describe("mcp invocations", () => {
   it("requires approval at preflight when capability metadata marks the tool as approval-gated", async () => {
     let executed = false;
 
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "preflight_approval_tool",
         title: "Preflight Approval Tool",
@@ -226,7 +226,7 @@ describe("mcp invocations", () => {
   it("allows preflight approval-gated tool execution when the exact invocation is already approved", async () => {
     let executed = false;
 
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "approved_tool",
         title: "Approved Tool",
@@ -274,7 +274,7 @@ describe("mcp invocations", () => {
   it("requires approval again when a reused terminal session changes command input", async () => {
     let executed = false;
 
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "terminal_session",
         title: "Terminal Session",
@@ -335,7 +335,7 @@ describe("mcp invocations", () => {
     let receivedThreadId: string | undefined;
     let receivedTurnId: string | undefined;
 
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "thread_context_tool",
         title: "Thread Context Tool",
@@ -617,7 +617,7 @@ describe("mcp invocations", () => {
   });
 
   it("sweeps finished invocations beyond retention limit", async () => {
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "retention_tool",
         title: "Retention Tool",

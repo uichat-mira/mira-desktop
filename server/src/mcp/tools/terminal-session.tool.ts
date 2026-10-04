@@ -1,4 +1,4 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { executeTerminalSessionRuntime } from "../terminal/runtime-host.js";
 import { emitArtifacts } from "./artifact-utils.js";
@@ -46,7 +46,7 @@ const terminalSessionLlmInputSchema = {
   additionalProperties: false,
 } as const;
 
-export const terminalSessionTool: McpToolImplementation = {
+export const terminalSessionTool: ToolImplementation = {
   definition: {
     id: "terminal_session",
     title: "Terminal Session",

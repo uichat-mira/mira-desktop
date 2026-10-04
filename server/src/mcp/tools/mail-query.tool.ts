@@ -1,5 +1,5 @@
-import type { McpInvocationContext, McpToolImplementation } from "../core/definitions.js";
-import { McpApprovalRequiredError, mcpBadRequest } from "../core/errors.js";
+import type { ToolInvocationContext, ToolImplementation } from "../core/definitions.js";
+import { ToolApprovalRequiredError, mcpBadRequest } from "../core/errors.js";
 import {
   createMailCenterService,
   type MailQueryInput,
@@ -36,14 +36,14 @@ const safeResult = (result: MailQueryResult): MailQueryResult => ({
   nextCursor: result.nextCursor,
 });
 
-const getUserId = (context: McpInvocationContext) => {
+const getUserId = (context: ToolInvocationContext) => {
   if (context.userId === undefined || !Number.isInteger(context.userId)) {
     throw mcpBadRequest("mail_query requires a trusted authenticated user context");
   }
   return context.userId;
 };
 
-export const mailQueryTool: McpToolImplementation = {
+export const mailQueryTool: ToolImplementation = {
   definition: {
     id: "mail_query",
     title: "Mail Query",
@@ -136,7 +136,7 @@ export const mailQueryTool: McpToolImplementation = {
     const userId = getUserId(context);
     const input = normalizeInput(context.args);
     if (input.sync === "force" && !context.approval?.granted) {
-      throw new McpApprovalRequiredError(
+      throw new ToolApprovalRequiredError(
         "mail_query force sync requires explicit approval for network access and local persistence.",
         { scope: "mail_sync" },
       );

@@ -5,7 +5,7 @@ import { executeHarnessInvocation } from "@/harness/invocations";
 import { getCapabilityImplementation } from "@/harness/registry";
 import { createHarnessEnvironmentSnapshot } from "@/harness/environment";
 import { runWithWorkspaceRootOverride } from "@/mcp/workspace";
-import type { McpInvocationFailureCode } from "@/mcp/core/definitions";
+import type { ToolInvocationFailureCode } from "@/mcp/core/definitions";
 import { createInvocationInputHash } from "../approval-fingerprint";
 import { getAgentRunSignal } from "../run-control";
 import {
@@ -105,7 +105,7 @@ const buildExecutionRecord = (input: {
 const classifyHarnessFailure = (input: {
   invocationStatus: "failed" | "cancelled";
   errorMessage: string;
-  failureCode?: McpInvocationFailureCode;
+  failureCode?: ToolInvocationFailureCode;
 }): AgentToolExecutionResult["failureKind"] => {
   if (input.invocationStatus === "cancelled") {
     return "terminal";

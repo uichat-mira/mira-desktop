@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import {
   resolveWorkspacePath,
@@ -84,7 +84,7 @@ const summarize = (value: unknown) => {
 };
 
 const addPdfArtifact = (
-  context: Parameters<McpToolImplementation["execute"]>[0],
+  context: Parameters<ToolImplementation["execute"]>[0],
   outputPath: string,
   metadata: Record<string, unknown>,
 ) => {
@@ -96,7 +96,7 @@ const addPdfArtifact = (
   });
 };
 
-export const officePdfTool: McpToolImplementation = {
+export const officePdfTool: ToolImplementation = {
   definition: {
     id: "office_pdf",
     title: "Office PDF",

@@ -4,7 +4,7 @@ import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 import type { ComputerUseExecutor, ComputerUseExecutionCheckpoint, ComputerUseTask, ComputerUseRuntimeState, ComputerUseApprovalRequest, ComputerUsePlan } from "@/microapps/computer-use/core/types.js";
 import { createComputerUsePlan } from "@/microapps/computer-use/core/planning.js";
-import type { McpInvocationRecord } from "@/mcp/core/definitions.js";
+import type { ToolInvocation } from "@/mcp/core/definitions.js";
 import { createOpenAICompatibleChatUrl } from "@/services/openai-compatible-provider.js";
 import { getProviderDefinition } from "@/providers/catalog.js";
 
@@ -166,7 +166,7 @@ export class ComputerUseModelExecutor implements ComputerUseExecutor {
       if (!call) { this.pending.delete(task.id); return { status: "succeeded", currentStepId: "model-loop", evidenceEntries: [...runEvidence, { id: crypto.randomUUID(), kind: "observation", message: response.message.content || "Model completed the browser task.", createdAt: new Date().toISOString(), meta: { model: true } }], result: { status: "succeeded", summary: response.message.content || "Computer Use model completed the task.", completedAt: new Date().toISOString(), meta: { invocationCount: runEvidence.length } } }; }
       const args = parseArgs(call.function.arguments);
       if (args.sessionId === undefined) args.sessionId = pending.sessionId;
-      const record: McpInvocationRecord = await executeInvocation({ toolId: call.function.name, args, approvedInvocations: approved, threadId: task.id, turnId: `computer-use-${round}` });
+      const record: ToolInvocation = await executeInvocation({ toolId: call.function.name, args, approvedInvocations: approved, threadId: task.id, turnId: `computer-use-${round}` });
       runEvidence.push({ id: crypto.randomUUID(), kind: call.function.name === "browser_act" ? "action" : "observation", message: `${call.function.name} invocation ${record.status}.`, createdAt: new Date().toISOString(), meta: { invocationId: record.id, traceId: record.traceId, toolId: record.toolId, args: record.args, status: record.status, result: record.result, error: record.error } });
       pending.messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(record.result ?? record.error ?? record.approval ?? {}) });
       if (record.status === "awaiting_approval") {

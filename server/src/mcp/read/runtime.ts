@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import type {
-  McpArtifact,
-  McpExecutionEnvironment,
-  McpStreamEventInput,
+  ToolArtifact,
+  ToolExecutionEnvironment,
+  ToolInvocationEventInput,
 } from "../core/definitions.js";
 import { createArtifact } from "../core/artifacts.js";
 import { mcpBadRequest } from "../core/errors.js";
@@ -20,13 +20,13 @@ import type { ReadListResult, ReadOpenResult, ReadSelection } from "./types.js";
 
 type ReadExecutionContext = {
   args: Record<string, unknown>;
-  environment?: McpExecutionEnvironment;
-  pushEvent?: (event: McpStreamEventInput) => void;
+  environment?: ToolExecutionEnvironment;
+  pushEvent?: (event: ToolInvocationEventInput) => void;
 };
 
 type ReadExecutionResult = {
   contents: unknown;
-  artifacts: McpArtifact[];
+  artifacts: ToolArtifact[];
 };
 
 export const executeReadList = async ({

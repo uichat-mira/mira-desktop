@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { McpArtifact, McpToolImplementation } from "../core/definitions.js";
+import type { ToolArtifact, ToolImplementation } from "../core/definitions.js";
 import { createArtifact } from "../core/artifacts.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import {
@@ -52,7 +52,7 @@ const createResultArtifact = (input: {
   destinationPath?: string;
   dryRun: boolean;
   content?: string;
-}): McpArtifact => {
+}): ToolArtifact => {
   const lines = [
     `operation: ${input.operation}`,
     `targetPath: ${input.targetPath}`,
@@ -75,7 +75,7 @@ const createResultArtifact = (input: {
   });
 };
 
-export const workspaceMutationTool: McpToolImplementation = {
+export const workspaceMutationTool: ToolImplementation = {
   definition: {
     id: "workspace_mutation",
     title: "Workspace Mutation",
@@ -124,7 +124,7 @@ export const workspaceMutationTool: McpToolImplementation = {
     });
 
     let result: Record<string, unknown>;
-    const artifacts: McpArtifact[] = [];
+    const artifacts: ToolArtifact[] = [];
 
     if (operation === "delete") {
       const exists = fs.existsSync(resolvedTargetPath);

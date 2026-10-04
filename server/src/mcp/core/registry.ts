@@ -1,14 +1,14 @@
 import type {
   McpResourceDefinition,
   McpResourceImplementation,
-  McpToolDefinition,
-  McpToolImplementation,
+  ToolDefinition,
+  ToolImplementation,
 } from "./definitions.js";
 
-const toolMap = new Map<string, McpToolImplementation>();
+const toolMap = new Map<string, ToolImplementation>();
 const resourceMap = new Map<string, McpResourceImplementation>();
 
-export const registerTool = (tool: McpToolImplementation) => {
+export const registerTool = (tool: ToolImplementation) => {
   toolMap.set(tool.definition.id, tool);
 };
 

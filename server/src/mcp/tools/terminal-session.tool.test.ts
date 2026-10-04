@@ -717,7 +717,7 @@ describe("terminal_session tool", () => {
   it("surfaces approval-required requests through harness invocation status", async () => {
     const { clearHarnessRegistry, registerCapability } = await import("../../harness/registry.js");
     const { clearHarnessInvocations, executeHarnessInvocation } = await import("../../harness/invocations.js");
-    const { McpApprovalRequiredError } = await import("../core/errors.js");
+    const { ToolApprovalRequiredError } = await import("../core/errors.js");
 
     clearHarnessRegistry();
     clearHarnessInvocations();
@@ -737,7 +737,7 @@ describe("terminal_session tool", () => {
         },
       },
       execute() {
-        throw new McpApprovalRequiredError("Need explicit approval", {
+        throw new ToolApprovalRequiredError("Need explicit approval", {
           scope: "command",
         });
       },

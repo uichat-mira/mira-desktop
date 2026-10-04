@@ -1,4 +1,4 @@
-import type { McpToolDefinition } from "../../mcp/core/definitions.js";
+import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import { listCapabilityDefinitions } from "../registry.js";
 import {
   getDefinitionBlockReason,
@@ -7,9 +7,9 @@ import {
 import type { HarnessExposureDecision, HarnessExposurePolicyInput, HarnessExposureSource } from "./types.js";
 
 const applyExposureSchema = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
   source: HarnessExposureSource,
-): McpToolDefinition => {
+): ToolDefinition => {
   const exposedInputSchema = definition.inputSchemaByExposure?.[source];
   if (!exposedInputSchema) {
     return definition;

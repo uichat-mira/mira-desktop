@@ -1,9 +1,9 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { executeReadLocateRuntime } from "../read/runtime.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
-export const readLocateTool: McpToolImplementation = {
+export const readLocateTool: ToolImplementation = {
   definition: {
     id: "read_locate",
     title: "Read Locate",

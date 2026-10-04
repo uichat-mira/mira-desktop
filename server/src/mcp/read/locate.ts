@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
-import type { McpExecutionEnvironment } from "../core/definitions.js";
+import type { ToolExecutionEnvironment } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { getWorkspaceRoot, resolveWorkspacePath } from "../workspace.js";
 import {
@@ -19,7 +19,7 @@ export type ReadLocateArgs = {
   limit?: number;
 };
 
-type LocateProviderCapability = McpExecutionEnvironment["read"]["capabilities"][number];
+type LocateProviderCapability = ToolExecutionEnvironment["read"]["capabilities"][number];
 
 const DEFAULT_LIMIT = 20;
 const PREVIEW_MAX_LENGTH = 120;
@@ -54,7 +54,7 @@ export type ReadLocateDependencies = {
   ripgrep?: RipgrepProviderDependencies;
 };
 
-const assertEnvironment = (environment?: McpExecutionEnvironment) => {
+const assertEnvironment = (environment?: ToolExecutionEnvironment) => {
   if (!environment || environment.source !== "harness") {
     throw mcpInternalError("Read locate requires a harness environment snapshot");
   }
@@ -102,7 +102,7 @@ const resolveScope = (inputPath: unknown) => {
   };
 };
 
-const sortCapabilities = (environment: McpExecutionEnvironment) =>
+const sortCapabilities = (environment: ToolExecutionEnvironment) =>
   [...environment.read.capabilities]
     .filter((capability) => capability.available)
     .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
@@ -269,7 +269,7 @@ const locateByNodeContentScan = ({
 };
 
 export const describeLocatePlan = (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   args: ReadLocateArgs,
 ) => {
   const harnessEnvironment = assertEnvironment(environment);
@@ -299,7 +299,7 @@ export const describeLocatePlan = (
 };
 
 export const executeReadLocateWithDiagnostics = async (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   rawArgs: Record<string, unknown>,
   dependencies: ReadLocateDependencies = {},
 ) => {
@@ -426,6 +426,6 @@ export const executeReadLocateWithDiagnostics = async (
 };
 
 export const executeReadLocate = async (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   rawArgs: Record<string, unknown>,
 ) => (await executeReadLocateWithDiagnostics(environment, rawArgs)).result;

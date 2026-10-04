@@ -1,4 +1,4 @@
-import type { McpToolDefinition } from "../../mcp/core/definitions.js";
+import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessExposurePolicyInput } from "./types.js";
 
 const INTERNAL_READ_PRIMITIVE_TOOL_IDS = new Set([
@@ -14,19 +14,19 @@ const INTERNAL_EDIT_COMPAT_TOOL_IDS = new Set([
   "workspace_mutation",
 ]);
 
-export const isInternalIntentOnlyTool = (definition: McpToolDefinition) =>
+export const isInternalIntentOnlyTool = (definition: ToolDefinition) =>
   definition.source === "internal" && INTERNAL_READ_PRIMITIVE_TOOL_IDS.has(definition.id);
 
-export const isInternalEditCompatibilityTool = (definition: McpToolDefinition) =>
+export const isInternalEditCompatibilityTool = (definition: ToolDefinition) =>
   definition.source === "internal" && INTERNAL_EDIT_COMPAT_TOOL_IDS.has(definition.id);
 
 export const shouldIncludeDefinition = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
   input: HarnessExposurePolicyInput,
 ) => !getDefinitionBlockReason(definition, input);
 
 export const getDefinitionBlockReason = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
   input?: HarnessExposurePolicyInput,
 ): string | undefined => {
   // These are implementation/compatibility primitives, not public Agent tools.

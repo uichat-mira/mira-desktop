@@ -1,7 +1,7 @@
 import type {
-  McpExecutionEnvironment,
-  McpInvocationContext,
-  McpToolImplementation,
+  ToolExecutionEnvironment,
+  ToolInvocationContext,
+  ToolImplementation,
 } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { webSearchSettingsRepository } from "@/db/repositories/web-search-settings.repository.js";
@@ -48,7 +48,7 @@ type SearxngResponse = {
 };
 
 type WebSearchExecutionContext = Pick<
-  McpInvocationContext,
+  ToolInvocationContext,
   "args" | "environment" | "pushEvent" | "trace"
 >;
 
@@ -93,7 +93,7 @@ const toWebSearchProviderError = (input: {
 
 const withTimeoutSignal = () => AbortSignal.timeout(SEARCH_TIMEOUT_MS);
 
-const assertWebSearchEnvironment = (environment?: McpExecutionEnvironment) => {
+const assertWebSearchEnvironment = (environment?: ToolExecutionEnvironment) => {
   if (!environment || environment.source !== "harness") {
     throw mcpInternalError("Web search requires a harness environment snapshot");
   }
@@ -121,17 +121,17 @@ const normalizeMaxResults = (value: unknown) => {
 
 const resolveStoredWebSearchSettings = () => webSearchSettingsRepository.get();
 
-const resolveTrustedToolConfig = (environment?: McpExecutionEnvironment) =>
+const resolveTrustedToolConfig = (environment?: ToolExecutionEnvironment) =>
   assertWebSearchEnvironment(environment).toolConfig?.web_search;
 
-const resolveTavilyApiKey = (environment?: McpExecutionEnvironment) =>
+const resolveTavilyApiKey = (environment?: ToolExecutionEnvironment) =>
   (
     resolveTrustedToolConfig(environment)?.apiKey ||
     resolveStoredWebSearchSettings().tavilyApiKey ||
     (process.env.TAVILY_API_KEY ?? "")
   ).trim();
 
-const resolveSearxngBaseUrl = (environment?: McpExecutionEnvironment) =>
+const resolveSearxngBaseUrl = (environment?: ToolExecutionEnvironment) =>
   (
     resolveTrustedToolConfig(environment)?.baseUrl ||
     resolveStoredWebSearchSettings().searxngBaseUrl ||
@@ -146,7 +146,7 @@ const resolveDefaultMaxResults = (args: Record<string, unknown>) =>
     : args.maxResults;
 
 const sortProviderPlans = (
-  environment: McpExecutionEnvironment,
+  environment: ToolExecutionEnvironment,
   context: WebSearchExecutionContext,
 ): WebSearchProviderPlan[] => {
   const tavilyApiKey = resolveTavilyApiKey(context.environment);
@@ -292,7 +292,7 @@ const executeWebSearchPlan = async (input: {
   );
 };
 
-export const webSearchTool: McpToolImplementation = {
+export const webSearchTool: ToolImplementation = {
   definition: {
     id: "web_search",
     title: "Web Search",

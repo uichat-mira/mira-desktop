@@ -1,6 +1,6 @@
 import type { AgentEvidenceSummary, AgentRetrievalEvidence } from "@/agent/types";
 import { getActiveCodeGraphStudioService } from "@/microapps/codegraph/index.js";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import {
   type CodebaseExploreTrace,
@@ -164,7 +164,7 @@ const createInvocationWorkspaceRuntimeContext = (input: {
   };
 };
 
-export const codebaseExploreTool: McpToolImplementation = {
+export const codebaseExploreTool: ToolImplementation = {
   definition: {
     id: "codebase_explore",
     title: "Codebase Explore",

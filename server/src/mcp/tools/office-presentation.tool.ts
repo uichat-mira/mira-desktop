@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { resolveWorkspacePath, resolveWorkspaceWritePath } from "../workspace.js";
 import { executePresentationSkillRuntime } from "@/microapps/office-suite/skill-runtime.js";
@@ -144,7 +144,7 @@ const nativePptdSpecSchema = () => ({
   },
 });
 
-export const officePresentationTool: McpToolImplementation = {
+export const officePresentationTool: ToolImplementation = {
   definition: {
     id: "office_presentation",
     title: "Office Presentation",

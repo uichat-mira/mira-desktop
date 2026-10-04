@@ -1,9 +1,9 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { executeReadLocateRuntime } from "../read/runtime.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
-export const grepTool: McpToolImplementation = {
+export const grepTool: ToolImplementation = {
   definition: {
     id: "grep",
     title: "Grep",

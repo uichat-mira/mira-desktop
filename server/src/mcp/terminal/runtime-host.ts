@@ -1,8 +1,8 @@
 import type {
-  McpArtifact,
-  McpExecutionEnvironment,
-  McpInvocationContext,
-  McpStreamEventInput,
+  ToolArtifact,
+  ToolExecutionEnvironment,
+  ToolInvocationContext,
+  ToolInvocationEventInput,
 } from "../core/definitions.js";
 import { createArtifact } from "../core/artifacts.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
@@ -24,10 +24,10 @@ import {
 export type TerminalExecutionContext = {
   invocationId: string;
   args: Record<string, unknown>;
-  environment?: McpExecutionEnvironment;
+  environment?: ToolExecutionEnvironment;
   signal: AbortSignal;
-  pushEvent?: (event: McpStreamEventInput) => void;
-  trace?: McpInvocationContext["trace"];
+  pushEvent?: (event: ToolInvocationEventInput) => void;
+  trace?: ToolInvocationContext["trace"];
 };
 
 type TerminalContents = {
@@ -55,14 +55,14 @@ type TerminalContents = {
 
 type TerminalExecutionResult = {
   contents: TerminalContents;
-  artifacts: McpArtifact[];
+  artifacts: ToolArtifact[];
 };
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MIN_TIMEOUT_MS = 100;
 const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1_000;
 
-const assertTerminalEnvironment = (environment?: McpExecutionEnvironment) => {
+const assertTerminalEnvironment = (environment?: ToolExecutionEnvironment) => {
   if (!environment || environment.source !== "harness") {
     throw mcpInternalError(
       "Terminal execution requires a harness environment snapshot",
@@ -132,7 +132,7 @@ const createTerminalArtifact = (input: {
   });
 
 export const describeTerminalPlan = (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   args: Record<string, unknown> = {},
 ) => {
   const harnessEnvironment = assertTerminalEnvironment(environment);

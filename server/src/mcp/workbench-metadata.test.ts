@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { McpToolDefinition } from "./core/definitions.js";
+import type { ToolDefinition } from "./core/definitions.js";
 import { withWorkbenchMetadata } from "./workbench-metadata.js";
 
-const createBrowserTool = (id: string): McpToolDefinition => ({
+const createBrowserTool = (id: string): ToolDefinition => ({
   id,
   title: id,
   description: id,
@@ -17,7 +17,7 @@ const createBrowserTool = (id: string): McpToolDefinition => ({
   },
 });
 
-const createGitHubTool = (id: string): McpToolDefinition => ({
+const createGitHubTool = (id: string): ToolDefinition => ({
   id,
   title: id,
   description: id,

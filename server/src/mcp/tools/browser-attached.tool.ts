@@ -1,6 +1,6 @@
 import type {
-  McpInvocationContext,
-  McpToolImplementation,
+  ToolInvocationContext,
+  ToolImplementation,
 } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { invokeWebBridge } from "@/routes/webbridge.js";
@@ -131,7 +131,7 @@ const toEvidenceData = (result: unknown): Record<string, unknown> =>
 
 const createBrowserAttachedTool = (
   tool: BrowserAttachedToolName,
-): McpToolImplementation => ({
+): ToolImplementation => ({
   definition: {
     id: `browser_attached_${tool}`,
     title: `Attached Browser ${tool[0].toUpperCase()}${tool.slice(1)}`,
@@ -147,7 +147,7 @@ const createBrowserAttachedTool = (
       networkAccess: true,
     },
   },
-  execute: async (context: McpInvocationContext) => {
+  execute: async (context: ToolInvocationContext) => {
     if (context.userId === undefined || !Number.isInteger(context.userId)) {
       throw mcpBadRequest(
         "Attached Browser requires a trusted authenticated user context",
@@ -181,7 +181,7 @@ export const browserAttachedBrowseTool = createBrowserAttachedTool("browse");
 export const browserAttachedActTool = createBrowserAttachedTool("act");
 export const browserAttachedTransferTool = createBrowserAttachedTool("transfer");
 
-export const createBrowserAttachedTools = (): McpToolImplementation[] => [
+export const createBrowserAttachedTools = (): ToolImplementation[] => [
   browserAttachedLookTool,
   browserAttachedBrowseTool,
   browserAttachedActTool,

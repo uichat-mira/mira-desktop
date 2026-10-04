@@ -1,7 +1,7 @@
 import os from "node:os";
 import pty from "node-pty";
 import { mcpBadRequest } from "./core/errors.js";
-import type { McpExecutionEnvironment } from "./core/definitions.js";
+import type { ToolExecutionEnvironment } from "./core/definitions.js";
 import {
   resolveHostCwd,
   resolveHostEnv,
@@ -118,7 +118,7 @@ export const createTerminalSession = async (input: {
   env?: Record<string, string>;
   workspaceRoot?: string | null;
   runtimeId?: TerminalRuntimeId;
-  shellProfile?: McpExecutionEnvironment["terminal"]["shellProfile"];
+  shellProfile?: ToolExecutionEnvironment["terminal"]["shellProfile"];
 }) => {
   const runtimeId = input.runtimeId ?? resolveTerminalRuntimeId();
   if (runtimeId !== "host_spawn") {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubConnectionRecord } from "@/db/repositories/github-connection.repository.js";
-import type { McpInvocationContext } from "../core/definitions.js";
-import { McpApprovalRequiredError } from "../core/errors.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
+import { ToolApprovalRequiredError } from "../core/errors.js";
 import { validateInvocationArgs } from "../core/schema.js";
 import { sanitizeIssueSearchQuery } from "./github-domain.api.js";
 import { createGitHubDomainTools } from "./github-domain.tool.js";
@@ -43,7 +43,7 @@ const jsonResponse = (body: unknown, status = 200) =>
 const createContext = (
   args: Record<string, unknown>,
   approvalGranted = false,
-): McpInvocationContext => ({
+): ToolInvocationContext => ({
   invocationId: "github-domain-test",
   args,
   ...(approvalGranted
@@ -170,8 +170,8 @@ const expectApproval = async (
     await invocation;
     throw new Error("Expected GitHub write approval");
   } catch (error) {
-    expect(error).toBeInstanceOf(McpApprovalRequiredError);
-    expect((error as McpApprovalRequiredError).scope).toBe(scope);
+    expect(error).toBeInstanceOf(ToolApprovalRequiredError);
+    expect((error as ToolApprovalRequiredError).scope).toBe(scope);
   }
 };
 

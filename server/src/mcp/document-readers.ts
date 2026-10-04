@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import type { McpExecutionEnvironment, McpExecutionEnvironmentCapability } from "./core/definitions.js";
+import type { ToolExecutionEnvironment, RuntimeCapability } from "./core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "./core/errors.js";
 import type { ReadDirectoryEntry, ReadSource } from "./read/types.js";
 
@@ -63,7 +63,7 @@ type ReadStrategyImplementation = {
   matches?: (target: ReadTarget) => boolean;
 };
 
-type PlannedReadStrategy = McpExecutionEnvironmentCapability & ReadStrategyImplementation;
+type PlannedReadStrategy = RuntimeCapability & ReadStrategyImplementation;
 
 // Windows ships `python`, while most POSIX hosts only expose `python3`.
 // Resolve the interpreter for the current host instead of assuming one name.
@@ -297,8 +297,8 @@ const strategyImplementations: Record<string, ReadStrategyImplementation> = {
 };
 
 const buildStrategyList = (
-  environment: McpExecutionEnvironment,
-  kinds: Array<McpExecutionEnvironmentCapability["kind"]>,
+  environment: ToolExecutionEnvironment,
+  kinds: Array<RuntimeCapability["kind"]>,
 ) =>
   [...environment.read.capabilities]
     .filter((capability) => capability.available)
@@ -318,7 +318,7 @@ const buildStrategyList = (
     })
     .filter(Boolean) as PlannedReadStrategy[];
 
-const requireHarnessEnvironment = (environment?: McpExecutionEnvironment) => {
+const requireHarnessEnvironment = (environment?: ToolExecutionEnvironment) => {
   if (!environment || environment.source !== "harness") {
     throw mcpInternalError("Read execution requires a harness environment snapshot");
   }
@@ -326,19 +326,19 @@ const requireHarnessEnvironment = (environment?: McpExecutionEnvironment) => {
   return environment;
 };
 
-export const assertReadEnvironment = (environment?: McpExecutionEnvironment) =>
+export const assertReadEnvironment = (environment?: ToolExecutionEnvironment) =>
   requireHarnessEnvironment(environment);
 
-export const buildReadStrategies = (environment: McpExecutionEnvironment): PlannedReadStrategy[] =>
+export const buildReadStrategies = (environment: ToolExecutionEnvironment): PlannedReadStrategy[] =>
   buildStrategyList(environment, ["extract", "text", "fallback"]);
 
-const buildDirectoryStrategy = (environment: McpExecutionEnvironment) =>
+const buildDirectoryStrategy = (environment: ToolExecutionEnvironment) =>
   [...environment.read.capabilities]
     .filter((capability) => capability.available)
     .filter((capability) => capability.kind === "directory")
     .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id))[0];
 
-export const describeReadPlan = (environment: McpExecutionEnvironment, targetPath: string) => {
+export const describeReadPlan = (environment: ToolExecutionEnvironment, targetPath: string) => {
   const harnessEnvironment = requireHarnessEnvironment(environment);
   const target = createReadTarget(targetPath);
   const chain = buildReadStrategies(harnessEnvironment)
@@ -365,7 +365,7 @@ export const describeReadPlan = (environment: McpExecutionEnvironment, targetPat
 };
 
 export const readStructuredDocument = async (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   targetPath: string,
 ) => {
   const harnessEnvironment = requireHarnessEnvironment(environment);
@@ -409,7 +409,7 @@ export const assertPathExists = (targetPath: string) => {
 };
 
 export const listDirectory = (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   targetPath: string,
 ): ReadDirectoryEntry[] => {
   const harnessEnvironment = requireHarnessEnvironment(environment);

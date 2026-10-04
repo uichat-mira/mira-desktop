@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { McpToolImplementation } from "../../mcp/core/definitions.js";
+import type { ToolImplementation } from "../../mcp/core/definitions.js";
 import {
   clearHarnessRegistry,
   registerCapability,
@@ -35,7 +35,7 @@ const createTool = (input: {
   requiresApproval: boolean;
   networkAccess?: boolean;
   longRunning?: boolean;
-}): McpToolImplementation => ({
+}): ToolImplementation => ({
   definition: {
     id: input.id,
     title: input.id,

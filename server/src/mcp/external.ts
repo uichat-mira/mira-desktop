@@ -1,6 +1,6 @@
 import { getSqlite } from "@/db";
 import { mcpBadRequest, mcpInternalError, mcpNotFound } from "./core/errors.js";
-import type { McpToolDefinition, McpToolImplementation } from "./core/definitions.js";
+import type { ToolDefinition, ToolImplementation } from "./core/definitions.js";
 import {
   getCapabilityImplementation,
   listCapabilityDefinitions,
@@ -1492,7 +1492,7 @@ const registerProjectedTool = (
   server: ExternalMcpServerRecord,
   tool: ExternalMcpDiscoveredTool,
 ) => {
-  const implementation: McpToolImplementation = {
+  const implementation: ToolImplementation = {
     definition: {
       id: tool.projectedCapabilityId,
       title: tool.title,
@@ -1510,7 +1510,7 @@ const registerProjectedTool = (
         networkAccess: true,
         longRunning: true,
       },
-    } satisfies McpToolDefinition,
+    } satisfies ToolDefinition,
     execute: async (context) => {
       context.pushEvent({
         type: "invocation:progress",
@@ -1636,8 +1636,8 @@ const isExternalMcpRuntimeEligible = (server: ExternalMcpServerRecord) =>
   server.discoveredTools.length > 0 &&
   isExternalMcpTransportConfigured(server);
 
-export const resolveAgentEligibleExternalMcpCapabilities = (): McpToolDefinition[] => {
-  const eligible: McpToolDefinition[] = [];
+export const resolveAgentEligibleExternalMcpCapabilities = (): ToolDefinition[] => {
+  const eligible: ToolDefinition[] = [];
   for (const server of listExternalMcpServers()) {
     if (!isExternalMcpRuntimeEligible(server) || !server.agentEnabled) {
       continue;

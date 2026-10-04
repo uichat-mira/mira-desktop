@@ -1,4 +1,4 @@
-import type { McpExecutionEnvironment, McpStreamEventInput } from "../core/definitions.js";
+import type { ToolExecutionEnvironment, ToolInvocationEventInput } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { assertReadEnvironment, sliceExtractedText } from "../document-readers.js";
 import type { ReadSliceResult } from "./types.js";
@@ -11,9 +11,9 @@ export type ReadSliceArgs = {
 };
 
 export const executeReadSlice = async (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   rawArgs: ReadSliceArgs,
-  pushEvent?: (event: McpStreamEventInput) => void,
+  pushEvent?: (event: ToolInvocationEventInput) => void,
 ) => {
   const harnessEnvironment = assertReadEnvironment(environment);
 
