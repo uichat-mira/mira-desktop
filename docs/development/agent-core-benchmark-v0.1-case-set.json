@@ -37,7 +37,8 @@
     "removedCount": 0,
     "promotedCount": 0,
     "demotedCount": 0,
-    "note": "Core v0.1 freezes 25 reviewed cases as one public benchmark universe: 17 participate in automated scored aggregation with frozen timing, while 8 remain diagnostic/untimed because calibration did not support a fair automated time budget."
+    "note": "Core v0.1 freezes 25 reviewed cases as one public benchmark universe: 17 participate in automated scored aggregation with frozen timing, while 8 remain diagnostic/untimed because calibration did not support a fair automated time budget.",
+    "selectedCount": 25
   },
   "timingPolicy": {
     "status": "frozen",
