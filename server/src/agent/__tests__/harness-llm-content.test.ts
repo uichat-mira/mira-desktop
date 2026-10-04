@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   getHarnessLlmContentText,
+  projectHarnessContentForLlm,
   projectHarnessResultForLlm,
 } from "@/harness/llm-content";
 import {
@@ -24,6 +25,16 @@ const createExecution = (
   result,
   startedAt: "2026-07-18T00:00:00.000Z",
   finishedAt: "2026-07-18T00:00:01.000Z",
+});
+
+test("explicit text content remains plain model-facing text", () => {
+  const content = projectHarnessContentForLlm([
+    { type: "text", text: "line one\nline two" },
+  ]);
+  const text = getHarnessLlmContentText(content);
+
+  assert.match(text, /line one\nline two/);
+  assert.doesNotMatch(text, /\[\s*"line one/);
 });
 
 test("read_list keeps all returned entries instead of the first five", () => {

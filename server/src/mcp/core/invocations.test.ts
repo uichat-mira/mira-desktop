@@ -8,6 +8,7 @@ import {
 import { clearHarnessRegistry, registerTool } from "../../harness/registry.js";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { ToolApprovalRequiredError } from "./errors.js";
+import { getHarnessLlmContentText } from "../../harness/llm-content.js";
 import type { ToolImplementation } from "./definitions.js";
 import { configureInvocationRetention, sweepStoredInvocations } from "./invocations.js";
 
@@ -19,6 +20,75 @@ describe("mcp invocations", () => {
       maxEntries: 200,
       ttlMs: 1000 * 60 * 30,
     });
+  });
+
+  it("preserves explicit model content and marks Tool-level errors without failing the invocation", async () => {
+    registerTool({
+      definition: {
+        id: "tool_result_error_content",
+        title: "Tool result error content",
+        description: "returns an error outcome without a Harness failure",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      execute: () => ({
+        content: [{ type: "text", text: "bad input: choose another query" }],
+        structuredContent: { ok: false, reason: "bad input" },
+        isError: true,
+      }),
+    });
+
+    const record = await executeHarnessInvocation({
+      toolId: "tool_result_error_content",
+      args: {},
+    });
+
+    expect(record.status).toBe("completed");
+    expect(record.evidence?.status).toBe("failed");
+    const text = getHarnessLlmContentText(record.llmContent);
+    expect(text).toContain("toolOutcome=error");
+    expect(text).toContain("bad input: choose another query");
+    expect(text).not.toContain('"bad input: choose another query"');
+  });
+
+  it("marks Tool-level errors even when the Tool provides only structured content", async () => {
+    registerTool({
+      definition: {
+        id: "tool_result_structured_error",
+        title: "Tool result structured error",
+        description: "returns a structured error outcome",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      execute: () => ({
+        structuredContent: { ok: false, error: { message: "boom" } },
+        isError: true,
+      }),
+    });
+
+    const record = await executeHarnessInvocation({
+      toolId: "tool_result_structured_error",
+      args: {},
+    });
+
+    expect(record.status).toBe("completed");
+    const text = getHarnessLlmContentText(record.llmContent);
+    expect(text).toContain("toolOutcome=error");
+    expect(text).toContain("boom");
   });
 
   it("records result, artifact and events", async () => {

@@ -1,7 +1,7 @@
 /**
  * 工具执行节点：执行已审批或免审的工具调用，并将结果加入证据。
  */
-import { executeHarnessInvocation } from "@/harness/invocations";
+import { executeHarnessInvocation, type HarnessInvocationRecord } from "@/harness/invocations";
 import { getToolImplementation } from "@/harness/registry";
 import { createHarnessEnvironmentSnapshot } from "@/harness/environment";
 import { runWithWorkspaceRootOverride } from "@/mcp/workspace";
@@ -81,7 +81,8 @@ const buildExecutionRecord = (input: {
   errorMessage?: string;
   result?: unknown;
   evidence?: AgentToolExecutionResult["evidence"];
-}): AgentToolExecutionResult => ({
+  llmContent?: HarnessInvocationRecord["llmContent"];
+}): AgentToolExecutionResult & { llmContent?: HarnessInvocationRecord["llmContent"] } => ({
   toolCallId: input.pendingToolCall.id,
   toolId: input.toolId,
   inputHash: input.pendingToolCall.inputHash,
@@ -98,6 +99,7 @@ const buildExecutionRecord = (input: {
   errorMessage: input.errorMessage,
   result: input.result,
   ...(input.evidence ? { evidence: input.evidence } : {}),
+  ...(input.llmContent ? { llmContent: input.llmContent } : {}),
   startedAt: input.startedAt,
   finishedAt: input.finishedAt,
 });
@@ -520,6 +522,7 @@ export const toolNode = async (
     status: "completed",
     result: invocation.result,
     evidence: invocation.evidence,
+    llmContent: invocation.llmContent,
     startedAt,
     finishedAt,
   });

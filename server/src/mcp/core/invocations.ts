@@ -259,7 +259,7 @@ export interface ExecuteInvocationInput {
   signal?: AbortSignal;
   environment?: ToolExecutionEnvironment;
   /** Internal callback for model-facing content; never serialized onto ToolInvocation. */
-  onResultContent?: (content: ToolContentBlock[]) => void;
+  onResultContent?: (content: ToolContentBlock[], isError: boolean) => void;
   approvedInvocations?: Array<{
     toolId: string;
     inputHash: string;
@@ -422,7 +422,7 @@ export const executeInvocation = async (
           structuredContent: redactExternalMcpValue(normalized.structuredContent),
         }
       : normalized;
-    input.onResultContent?.(safeNormalized.content);
+    input.onResultContent?.(safeNormalized.content, safeNormalized.isError);
     const projectedEvidence = projectToolEvidence(tool.definition, safeNormalized);
     if (projectedEvidence !== undefined) {
       record.evidence = tool.definition.source === "external"

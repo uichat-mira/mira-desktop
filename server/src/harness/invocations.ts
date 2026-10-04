@@ -27,11 +27,13 @@ export const executeHarnessInvocation = async (
   input: ExecuteInvocationInput,
 ): Promise<HarnessInvocationRecord> => {
   let modelContent: ToolContentBlock[] | undefined;
+  let toolIsError = false;
   const record = await executeInvocation({
     ...input,
     environment: input.environment ?? getHarnessEnvironmentSnapshot(),
-    onResultContent: (content) => {
+    onResultContent: (content, isError) => {
       modelContent = content;
+      toolIsError = isError;
     },
   });
 
@@ -39,9 +41,20 @@ export const executeHarnessInvocation = async (
     return record;
   }
 
-  const llmContent =
+  const projected =
     projectHarnessContentForLlm(modelContent) ??
     projectHarnessResultForLlm(record.result);
+  const llmContent =
+    projected && toolIsError
+      ? {
+          ...projected,
+          blocks: projected.blocks.map((block, index) =>
+            index === 0
+              ? { ...block, text: `toolOutcome=error\n${block.text}` }
+              : block,
+          ),
+        }
+      : projected;
   return llmContent ? { ...record, llmContent } : record;
 };
 
