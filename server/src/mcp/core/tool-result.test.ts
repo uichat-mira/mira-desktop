@@ -161,4 +161,113 @@ describe("ToolResult B-prime normalization", () => {
     expect(remote?.data).toMatchObject({ kind: "external_mcp", serverId: "docs" });
     expect(futureExternal?.data).toMatchObject({ kind: "generic_structured" });
   });
+
+  it("restores bounded read and search semantic projections", () => {
+    const list = projectToolEvidence(
+      definition("read_list"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "list",
+          path: "docs",
+          entries: [
+            { name: "README.md", type: "file" },
+            { name: "guides", type: "directory" },
+          ],
+          returnedCount: 2,
+          totalCount: 4,
+          hasMore: true,
+          truncated: true,
+        },
+      }),
+    );
+    expect(list?.data).toMatchObject({
+      kind: "read_list",
+      path: "docs",
+      fileCount: 1,
+      directoryCount: 1,
+      entriesPreview: ["[F] README.md", "[D] guides"],
+      truncated: true,
+    });
+
+    const opened = projectToolEvidence(
+      definition("read_open"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "open",
+          path: "README.md",
+          source: { text: "# Intro\nbody\n## Details\nmore", metadata: {} },
+        },
+      }),
+    );
+    expect(opened?.data).toMatchObject({ kind: "read_open", keySections: ["Intro", "Details"] });
+
+    const search = projectToolEvidence(
+      definition("web_search", "internal", "web_search"),
+      normalizeToolResult({
+        structuredContent: {
+          query: "mira",
+          provider: "tavily",
+          capabilityId: "tavily-search",
+          results: [{ title: "Mira", link: "https://example.com", snippet: "A result" }],
+        },
+      }),
+    );
+    expect(search?.data).toMatchObject({
+      kind: "web_search",
+      query: "mira",
+      resultCount: 1,
+      citationsPreview: [{ title: "Mira", link: "https://example.com" }],
+    });
+  });
+
+  it("keeps Evidence data bounded and redacted instead of copying structured results", () => {
+    const secret = "secret-value";
+    const value = {
+      title: "large result",
+      password: secret,
+      items: Array.from({ length: 20 }, (_, index) => ({ index, text: "x".repeat(500) })),
+    };
+    const evidence = projectToolEvidence(
+      definition("future_tool"),
+      normalizeToolResult({ structuredContent: value }),
+    );
+    expect(evidence?.data).toMatchObject({
+      kind: "generic_structured",
+      truncated: true,
+      redacted: true,
+    });
+    expect(JSON.stringify(evidence?.data)).not.toContain(secret);
+    expect(evidence?.data).not.toBe(value);
+
+    const codebase = projectToolEvidence(
+      definition("codebase_explore"),
+      normalizeToolResult({
+        structuredContent: {
+          query: "planner",
+          verifiedEvidenceInput: {
+            query: "planner",
+            chunkCount: 1,
+            chunks: [{ documentName: "planner.ts", content: "x".repeat(2_000) }],
+          },
+          retrievalEvidence: {
+            query: "planner",
+            chunkCount: 1,
+            chunks: [{ documentName: "planner.ts", content: "x".repeat(2_000) }],
+          },
+          exploreResult: { status: "ok", degraded: false, truncated: false },
+        },
+      }),
+    );
+    expect(codebase?.data).toMatchObject({
+      kind: "codebase_explore",
+      query: "planner",
+      verifiedChunkCount: 1,
+      fallbackRequired: false,
+    });
+    expect(codebase?.facts).toEqual(expect.arrayContaining([
+      "capabilityId=codebase_explore",
+      "verifiedChunkCount=1",
+    ]));
+    expect(JSON.stringify(codebase?.data)).not.toContain("x".repeat(100));
+  });
 });

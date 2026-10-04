@@ -28,6 +28,70 @@ const textPreview = (value: unknown, limit = 280) => {
   return normalized.length > limit ? `${normalized.slice(0, limit).trimEnd()}...` : normalized;
 };
 
+const SENSITIVE_KEY = /(?:token|authorization|cookie|password|secret|api[-_]?key|header|env)/iu;
+const STRUCTURED_PREVIEW_MAX_DEPTH = 3;
+const STRUCTURED_PREVIEW_MAX_KEYS = 12;
+const STRUCTURED_PREVIEW_MAX_SIZE = 4_000;
+
+const boundedStructuredPreview = (value: unknown) => {
+  const state = { size: 0, truncated: false, redacted: false, unsupported: false };
+  const visit = (current: unknown, depth: number): unknown => {
+    if (state.size >= STRUCTURED_PREVIEW_MAX_SIZE) {
+      state.truncated = true;
+      return "...[truncated]";
+    }
+    if (current === null || typeof current === "boolean" || typeof current === "number") {
+      state.size += String(current).length;
+      return current;
+    }
+    if (typeof current === "string") {
+      const result = textPreview(current);
+      state.size += result.length;
+      if (result !== current.replace(/\s+/g, " ").trim()) state.truncated = true;
+      return result;
+    }
+    if (depth >= STRUCTURED_PREVIEW_MAX_DEPTH) {
+      state.truncated = true;
+      return "...[depth limit]";
+    }
+    if (Array.isArray(current)) {
+      const result = current.slice(0, 5).map((item) => visit(item, depth + 1));
+      if (current.length > 5) state.truncated = true;
+      return result;
+    }
+    if (current && typeof current === "object") {
+      const result: Record<string, unknown> = {};
+      const entries = Object.entries(current);
+      for (const [key, item] of entries.slice(0, STRUCTURED_PREVIEW_MAX_KEYS)) {
+        if (SENSITIVE_KEY.test(key)) {
+          state.redacted = true;
+          state.truncated = true;
+          continue;
+        }
+        result[key] = visit(item, depth + 1);
+      }
+      if (entries.length > STRUCTURED_PREVIEW_MAX_KEYS) state.truncated = true;
+      return result;
+    }
+    state.unsupported = true;
+    state.truncated = true;
+    return "...[unsupported]";
+  };
+  let preview: unknown;
+  try {
+    preview = visit(value, 0);
+    if (JSON.stringify(preview).length > STRUCTURED_PREVIEW_MAX_SIZE) {
+      state.truncated = true;
+      preview = "...[size limit]";
+    }
+  } catch {
+    state.unsupported = true;
+    state.truncated = true;
+    preview = undefined;
+  }
+  return { preview, ...state };
+};
+
 const baseEvidence = (input: {
   result: unknown;
   isError: boolean;
@@ -60,10 +124,52 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       facts: [`contentLength=${text.length}`, ...(contentPreview ? [contentPreview] : [])],
       gaps: truncated ? ["File content is truncated."] : undefined,
       status: truncated ? "truncated" : undefined,
-      data: { kind: "read_open", path, contentPreview, contentLength: text.length, truncated },
+      data: {
+        kind: "read_open",
+        path,
+        contentPreview,
+        contentLength: text.length,
+        truncated,
+        keySections: text
+          .split(/\r?\n+/)
+          .map((line) => line.trim())
+          .filter((line) => /^#{1,6}\s+/.test(line))
+          .slice(0, 5)
+          .map((line) => line.replace(/^#{1,6}\s+/, "")),
+      },
     });
   }
-  if (toolId === "read_list" || toolId === "read_discover") {
+  if (toolId === "read_list") {
+    const path = typeof result.path === "string" ? result.path : "unknown";
+    const entries = Array.isArray(result.entries) ? result.entries.filter(asRecord).map((entry) => ({
+      name: typeof entry.name === "string" ? entry.name : "unknown",
+      type: entry.type === "directory" ? "directory" : "file",
+    })) : [];
+    const returnedCount = typeof result.returnedCount === "number" ? result.returnedCount : entries.length;
+    const totalCount = typeof result.totalCount === "number" ? result.totalCount : returnedCount;
+    const fileCount = entries.filter((entry) => entry.type === "file").length;
+    const directoryCount = entries.filter((entry) => entry.type === "directory").length;
+    const entriesPreview = entries.slice(0, 5).map((entry) => `${entry.type === "directory" ? "[D]" : "[F]"} ${entry.name}`);
+    const truncated = result.truncated === true || result.hasMore === true || returnedCount < totalCount;
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Listed workspace directory ${path}.`,
+      facts: [`path=${path}`, `entryCount=${totalCount}`, `fileCount=${fileCount}`, `directoryCount=${directoryCount}`, ...entriesPreview],
+      gaps: truncated ? ["Directory listing is truncated."] : entries.length === 0 ? ["Directory is empty."] : undefined,
+      status: truncated ? "truncated" : undefined,
+      data: {
+        kind: "read_list",
+        path,
+        entryCount: totalCount,
+        fileCount,
+        directoryCount,
+        entriesPreview,
+        truncated,
+      },
+    });
+  }
+  if (toolId === "read_discover") {
     const operation = typeof result.operation === "string" ? result.operation : "list";
     const entries = Array.isArray(result.entries) ? result.entries : Array.isArray(result.matches) ? result.matches : [];
     const returnedCount = typeof result.returnedCount === "number" ? result.returnedCount : entries.length;
@@ -97,23 +203,17 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       gaps: truncated ? ["Discovery results are truncated; more candidates may exist."] : entries.length === 0 ? ["No workspace matches were returned."] : undefined,
       status: truncated ? "truncated" : undefined,
       data: {
-        kind: toolId === "read_list" ? "read_list" : "read_discover",
-        ...(toolId === "read_discover" ? {
-          mode: typeof result.mode === "string" ? result.mode : operation,
-          operation,
-          ...(path ? { path } : {}),
-          ...(root ? { root } : {}),
-          ...(query ? { query } : {}),
-          candidateCount: returnedCount,
-          candidatePaths: candidatePreview,
-          returnedCount,
-          ...(totalCount === undefined ? {} : { totalCount }),
-          hasMore: result.hasMore === true || (totalCount !== undefined && returnedCount < totalCount),
-        } : {
-          operation,
-          returnedCount,
-          ...(totalCount === undefined ? {} : { totalCount }),
-        }),
+        kind: "read_discover",
+        mode: typeof result.mode === "string" ? result.mode : operation,
+        operation,
+        ...(path ? { path } : {}),
+        ...(root ? { root } : {}),
+        ...(query ? { query } : {}),
+        candidateCount: returnedCount,
+        candidatePaths: candidatePreview,
+        returnedCount,
+        ...(totalCount === undefined ? {} : { totalCount }),
+        hasMore: result.hasMore === true || (totalCount !== undefined && returnedCount < totalCount),
         truncated,
       },
     });
@@ -177,6 +277,37 @@ export const projectToolEvidence = (
 
   const readEvidence = projectReadEvidence(definition.id, result, normalized.isError);
   if (readEvidence) return readEvidence;
+
+  if ((definition.id === "web_search" || definition.id === "news_search") && typeof result.query === "string" && Array.isArray(result.results)) {
+    const results = result.results.filter(asRecord);
+    const topFindings = results.slice(0, 5).map((item) =>
+      textPreview([item.title, item.snippet].filter((part) => typeof part === "string").join(": "), 180),
+    );
+    return baseEvidence({
+      result,
+      isError: normalized.isError,
+      actionTaken: `Searched the web for "${result.query}".`,
+      facts: [
+        `query=${result.query}`,
+        `resultCount=${results.length}`,
+        ...(typeof result.provider === "string" ? [`provider=${result.provider}`] : []),
+        ...topFindings,
+      ],
+      gaps: results.length === 0 ? ["No web results were returned."] : undefined,
+      data: {
+        kind: "web_search",
+        query: result.query,
+        resultCount: results.length,
+        topFindings,
+        citationsPreview: results.slice(0, 5).map((item) => ({
+          title: typeof item.title === "string" ? textPreview(item.title, 180) : "",
+          link: typeof item.link === "string" ? item.link : "",
+        })),
+        ...(typeof result.provider === "string" ? { provider: result.provider } : {}),
+        ...(typeof result.capabilityId === "string" ? { capabilityId: result.capabilityId } : {}),
+      },
+    });
+  }
 
   if (definition.id === "terminal_session") {
     const exitCode = typeof result.exitCode === "number" || result.exitCode === null ? result.exitCode : null;
@@ -260,8 +391,26 @@ export const projectToolEvidence = (
     const url = typeof result.url === "string" ? result.url : typeof page?.url === "string" ? page.url : undefined;
     const title = typeof result.title === "string" ? result.title : typeof page?.title === "string" ? page.title : undefined;
     const operation = definition.id === "browser_observe" ? "observe" : definition.id === "browser_act" ? "act" : definition.id === "browser_assert" ? "assert" : definition.id;
+    const attached = definition.id.startsWith("browser_attached_");
+    const provider = attached ? "chujie" : undefined;
     const observation = asRecord(result.observation);
     const assertion = asRecord(result.assertion);
+    const visibleText = typeof observation?.visibleText === "string"
+      ? observation.visibleText
+      : typeof result.text === "string" ? result.text : undefined;
+    const elements = Array.isArray(result.elements)
+      ? result.elements.filter(asRecord).slice(0, 5).map((element) => ({
+          ...(typeof element.ref === "string" ? { ref: element.ref } : {}),
+          ...(typeof element.role === "string" ? { role: element.role } : {}),
+          ...(typeof element.name === "string" ? { name: textPreview(element.name, 120) } : {}),
+          ...(typeof element.text === "string" ? { text: textPreview(element.text, 120) } : {}),
+          ...(typeof element.disabled === "boolean" ? { disabled: element.disabled } : {}),
+          ...(typeof element.tag === "string" ? { tag: element.tag } : {}),
+          ...(typeof element.type === "string" ? { type: element.type } : {}),
+          ...(typeof element.href === "string" || element.href === null ? { href: element.href } : {}),
+          ...(typeof element.value === "string" ? { value: textPreview(element.value, 120) } : {}),
+        }))
+      : undefined;
     return baseEvidence({
       result,
       isError: normalized.isError,
@@ -269,23 +418,51 @@ export const projectToolEvidence = (
       facts: [
         `operation=${operation}`,
         `ok=${result.ok === false ? "false" : "true"}`,
+        ...(provider ? [`provider=${provider}`] : []),
         ...(url ? [`url=${url}`] : []),
         ...(title ? [`title=${title}`] : []),
         ...(typeof page?.snapshotHash === "string" ? [`snapshotHash=${page.snapshotHash}`] : []),
-        ...(typeof observation?.visibleText === "string" ? [`visibleText=${textPreview(observation.visibleText)}`] : []),
+        ...(visibleText ? [`visibleText=${textPreview(visibleText)}`] : []),
         ...(typeof assertion?.kind === "string" ? [`assertion=${assertion.kind}`] : []),
         ...(typeof assertion?.passed === "boolean" ? [`passed=${assertion.passed}`] : []),
       ],
       gaps: normalized.isError ? ["Browser operation reported an error outcome."] : undefined,
       error: typeof asRecord(result.error)?.message === "string" ? String(asRecord(result.error)?.message) : undefined,
       status: normalized.isError || result.ok === false ? "failed" : undefined,
-      data: { kind: "computer_use_browser", operation, ...(url ? { url } : {}), ...(title ? { title } : {}), ...result },
+      data: {
+        kind: "computer_use_browser",
+        operation,
+        ...(provider ? { provider } : {}),
+        ...(url ? { url } : {}),
+        ...(title ? { title } : {}),
+        ...(typeof page?.snapshotHash === "string" ? { snapshotHash: page.snapshotHash } : {}),
+        ...(page ? {
+          page: {
+            ...(url ? { url } : {}),
+            ...(title ? { title } : {}),
+            ...(typeof page.snapshotHash === "string" ? { snapshotHash: page.snapshotHash } : {}),
+          },
+        } : {}),
+        ...(typeof result.version === "number" ? { version: result.version } : {}),
+        ...(typeof result.tabId === "number" ? { tabId: result.tabId } : {}),
+        ...(visibleText ? { visibleTextPreview: textPreview(visibleText) } : {}),
+        ...(visibleText ? { observation: { visibleText: textPreview(visibleText) } } : {}),
+        ...(elements ? { elementCount: Array.isArray(result.elements) ? result.elements.length : elements.length, elements } : {}),
+        ...(assertion ? {
+          assertion: {
+            ...(typeof assertion.kind === "string" ? { kind: assertion.kind } : {}),
+            ...(typeof assertion.passed === "boolean" ? { passed: assertion.passed } : {}),
+          },
+        } : {}),
+        ...(Array.isArray(result.artifacts) ? { artifactCount: result.artifacts.length } : {}),
+      },
     });
   }
 
   if (definition.id.startsWith("github_")) {
     const repository = typeof result.repository === "string" ? result.repository : "unknown";
     const operation = typeof result.operation === "string" ? result.operation : undefined;
+    const metadata = asRecord(result.metadata);
     const issue = asRecord(result.issue);
     const pullRequest = asRecord(result.pullRequest);
     const run = asRecord(result.run);
@@ -294,7 +471,6 @@ export const projectToolEvidence = (
     const reviews = Array.isArray(result.reviews) ? result.reviews.length : 0;
     const facts = [`toolId=${definition.id}`, `repository=${repository}`];
     if (definition.id === "github_repo_read") {
-      const metadata = asRecord(result.metadata);
       facts.push(`Default branch is ${typeof metadata?.defaultBranch === "string" && metadata.defaultBranch ? metadata.defaultBranch : "unknown"}.`);
       facts.push(`Returned ${Array.isArray(result.commits) ? result.commits.length : 0} commit(s) and ${Array.isArray(result.branches) ? result.branches.length : 0} branch(es).`);
     } else if (issue) {
@@ -306,7 +482,42 @@ export const projectToolEvidence = (
     } else if (operation) {
       facts.push(`operation=${operation}`);
     }
-    return baseEvidence({ result, isError: normalized.isError, actionTaken: `Executed ${definition.id}.`, facts, data: { kind: "github", repository, ...(operation ? { operation } : {}), ...result } });
+    const issueSummary = issue ? {
+      ...(typeof issue.number === "number" ? { number: issue.number } : {}),
+      ...(typeof issue.title === "string" ? { title: textPreview(issue.title, 180) } : {}),
+      ...(typeof issue.state === "string" ? { state: issue.state } : {}),
+    } : undefined;
+    const pullRequestSummary = pullRequest ? {
+      ...(typeof pullRequest.number === "number" ? { number: pullRequest.number } : {}),
+      ...(typeof pullRequest.title === "string" ? { title: textPreview(pullRequest.title, 180) } : {}),
+      ...(typeof pullRequest.state === "string" ? { state: pullRequest.state } : {}),
+    } : undefined;
+    const runSummary = run ? {
+      ...(typeof run.id === "number" || typeof run.id === "string" ? { id: run.id } : {}),
+      ...(typeof run.status === "string" ? { status: run.status } : {}),
+      ...(typeof run.conclusion === "string" ? { conclusion: run.conclusion } : {}),
+    } : undefined;
+    return baseEvidence({
+      result,
+      isError: normalized.isError,
+      actionTaken: `Executed ${definition.id}.`,
+      facts,
+      data: {
+        kind: "github",
+        repository,
+        ...(operation ? { operation } : {}),
+        ...(typeof metadata?.defaultBranch === "string" ? { defaultBranch: metadata.defaultBranch } : {}),
+        ...(issueSummary ? { issue: issueSummary } : {}),
+        ...(pullRequestSummary ? { pullRequest: pullRequestSummary } : {}),
+        ...(runSummary ? { run: runSummary } : {}),
+        ...(Array.isArray(result.commits) ? { commitCount: result.commits.length } : {}),
+        ...(Array.isArray(result.branches) ? { branchCount: result.branches.length } : {}),
+        ...(Array.isArray(result.jobs) ? { jobCount: result.jobs.length } : {}),
+        ...(Array.isArray(result.files) ? { fileCount: files } : {}),
+        ...(Array.isArray(result.comments) ? { commentCount: comments } : {}),
+        ...(Array.isArray(result.reviews) ? { reviewCount: reviews } : {}),
+      },
+    });
   }
 
   const unwrapped = asRecord(result.result) ?? result;
@@ -345,7 +556,20 @@ export const projectToolEvidence = (
       typeof result.outputPath === "string" ? `Output: ${result.outputPath}` : undefined,
     ].filter((value): value is string => Boolean(value));
     const detail = result.summary ?? result.runtime ?? result.validation ?? result.verification ?? result.recalculation ?? result.data;
-    return baseEvidence({ result, isError: normalized.isError, actionTaken: `Executed ${definition.id} operation ${operation}.`, facts: [`toolId=${definition.id}`, ...pathFacts, ...(detail === undefined ? [] : [`Result: ${textPreview(detail)}`])], data: { kind: definition.id, operation, ...result } });
+    return baseEvidence({
+      result,
+      isError: normalized.isError,
+      actionTaken: `Executed ${definition.id} operation ${operation}.`,
+      facts: [`toolId=${definition.id}`, ...pathFacts, ...(detail === undefined ? [] : [`Result: ${textPreview(detail)}`])],
+      data: {
+        kind: definition.id,
+        operation,
+        ...(typeof result.inputPath === "string" ? { inputPath: result.inputPath } : {}),
+        ...(typeof result.outputPath === "string" ? { outputPath: result.outputPath } : {}),
+        ...(detail === undefined ? {} : { detailPreview: textPreview(detail) }),
+        ...(typeof result.count === "number" ? { count: result.count } : {}),
+      },
+    });
   }
 
   if (definition.id === "ask_external_expert") {
@@ -356,28 +580,114 @@ export const projectToolEvidence = (
 
   if (definition.id === "codebase_explore") {
     const verified = asRecord(result.verifiedEvidenceInput);
-    const retrieval = result.retrievalEvidence;
+    const retrieval = asRecord(result.retrievalEvidence);
     const nestedExplore = asRecord(result.exploreResult);
+    const verificationResult = asRecord(result.verificationResult);
+    const trace = asRecord(result.trace);
     const degraded = result.degraded === true || nestedExplore?.degraded === true;
-    const fallbackSignal = typeof result.fallbackSignal === "string" ? result.fallbackSignal : asRecord(nestedExplore?.fallbackSignal);
-    const fallbackText = typeof fallbackSignal === "string" ? fallbackSignal : fallbackSignal ? textPreview(fallbackSignal) : undefined;
+    const query =
+      typeof result.query === "string"
+        ? result.query
+        : typeof retrieval?.query === "string"
+          ? retrieval.query
+          : typeof verified?.query === "string"
+            ? verified.query
+            : "";
+    const verifiedChunkCount =
+      typeof retrieval?.chunkCount === "number"
+        ? retrieval.chunkCount
+        : typeof verified?.chunkCount === "number"
+          ? verified.chunkCount
+          : 0;
+    const runtimeMode =
+      typeof trace?.runtimeMode === "string"
+        ? trace.runtimeMode
+        : degraded
+          ? "unavailable"
+          : "unknown";
+    const workspaceRoot =
+      typeof result.workspaceRoot === "string" ? result.workspaceRoot : undefined;
+    const fallbackSignal =
+      typeof result.fallbackSignal === "string"
+        ? result.fallbackSignal
+        : asRecord(nestedExplore?.fallbackSignal);
+    const fallbackRequired =
+      degraded || result.partial === true || asRecord(fallbackSignal)?.required === true;
+    const fallbackReason =
+      typeof fallbackSignal === "string"
+        ? fallbackSignal
+        : typeof asRecord(fallbackSignal)?.reason === "string"
+          ? String(asRecord(fallbackSignal)?.reason)
+          : undefined;
+    const exploreStatus =
+      typeof nestedExplore?.status === "string" ? nestedExplore.status : undefined;
+    const verifiedCandidateCount =
+      typeof verificationResult?.verifiedCount === "number"
+        ? verificationResult.verifiedCount
+        : undefined;
+    const rejectedCandidateCount =
+      typeof verificationResult?.rejectedCount === "number"
+        ? verificationResult.rejectedCount
+        : undefined;
+    const unverifiableCandidateCount =
+      typeof verificationResult?.unverifiableCount === "number"
+        ? verificationResult.unverifiableCount
+        : undefined;
+
     return baseEvidence({
       result,
       isError: normalized.isError,
-      actionTaken: "Explored the codebase.",
-      facts: [degraded ? "degraded=true" : "degraded=false", ...(fallbackText ? [`fallbackSignal=${fallbackText}`] : []), ...(nestedExplore?.status ? [`exploreStatus=${String(nestedExplore.status)}`] : [])],
-      gaps: degraded || result.partial === true ? ["Codebase exploration returned partial evidence."] : undefined,
-      status: degraded || result.partial === true ? "partial" : undefined,
-      data: { kind: "codebase_explore", verifiedEvidenceInput: verified ?? null, retrievalEvidence: retrieval ?? null, exploreResult: nestedExplore ?? null },
+      actionTaken: degraded
+        ? `Attempted controlled CodeGraph exploration for "${query}".`
+        : `Codebase explore verified ${verifiedChunkCount} workspace chunk(s) for "${query}".`,
+      facts: [
+        "capabilityId=codebase_explore",
+        `degraded=${degraded}`,
+        `verifiedChunkCount=${verifiedChunkCount}`,
+        `runtimeMode=${runtimeMode}`,
+        ...(verifiedCandidateCount === undefined
+          ? []
+          : [`verifiedCandidateCount=${verifiedCandidateCount}`]),
+        ...(rejectedCandidateCount === undefined
+          ? []
+          : [`rejectedCandidateCount=${rejectedCandidateCount}`]),
+        ...(unverifiableCandidateCount === undefined
+          ? []
+          : [`unverifiableCandidateCount=${unverifiableCandidateCount}`]),
+        ...(exploreStatus ? [`exploreStatus=${exploreStatus}`] : []),
+        ...(fallbackReason ? [`fallbackReason=${fallbackReason}`] : []),
+      ],
+      gaps: fallbackRequired
+        ? [
+            "Codebase exploration returned partial evidence.",
+            ...(fallbackReason ? [`CodeGraph fallback reason: ${fallbackReason}`] : []),
+          ]
+        : undefined,
+      status: fallbackRequired ? "partial" : undefined,
+      data: {
+        kind: "codebase_explore",
+        runtimeMode,
+        ...(workspaceRoot ? { workspaceRoot } : {}),
+        query,
+        verifiedChunkCount,
+        fallbackRequired,
+      },
     });
   }
 
+  const bounded = boundedStructuredPreview(result);
   return baseEvidence({
     result,
     isError: normalized.isError,
     actionTaken: `${definition.id} returned structured data.`,
     facts: [`resultKeys=${Object.keys(result).join(",")}`],
     gaps: normalized.isError ? ["The tool reported an error outcome."] : undefined,
-    data: { kind: "generic_structured", preview: result },
+    data: {
+      kind: "generic_structured",
+      preview: bounded.preview,
+      truncated: bounded.truncated,
+      redacted: bounded.redacted,
+      unsupported: bounded.unsupported,
+    },
   });
 };

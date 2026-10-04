@@ -296,6 +296,7 @@ describe("Attached Browser Harness tools", () => {
         data: expect.objectContaining({
           kind: "computer_use_browser",
           operation: "browser_attached_look",
+          provider: "chujie",
           url: result.url,
           title: result.title,
           version: result.version,
