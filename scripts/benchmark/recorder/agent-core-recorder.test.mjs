@@ -40,7 +40,7 @@ import {
   readFrozenBlob,
   resolveFrozenCase,
 } from "./lib/frozen-source.mjs";
-import { buildRunManifest } from "./lib/aggregate.mjs";
+import { buildRunManifest, buildSummary } from "./lib/aggregate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..", "..");
