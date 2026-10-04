@@ -594,7 +594,7 @@ export const runRepetition = async ({
       executionMode: selectionEntry.executionMode ?? "canonical",
       classificationRationale:
         selectionEntry.classificationRationale ??
-        "Driven through the product HTTP control surface on macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline; only the executor script/host differ.",
+        "Driven through the product HTTP control surface with the frozen case contract, fixture, governance and observability semantics; host/runtime details are recorded separately under the platform-neutral #220 policy.",
       comparabilityImpact: selectionEntry.comparabilityImpact ?? null,
       hostPlatform: hostPlatform(),
       actualProcedure: {
@@ -623,15 +623,12 @@ export const runRepetition = async ({
         ],
       },
       referenceProcedure: {
-        baseline: "Windows 11 + PowerShell 7 reference runner",
+        baseline: "platform-neutral HTTP reference runner",
         provider: selectionEntry.provider,
-        deviations: [
-          "executor host is macOS (Intel) instead of Windows 11",
-          "control flow implemented as a Node script instead of PowerShell",
-        ],
-        reasonForDeviation: "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+        deviations: [],
+        reasonForDeviation: null,
         comparabilityImpact:
-          "none expected: identical HTTP control surface, model access path, fixture, governance and observability semantics",
+          "comparability is determined by frozen case information/capability boundaries, fixture, governance and observability semantics; host identity is recorded but not a timing acceptance gate",
       },
       executorInterventions: interventions,
       approval: {

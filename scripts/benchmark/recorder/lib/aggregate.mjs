@@ -116,7 +116,24 @@ export const buildSummary = ({ repetitions }) => {
   const invalid = repetitions.filter((r) => r.executionClassification === "invalid");
   const noncanonical = repetitions.filter((r) => r.comparable !== true && r.executionClassification !== "invalid");
 
-  const elapsed = repetitions.map((r) => r.deterministic?.timing?.elapsedMs ?? null);
+  const elapsed = validComparable.map((r) => r.deterministic?.timing?.elapsedMs ?? null);
+  const terminalStatuses = [...new Set(validComparable.map((r) => r.deterministic?.terminal?.status ?? "unknown"))];
+  const elapsedByTerminal = Object.fromEntries(
+    terminalStatuses.map((status) => {
+      const values = validComparable
+        .filter((r) => (r.deterministic?.terminal?.status ?? "unknown") === status)
+        .map((r) => r.deterministic?.timing?.elapsedMs ?? null);
+      return [
+        status,
+        {
+          values,
+          median: median(values),
+          max: max(values),
+          count: values.filter((v) => typeof v === "number" && Number.isFinite(v)).length,
+        },
+      ];
+    }),
+  );
 
   return {
     schemaVersion: "mira-agent-core-benchmark-summary/0.1",
@@ -133,12 +150,16 @@ export const buildSummary = ({ repetitions }) => {
       policyState: repetitions.every((r) => r.deterministic?.timing?.state === "frozen")
         ? "frozen"
         : "calibration_pending",
+      scope: "valid_comparable_terminal_elapsed_not_success_filtered",
+      note:
+        "Recorder aggregate timing is descriptive terminal elapsed only. Final timing calibration must select observations by the frozen case-defined success boundary; failed or semantically unsuccessful terminal outcomes must not be treated as successful completion timing.",
       elapsedMs: {
         values: elapsed,
         median: median(elapsed),
         max: max(elapsed),
-        count: elapsed.filter((v) => typeof v === "number").length,
+        count: elapsed.filter((v) => typeof v === "number" && Number.isFinite(v)).length,
       },
+      elapsedMsByTerminal: elapsedByTerminal,
     },
     deterministicMeasurements: {
       toolCallCountMean: mean(repetitions.map((r) => r.deterministic?.toolCallCount)),
@@ -214,8 +235,11 @@ export const buildReportMarkdown = ({ manifest, summary, repetitions, recognized
   lines.push("## Timing observations");
   lines.push("");
   lines.push(`- policy state: \`${summary.timingObservations.policyState}\``);
-  lines.push(`- elapsed ms values: ${JSON.stringify(summary.timingObservations.elapsedMs.values)}`);
-  lines.push("- timing credit / on-time classification: not computed while `calibration_pending` (see gaps)");
+  lines.push(`- scope: \`${summary.timingObservations.scope}\``);
+  lines.push(`- terminal elapsed ms values: ${JSON.stringify(summary.timingObservations.elapsedMs.values)}`);
+  lines.push(`- terminal elapsed by status: ${JSON.stringify(summary.timingObservations.elapsedMsByTerminal)}`);
+  lines.push(`- note: ${summary.timingObservations.note}`);
+  lines.push("- timing credit / on-time classification is only computed when the case has frozen T_soft/T_hard");
   lines.push("");
   lines.push("## Artifact completeness");
   lines.push("");

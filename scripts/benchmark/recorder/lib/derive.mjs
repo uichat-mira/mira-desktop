@@ -119,9 +119,9 @@ const deriveTiming = (executorFacts, gaps) => {
       requiredBy: "#216 §10 / #220 timing calibration",
       availableSources: [artifactRef("timing"), "executor-facts.timing"],
       missingReason:
-        "per-case T_soft/T_hard are null in the RC case set (core-v0.1-rc1); final freeze is gated on canonical Windows evidence",
+        "per-case T_soft/T_hard are unavailable for this run; frozen automated cases use measured platform-neutral comparable evidence, while diagnostic cases remain intentionally untimed",
       scoringImpact:
-        "timing_credit and on-time/ late classification are unavailable until #220 freezes T_soft/T_hard; elapsed is recorded but not classified",
+        "timing_credit and on-time/late classification are unavailable when this case has no frozen T_soft/T_hard; elapsed remains recorded as diagnostic evidence",
     });
   }
 

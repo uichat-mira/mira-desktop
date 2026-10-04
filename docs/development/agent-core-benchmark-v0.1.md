@@ -28,7 +28,7 @@ Core Benchmark 用少量真实、可重复的 Agent 任务回答四个问题：
 3. Mira 是否在重复运行中稳定；
 4. Mira 是否守住工具、审批、用户约束和执行边界。
 
-v0.1 目标正式题量为 **20–30 题**，优先约 24 题，按 Beginner / Intermediate / Advanced 三档组织。
+v0.1 目标冻结题库为 **20–30 题**，优先约 24 题，按 Beginner / Intermediate / Advanced 三档组织。若 timing 校准证明某题无法获得公平稳定的自动时间预算，#220 可将其保留为 `diagnostic_untimed`；这类题仍属于公开冻结题库，但不进入正式自动计分聚合。
 
 Core Benchmark 不是：
 
@@ -419,7 +419,9 @@ Case Reliability  = on_time_pass_count / valid comparable repetitions * 100
 
 Benchmark-level：
 
-- 每个正式 case 权重相等，不因某题工具调用更多、耗时更长而自动获得更高权重；
+- 只有 frozen case-set 中标记为 `automated_scored` 的 case 进入正式 macro average、Pass@1、Stable@3、Complete@3；
+- `diagnostic_untimed` case 单独发布诊断结果，不获得虚构的 timing credit，也不进入正式自动计分聚合；
+- 每个正式 scored case 权重相等，不因某题工具调用更多、耗时更长而自动获得更高权重；
 - 四个主指标分别对 case-level 指标做 macro average；
 - 同时必须按 Beginner / Intermediate / Advanced 分层报告，不能只给全局均值；
 - `Pass@1` = 全部正式 case 中 first valid comparable repetition 为 on-time pass 的比例；
@@ -433,7 +435,7 @@ v0.1 不把四个主指标再加权压缩成一个总分。
 
 ## 10. Timing 与晚完成补分
 
-每题冻结 `T_soft` 和 `T_hard`。
+每个 `automated_scored` case 冻结 `T_soft` 和 `T_hard`。无法获得公平稳定 timing budget 的题由 #220 标记为 `diagnostic_untimed`，保留真实 elapsed 和行为证据，但不发明 cutoff。
 
 默认：
 
@@ -441,7 +443,7 @@ v0.1 不把四个主指标再加权压缩成一个总分。
 T_hard = 2.0 * T_soft
 ```
 
-`T_soft` 由 #220 在 canonical Windows 环境基于 dry-run 校准，不按难度标签拍脑袋决定。
+`T_soft` 由 #220 基于受控、可比、记录了实际 host/runtime/procedure 的 reference observations 校准，不按难度标签或操作系统拍脑袋决定。Timing acceptance 是 platform-neutral；host OS 本身不是准入门槛。
 
 固定 timing credit：
 
