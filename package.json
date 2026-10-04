@@ -90,7 +90,7 @@
     "benchmark:audit": "node scripts/benchmark/scoring/audit-package.mjs"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.19.0"
   },
   "devDependencies": {
     "@huggingface/tokenizers": "^0.1.3",
