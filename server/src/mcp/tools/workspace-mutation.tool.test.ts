@@ -62,7 +62,7 @@ describe("workspace_mutation tool", () => {
     const result = await workspaceMutationTool.execute(invocation.context);
 
     expect(fs.existsSync(path.join(tempRoot, "notes.txt"))).toBe(false);
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       operation: "delete",
       targetPath: "notes.txt",
       dryRun: false,
@@ -87,7 +87,7 @@ describe("workspace_mutation tool", () => {
 
     expect(fs.existsSync(path.join(tempRoot, "old.txt"))).toBe(false);
     expect(fs.readFileSync(path.join(tempRoot, "nested", "new.txt"), "utf-8")).toBe("move me");
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       operation: "move",
       targetPath: "old.txt",
       destinationPath: "nested/new.txt",
@@ -108,7 +108,7 @@ describe("workspace_mutation tool", () => {
     expect(fs.readFileSync(path.join(tempRoot, "docs", "notes.txt"), "utf-8")).toBe(
       "hello mutation",
     );
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       operation: "write",
       targetPath: "docs/notes.txt",
       dryRun: false,

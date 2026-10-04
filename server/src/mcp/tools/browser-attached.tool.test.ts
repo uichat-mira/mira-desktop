@@ -243,7 +243,7 @@ describe("Attached Browser Harness tools", () => {
         suggestedAction: "look",
       }),
     );
-    expect(JSON.stringify(evidence)).not.toContain(String(trustedUserId));
+    expect(JSON.stringify(evidence)).not.toMatch(/userId|accessToken|backendUrl|extensionClientId/);
   });
 
   it("retains browser result fields, provider evidence, args, timing, and trace in the existing Harness contract", async () => {
@@ -292,12 +292,10 @@ describe("Attached Browser Harness tools", () => {
     );
     expect(invocation.evidence).toEqual(
       expect.objectContaining({
-        facts: expect.arrayContaining([
-          "tool=browser_attached_look",
-          "provider=chujie",
-        ]),
+        facts: expect.arrayContaining(["tool=browser_attached_look"]),
         data: expect.objectContaining({
-          provider: "chujie",
+          kind: "computer_use_browser",
+          operation: "browser_attached_look",
           url: result.url,
           title: result.title,
           version: result.version,

@@ -254,6 +254,11 @@ export interface ToolInvocation {
   finishedAt?: string;
 }
 
+export type ToolContentBlock = {
+  type: string;
+  [key: string]: unknown;
+};
+
 export interface ToolTraceSpan {
   id: string;
   traceId: string;
@@ -402,14 +407,15 @@ export interface ToolInvocationContext {
   environment?: ToolExecutionEnvironment;
 }
 
-export interface ToolExecutionResult {
-  result?: unknown;
-  evidence?: ToolEvidence;
+export interface ToolResult<S = unknown> {
+  content?: ToolContentBlock[];
+  structuredContent?: S;
+  isError?: boolean;
 }
 
 export interface ToolImplementation {
   definition: ToolDefinition;
   execute: (
     context: ToolInvocationContext,
-  ) => Promise<ToolExecutionResult> | ToolExecutionResult;
+  ) => Promise<ToolResult> | ToolResult;
 }

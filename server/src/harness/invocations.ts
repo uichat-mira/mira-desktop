@@ -14,8 +14,10 @@ import {
 import { getHarnessEnvironmentSnapshot } from "./environment.js";
 import {
   projectHarnessResultForLlm,
+  projectHarnessContentForLlm,
   type HarnessLlmContent,
 } from "./llm-content.js";
+import { clearNormalizedToolContent, deleteNormalizedToolContent, getNormalizedToolContent } from "../mcp/core/tool-result.js";
 
 export type HarnessInvocationRecord = ToolInvocation & {
   llmContent?: HarnessLlmContent;
@@ -33,7 +35,10 @@ export const executeHarnessInvocation = async (
     return record;
   }
 
-  const llmContent = projectHarnessResultForLlm(record.result);
+  const llmContent =
+    projectHarnessContentForLlm(getNormalizedToolContent(record.id)) ??
+    projectHarnessResultForLlm(record.result);
+  deleteNormalizedToolContent(record.id);
   return llmContent ? { ...record, llmContent } : record;
 };
 
@@ -48,4 +53,7 @@ export const getHarnessInvocationTrace = (
   invocationId: string,
 ): ToolTrace | undefined => getInvocationTraceRecord(invocationId);
 
-export const clearHarnessInvocations = () => clearInvocations();
+export const clearHarnessInvocations = () => {
+  clearInvocations();
+  clearNormalizedToolContent();
+};

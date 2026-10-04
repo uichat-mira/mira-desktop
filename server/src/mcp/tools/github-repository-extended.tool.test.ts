@@ -254,7 +254,7 @@ describe("GitHub repository bootstrap operations", () => {
       ),
     );
 
-    expect(execution.result).toMatchObject({
+    expect(execution.structuredContent).toMatchObject({
       operation: "create",
       id: 20,
       fullName: "tomz/mira-docs",
@@ -283,7 +283,7 @@ describe("GitHub repository bootstrap operations", () => {
         repository: "dangjingtao/uichat-mira",
       }),
     );
-    expect(accessible.result).toMatchObject({
+    expect(accessible.structuredContent).toMatchObject({
       operation: "ensure_installation_access",
       accessible: true,
       installationId: 55,
@@ -296,7 +296,7 @@ describe("GitHub repository bootstrap operations", () => {
         repository: "tomz/unscoped",
       }),
     );
-    expect(unscoped.result).toMatchObject({
+    expect(unscoped.structuredContent).toMatchObject({
       operation: "ensure_installation_access",
       accessible: false,
       resolution: "user_action_required",
@@ -313,7 +313,7 @@ describe("GitHub repository bootstrap operations", () => {
         repository: "dangjingtao/uichat-mira",
       }),
     );
-    expect(disabled.result).toMatchObject({
+    expect(disabled.structuredContent).toMatchObject({
       operation: "get_pages",
       enabled: false,
       url: null,
@@ -331,7 +331,7 @@ describe("GitHub repository bootstrap operations", () => {
         true,
       ),
     );
-    expect(configured.result).toMatchObject({
+    expect(configured.structuredContent).toMatchObject({
       operation: "configure_pages",
       enabled: true,
       buildType: "workflow",

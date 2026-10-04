@@ -190,11 +190,11 @@ describe("terminal_session tool", () => {
     expect(events[0]?.message).toBe("Terminal runtime: host_spawn (ephemeral)");
     expect(events.filter((event) => event.type === "invocation:stdout")).toHaveLength(2);
     expect(events.some((event) => event.stream === "stderr")).toBe(true);
-    expect((result.result as { stdout: string }).stdout).toBe("hello stdout");
-    expect((result.result as { stderr: string }).stderr).toBe("oops stderr");
-    expect((result.result as { streamMode: string }).streamMode).toBe("split");
-    expect((result.result as { stderrSeparated: boolean }).stderrSeparated).toBe(true);
-    expect((result.result as { exitCode: number }).exitCode).toBe(3);
+    expect((result.structuredContent as { stdout: string }).stdout).toBe("hello stdout");
+    expect((result.structuredContent as { stderr: string }).stderr).toBe("oops stderr");
+    expect((result.structuredContent as { streamMode: string }).streamMode).toBe("split");
+    expect((result.structuredContent as { stderrSeparated: boolean }).stderrSeparated).toBe(true);
+    expect((result.structuredContent as { exitCode: number }).exitCode).toBe(3);
     expect(artifacts[0]?.metadata).toMatchObject({
       runtimeId: "host_spawn",
       sessionMode: "ephemeral",
@@ -260,9 +260,9 @@ describe("terminal_session tool", () => {
     });
 
     expect(terminalMocks.createTerminalSessionMock).not.toHaveBeenCalled();
-    expect((result.result as { reusedSession: boolean }).reusedSession).toBe(true);
-    expect((result.result as { streamMode: string }).streamMode).toBe("merged");
-    expect((result.result as { stderrSeparated: boolean }).stderrSeparated).toBe(false);
+    expect((result.structuredContent as { reusedSession: boolean }).reusedSession).toBe(true);
+    expect((result.structuredContent as { streamMode: string }).streamMode).toBe("merged");
+    expect((result.structuredContent as { stderrSeparated: boolean }).stderrSeparated).toBe(false);
     expect(terminalMocks.removeTerminalSessionMock).not.toHaveBeenCalled();
   });
 
@@ -297,8 +297,8 @@ describe("terminal_session tool", () => {
     });
 
     expect(events.some((event) => event.message === "Terminal runtime: host_spawn (persistent)")).toBe(true);
-    expect((result.result as { sessionMode: string }).sessionMode).toBe("persistent");
-    expect((result.result as { stderrSeparated: boolean }).stderrSeparated).toBe(false);
+    expect((result.structuredContent as { sessionMode: string }).sessionMode).toBe("persistent");
+    expect((result.structuredContent as { stderrSeparated: boolean }).stderrSeparated).toBe(false);
     expect(terminalMocks.removeTerminalSessionMock).not.toHaveBeenCalled();
   });
 
@@ -418,8 +418,8 @@ describe("terminal_session tool", () => {
     await vi.advanceTimersByTimeAsync(120);
     const result = await promise;
 
-    expect((result.result as { timedOut: boolean }).timedOut).toBe(true);
-    expect((result.result as { exitCode: number | null }).exitCode).toBe(null);
+    expect((result.structuredContent as { timedOut: boolean }).timedOut).toBe(true);
+    expect((result.structuredContent as { exitCode: number | null }).exitCode).toBe(null);
     expect(terminalMocks.killTerminalProcessTreeMock).toHaveBeenCalledWith({
       pid: 12345,
       mode: "windows_job_object",
@@ -450,7 +450,7 @@ describe("terminal_session tool", () => {
     await vi.advanceTimersByTimeAsync(120_000);
     const result = await promise;
 
-    expect((result.result as { timedOut: boolean }).timedOut).toBe(true);
+    expect((result.structuredContent as { timedOut: boolean }).timedOut).toBe(true);
     expect(terminalMocks.killTerminalProcessTreeMock).toHaveBeenCalled();
   });
 
@@ -479,7 +479,7 @@ describe("terminal_session tool", () => {
     await vi.advanceTimersByTimeAsync(100);
     const result = await promise;
 
-    expect((result.result as { timedOut: boolean }).timedOut).toBe(true);
+    expect((result.structuredContent as { timedOut: boolean }).timedOut).toBe(true);
     expect(terminalMocks.killTerminalProcessTreeMock).toHaveBeenCalled();
   });
 
@@ -508,7 +508,7 @@ describe("terminal_session tool", () => {
     await vi.advanceTimersByTimeAsync(86_400_000);
     const result = await promise;
 
-    expect((result.result as { timedOut: boolean }).timedOut).toBe(true);
+    expect((result.structuredContent as { timedOut: boolean }).timedOut).toBe(true);
     expect(terminalMocks.killTerminalProcessTreeMock).toHaveBeenCalled();
   });
 
@@ -649,9 +649,9 @@ describe("terminal_session tool", () => {
       child.emit("close", 0);
       const result = await promise;
 
-      expect((result.result as { stdout: string }).stdout).toContain("hello");
-      expect((result.result as { binaryDetected: boolean }).binaryDetected).toBe(false);
-      expect((result.result as { stdoutEncoding: string }).stdoutEncoding).toBe("utf16le");
+      expect((result.structuredContent as { stdout: string }).stdout).toContain("hello");
+      expect((result.structuredContent as { binaryDetected: boolean }).binaryDetected).toBe(false);
+      expect((result.structuredContent as { stdoutEncoding: string }).stdoutEncoding).toBe("utf16le");
       expect(terminalMocks.spawnMock).toHaveBeenCalledTimes(1);
       expect(String(terminalMocks.spawnMock.mock.calls[0]?.[0] ?? "")).toContain("powershell.exe");
       expect(terminalMocks.spawnMock.mock.calls[0]?.[1]).toEqual(

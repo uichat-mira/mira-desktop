@@ -33,7 +33,7 @@ const nativeTool: ToolImplementation = {
       workspaceBoundary: { argKeys: ["path"] },
     },
   },
-  execute: () => ({ result: { ok: "native" } }),
+  execute: () => ({ structuredContent: { ok: "native" } }),
 };
 
 const projectedTool = toProjectedTool({
@@ -50,7 +50,7 @@ const projectedTool = toProjectedTool({
 
 const externalTool: ToolImplementation = {
   definition: toExternalMcpToolDefinition(projectedTool),
-  execute: () => ({ result: { ok: "external" } }),
+  execute: () => ({ structuredContent: { ok: "external" } }),
 };
 
 const MCP_SPECIFIC_KEYS = [

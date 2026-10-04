@@ -257,7 +257,7 @@ export const workspaceMutationTool: ToolImplementation = {
     emitArtifacts(context, artifacts);
 
     return {
-      result: {
+      structuredContent: {
         ...result,
         targetPath: safeRelativePath(String(result.targetPath)),
         ...(typeof result.destinationPath === "string"

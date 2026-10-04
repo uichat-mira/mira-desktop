@@ -284,11 +284,7 @@ const summarizeToolResult = (
   }
 
   const type = typeof result.type === "string" ? result.type : undefined;
-  if (
-    type === "external_mcp" &&
-    typeof result.serverId === "string" &&
-    typeof result.remoteToolName === "string"
-  ) {
+  if (execution.toolId.startsWith("mcp:") && type === "external_mcp") {
     const nestedResult = result.result;
     const resultPreview =
       typeof nestedResult === "string"
@@ -318,10 +314,39 @@ const summarizeToolResult = (
       },
     });
   }
-  if (
-    type === "discover" &&
-    (result.operation === "list" || result.operation === "locate")
-  ) {
+  if (execution.toolId.startsWith("browser_") && isRecord(result.page)) {
+    const page = result.page;
+    const url = typeof page.url === "string" ? page.url : undefined;
+    const title = typeof page.title === "string" ? page.title : undefined;
+    const operation = execution.toolId === "browser_observe" ? "observe" : execution.toolId === "browser_act" ? "act" : execution.toolId === "browser_assert" ? "assert" : execution.toolId;
+    const observation = isRecord(result.observation) ? result.observation : undefined;
+    const assertion = isRecord(result.assertion) ? result.assertion : undefined;
+    const facts = [
+      `tool=${execution.toolId}`,
+      ...(url ? [`url=${url}`] : []),
+      ...(title ? [`title=${title}`] : []),
+      ...(typeof observation?.visibleText === "string" ? [`visibleText=${preview(observation.visibleText)}`] : []),
+      ...(typeof assertion?.kind === "string" ? [`assertion=${assertion.kind}`] : []),
+      ...(typeof assertion?.passed === "boolean" ? [`passed=${assertion.passed}`] : []),
+    ];
+    return baseSummary({
+      execution,
+      evidenceIndex,
+      actionTaken: `Called ${execution.toolId}.`,
+      facts,
+      ...(result.ok === false ? { status: "failed", gaps: ["Browser operation reported an error outcome."] } : {}),
+      data: {
+        kind: "computer_use_browser",
+        operation,
+        page,
+        ...(observation ? { observation } : {}),
+        ...(assertion ? { assertion } : {}),
+        ...(Array.isArray(result.artifacts) ? { artifacts: result.artifacts.slice(0, PREVIEW_ITEM_LIMIT) } : {}),
+      },
+    });
+  }
+
+  if (execution.toolId === "read_discover" && type === "discover") {
     const candidates = result.operation === "list"
       ? (Array.isArray(result.entries) ? result.entries.filter(isRecord).map((entry) =>
           typeof entry.name === "string" ? entry.name : "unknown",
@@ -384,7 +409,7 @@ const summarizeToolResult = (
     });
   }
 
-  if (type === "list" && typeof result.path === "string" && Array.isArray(result.entries)) {
+  if (execution.toolId === "read_list" && type === "list" && typeof result.path === "string" && Array.isArray(result.entries)) {
     const entries = result.entries.filter(isRecord).map((entry) => ({
       name: typeof entry.name === "string" ? entry.name : "unknown",
       type: entry.type === "directory" ? "directory" : "file",
@@ -417,7 +442,7 @@ const summarizeToolResult = (
     });
   }
 
-  if (type === "open" && typeof result.path === "string" && isRecord(result.source)) {
+  if ((execution.toolId === "read_open" || execution.toolId === "read") && type === "open" && typeof result.path === "string" && isRecord(result.source)) {
     const text = typeof result.source.text === "string" ? result.source.text : "";
     const contentPreview = preview(text);
     const truncated = contentPreview.length < text.length;
@@ -444,7 +469,7 @@ const summarizeToolResult = (
     });
   }
 
-  if (type === "locate" && typeof result.query === "string" && Array.isArray(result.matches)) {
+  if ((execution.toolId === "read_locate" || execution.toolId === "grep") && type === "locate" && typeof result.query === "string" && Array.isArray(result.matches)) {
     const matches = result.matches.filter(isRecord).map((match) => ({
       path: typeof match.path === "string" ? match.path : "unknown",
       matchType: match.matchType === "content" ? "content" : "path",
@@ -487,6 +512,7 @@ const summarizeToolResult = (
 
   const unwrapped = isRecord(result.result) ? result.result : result;
   if (
+    (execution.toolId === "edit_file" || execution.toolId === "write_file" || execution.toolId === "replace_block") &&
     isRecord(unwrapped) &&
     typeof unwrapped.path === "string" &&
     (unwrapped.operation === "write_file" || unwrapped.operation === "replace_block")
@@ -521,6 +547,7 @@ const summarizeToolResult = (
   }
 
   if (
+    execution.toolId === "workspace_mutation" &&
     isRecord(unwrapped) &&
     typeof unwrapped.targetPath === "string" &&
     (unwrapped.operation === "write" ||
@@ -560,7 +587,7 @@ const summarizeToolResult = (
     });
   }
 
-  if (typeof result.query === "string" && Array.isArray(result.results)) {
+  if ((execution.toolId === "web_search" || execution.toolId === "news_search") && typeof result.query === "string" && Array.isArray(result.results)) {
     const results = result.results.filter(isRecord);
     const topFindings = results.slice(0, PREVIEW_ITEM_LIMIT).map((item) =>
       preview([item.title, item.snippet].filter((part) => typeof part === "string").join(": "), 180),
@@ -584,7 +611,7 @@ const summarizeToolResult = (
     });
   }
 
-  if (typeof result.command === "string" && "timedOut" in result) {
+  if (execution.toolId === "terminal_session" && typeof result.command === "string" && "timedOut" in result) {
     const timedOut = result.timedOut === true;
     const truncated = result.truncated === true;
     const exitCode = typeof result.exitCode === "number" || result.exitCode === null

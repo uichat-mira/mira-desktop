@@ -45,8 +45,8 @@ describe("read_open tool", () => {
       },
     });
 
-    expect((result.result as { type: string }).type).toBe("open");
-    expect((result.result as { source: { text: string } }).source.text).toContain("hello read open");
+    expect((result.structuredContent as { type: string }).type).toBe("open");
+    expect((result.structuredContent as { source: { text: string } }).source.text).toContain("hello read open");
     expect(artifacts).toHaveLength(1);
     expect(events[0]).toContain("Read plan:");
     expect(events[0]).not.toContain("@");
@@ -86,7 +86,7 @@ describe("read_open tool", () => {
       },
     });
 
-    const opened = result.result as {
+    const opened = result.structuredContent as {
       path: string;
       source: { text: string; metadata: Record<string, unknown> };
     };
@@ -114,7 +114,7 @@ describe("read_open tool", () => {
       },
     });
 
-    expect((result.result as { type: string }).type).toBe("open");
+    expect((result.structuredContent as { type: string }).type).toBe("open");
   });
 
   it("opens a declared line selection", async () => {
@@ -127,8 +127,8 @@ describe("read_open tool", () => {
       pushEvent() {},
       addArtifact(artifact) { return { id: "artifact-1", ...artifact }; },
     });
-    expect((result.result as { source: { text: string } }).source.text).toBe("two");
-    expect((result.result as { operation: string }).operation).toBe("extract");
+    expect((result.structuredContent as { source: { text: string } }).source.text).toBe("two");
+    expect((result.structuredContent as { operation: string }).operation).toBe("extract");
   });
 
   it("rejects unsupported selection kinds", async () => {

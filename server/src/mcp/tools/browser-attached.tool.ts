@@ -124,11 +124,6 @@ const descriptions: Record<BrowserAttachedToolName, string> = {
     "Upload explicit in-memory file content or download from the user's already-connected browser. Local host paths are not accepted.",
 };
 
-const toEvidenceData = (result: unknown): Record<string, unknown> =>
-  result && typeof result === "object" && !Array.isArray(result)
-    ? { provider: BROWSER_ATTACHED_PROVIDER, ...(result as Record<string, unknown>) }
-    : { provider: BROWSER_ATTACHED_PROVIDER, result };
-
 const createBrowserAttachedTool = (
   tool: BrowserAttachedToolName,
 ): ToolImplementation => ({
@@ -162,16 +157,10 @@ const createBrowserAttachedTool = (
     });
 
     return {
-      result,
-      evidence: {
-        actionTaken: `Called ${BROWSER_ATTACHED_PROVIDER} Attached Browser ${tool}.`,
-        facts: [
-          `tool=browser_attached_${tool}`,
-          `provider=${BROWSER_ATTACHED_PROVIDER}`,
-        ],
-        status: "completed",
-        data: toEvidenceData(result),
-      },
+      structuredContent: result,
+      ...(result && typeof result === "object" && (result as { ok?: unknown }).ok === false
+        ? { isError: true }
+        : {}),
     };
   },
 });

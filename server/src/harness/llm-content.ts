@@ -385,6 +385,19 @@ export const projectHarnessResultForLlm = (
   };
 };
 
+export const projectHarnessContentForLlm = (
+  content: Array<{ type: string; [key: string]: unknown }> | undefined,
+  charLimit = HARNESS_LLM_RESULT_CHAR_LIMIT,
+): HarnessLlmContent | undefined => {
+  if (!content?.length) return undefined;
+  const modelValue = content.map((block) => {
+    if (block.type === "text" && typeof block.text === "string") return block.text;
+    if (block.type === "json" && "json" in block) return block.json;
+    return block;
+  });
+  return projectHarnessResultForLlm(modelValue, charLimit);
+};
+
 export const getHarnessLlmContentText = (
   content: HarnessLlmContent | undefined,
 ) =>

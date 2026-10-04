@@ -319,22 +319,8 @@ export const codebaseExploreTool: ToolImplementation = {
       };
 
       return {
-        evidence: {
-          actionTaken: `Attempted controlled CodeGraph exploration for "${queryValue.trim()}".`,
-          facts: [
-            "capabilityId=codebase_explore",
-            "plannerExposure=controlled_tool_only",
-            "verifiedChunkCount=0",
-          ],
-          gaps: [blockedReason],
-          status: "partial",
-          data: {
-            kind: "codebase_explore",
-            runtimeMode: "unavailable",
-            fallbackRequired: true,
-          },
-        },
-        result: {
+
+        structuredContent: {
           capabilityId: "codebase_explore",
           plannerExposure: "controlled_tool_only",
           query: queryValue.trim(),
@@ -409,23 +395,8 @@ export const codebaseExploreTool: ToolImplementation = {
     });
 
     return {
-      evidence: {
-        actionTaken: retrievalSummary.actionTaken,
-        facts: retrievalSummary.keyFindings,
-        ...(retrievalSummary.gaps?.length
-          ? { gaps: retrievalSummary.gaps }
-          : {}),
-        status:
-          retrievalSummary.status === "completed" ? "completed" : "partial",
-        data: {
-          kind: "codebase_explore",
-          runtimeMode,
-          workspaceRoot,
-          query: retrieval.query,
-          verifiedChunkCount: retrieval.chunkCount,
-        },
-      },
-      result: {
+
+      structuredContent: {
         capabilityId: "codebase_explore",
         plannerExposure: "controlled_tool_only",
         workspaceRoot,

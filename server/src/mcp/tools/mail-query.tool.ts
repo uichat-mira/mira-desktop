@@ -171,7 +171,7 @@ export const mailQueryTool: ToolImplementation = {
         data: normalized.items,
         metadata: { resultCount: normalized.items.length, sensitiveFieldsExcluded: true },
       });
-      return { result: normalized };
+      return { structuredContent: normalized };
     } catch (error) {
       ownershipSpan.end({ status: "failed" });
       throw error;

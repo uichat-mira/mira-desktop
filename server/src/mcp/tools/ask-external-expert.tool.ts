@@ -75,17 +75,8 @@ export const createAskExternalExpertTool = (
     });
 
     return {
-      result,
-      evidence: {
-        actionTaken: "Received advice from the configured external expert.",
-        facts: [
-          "tool=ask_external_expert",
-          `status=${result.status}`,
-          `latencyMs=${result.latencyMs}`,
-        ],
-        status: "completed",
-        data: result,
-      },
+      structuredContent: result,
+
     };
   },
 });

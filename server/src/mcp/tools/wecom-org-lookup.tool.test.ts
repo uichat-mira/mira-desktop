@@ -203,7 +203,7 @@ describe("wecom_org_lookup tool", () => {
     });
 
     expect(getWecomUserByUserIdMock).toHaveBeenCalledWith("tomz");
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       success: true,
       departments: [
         { id: "2", name: "AI" },

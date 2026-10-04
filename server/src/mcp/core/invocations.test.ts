@@ -47,7 +47,7 @@ describe("mcp invocations", () => {
           data: "hello",
         });
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };
@@ -204,7 +204,7 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };
@@ -245,7 +245,7 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };
@@ -299,7 +299,7 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };
@@ -353,7 +353,7 @@ describe("mcp invocations", () => {
         receivedThreadId = context.threadId;
         receivedTurnId = context.turnId;
         return {
-          result: {
+          structuredContent: {
             ok: true,
           },
         };
@@ -401,7 +401,7 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: {
+          structuredContent: {
             ok: true,
           },
         };
@@ -435,7 +435,7 @@ describe("mcp invocations", () => {
       },
       execute() {
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     });
@@ -480,7 +480,7 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: {
+          structuredContent: {
             ok: true,
           },
         };
@@ -564,7 +564,7 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: {
+          structuredContent: {
             ok: true,
           },
         };
@@ -633,7 +633,7 @@ describe("mcp invocations", () => {
       },
       execute() {
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };

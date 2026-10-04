@@ -148,7 +148,7 @@ export const wecomNotifySendTool: ToolImplementation = {
     }
 
     return {
-      result: {
+      structuredContent: {
         success: true,
         target,
         summary,

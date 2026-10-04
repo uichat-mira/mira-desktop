@@ -120,7 +120,7 @@ export const newsSearchTool: ToolImplementation = {
     });
 
     return {
-      result: {
+      structuredContent: {
         query,
         provider: "local_news_hub" as const,
         capabilityId: "local-news-hub",

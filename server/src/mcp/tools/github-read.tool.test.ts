@@ -263,7 +263,7 @@ describe("GitHub read capability package", () => {
         commitLimit: 1,
       }),
     );
-    expect(repositoryResult.result).toMatchObject({
+    expect(repositoryResult.structuredContent).toMatchObject({
       repository: "dangjingtao/uichat-mira",
       metadata: { language: "TypeScript" },
       readme: { content: "# Mira" },
@@ -277,7 +277,7 @@ describe("GitHub read capability package", () => {
         includeComments: true,
       }),
     );
-    expect(issueResult.result).toMatchObject({
+    expect(issueResult.structuredContent).toMatchObject({
       mode: "detail",
       issue: { number: 12, title: "Issue title" },
       comments: [{ body: "Issue comment" }],
@@ -292,7 +292,7 @@ describe("GitHub read capability package", () => {
         includeReviews: true,
       }),
     );
-    expect(pullResult.result).toMatchObject({
+    expect(pullResult.structuredContent).toMatchObject({
       mode: "detail",
       pullRequest: { number: 7, title: "PR title" },
       files: [{ filename: "server/src/example.ts" }],
@@ -306,7 +306,7 @@ describe("GitHub read capability package", () => {
         includeJobs: true,
       }),
     );
-    expect(actionsResult.result).toMatchObject({
+    expect(actionsResult.structuredContent).toMatchObject({
       mode: "detail",
       run: { id: "99", conclusion: "success" },
       jobs: [{ name: "test", conclusion: "success" }],
