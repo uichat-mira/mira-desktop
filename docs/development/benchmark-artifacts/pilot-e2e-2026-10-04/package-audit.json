@@ -1,6 +1,6 @@
 {
   "schemaVersion": "mira-agent-core-benchmark-package-audit/0.1",
-  "auditedAt": "2026-10-04T04:23:00.878Z",
+  "auditedAt": "2026-10-04T04:27:56.901Z",
   "reportRoot": "pilot-e2e-2026-10-04",
   "benchmark": {
     "caseSetVersion": "core-v0.1",
@@ -17,6 +17,7 @@
       "caseId": "ADV-08",
       "repetition": 1,
       "path": "cases/ADV-08/repetitions/1",
+      "judgePackagePath": "judge-packages/ADV-08/rep-1",
       "semanticCriterionIds": [
         "C4",
         "C5"
@@ -27,6 +28,7 @@
       "caseId": "beginner-02-locate-release-checklist",
       "repetition": 1,
       "path": "cases/beginner-02-locate-release-checklist/repetitions/1",
+      "judgePackagePath": null,
       "semanticCriterionIds": [],
       "identityOk": true
     },
@@ -34,6 +36,7 @@
       "caseId": "beginner-07-rename-one-file",
       "repetition": 1,
       "path": "cases/beginner-07-rename-one-file/repetitions/1",
+      "judgePackagePath": null,
       "semanticCriterionIds": [],
       "identityOk": true
     },
@@ -41,6 +44,7 @@
       "caseId": "intermediate-health-status-call-chain",
       "repetition": 1,
       "path": "cases/intermediate-health-status-call-chain/repetitions/1",
+      "judgePackagePath": "judge-packages/intermediate-health-status-call-chain/rep-1",
       "semanticCriterionIds": [
         "C1"
       ],

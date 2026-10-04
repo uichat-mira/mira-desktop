@@ -60,11 +60,37 @@ for (const c of manifest.cases ?? []) {
     if (result?.judge?.semanticResults !== null) errors.push("pre-Judge result unexpectedly contains semanticResults");
     const judgeCriteria = judgeInput?.semanticCriteria?.criteria ?? [];
     if (judgeCriteria.some((x) => x.scorer !== "judge")) errors.push("judge-input exposes non-judge criterion");
+
+    let judgePackagePath = null;
+    if (judgeCriteria.length > 0) {
+      const judgeRoot = path.join(root, "judge-packages", c.caseId, `rep-${rep}`);
+      const judgeRequired = ["case.json", "execution.json", "trajectory.jsonl", "result.json", "judge-input.json"];
+      const judgeMissing = judgeRequired.filter((f) => !fs.existsSync(path.join(judgeRoot, f)));
+      if (judgeMissing.length) {
+        errors.push(`judge transport package missing: ${judgeMissing.join(", ")}`);
+      } else {
+        const canonical = {
+          "case.json": caseFile,
+          "execution.json": path.join(repRoot, "execution.json"),
+          "trajectory.jsonl": path.join(repRoot, "trajectory.jsonl"),
+          "result.json": path.join(repRoot, "result.json"),
+          "judge-input.json": path.join(repRoot, "judge-input.json"),
+        };
+        for (const name of judgeRequired) {
+          if (!fs.readFileSync(canonical[name]).equals(fs.readFileSync(path.join(judgeRoot, name)))) {
+            errors.push(`judge transport package differs from canonical ${name}`);
+          }
+        }
+      }
+      judgePackagePath = path.relative(root, judgeRoot).split(path.sep).join("/");
+    }
+
     if (errors.length) findings.push({ type: "identity", caseId: c.caseId, repetition: rep, errors });
     packages.push({
       caseId: c.caseId,
       repetition: rep,
       path: path.relative(root, repRoot).split(path.sep).join("/"),
+      judgePackagePath,
       semanticCriterionIds: judgeCriteria.map((x) => x.id),
       identityOk: errors.length === 0,
     });

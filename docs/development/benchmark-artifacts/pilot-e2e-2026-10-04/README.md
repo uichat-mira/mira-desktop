@@ -26,9 +26,15 @@ This directory is the frozen GitHub evidence package for the #224 Pilot E2E run.
 
 ## Judge handoff
 
-Each repetition package lives under cases/<case-id>/repetitions/<n>/ and includes execution.json, trajectory.jsonl, result.json, and judge-input.json; the matching frozen case.json is at the case root.
+The canonical Recorder tree remains under cases/<case-id>/. For semantic handoff, each required repetition also has an immutable transport package under judge-packages/<case-id>/rep-<n>/ containing exactly:
 
-Only I08 (C1) and ADV-08 (C4, C5) require semantic judging. B02 and B07 are fully deterministic.
+- case.json
+- execution.json
+- trajectory.jsonl
+- result.json
+- judge-input.json
+
+Only I08 (C1) and ADV-08 (C4, C5) require semantic judging. B02 and B07 are fully deterministic. The transport files are byte-identical copies of their canonical Recorder artifacts; package-audit.json verifies this before publication.
 
 The fresh blank Judge must read only the exact repetition package plus its case contract and answer only semanticCriteria.questions. It must not override timing, terminal, hard-fail, side-effect, or deterministic criterion facts.
 
