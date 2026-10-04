@@ -2,6 +2,7 @@ import type {
   ToolInvocation,
   ToolTrace,
   ToolInvocationEvent,
+  ToolContentBlock,
 } from "../mcp/core/definitions.js";
 import {
   clearInvocations,
@@ -17,7 +18,6 @@ import {
   projectHarnessContentForLlm,
   type HarnessLlmContent,
 } from "./llm-content.js";
-import { clearNormalizedToolContent, deleteNormalizedToolContent, getNormalizedToolContent } from "../mcp/core/tool-result.js";
 
 export type HarnessInvocationRecord = ToolInvocation & {
   llmContent?: HarnessLlmContent;
@@ -26,9 +26,13 @@ export type HarnessInvocationRecord = ToolInvocation & {
 export const executeHarnessInvocation = async (
   input: ExecuteInvocationInput,
 ): Promise<HarnessInvocationRecord> => {
+  let modelContent: ToolContentBlock[] | undefined;
   const record = await executeInvocation({
     ...input,
     environment: input.environment ?? getHarnessEnvironmentSnapshot(),
+    onResultContent: (content) => {
+      modelContent = content;
+    },
   });
 
   if (record.status !== "completed") {
@@ -36,9 +40,8 @@ export const executeHarnessInvocation = async (
   }
 
   const llmContent =
-    projectHarnessContentForLlm(getNormalizedToolContent(record.id)) ??
+    projectHarnessContentForLlm(modelContent) ??
     projectHarnessResultForLlm(record.result);
-  deleteNormalizedToolContent(record.id);
   return llmContent ? { ...record, llmContent } : record;
 };
 
@@ -55,5 +58,4 @@ export const getHarnessInvocationTrace = (
 
 export const clearHarnessInvocations = () => {
   clearInvocations();
-  clearNormalizedToolContent();
 };

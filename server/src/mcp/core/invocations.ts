@@ -7,6 +7,7 @@ import type {
   StructuredInvocationErrorDetail,
   ToolInvocationEvent,
   ToolInvocationEventInput,
+  ToolContentBlock,
 } from "./definitions.js";
 import { withEventMeta } from "./events.js";
 import { ToolApprovalRequiredError, mcpBadRequest, mcpNotFound } from "./errors.js";
@@ -32,11 +33,7 @@ import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { validateInvocationArgs } from "./schema.js";
 import { redactExternalMcpValue } from "../external-redaction.js";
 import { computerUseRepository } from "@/db/repositories/computer-use/repository.js";
-import {
-  normalizeToolResult,
-  projectToolEvidence,
-  storeNormalizedToolContent,
-} from "./tool-result.js";
+import { normalizeToolResult, projectToolEvidence } from "./tool-result.js";
 
 const COMPUTER_USE_TOOL_IDS = new Set([
   "browser_observe",
@@ -261,6 +258,8 @@ export interface ExecuteInvocationInput {
   turnId?: string;
   signal?: AbortSignal;
   environment?: ToolExecutionEnvironment;
+  /** Internal callback for model-facing content; never serialized onto ToolInvocation. */
+  onResultContent?: (content: ToolContentBlock[]) => void;
   approvedInvocations?: Array<{
     toolId: string;
     inputHash: string;
@@ -423,7 +422,7 @@ export const executeInvocation = async (
           structuredContent: redactExternalMcpValue(normalized.structuredContent),
         }
       : normalized;
-    storeNormalizedToolContent(invocationId, safeNormalized.content);
+    input.onResultContent?.(safeNormalized.content);
     const projectedEvidence = projectToolEvidence(tool.definition, safeNormalized);
     if (projectedEvidence !== undefined) {
       record.evidence = tool.definition.source === "external"

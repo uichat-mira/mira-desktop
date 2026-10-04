@@ -292,7 +292,7 @@ describe("Attached Browser Harness tools", () => {
     );
     expect(invocation.evidence).toEqual(
       expect.objectContaining({
-        facts: expect.arrayContaining(["tool=browser_attached_look"]),
+        facts: expect.arrayContaining(["operation=browser_attached_look"]),
         data: expect.objectContaining({
           kind: "computer_use_browser",
           operation: "browser_attached_look",

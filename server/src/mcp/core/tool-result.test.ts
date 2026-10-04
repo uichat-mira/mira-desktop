@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { clearHarnessRegistry, registerTool } from "@/harness/registry.js";
 import { clearHarnessInvocations, executeHarnessInvocation } from "@/harness/invocations.js";
-import type { ToolImplementation } from "./definitions.js";
+import type { ToolImplementation, ToolDefinition } from "./definitions.js";
+import { normalizeToolResult, projectToolEvidence } from "./tool-result.js";
 
 const context = (tool: ToolImplementation) => tool;
 
@@ -87,5 +88,77 @@ describe("ToolResult B-prime normalization", () => {
 
     expect(record.status).toBe("failed");
     expect(record.error?.message).toBe("runtime failure");
+  });
+
+  const definition = (id: string, source: ToolDefinition["source"] = "internal", domain: ToolDefinition["domain"] = "read") => ({
+    id,
+    source,
+    domain,
+  });
+
+  it("preserves semantic terminal timeout evidence without changing invocation status", () => {
+    const evidence = projectToolEvidence(
+      definition("terminal_session", "internal", "terminal"),
+      normalizeToolResult({
+        structuredContent: {
+          command: "pnpm test",
+          timedOut: true,
+          exitCode: null,
+          stdout: "partial output",
+          stderr: "",
+          stdoutEncoding: "utf8",
+          stderrEncoding: "utf8",
+          truncated: false,
+        },
+      }),
+    );
+    expect(evidence?.status).toBe("timed_out");
+    expect(evidence?.data).toMatchObject({
+      kind: "terminal_session",
+      commandSucceeded: "unknown",
+      processCompleted: false,
+      timedOut: true,
+    });
+  });
+
+  it("preserves degraded codebase exploration as partial evidence", () => {
+    const evidence = projectToolEvidence(
+      definition("codebase_explore"),
+      normalizeToolResult({
+        structuredContent: {
+          verifiedEvidenceInput: { query: "runtime", chunks: [] },
+          retrievalEvidence: { query: "runtime", chunkCount: 0, chunks: [] },
+          exploreResult: {
+            status: "degraded",
+            degraded: true,
+            fallbackSignal: { reason: "provider unavailable" },
+          },
+        },
+      }),
+    );
+    expect(evidence?.status).toBe("partial");
+    expect(evidence?.facts).toContain("degraded=true");
+    expect(evidence?.gaps?.join(" ")).toMatch(/partial/i);
+  });
+
+  it("routes External MCP only through the explicit external MCP boundary", () => {
+    const remote = projectToolEvidence(
+      definition("mcp:docs:tool:search", "external", "external_mcp"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "external_mcp",
+          serverId: "docs",
+          remoteToolName: "search",
+          invocationStatus: "completed",
+          result: { matches: 2 },
+        },
+      }),
+    );
+    const futureExternal = projectToolEvidence(
+      definition("external_future_tool", "external", "read"),
+      normalizeToolResult({ structuredContent: { ok: true } }),
+    );
+    expect(remote?.data).toMatchObject({ kind: "external_mcp", serverId: "docs" });
+    expect(futureExternal?.data).toMatchObject({ kind: "generic_structured" });
   });
 });
