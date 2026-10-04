@@ -8,7 +8,7 @@
     "baseCommit": "3bafb964d3beeb7ce2635b25090969ca1c46c95b",
     "contract": {
       "path": "docs/development/agent-core-benchmark-v0.1.md",
-      "blobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86"
+      "blobSha": "384950bb07fd6024787142990fc1debdf01c9a3c"
     },
     "candidatePacks": [
       {
