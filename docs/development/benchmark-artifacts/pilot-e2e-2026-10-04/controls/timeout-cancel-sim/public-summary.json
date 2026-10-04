@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-public-summary/0.1",
+  "benchmarkVersion": "0.1",
+  "caseSetVersion": "core-v0.1",
+  "runCount": 1,
+  "terminalDistribution": {
+    "cancelled": 1
+  },
+  "timingState": "frozen",
+  "results": [
+    {
+      "schemaVersion": "mira-agent-core-benchmark-public-result/0.1",
+      "benchmarkVersion": "0.1",
+      "caseSetVersion": "core-v0.1",
+      "caseId": "beginner-02-locate-release-checklist",
+      "repetition": 1,
+      "executionMode": "adapted",
+      "comparable": true,
+      "terminalStatus": "cancelled",
+      "plannerIterations": 0,
+      "toolCallCount": 0,
+      "parentToolCallCount": 0,
+      "childToolCallCount": 0,
+      "delegationCount": 0,
+      "approvalCount": 0,
+      "resumeCount": 0,
+      "repeatedSemanticActionCount": 0,
+      "elapsedMs": 1463,
+      "timingState": "frozen",
+      "workspaceChanged": false,
+      "observabilityGapCount": 1,
+      "semanticScore": null,
+      "semanticOutcome": null,
+      "hardFail": null
+    }
+  ]
+}

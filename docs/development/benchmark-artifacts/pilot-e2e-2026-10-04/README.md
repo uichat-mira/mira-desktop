@@ -24,6 +24,21 @@ This directory is the frozen GitHub evidence package for the #224 Pilot E2E run.
 - adapted execution: all four repetitions
 - human task-solving intervention: none
 
+## Controlled timeout simulation
+
+A separate non-scored control run is preserved under `controls/timeout-cancel-sim/`.
+
+- frozen case: B02
+- executor cancel control: 1000ms
+- observed elapsed: 1463ms
+- terminal: `cancelled`
+- `cancelRequested=true`
+- `hardCutoffApplied=false`
+- workspace unchanged
+- excluded from Pilot scored aggregation
+
+This is evidence for the #224 controlled-timeout/cancel path. It is deliberately not presented as a real `T_hard` event and does not alter the frozen case timing contract.
+
 ## Judge handoff
 
 The canonical Recorder tree remains under cases/<case-id>/. For semantic handoff, each required repetition also has an immutable transport package under judge-packages/<case-id>/rep-<n>/ containing exactly:
