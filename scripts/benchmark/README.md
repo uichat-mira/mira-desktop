@@ -104,7 +104,7 @@ The runner fails fast instead of quietly doing nothing:
 fixture each needs, the supported mechanical approval policy, and the per-case
 comparability classification. Case
 **prompts** come from the case-set manifest
-(`docs/development/agent-core-benchmark-v0.1-case-set-rc1.json`), so they are not
+(`docs/development/agent-core-benchmark-v0.1-case-set.json`), so they are not
 duplicated here.
 
 ## Output bundle
@@ -150,32 +150,18 @@ Per repetition under `<out>/<timestamp>/<case-id>/rep-<n>/`:
 - `workspace` — before/after manifest hashes, diff, external target hashes.
 - `notes`, `observerGaps`.
 
-## Calibration mode
+## Frozen timing and diagnostic cases
 
-The RC case set stores `tSoftMs = null` / `tHardMs = null`
-(see `docs/development/agent-core-benchmark-v0.1-calibration.md`). When timing is
-not frozen the runner:
+The frozen `core-v0.1` manifest contains two explicit participation modes:
 
-- starts a monotonic timer immediately before submitting the case to Mira;
-- records complete elapsed time;
-- **does not invent** a soft/hard cutoff and does not fail a case for having no
-  timeout. `timing.calibrationMode = true`.
+- `automated_scored`: 17 cases with measured `T_soft` / `T_hard`; the runner applies the #216 soft-timeout / hard-cutoff behaviour.
+- `diagnostic_untimed`: 8 cases whose calibration evidence did not support a fair automated time budget; their timing values intentionally remain null.
 
-Once #220 freezes per-case `T_soft`/`T_hard`, the same runner applies the #216
-soft-timeout / hard-cutoff behaviour (`softTimeoutSeen`, `hardCutoffApplied`,
-`cancelRequested`).
-
-Because a run with no timeout still needs a liveness bound, the runner has a
-`--max-wait-ms` safety bound. When it trips it is recorded separately as
-`timing.runnerSafetyCapReached`; it is not treated as a case timing cutoff.
+For an untimed diagnostic case the runner still starts a monotonic timer and records real elapsed time, but does not invent a benchmark cutoff. The independent `--max-wait-ms` safety bound remains a liveness guard and is always recorded separately as `timing.runnerSafetyCapReached`.
 
 ## Platform and execution classification
 
-Windows 11 + PowerShell 7 is the reference baseline. Acceptance is
-platform-neutral: the same HTTP control surface, model access path, fixture,
-governance and observability semantics are used on Intel macOS, so dry-runs here
-are recorded as `adapted` (a different executor script/host with equivalent test
-conditions), not `noncanonical`.
+Timing acceptance is platform-neutral under #220. Every run records the actual host, runtime and procedure. A run is comparable when it preserves the frozen information/capability boundaries, fixture, provider path, governance and observability semantics; host OS alone is not a timing gate. `canonical | adapted | noncanonical` remains an execution-procedure classification, not an OS label.
 
 ## Fixtures
 
@@ -212,7 +198,7 @@ Selection files:
 - `selections/batch-4.json`
 - `selections/batch-5.json`
 
-Each selection contains 5 frozen RC1 cases and defaults to 3 repetitions. Run one batch at a time against the same pinned Mira `dev` commit/backend:
+These four files are historical calibration selections for RC1 and remain frozen with the calibration artifacts. Formal Core v0.1 runs consume the final manifest; do not reinterpret the old batch selections as the official scored case list.
 
 ```bash
 MIRA_BENCH_USERNAME=... MIRA_BENCH_PASSWORD=... \
