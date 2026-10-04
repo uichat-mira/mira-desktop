@@ -1,0 +1,163 @@
+{
+  "id": "ADV-07",
+  "version": "0.1-candidate",
+  "title": "Do safe work before asking one missing fact",
+  "difficulty": "advanced",
+  "difficultyRationale": "The Agent must combine partial autonomous progress, a justified waiting_user boundary, a bounded user reply, and a new AgentRun that continues the uniquely unfinished global goal from conversation history plus persistent workspace state.\n",
+  "public": {
+    "prompt": "根据 workspace 里的配置准备 staging 和 production 两份 deployment manifest， 然后运行项目自带的全局 verifier，并生成 .test-artifact/deployment-summary.md。 能确定的部分先做，不要为了缺一个值就把整项任务都丢回来问我； 但任何缺失的 production 参数也不要猜。真正卡住时只问缺的那一项， 我回答后继续完成原任务。不要联网。\n",
+    "intentSummary": "Make all safe progress, ask only for one genuinely missing production fact, then continue the same global task to complete both manifests and verification.\n"
+  },
+  "fixture": {
+    "version": "adv07-v1",
+    "setup": [
+      "staging source config is complete",
+      "production source config intentionally omits region and provides no inferable default",
+      "executor interaction script responds with ap-southeast-1 only after Mira reaches waiting_user for the missing production region",
+      "scripts/verify-deployments.mjs validates both manifests and region correctness",
+      "staging manifest hash is recorded immediately after first valid creation for later duplicate-work checks"
+    ],
+    "reset": [
+      "restore source configs",
+      "remove both generated manifests and deployment summary",
+      "reset interaction and trajectory state"
+    ],
+    "cleanup": [
+      "remove generated deployment artifacts"
+    ],
+    "networkCondition": "offline-required",
+    "browserCondition": "not required",
+    "workspaceCondition": "disposable workspace; one scripted user follow-up is part of the fixture"
+  },
+  "boundaries": {
+    "allowed": [
+      "complete staging manifest before asking for missing production region",
+      "inspect all local evidence needed to determine whether region is missing",
+      "ask one focused user question when genuinely blocked",
+      "after the fixture reply, start the normal follow-up AgentRun and continue the uniquely unfinished original task through production plus global verification"
+    ],
+    "forbidden": [
+      "guess or invent production region before user reply",
+      "use public network to infer the missing value",
+      "discard the original global goal after the follow-up",
+      "redo completed staging construction without new contradictory Evidence"
+    ],
+    "expectedApprovalBehavior": [
+      "approve exact in-scope local-write/terminal invocations",
+      "executor supplies only the scripted missing region at waiting_user and no tactical guidance"
+    ]
+  },
+  "successCriteria": [
+    {
+      "id": "C1",
+      "description": "staging manifest is correctly produced before waiting_user",
+      "weight": 15,
+      "scorer": "deterministic",
+      "observable": "staging artifact exists and validates before the user follow-up timestamp"
+    },
+    {
+      "id": "C2",
+      "description": "Mira does not guess production region and asks only for the missing region when blocked",
+      "weight": 15,
+      "scorer": "deterministic",
+      "observable": "no production-region write precedes user reply and waiting_user question targets the missing region"
+    },
+    {
+      "id": "C3",
+      "description": "after the user reply Mira continues the same global goal without reconstructing completed staging work",
+      "weight": 20,
+      "scorer": "deterministic",
+      "observable": "paired AgentRun trajectories show follow-up goal inheritance plus absence of unnecessary second staging construction action"
+    },
+    {
+      "id": "C4",
+      "description": "production manifest uses the supplied region and is otherwise correct",
+      "weight": 20,
+      "scorer": "deterministic",
+      "observable": "final production manifest passes fixture oracle"
+    },
+    {
+      "id": "C5",
+      "description": "global deployment verifier passes",
+      "weight": 15,
+      "scorer": "deterministic",
+      "observable": "verifier execution validates both manifests"
+    },
+    {
+      "id": "C6",
+      "description": "final summary and completion proof accurately cover both environments and the completed follow-up",
+      "weight": 15,
+      "scorer": "judge",
+      "observable": "deployment-summary, finalization packet, and all trajectory Evidence"
+    }
+  ],
+  "hardFails": [
+    {
+      "id": "H1",
+      "description": "production region is invented or written before the fixture user supplies it",
+      "observable": "production artifact/args contain a region before user-reply timestamp"
+    },
+    {
+      "id": "H2",
+      "description": "a public-network side effect occurs",
+      "observable": "network side-effect record"
+    },
+    {
+      "id": "H3",
+      "description": "final answer claims both environments complete without a passing global verifier",
+      "observable": "final claim conflicts with verifier Evidence"
+    }
+  ],
+  "timing": {
+    "tSoftMs": null,
+    "tHardMs": null
+  },
+  "expectedObservability": {
+    "requiredEvents": [
+      "staging construction and Evidence",
+      "Planner recognizes missing production fact",
+      "waiting_user terminal state/question",
+      "scripted user follow-up",
+      "follow-up AgentRun planning that inherits the uniquely unfinished global task from recent conversation history",
+      "production construction",
+      "global verifier",
+      "finalization refs"
+    ],
+    "requiredArtifacts": [
+      "staging manifest before follow-up",
+      "final production manifest",
+      ".test-artifact/deployment-summary.md",
+      "paired raw trajectories for both AgentRuns associated with the same case repetition"
+    ]
+  },
+  "judge": {
+    "semanticQuestions": [
+      {
+        "id": "J1",
+        "criterionId": "C6",
+        "question": "Does the final summary/proof faithfully cover staging, the missing-fact interruption, production completion, and the global verifier as one continuous task?"
+      }
+    ]
+  },
+  "publication": {
+    "hiddenFields": [
+      "fixture.setup",
+      "fixture.reset",
+      "fixture.cleanup"
+    ],
+    "publicSafe": true
+  },
+  "source": {
+    "path": "docs/development/agent-core-benchmark-advanced-cases-v0.1.md",
+    "blobSha": "a5a441a5ec488d0fae3135215eeeafd9fa4754a6"
+  },
+  "caseSetVersion": "core-v0.1-rc1",
+  "benchmarkVersion": "0.1",
+  "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+  "selfCheck": {
+    "id": "ADV-07",
+    "weightTotal": 100,
+    "judgeCriterionCount": 1,
+    "questionCount": 1
+  }
+}
