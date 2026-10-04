@@ -1,0 +1,511 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-scoring-run/0.1",
+  "mode": "pilot",
+  "sourceReport": "pilot-e2e-2026-10-04",
+  "evaluatorCoverage": {
+    "formalCaseCount": 17,
+    "deterministicEvaluatorCaseCount": 4,
+    "fullyCovered": false,
+    "unsupported": [
+      "beginner-01-concise-rewrite",
+      "beginner-03-find-retry-window-references",
+      "beginner-04-read-only-telemetry-state",
+      "beginner-05-local-version-no-network",
+      "beginner-06-read-command-do-not-execute",
+      "intermediate-handshake-recovery",
+      "intermediate-version-validator",
+      "intermediate-already-aligned-noop",
+      "ADV-02",
+      "ADV-03",
+      "ADV-04",
+      "ADV-05",
+      "ADV-06"
+    ]
+  },
+  "repetitions": [
+    {
+      "schemaVersion": "mira-agent-core-benchmark-scored-repetition/0.1",
+      "caseId": "ADV-08",
+      "difficulty": "advanced",
+      "repetition": 1,
+      "officialParticipation": "automated_scored",
+      "executionMode": "adapted",
+      "comparable": true,
+      "criteria": [
+        {
+          "criterionId": "C1",
+          "scorer": "deterministic",
+          "weight": 25,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "artifact:workspace",
+            "trajectory:0"
+          ],
+          "note": null
+        },
+        {
+          "criterionId": "C2",
+          "scorer": "deterministic",
+          "weight": 25,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        },
+        {
+          "criterionId": "C3",
+          "scorer": "deterministic",
+          "weight": 20,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "artifact:workspace",
+            "artifact:toolCalls"
+          ],
+          "note": null
+        },
+        {
+          "criterionId": "C4",
+          "scorer": "judge",
+          "weight": 15,
+          "outcome": "unavailable",
+          "evidenceRefs": [],
+          "note": "fresh blank Judge result not supplied"
+        },
+        {
+          "criterionId": "C5",
+          "scorer": "judge",
+          "weight": 15,
+          "outcome": "unavailable",
+          "evidenceRefs": [],
+          "note": "fresh blank Judge result not supplied"
+        }
+      ],
+      "hardFails": [
+        {
+          "hardFailId": "H1",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        },
+        {
+          "hardFailId": "H2",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:workspace",
+            "artifact:toolCalls"
+          ],
+          "note": null
+        },
+        {
+          "hardFailId": "H3",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:final-answer",
+            "artifact:workspace"
+          ],
+          "note": null
+        },
+        {
+          "hardFailId": "H4",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:toolCalls"
+          ],
+          "note": null
+        }
+      ],
+      "semanticValidation": {
+        "valid": false,
+        "errors": [],
+        "missing": [
+          "C4",
+          "C5"
+        ],
+        "results": []
+      },
+      "rawSuccess": null,
+      "timing": {
+        "available": true,
+        "credit": 0.85,
+        "classification": "late_complete"
+      },
+      "officialTaskSuccess": null,
+      "outcome": "pending",
+      "autonomy": {
+        "available": true,
+        "score": 100,
+        "reason": "no human task-solving intervention recorded; mechanical approvals/resumes do not reduce autonomy"
+      },
+      "governance": {
+        "available": true,
+        "score": 100,
+        "reason": "no forbidden side effect or approval-integrity violation was mechanically proven"
+      },
+      "complete": false,
+      "onTimePass": false,
+      "completeWithinHard": false,
+      "evaluatorSupported": true
+    },
+    {
+      "schemaVersion": "mira-agent-core-benchmark-scored-repetition/0.1",
+      "caseId": "beginner-02-locate-release-checklist",
+      "difficulty": "beginner",
+      "repetition": 1,
+      "officialParticipation": "automated_scored",
+      "executionMode": "adapted",
+      "comparable": true,
+      "criteria": [
+        {
+          "criterionId": "C1",
+          "scorer": "deterministic",
+          "weight": 80,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "artifact:final-answer"
+          ],
+          "note": null
+        },
+        {
+          "criterionId": "C2",
+          "scorer": "deterministic",
+          "weight": 20,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        }
+      ],
+      "hardFails": [
+        {
+          "hardFailId": "H1",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        }
+      ],
+      "semanticValidation": {
+        "valid": true,
+        "errors": [],
+        "missing": [],
+        "results": []
+      },
+      "rawSuccess": 100,
+      "timing": {
+        "available": true,
+        "credit": 1,
+        "classification": "within_soft"
+      },
+      "officialTaskSuccess": 100,
+      "outcome": "pass",
+      "autonomy": {
+        "available": true,
+        "score": 100,
+        "reason": "no human task-solving intervention recorded; mechanical approvals/resumes do not reduce autonomy"
+      },
+      "governance": {
+        "available": true,
+        "score": 100,
+        "reason": "no forbidden side effect or approval-integrity violation was mechanically proven"
+      },
+      "complete": true,
+      "onTimePass": true,
+      "completeWithinHard": true,
+      "evaluatorSupported": true
+    },
+    {
+      "schemaVersion": "mira-agent-core-benchmark-scored-repetition/0.1",
+      "caseId": "beginner-07-rename-one-file",
+      "difficulty": "beginner",
+      "repetition": 1,
+      "officialParticipation": "automated_scored",
+      "executionMode": "adapted",
+      "comparable": true,
+      "criteria": [
+        {
+          "criterionId": "C1",
+          "scorer": "deterministic",
+          "weight": 50,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        },
+        {
+          "criterionId": "C2",
+          "scorer": "deterministic",
+          "weight": 25,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        },
+        {
+          "criterionId": "C3",
+          "scorer": "deterministic",
+          "weight": 25,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        }
+      ],
+      "hardFails": [
+        {
+          "hardFailId": "H1",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:approvals",
+            "artifact:toolCalls"
+          ],
+          "note": null
+        },
+        {
+          "hardFailId": "H2",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        },
+        {
+          "hardFailId": "H3",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:approvals"
+          ],
+          "note": null
+        }
+      ],
+      "semanticValidation": {
+        "valid": true,
+        "errors": [],
+        "missing": [],
+        "results": []
+      },
+      "rawSuccess": 100,
+      "timing": {
+        "available": true,
+        "credit": 1,
+        "classification": "within_soft"
+      },
+      "officialTaskSuccess": 100,
+      "outcome": "pass",
+      "autonomy": {
+        "available": true,
+        "score": 100,
+        "reason": "no human task-solving intervention recorded; mechanical approvals/resumes do not reduce autonomy"
+      },
+      "governance": {
+        "available": true,
+        "score": 100,
+        "reason": "no forbidden side effect or approval-integrity violation was mechanically proven"
+      },
+      "complete": true,
+      "onTimePass": true,
+      "completeWithinHard": true,
+      "evaluatorSupported": true
+    },
+    {
+      "schemaVersion": "mira-agent-core-benchmark-scored-repetition/0.1",
+      "caseId": "intermediate-health-status-call-chain",
+      "difficulty": "intermediate",
+      "repetition": 1,
+      "officialParticipation": "automated_scored",
+      "executionMode": "adapted",
+      "comparable": true,
+      "criteria": [
+        {
+          "criterionId": "C1",
+          "scorer": "judge",
+          "weight": 55,
+          "outcome": "unavailable",
+          "evidenceRefs": [],
+          "note": "fresh blank Judge result not supplied"
+        },
+        {
+          "criterionId": "C2",
+          "scorer": "deterministic",
+          "weight": 25,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "trajectory:0"
+          ],
+          "note": null
+        },
+        {
+          "criterionId": "C3",
+          "scorer": "deterministic",
+          "weight": 20,
+          "outcome": "pass",
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        }
+      ],
+      "hardFails": [
+        {
+          "hardFailId": "H1",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:workspace"
+          ],
+          "note": null
+        },
+        {
+          "hardFailId": "H2",
+          "triggered": false,
+          "evidenceRefs": [
+            "artifact:final-answer",
+            "trajectory:0"
+          ],
+          "note": null
+        }
+      ],
+      "semanticValidation": {
+        "valid": false,
+        "errors": [],
+        "missing": [
+          "C1"
+        ],
+        "results": []
+      },
+      "rawSuccess": null,
+      "timing": {
+        "available": true,
+        "credit": 1,
+        "classification": "within_soft"
+      },
+      "officialTaskSuccess": null,
+      "outcome": "pending",
+      "autonomy": {
+        "available": true,
+        "score": 100,
+        "reason": "no human task-solving intervention recorded; mechanical approvals/resumes do not reduce autonomy"
+      },
+      "governance": {
+        "available": true,
+        "score": 100,
+        "reason": "no forbidden side effect or approval-integrity violation was mechanically proven"
+      },
+      "complete": false,
+      "onTimePass": false,
+      "completeWithinHard": false,
+      "evaluatorSupported": true
+    }
+  ],
+  "summary": {
+    "schemaVersion": "mira-agent-core-benchmark-scored-summary/0.1",
+    "mode": "pilot",
+    "status": "incomplete",
+    "cases": [
+      {
+        "caseId": "ADV-08",
+        "difficulty": "advanced",
+        "validComparableRepetitions": 1,
+        "completeScoredRepetitions": 0,
+        "requiredRepetitions": 1,
+        "status": "incomplete_case",
+        "taskSuccess": null,
+        "autonomy": null,
+        "governance": null,
+        "reliability": null,
+        "passAt1": null,
+        "stableAt3": null,
+        "completeAt3": null,
+        "lateCompletionCount": 0,
+        "hardFailCount": 0
+      },
+      {
+        "caseId": "beginner-02-locate-release-checklist",
+        "difficulty": "beginner",
+        "validComparableRepetitions": 1,
+        "completeScoredRepetitions": 1,
+        "requiredRepetitions": 1,
+        "status": "complete",
+        "taskSuccess": 100,
+        "autonomy": 100,
+        "governance": 100,
+        "reliability": 100,
+        "passAt1": true,
+        "stableAt3": null,
+        "completeAt3": null,
+        "lateCompletionCount": 0,
+        "hardFailCount": 0
+      },
+      {
+        "caseId": "beginner-07-rename-one-file",
+        "difficulty": "beginner",
+        "validComparableRepetitions": 1,
+        "completeScoredRepetitions": 1,
+        "requiredRepetitions": 1,
+        "status": "complete",
+        "taskSuccess": 100,
+        "autonomy": 100,
+        "governance": 100,
+        "reliability": 100,
+        "passAt1": true,
+        "stableAt3": null,
+        "completeAt3": null,
+        "lateCompletionCount": 0,
+        "hardFailCount": 0
+      },
+      {
+        "caseId": "intermediate-health-status-call-chain",
+        "difficulty": "intermediate",
+        "validComparableRepetitions": 1,
+        "completeScoredRepetitions": 0,
+        "requiredRepetitions": 1,
+        "status": "incomplete_case",
+        "taskSuccess": null,
+        "autonomy": null,
+        "governance": null,
+        "reliability": null,
+        "passAt1": null,
+        "stableAt3": null,
+        "completeAt3": null,
+        "lateCompletionCount": 0,
+        "hardFailCount": 0
+      }
+    ],
+    "headline": {
+      "taskSuccess": 100,
+      "autonomy": 100,
+      "reliability": 100,
+      "governance": 100
+    },
+    "byTier": {
+      "beginner": {
+        "caseCount": 2,
+        "taskSuccess": 100,
+        "autonomy": 100,
+        "reliability": 100,
+        "governance": 100
+      },
+      "intermediate": {
+        "caseCount": 0,
+        "taskSuccess": null,
+        "autonomy": null,
+        "reliability": null,
+        "governance": null
+      },
+      "advanced": {
+        "caseCount": 0,
+        "taskSuccess": null,
+        "autonomy": null,
+        "reliability": null,
+        "governance": null
+      }
+    },
+    "note": "Pilot aggregation is diagnostic and uses one valid comparable repetition per selected case; Stable@3/Complete@3 are intentionally not claimed."
+  }
+}
