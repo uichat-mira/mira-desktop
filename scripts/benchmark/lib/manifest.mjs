@@ -1,4 +1,4 @@
-// Reads the frozen/RR case-set manifest as the runner's case input.
+// Reads the frozen Core v0.1 case-set manifest as the runner's case input.
 //
 // The manifest is owned by #220; the runner only consumes `public.prompt` and
 // `timing`. It does not define or persist any benchmark artifact schema.
@@ -6,11 +6,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const RC_MANIFEST_RELATIVE_PATH =
-  "docs/development/agent-core-benchmark-v0.1-case-set-rc1.json";
+export const CASE_SET_MANIFEST_RELATIVE_PATH =
+  "docs/development/agent-core-benchmark-v0.1-case-set.json";
 
 export const loadCaseSet = (repoRoot) => {
-  const manifestPath = path.join(repoRoot, RC_MANIFEST_RELATIVE_PATH);
+  const manifestPath = path.join(repoRoot, CASE_SET_MANIFEST_RELATIVE_PATH);
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`Case-set manifest not found: ${manifestPath}`);
   }
@@ -32,9 +32,8 @@ export const getCase = (caseSet, caseId) => {
 };
 
 /**
- * Frozen timing for a case. Returns null values during pre-freeze calibration,
- * which is the expected RC state and must NOT be treated as an unlimited or
- * invented cutoff.
+ * Frozen timing for an automated scored case. Diagnostic/untimed cases retain
+ * null values by design and must NOT be assigned an invented cutoff.
  */
 export const caseTiming = (caseEntry) => ({
   tSoftMs: typeof caseEntry?.timing?.tSoftMs === "number" ? caseEntry.timing.tSoftMs : null,
