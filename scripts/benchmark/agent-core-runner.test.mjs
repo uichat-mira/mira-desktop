@@ -19,6 +19,7 @@ import { runRepetition } from "./agent-core-runner.mjs";
 import { createClient } from "./lib/http.mjs";
 import { cleanupFixture, listFixtures, materializeFixture, resolveFixture, workspaceManifest } from "./lib/fixtures.mjs";
 import { collectObservability } from "./lib/observability.mjs";
+import { loadCaseSet } from "./lib/manifest.mjs";
 import { parseRepetitions, resolveSelection, SelectionError } from "./lib/selection.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -34,6 +35,24 @@ const adaptedCase = (id) => ({
   executionMode: "adapted",
   comparabilityImpact: "none: equivalent test conditions",
   approvalPolicy: "auto-approve",
+});
+
+test("frozen Core v0.1 exposes 17 timed scored cases and 8 diagnostic cases", () => {
+  const caseSet = loadCaseSet(repoRoot);
+  assert.equal(caseSet.caseSetVersion, "core-v0.1");
+  assert.equal(caseSet.cases.length, 25);
+  assert.equal(caseSet.cases.filter((c) => c.officialParticipation === "automated_scored").length, 17);
+  assert.equal(caseSet.cases.filter((c) => c.officialParticipation === "diagnostic_untimed").length, 8);
+  for (const c of caseSet.cases.filter((c) => c.officialParticipation === "automated_scored")) {
+    assert.equal(typeof c.timing?.tSoftMs, "number", c.id);
+    assert.equal(c.timing?.tHardMs, c.timing.tSoftMs * 2, c.id);
+    assert.equal(c.timing?.status, "frozen", c.id);
+  }
+  for (const c of caseSet.cases.filter((c) => c.officialParticipation === "diagnostic_untimed")) {
+    assert.equal(c.timing?.tSoftMs, null, c.id);
+    assert.equal(c.timing?.tHardMs, null, c.id);
+    assert.equal(c.timing?.status, "diagnostic_untimed", c.id);
+  }
 });
 
 test("parseRepetitions rejects non-positive and non-integer values", () => {
