@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 import { bundleFromSnapshot, ingestRepetition, serializeRawSnapshot } from "./lib/ingest.mjs";
 import { deriveDeterministic } from "./lib/derive.mjs";
-import { buildJudgeInput, buildResult, serializeTrajectoryJsonl } from "./lib/artifacts.mjs";
+import { buildExecution, buildJudgeInput, buildResult, serializeTrajectoryJsonl } from "./lib/artifacts.mjs";
 import { assertNoSecrets, findSecrets, toPublicResult } from "./lib/sanitize.mjs";
 import { resolveRef } from "./lib/evidence-refs.mjs";
 import {
@@ -414,6 +414,26 @@ test("G. case.json contract matches judge-input.case.contract (same frozen ident
     assert.equal(record.judgeInput.case.contract.source.blobSha, caseEntry.source.blobSha);
     assert.equal(record.caseDocument.source.blobSha, caseEntry.source.blobSha);
   }
+});
+
+test("G2. model identity separates runtime provider from route selector", () => {
+  const caseEntry = findCase(identity.caseSet, "beginner-02-locate-release-checklist");
+  const bundle = makeBundle({
+    events: simpleEvents,
+    facts: { actualProcedure: { transport: "http", provider: "default" } },
+    agentRun: { contextBudget: { providerCode: "volcengine", model: "deepseek-v4.1-flash", reservedOutputTokens: 2048 } },
+  });
+  const execution = buildExecution({
+    bundle,
+    identity,
+    caseEntry,
+    correction: { miraCommit: "abc", miraVersion: "0.1.0", runtimeMode: "desktop-local-backend" },
+    fixtures: null,
+  });
+  assert.equal(execution.model.provider, "volcengine");
+  assert.equal(execution.model.routeProvider, "default");
+  assert.equal(execution.model.modelId, "deepseek-v4.1-flash");
+  assert.equal(execution.model.accessPath, "http");
 });
 
 test("H. aggregate identity comes from recorded repetitions, never 'unknown' when known", () => {
