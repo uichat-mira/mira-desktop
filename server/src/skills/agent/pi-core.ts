@@ -6,6 +6,7 @@ import {
   type AgentTool,
   type AgentToolResult,
 } from "@earendil-works/pi-agent-core";
+import type { JsonValue } from "@earendil-works/pi-ai";
 import { streamSimple as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { createProviderVisibleInputSchema } from "@/mcp/core/provider-visible-schema.js";
@@ -261,7 +262,7 @@ const buildSystemPrompt = (input: SkillAgentExecutionInput) => {
 const toAgentToolResult = (
   binding: SkillAgentToolBinding,
   executed: BindingExecution,
-): AgentToolResult<any> => ({
+): AgentToolResult<Record<string, unknown>> => ({
   content: [
     {
       type: "text",
@@ -634,7 +635,7 @@ const replaceApprovalPlaceholder = (input: {
   messages: AgentMessage[];
   toolCallId: string;
   toolId: string;
-  result: AgentToolResult<any>;
+  result: AgentToolResult<Record<string, unknown>>;
 }): AgentMessage[] => {
   const messages = structuredClone(input.messages);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -652,7 +653,10 @@ const replaceApprovalPlaceholder = (input: {
       toolCallId: input.toolCallId,
       toolName: input.toolId,
       content: structuredClone(input.result.content),
-      details: structuredClone(input.result.details),
+      // Pi 1.0 requires transcript tool-result details to be JSON-compatible.
+      // Mira keeps its existing structured tool-result shape and narrows only at
+      // this engine boundary; runtime data is unchanged.
+      details: structuredClone(input.result.details) as JsonValue,
       isError: false,
       timestamp: Date.now(),
     };
