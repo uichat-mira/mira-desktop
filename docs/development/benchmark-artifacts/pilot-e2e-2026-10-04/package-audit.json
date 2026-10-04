@@ -1,6 +1,6 @@
 {
   "schemaVersion": "mira-agent-core-benchmark-package-audit/0.1",
-  "auditedAt": "2026-10-04T04:27:56.901Z",
+  "auditedAt": "2026-10-04T04:28:43.054Z",
   "reportRoot": "pilot-e2e-2026-10-04",
   "benchmark": {
     "caseSetVersion": "core-v0.1",
