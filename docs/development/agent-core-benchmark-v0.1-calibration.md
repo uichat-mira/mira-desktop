@@ -1,11 +1,11 @@
 # Mira Agent Core Benchmark v0.1 — Cross-calibration
 
 Issue: #220  
-Working case-set version: `core-v0.1-rc1`  
-Base: `dev@3bafb964d3beeb7ce2635b25090969ca1c46c95b`  
-Status: **static calibration complete; final timing freeze pending controlled reference-run evidence**
+Frozen case-set version: `core-v0.1`  
+Final freeze base: `dev@772aae996cac1d3e4d25747923434f0220c0059c`  
+Status: **FROZEN — Core v0.1 timing calibration complete**
 
-This document records the cross-calibration decision for the Beginner, Intermediate, and Advanced candidate packs. It does not claim that Core v0.1 is finally frozen while per-case timing is still unsupported by measured reference runs.
+This document records the completed cross-calibration and timing freeze for the Beginner, Intermediate, and Advanced candidate packs. The canonical machine-readable release is `docs/development/agent-core-benchmark-v0.1-case-set.json`; RC1 remains preserved only as calibration history.
 
 ## 1. Authority and scope
 
@@ -195,30 +195,89 @@ Return:
 
 The RC manifest contains only the public title, difficulty, prompt, and intent summary for website projection. Canonical scoring criteria, hard-fail details, hidden fixture/oracle data, and private trajectories remain repository/report inputs and are not part of the public projection.
 
-The website must display the exact case-set version. `core-v0.1-rc1` must not be presented as final `core-v0.1`.
+The website must display the exact case-set version. `core-v0.1` is the frozen release. The public projection must distinguish the 17 `automated_scored` cases from the 8 `diagnostic_untimed` cases rather than presenting diagnostic cases as formally timed/scored.
 
-## 10. Timing calibration gate
+## 10. Final timing freeze
 
-Per-case controlled timing evidence is not yet complete. Candidate timing values are therefore **not promoted to frozen timing**. RC1 intentionally stores `tSoftMs=null` and `tHardMs=null` for every case.
+Five controlled timing batches are frozen under #220:
 
-Final freeze requires controlled reference observations using the same frozen case identity and a recorded run manifest. Timing acceptance is platform-neutral: the actual host platform, runtime and execution procedure must be recorded, and valid comparable runs may come from any supported desktop host.
+| Batch | Artifact commit | Frozen path |
+| --- | --- | --- |
+| 1 | `40e9b8372ff1c16ba0b5b28ff7074a215a283d20` | `docs/development/benchmark-artifacts/timing-calibration-batch-1/` |
+| 2 | `c0ec39a64df520691d93f844157678644079e9b1` | `docs/development/benchmark-artifacts/timing-calibration-batch-2/` |
+| 3 | `bc5debd0b39b2ac924df5c53add1e33f00781515` | `docs/development/benchmark-artifacts/timing-calibration-batch-3/` |
+| 4 | `6253701ce969a34643cd850c56f5273257573797` | `docs/development/benchmark-artifacts/timing-calibration-batch-4/` |
+| 5 | `772aae996cac1d3e4d25747923434f0220c0059c` | `docs/development/benchmark-artifacts/timing-calibration-batch-5/` |
 
-Calibration procedure:
+Uniform inclusion rule:
 
-1. collect at least 3 valid reference observations per case;
-2. scripted approval/follow-up replies are supplied immediately and recorded; task-solving help invalidates the observation;
-3. infrastructure-invalid runs are excluded only with explicit evidence and remain recorded;
-4. compute `medianElapsed` and `maxElapsed` from valid observations;
-5. set `T_soft = ceil_to_15s(max(maxElapsed, 1.5 * medianElapsed))`;
-6. set `T_hard = 2 * T_soft` as required by #216;
-7. if `maxElapsed / minElapsed > 2.0`, collect two additional observations; if the ratio remains above 2.0 without an evidenced infrastructure cause, move the case out of automated Core rather than hiding timing instability.
+1. every attempt remains in frozen evidence;
+2. timing derivation uses only observations that reach the **case-defined success boundary**;
+3. terminal `failed` attempts never derive a completion budget;
+4. `waiting_user` is a successful timing boundary only when the frozen case explicitly defines waiting for user clarification as success (for example B09);
+5. scripted approval / user follow-up is mechanical and does not count as task-solving help;
+6. after the required two supplemental observations, a successful case whose `max/min` remains above 2.0 is `diagnostic_untimed`;
+7. a case with fewer than three successful comparable observations is also `diagnostic_untimed`.
 
-This procedure gives observed runs headroom without deriving time from the Beginner/Intermediate/Advanced label.
+For every automated scored case:
 
-During RC calibration, `tSoftMs=null` / `tHardMs=null` means only that timing cutoffs are not frozen yet. The runner must stay in calibration mode and record real elapsed time without inventing cutoffs. This **does not prevent** recording `canonical | adapted | noncanonical` execution classification; classification is based on the actual procedure and comparability, not on whether timing has been frozen.
+```text
+T_soft = ceil_to_15s(max(maxElapsed, 1.5 * medianElapsed))
+T_hard = 2 * T_soft
+```
 
-## 11. Remaining acceptance gap
+Timing acceptance is platform-neutral. Actual host, runtime and procedure remain part of the evidence; host OS alone is not a timing gate.
 
-Static calibration, selection, scorer ownership, Judge handoff, alternate-path review, static replay, and public projection are ready for review.
+### 10.1 Automated scored Core — 17 cases
 
-The only blocker to a truthful final `core-v0.1` freeze is sufficient per-case controlled timing evidence under recorded comparable conditions. Until that evidence exists, #220 must remain open and this RC must not be treated as the formal benchmark release.
+| Case | Successful observations | Min / Median / Max (ms) | T_soft | T_hard |
+| --- | ---: | --- | ---: | ---: |
+| `beginner-01-concise-rewrite` | 3 | 4,223 / 4,733 / 6,736 | 15s | 30s |
+| `beginner-02-locate-release-checklist` | 3 | 6,240 / 7,243 / 10,269 | 15s | 30s |
+| `beginner-03-find-retry-window-references` | 3 | 6,280 / 6,770 / 8,285 | 15s | 30s |
+| `beginner-04-read-only-telemetry-state` | 3 | 6,737 / 7,264 / 9,255 | 15s | 30s |
+| `beginner-05-local-version-no-network` | 3 | 7,239 / 8,238 / 9,228 | 15s | 30s |
+| `beginner-06-read-command-do-not-execute` | 3 | 7,219 / 7,227 / 8,232 | 15s | 30s |
+| `beginner-07-rename-one-file` | 3 | 8,378 / 9,269 / 10,341 | 15s | 30s |
+| `intermediate-handshake-recovery` | 3 | 51,070 / 57,516 / 62,359 | 90s | 180s |
+| `intermediate-version-validator` | 4 | 33,397 / 42,344.5 / 49,703 | 75s | 150s |
+| `intermediate-already-aligned-noop` | 4 | 24,256 / 26,910 / 31,411 | 45s | 90s |
+| `intermediate-health-status-call-chain` | 3 | 30,408 / 31,937 / 34,543 | 60s | 120s |
+| `ADV-02` | 3 | 69,748 / 73,805 / 97,776 | 120s | 240s |
+| `ADV-03` | 3 | 98,096 / 103,513 / 105,099 | 165s | 330s |
+| `ADV-04` | 3 | 111,422 / 136,867 / 155,330 | 210s | 420s |
+| `ADV-05` | 3 | 81,098 / 84,393 / 94,188 | 135s | 270s |
+| `ADV-06` | 3 | 137,505 / 138,665 / 190,054 | 210s | 420s |
+| `ADV-08` | 3 | 53,138 / 70,146 / 83,502 | 120s | 240s |
+
+I06's retained 221,791 ms repetition ended `failed` with `Generation model returned an empty user answer.`; it remains in frozen evidence but is not used as successful completion timing. The four completed I06 observations have max/min ≈ 1.30.
+
+### 10.2 Diagnostic / untimed suite — 8 cases
+
+These cases stay in the frozen public benchmark universe but are excluded from official automated timing/scored aggregation.
+
+| Case | Final calibration decision |
+| --- | --- |
+| `intermediate-effective-prod-timeout` | 5 successful observations remain unstable after supplementation; max/min 13.20 |
+| `intermediate-production-retry-only` | 5 successful observations remain unstable after supplementation; max/min 6.16 |
+| `ADV-01` | 5 successful observations remain unstable after supplementation; max/min 3.36 |
+| `beginner-08-contextual-config-follow-up` | 0/5 Turn-2 runs reached the success boundary; all re-asked for context after the frozen follow-up |
+| `intermediate-inspect-then-continue` | 0/5 Turn-2 runs reached the success boundary; all asked the user to restate the prior minimal fix |
+| `beginner-09-ambiguous-rename-clarification` | `waiting_user` is the intended success boundary, but 5 success observations remain unstable; max/min 3.10 |
+| `intermediate-release-region-followup` | 0/5 runs completed the required post-reply mutation + verification |
+| `ADV-07` | only 1/3 runs reached the final success boundary after the gated follow-up |
+
+No additional calibration run is required merely to force these cases into the automated set. Their instability/failure behavior is itself diagnostic evidence.
+
+## 11. Frozen release result
+
+Core v0.1 freezes a **25-case reviewed universe**:
+
+- 17 `automated_scored` cases with measured `T_soft/T_hard`;
+- 8 `diagnostic_untimed` cases published separately;
+- 9 Beginner / 8 Intermediate / 8 Advanced in the public universe;
+- no candidate prompt, criterion, hard-fail or scorer ownership was rewritten to make calibration look better.
+
+The formal Benchmark-level macro averages, Pass@1, Stable@3 and Complete@3 use only the 17 automated scored cases. Diagnostic cases remain visible as named capability probes and may graduate into the automated set only through a future versioned calibration, not by silently changing Core v0.1.
+
+The next downstream gate is #224 Pilot E2E using the frozen `core-v0.1` manifest and the fresh blank Judge handoff. #230 formal Benchmark remains downstream of a successful Pilot.
