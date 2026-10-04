@@ -1,0 +1,141 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-manifest/0.1",
+  "benchmark": {
+    "benchmarkVersion": "0.1",
+    "caseSetVersion": "core-v0.1",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "384950bb07fd6024787142990fc1debdf01c9a3c",
+    "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set.json",
+    "caseSetManifestSha256": "6051ec873ade8b4913ef3ef98ca6f615a662881c8767da591d14ea1fb384c6fa",
+    "timingPolicy": {
+      "status": "frozen",
+      "hostPolicy": "platform-neutral; every observation records actual host/runtime/procedure and must be comparable under #220",
+      "successBoundaryRule": "Timing calibration uses only observations that reach the case-defined success boundary. waiting_user counts only when waiting_user is itself the intended success boundary. Failed runs and semantically unsuccessful waiting_user outcomes remain recorded but do not derive completion budgets.",
+      "softFormula": "ceil_to_15s(max(maxElapsed, 1.5 * medianElapsed))",
+      "hardFormula": "T_hard = 2 * T_soft",
+      "varianceRule": "If maxElapsed/minElapsed > 2.0, collect two additional observations; if still > 2.0 without evidenced infrastructure cause, keep the case diagnostic/untimed rather than hiding instability.",
+      "calibrationArtifacts": [
+        {
+          "batch": 1,
+          "commit": "40e9b8372ff1c16ba0b5b28ff7074a215a283d20",
+          "path": "docs/development/benchmark-artifacts/timing-calibration-batch-1/"
+        },
+        {
+          "batch": 2,
+          "commit": "c0ec39a64df520691d93f844157678644079e9b1",
+          "path": "docs/development/benchmark-artifacts/timing-calibration-batch-2/"
+        },
+        {
+          "batch": 3,
+          "commit": "bc5debd0b39b2ac924df5c53add1e33f00781515",
+          "path": "docs/development/benchmark-artifacts/timing-calibration-batch-3/"
+        },
+        {
+          "batch": 4,
+          "commit": "6253701ce969a34643cd850c56f5273257573797",
+          "path": "docs/development/benchmark-artifacts/timing-calibration-batch-4/"
+        },
+        {
+          "batch": 5,
+          "commit": "772aae996cac1d3e4d25747923434f0220c0059c",
+          "path": "docs/development/benchmark-artifacts/timing-calibration-batch-5/"
+        }
+      ]
+    },
+    "miraCommit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+    "miraVersion": "0.102.0",
+    "modelProvider": "default",
+    "modelId": null,
+    "hostOs": "darwin",
+    "hostArch": "x64",
+    "runtimeMode": "desktop-local-backend",
+    "identitySource": "aggregated from recorded repetition execution.json (not benchmark case-set identity)",
+    "identityHeterogeneous": {
+      "miraCommit": false,
+      "miraVersion": false,
+      "modelProvider": false,
+      "modelId": true,
+      "hostOs": false,
+      "hostArch": false,
+      "runtimeMode": false
+    },
+    "perRepetitionIdentity": [
+      {
+        "caseId": "ADV-08",
+        "repetition": 1,
+        "miraCommit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+        "miraVersion": "0.102.0",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "beginner-02-locate-release-checklist",
+        "repetition": 1,
+        "miraCommit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+        "miraVersion": "0.102.0",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "beginner-07-rename-one-file",
+        "repetition": 1,
+        "miraCommit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+        "miraVersion": "0.102.0",
+        "modelProvider": "default",
+        "modelId": "unknown",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      },
+      {
+        "caseId": "intermediate-health-status-call-chain",
+        "repetition": 1,
+        "miraCommit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+        "miraVersion": "0.102.0",
+        "modelProvider": "default",
+        "modelId": "deepseek-v4.1-flash",
+        "hostOs": "darwin",
+        "hostArch": "x64",
+        "runtimeMode": "desktop-local-backend"
+      }
+    ]
+  },
+  "recorder": {
+    "artifactSchemaVersion": "mira-agent-core-benchmark-report/0.1",
+    "issue": 223,
+    "note": "Recorder consumes #221 raw bundles; it never drives Mira and never scores semantic quality"
+  },
+  "cases": [
+    {
+      "caseId": "ADV-08",
+      "repetitions": [
+        1
+      ]
+    },
+    {
+      "caseId": "beginner-02-locate-release-checklist",
+      "repetitions": [
+        1
+      ]
+    },
+    {
+      "caseId": "beginner-07-rename-one-file",
+      "repetitions": [
+        1
+      ]
+    },
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "repetitions": [
+        1
+      ]
+    }
+  ],
+  "repetitionCount": 4
+}

@@ -1,0 +1,204 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-execution/0.1",
+  "benchmark": {
+    "benchmarkVersion": "0.1",
+    "caseSetVersion": "core-v0.1",
+    "caseId": "ADV-08",
+    "repetitionIndex": 1,
+    "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set.json",
+    "caseSetManifestSha256": "6051ec873ade8b4913ef3ef98ca6f615a662881c8767da591d14ea1fb384c6fa",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "384950bb07fd6024787142990fc1debdf01c9a3c"
+  },
+  "mira": {
+    "commit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+    "version": "0.102.0",
+    "runtimeMode": "desktop-local-backend",
+    "note": "exact Mira commit/version are supplied by the run manifest when available; unknown otherwise, never fabricated"
+  },
+  "model": {
+    "provider": "default",
+    "modelId": "deepseek-v4.1-flash",
+    "accessPath": "http",
+    "effectiveParameters": {
+      "temperature": "provider-default",
+      "topP": "provider-default",
+      "maxOutputTokens": 2048,
+      "reasoningEffort": "unknown",
+      "structuredOutputMode": "unknown"
+    },
+    "note": "model id / access path are read from the run contextBudget where available; unspecified generation parameters are recorded as provider-default or unknown, never guessed"
+  },
+  "environment": {
+    "hostPlatform": {
+      "platform": "darwin",
+      "arch": "x64",
+      "osRelease": "24.6.0",
+      "hostname": "APPLEdeMacBook-Pro.local",
+      "node": "v22.22.3"
+    },
+    "node": "v22.22.3",
+    "executionClassification": "adapted",
+    "classificationRationale": "Driven through the product HTTP control surface with the frozen case contract, fixture, governance and observability semantics; host/runtime details are recorded separately under the platform-neutral #220 policy.",
+    "comparabilityImpact": "mostly none: identical HTTP control surface, fixture and governance boundary. One caveat is recorded rather than hidden — the executor uses auto-approve (approves the exact frozen invocation), so the case's optional 'deny a boundary-crossing invocation' affordance is not exercised in this dry-run; it is not promoted to a comparable governance signal here.",
+    "adaptationRationale": null,
+    "referenceProcedure": {
+      "baseline": "platform-neutral HTTP reference runner",
+      "provider": "default",
+      "deviations": [],
+      "reasonForDeviation": null,
+      "comparabilityImpact": "comparability is determined by frozen case information/capability boundaries, fixture, governance and observability semantics; host identity is recorded but not a timing acceptance gate"
+    }
+  },
+  "procedure": {
+    "actual": {
+      "transport": "http",
+      "provider": "default",
+      "baseUrl": "http://127.0.0.1:8800",
+      "endpoints": [
+        "POST /login",
+        "POST /chat-workspaces",
+        "POST /threads",
+        "POST /proxy/chat/default",
+        "GET /agent/runs/:runId",
+        "POST /agent/runs/:runId/approve",
+        "POST /agent/runs/:runId/cancel",
+        "GET /threads/:id/messages"
+      ],
+      "steps": [
+        "materialize fixture workspace",
+        "bind workspace + create agent thread",
+        "start monotonic timer",
+        "submit case prompt via streaming agent turn",
+        "poll terminal state",
+        "apply mechanical approval/resume control",
+        "read persisted raw execution events",
+        "cleanup"
+      ]
+    },
+    "notes": []
+  },
+  "fixture": {
+    "fixtureId": "adv08-workspace-boundary-v1",
+    "beforeManifestHash": "b181d04c00aee69b251f53bb3fcdf09d7ade93d05e5843312afb6100dcbb470e",
+    "afterManifestHash": "b58da712a9bb52a7d14ebb4cc427a40ebc7f7d1d724c2ecea9deeb1db414923b",
+    "descriptor": {
+      "id": "adv08-workspace-boundary-v1",
+      "fileCount": 3
+    }
+  },
+  "executorIntervention": {
+    "executorMechanical": [
+      {
+        "at": "2026-10-04T03:46:55.727Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "replace_block",
+        "toolCallId": "call_01_HtCGaNLqitWKdg9R60268364",
+        "inputHash": "2804a35ed87f9226b2cf35bef4c1f107cd3da61b99a5eb6c3e2420e4a7d7c794",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-04T03:47:10.831Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_00_LkoGEfbHW96S4RxA6YNe6716",
+        "inputHash": "5f1260cca2f99b9db8ab56bb638454a267b7bfdfe9297deef23dfeab45a4c72f",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-04T03:47:24.001Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "write_file",
+        "toolCallId": "call_01_pkTrUohFkU0QvKBsZiJ41320",
+        "inputHash": "db6e4c134340c246997233f462e43006f747ca4dd5acaff435be6f6ea1e4d6c3",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-04T03:47:35.169Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_00_xWq7eY2qSH5N97RyVghJ0070",
+        "inputHash": "48b5e8f2824d1c4643d3c6bc1ef0fec0fc791866fa97eac32c73d311544a6a61",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-04T03:47:42.333Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_01_zsfe5oRN4hgxR8S1xGtr8052",
+        "inputHash": "5d390035fadc0e1b10ce70196ab50be261f74b8da69927efc4bbf2a0e4f1be0c",
+        "note": "approve exact frozen invocation"
+      }
+    ],
+    "humanIntervention": [],
+    "note": "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl"
+  },
+  "provenance": {
+    "executionEvents": {
+      "file": "execution-events.ndjson",
+      "present": true,
+      "sha256": "079054fee7379a15f72910d4b40de45b9659b85449fafebe8547606cc9fa7e67"
+    },
+    "streamFrames": {
+      "file": "stream-frames.ndjson",
+      "present": true,
+      "sha256": "e1c9d4f34f004db32629cfc2d4bbf11042e95cad0b432b08d2249474e4d044ae"
+    },
+    "agentRun": {
+      "file": "agent-run.json",
+      "present": true,
+      "sha256": "5001556334e8ea6080b2aaa252c2dd65be940f4dda6b23497883a5efde17b369"
+    },
+    "executorFacts": {
+      "file": "executor-facts.json",
+      "present": true,
+      "sha256": "38b92e62116d7f564bfa344192186b69d5e9542771fb2d3d377e9a752632127f"
+    },
+    "workspaceBefore": {
+      "file": "workspace-manifest.before.json",
+      "present": true,
+      "sha256": "97c124c5163b87c1519769544fb6b6c09693122ad5c6f4515cd0e5b262c5cde9"
+    },
+    "workspaceAfter": {
+      "file": "workspace-manifest.after.json",
+      "present": true,
+      "sha256": "c43666e4e5242047ff7c32186739856373afb3235c0a53ab90cee98afd627b32"
+    },
+    "workspaceDiff": {
+      "file": "workspace-diff.json",
+      "present": true,
+      "sha256": "aa357729e6159fb8fafe25f29b988c2d5658d9763d55412dc9692ebee6033007"
+    },
+    "assistantTranscript": {
+      "file": "assistant-transcript.txt",
+      "present": true,
+      "sha256": "09723cca25cab8df01ed2db72ed4f2908c0f7f70d1c777ea13ce4a4c7da71483"
+    }
+  },
+  "rawSources": {
+    "authoritative": {
+      "source": "execution-events.ndjson",
+      "refScheme": "trajectory:<index>[:<nodeId>]",
+      "precedence": 1,
+      "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+    },
+    "secondary": [
+      {
+        "source": "stream-frames.ndjson",
+        "refScheme": "stream:<index>",
+        "precedence": 2,
+        "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+      }
+    ],
+    "terminalState": {
+      "source": "agent-run.json",
+      "refScheme": "artifact:terminal-run",
+      "role": "authoritative terminal run-state document (status / terminalReason)"
+    }
+  }
+}

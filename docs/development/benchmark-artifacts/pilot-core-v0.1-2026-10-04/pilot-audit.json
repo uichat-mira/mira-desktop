@@ -1,0 +1,48 @@
+{
+  "issue": 224,
+  "pilot": "Mira Agent Core Benchmark v0.1 Pilot E2E",
+  "sourceMiraCommit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+  "caseSetVersion": "core-v0.1",
+  "selection": {
+    "repetitionsPerCase": 1,
+    "cases": [
+      "beginner-02-locate-release-checklist",
+      "beginner-07-rename-one-file",
+      "intermediate-health-status-call-chain",
+      "ADV-08"
+    ],
+    "officialParticipation": "automated_scored only"
+  },
+  "identityAudit": {
+    "status": "pass",
+    "caseSetVersion": "core-v0.1",
+    "miraCommit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+    "miraVersion": "0.102.0",
+    "runtimeMode": "desktop-local-backend",
+    "hostOs": "darwin",
+    "hostArch": "x64",
+    "executionMode": "adapted",
+    "notes": [
+      "All four repetition packages match case id/repetition identity.",
+      "Judge criteria and deterministicCriteriaNotJudgeable are disjoint.",
+      "Recorder-time semantic result fields are null."
+    ]
+  },
+  "secretAudit": {
+    "status": "pass",
+    "filesScanned": 28,
+    "matches": 0,
+    "patternClasses": [
+      "private_key",
+      "bearer_token",
+      "openai_style_key",
+      "github_token",
+      "jwt",
+      "api_key_or_password_assignment"
+    ]
+  },
+  "verification": {
+    "benchmarkRunnerTests": "31/31 pass",
+    "benchmarkRecorderTests": "38/38 pass"
+  }
+}
