@@ -91,6 +91,31 @@ describe("mcp invocations", () => {
     expect(text).toContain("boom");
   });
 
+  it("still exposes a Tool error marker when an error result has no payload", async () => {
+    registerTool({
+      definition: {
+        id: "tool_result_empty_error",
+        title: "Tool result empty error",
+        description: "returns only an error outcome",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: { sideEffect: "none", requiresApproval: false },
+      },
+      execute: () => ({ isError: true }),
+    });
+
+    const record = await executeHarnessInvocation({
+      toolId: "tool_result_empty_error",
+      args: {},
+    });
+
+    expect(record.status).toBe("completed");
+    expect(getHarnessLlmContentText(record.llmContent)).toContain("toolOutcome=error");
+  });
+
   it("records result, artifact and events", async () => {
     const tool: ToolImplementation = {
       definition: {

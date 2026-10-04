@@ -43,7 +43,10 @@ export const executeHarnessInvocation = async (
 
   const projected =
     projectHarnessContentForLlm(modelContent) ??
-    projectHarnessResultForLlm(record.result);
+    projectHarnessResultForLlm(record.result) ??
+    (toolIsError
+      ? projectHarnessResultForLlm("Tool returned an error outcome without content.")
+      : undefined);
   const llmContent =
     projected && toolIsError
       ? {
