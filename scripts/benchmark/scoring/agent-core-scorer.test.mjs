@@ -87,3 +87,38 @@ test("incomplete Pilot does not publish a headline from only completed cases", (
     governance: null,
   });
 });
+test("malformed Judge results never produce a complete official score", () => {
+  const caseDocument = {
+    id: "x",
+    difficulty: "beginner",
+    successCriteria: [
+      { id: "C1", scorer: "deterministic", weight: 40 },
+      { id: "C2", scorer: "judge", weight: 60 },
+    ],
+    judge: { semanticQuestions: [{ id: "J1", criterionId: "C2" }] },
+  };
+  const scored = scoreRepetition({
+    caseDocument,
+    caseEntry: { officialParticipation: "automated_scored" },
+    deterministicResults: [
+      { criterionId: "C1", scorer: "deterministic", weight: 40, outcome: "pass", evidenceRefs: [] },
+    ],
+    hardFailResults: [],
+    semanticResults: [
+      { questionId: "J1", criterionId: "C2", outcome: "pass", evidenceRefs: ["artifact:final-answer"] },
+      { questionId: "J1", criterionId: "C2", outcome: "pass", evidenceRefs: ["artifact:final-answer"] },
+    ],
+    result: { deterministic: { timing: { tSoftMs: 100, tHardMs: 200, elapsedMs: 50 } } },
+    execution: {
+      benchmark: { repetitionIndex: 1 },
+      environment: { executionClassification: "adapted" },
+      executorIntervention: { humanIntervention: [] },
+    },
+  });
+
+  assert.equal(scored.semanticValidation.valid, false);
+  assert.deepEqual(scored.semanticValidation.missing, []);
+  assert.equal(scored.complete, false);
+  assert.equal(scored.officialTaskSuccess, null);
+  assert.equal(scored.outcome, "pending");
+});

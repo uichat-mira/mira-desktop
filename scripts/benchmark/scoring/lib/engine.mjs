@@ -91,7 +91,7 @@ export const scoreRepetition = ({
     officialParticipation: caseEntry.officialParticipation,
   });
 
-  const complete = !criteriaUnavailable && !hardFailUnavailable && (semantic.valid || semantic.missing.length === 0);
+  const complete = !criteriaUnavailable && !hardFailUnavailable && semantic.valid;
   let officialTaskSuccess = null;
   let outcome = "pending";
   if (complete && timingScore.available) {
