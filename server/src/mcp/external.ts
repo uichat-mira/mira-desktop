@@ -9,6 +9,11 @@ import {
 } from "../harness/registry.js";
 import { StdioMcpSession } from "./stdio-session.js";
 import { redactExternalMcpValue } from "./external-redaction.js";
+import {
+  deriveProjectedToolId,
+  toExternalMcpToolDefinition,
+  toProjectedTool,
+} from "./external-tool-adapter.js";
 
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 const DISCLAIMER_TEXT_HASH = "external-mcp-disclaimer-v1";
@@ -1470,47 +1475,48 @@ export const connectExternalMcpServer = async (
   return getRequiredServer(serverId);
 };
 
-const toProjectedCapabilityId = (serverId: string, toolName: string) =>
-  `mcp:${serverId}:tool:${slugifyServerId(toolName)}`;
-
 const normalizeDiscoveredTools = (
   serverId: string,
   tools: ToolsListResult["tools"],
 ): ExternalMcpDiscoveredTool[] =>
   (tools ?? [])
     .filter((tool) => typeof tool.name === "string" && tool.name.trim())
-    .map((tool) => ({
-      name: tool.name!.trim(),
-      title: tool.title?.trim() || tool.name!.trim(),
-      description: tool.description ?? "",
-      inputSchema: tool.inputSchema ?? { type: "object", additionalProperties: true },
-      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
-      projectedCapabilityId: toProjectedCapabilityId(serverId, tool.name!.trim()),
-    }));
+    .map((tool) => {
+      const remoteToolName = tool.name!.trim();
+      const projected = toProjectedTool({
+        serverId,
+        serverDisplayName: serverId,
+        remoteToolName,
+        title: tool.title?.trim() || remoteToolName,
+        description: tool.description ?? "",
+        inputSchema: tool.inputSchema ?? { type: "object", additionalProperties: true },
+        ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+      });
+      return {
+        name: projected.remoteToolName,
+        title: projected.title,
+        description: projected.description,
+        inputSchema: projected.inputSchema,
+        ...(projected.outputSchema ? { outputSchema: projected.outputSchema } : {}),
+        projectedCapabilityId: projected.id,
+      };
+    });
 
 const registerProjectedTool = (
   server: ExternalMcpServerRecord,
   tool: ExternalMcpDiscoveredTool,
 ) => {
+  const projected = toProjectedTool({
+    serverId: server.id,
+    serverDisplayName: server.displayName,
+    remoteToolName: tool.name,
+    title: tool.title,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+  });
   const implementation: ToolImplementation = {
-    definition: {
-      id: tool.projectedCapabilityId,
-      title: tool.title,
-      description: tool.description || `MCP capability ${tool.name} from ${server.displayName}`,
-      domain: "external_mcp",
-      source: "external",
-      sourceLabel: server.displayName,
-      mode: "sync",
-      inputSchema: tool.inputSchema,
-      outputSchema: tool.outputSchema,
-      tags: ["mcp", "external", server.id],
-      capabilities: {
-        sideEffect: "network",
-        requiresApproval: true,
-        networkAccess: true,
-        longRunning: true,
-      },
-    } satisfies ToolDefinition,
+    definition: toExternalMcpToolDefinition(projected),
     execute: async (context) => {
       context.pushEvent({
         type: "invocation:progress",
@@ -1591,7 +1597,7 @@ const unregisterExternalMcpServerCapabilities = (
     }
   }
   for (const tool of server.discoveredTools) {
-    const canonicalId = toProjectedCapabilityId(server.id, tool.name);
+    const canonicalId = deriveProjectedToolId(server.id, tool.name);
     unregisterTool(canonicalId);
   }
 };
@@ -1604,7 +1610,7 @@ export const registerExternalMcpServerCapabilities = (
     return;
   }
   for (const tool of server.discoveredTools) {
-    if (tool.projectedCapabilityId !== toProjectedCapabilityId(server.id, tool.name)) {
+    if (tool.projectedCapabilityId !== deriveProjectedToolId(server.id, tool.name)) {
       continue;
     }
     registerProjectedTool(server, tool);
@@ -1643,7 +1649,7 @@ export const resolveAgentEligibleExternalMcpCapabilities = (): ToolDefinition[] 
       continue;
     }
     for (const tool of server.discoveredTools) {
-      const canonicalId = toProjectedCapabilityId(server.id, tool.name);
+      const canonicalId = deriveProjectedToolId(server.id, tool.name);
       if (tool.projectedCapabilityId !== canonicalId) {
         continue;
       }
