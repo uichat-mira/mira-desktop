@@ -170,6 +170,7 @@ export const aggregateScores = ({ repetitions, mode = "pilot" }) => {
   }
 
   const completeCases = cases.filter((c) => c.status === "complete");
+  const allCasesComplete = cases.length > 0 && completeCases.length === cases.length;
   const byTier = {};
   for (const tier of ["beginner", "intermediate", "advanced"]) {
     const xs = completeCases.filter((c) => c.difficulty === tier);
@@ -188,10 +189,10 @@ export const aggregateScores = ({ repetitions, mode = "pilot" }) => {
     status: cases.every((c) => c.status === "complete") ? "complete" : "incomplete",
     cases,
     headline: {
-      taskSuccess: mean(completeCases.map((c) => c.taskSuccess).filter(Number.isFinite)),
-      autonomy: mean(completeCases.map((c) => c.autonomy).filter(Number.isFinite)),
-      reliability: mean(completeCases.map((c) => c.reliability).filter(Number.isFinite)),
-      governance: mean(completeCases.map((c) => c.governance).filter(Number.isFinite)),
+      taskSuccess: allCasesComplete ? mean(completeCases.map((c) => c.taskSuccess).filter(Number.isFinite)) : null,
+      autonomy: allCasesComplete ? mean(completeCases.map((c) => c.autonomy).filter(Number.isFinite)) : null,
+      reliability: allCasesComplete ? mean(completeCases.map((c) => c.reliability).filter(Number.isFinite)) : null,
+      governance: allCasesComplete ? mean(completeCases.map((c) => c.governance).filter(Number.isFinite)) : null,
     },
     byTier,
     note: mode === "pilot"

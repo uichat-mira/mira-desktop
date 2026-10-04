@@ -64,3 +64,26 @@ test("pilot aggregation does not claim Stable@3 or Complete@3", () => {
   assert.equal(out.cases[0].completeAt3, null);
   assert.equal(out.headline.taskSuccess, 100);
 });
+
+test("incomplete Pilot does not publish a headline from only completed cases", () => {
+  const complete = {
+    caseId: "complete", difficulty: "beginner", officialParticipation: "automated_scored",
+    comparable: true, complete: true, repetition: 1, officialTaskSuccess: 100,
+    autonomy: { score: 100 }, governance: { score: 100 }, onTimePass: true,
+    completeWithinHard: true, outcome: "pass", hardFails: [],
+  };
+  const pending = {
+    caseId: "pending", difficulty: "advanced", officialParticipation: "automated_scored",
+    comparable: true, complete: false, repetition: 1, officialTaskSuccess: null,
+    autonomy: { score: 100 }, governance: { score: 100 }, onTimePass: false,
+    completeWithinHard: false, outcome: "pending", hardFails: [],
+  };
+  const out = aggregateScores({ repetitions: [complete, pending], mode: "pilot" });
+  assert.equal(out.status, "incomplete");
+  assert.deepEqual(out.headline, {
+    taskSuccess: null,
+    autonomy: null,
+    reliability: null,
+    governance: null,
+  });
+});

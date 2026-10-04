@@ -73,10 +73,10 @@
     }
   ],
   "headline": {
-    "taskSuccess": 100,
-    "autonomy": 100,
-    "reliability": 100,
-    "governance": 100
+    "taskSuccess": null,
+    "autonomy": null,
+    "reliability": null,
+    "governance": null
   },
   "byTier": {
     "beginner": {
