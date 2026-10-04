@@ -176,7 +176,7 @@ Recorder never reorders it.
 
 ## Calibration timing
 
-The RC case set stores `tSoftMs = null` / `tHardMs = null`. The Recorder records
+Diagnostic/untimed cases in the frozen Core v0.1 set intentionally keep `tSoftMs = null` / `tHardMs = null`. The Recorder records
 the real monotonic elapsed time, marks the policy `calibration_pending`, and does
 **not** invent a cutoff, a timeout penalty, or a timing credit. The recorded
 elapsed values are calibration input for #220.
