@@ -9,10 +9,10 @@ import {
   getMcpWorkspaceSelection,
   saveMcpWebSearchConfig,
   selectMcpWorkspaceRoot,
-  type McpArtifact,
-  type McpInvocationEvent,
-  type McpInvocationTrace,
-  type McpToolDefinition,
+  type HarnessToolDefinition,
+  type ToolArtifact,
+  type ToolInvocationEvent,
+  type ToolTrace,
 } from "@/shared/api/tools";
 import type {
   ToolGroupSummary,
@@ -41,7 +41,7 @@ const defaultWebSearchConfig: WebSearchConfig = {
   maxResults: WEB_SEARCH_DEFAULT_MAX_RESULTS,
 };
 
-const isWorkbenchTool = (tool: McpToolDefinition): tool is WorkbenchToolDefinition =>
+const isWorkbenchTool = (tool: HarnessToolDefinition): tool is WorkbenchToolDefinition =>
   tool.source === "internal" && Boolean(tool.workbench?.groupId);
 
 const normalizeWebSearchMaxResults = (value: unknown) => {
@@ -70,10 +70,10 @@ export function useToolsWorkbench() {
   const [isSelectingWorkspace, setIsSelectingWorkspace] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [webSearchConfig, setWebSearchConfig] = useState<WebSearchConfig>(defaultWebSearchConfig);
-  const [events, setEvents] = useState<McpInvocationEvent[]>([]);
-  const [trace, setTrace] = useState<McpInvocationTrace | null>(null);
+  const [events, setEvents] = useState<ToolInvocationEvent[]>([]);
+  const [trace, setTrace] = useState<ToolTrace | null>(null);
   const [result, setResult] = useState<unknown>(null);
-  const [artifacts, setArtifacts] = useState<McpArtifact[]>([]);
+  const [artifacts, setArtifacts] = useState<ToolArtifact[]>([]);
   const [runError, setRunError] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<
     "idle" | "completed" | "failed" | "cancelled" | "awaiting_approval"
@@ -187,7 +187,7 @@ export function useToolsWorkbench() {
     setRunStatus("idle");
   };
 
-  const appendEvent = (event: McpInvocationEvent) => {
+  const appendEvent = (event: ToolInvocationEvent) => {
     setEvents((current) => [...current, event]);
 
     if (event.type === "invocation:artifact") {

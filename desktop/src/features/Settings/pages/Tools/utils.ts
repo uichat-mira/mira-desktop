@@ -1,4 +1,4 @@
-import type { McpArtifact, McpToolDefinition } from "@/shared/api/tools";
+import type { HarnessToolDefinition, ToolArtifact } from "@/shared/api/tools";
 import type { ToolWorkbenchGroupId, WorkbenchToolDefinition } from "./types";
 
 export const getToolGroups = (tools: WorkbenchToolDefinition[]): ToolWorkbenchGroupId[] =>
@@ -129,7 +129,7 @@ export function getTerminalResultSummary(value: unknown): TerminalResultSummary 
   };
 }
 
-export function findPrimaryArtifact(artifacts: McpArtifact[]) {
+export function findPrimaryArtifact(artifacts: ToolArtifact[]) {
   return (
     artifacts.find((artifact) => artifact.kind === "search-results") ??
     artifacts.find((artifact) => artifact.kind === "document") ??
@@ -140,7 +140,7 @@ export function findPrimaryArtifact(artifacts: McpArtifact[]) {
   );
 }
 
-export function buildToolDraft(tool: McpToolDefinition) {
+export function buildToolDraft(tool: HarnessToolDefinition) {
   if (tool.workbench?.defaultArgs) {
     return compactJson(tool.workbench.defaultArgs);
   }

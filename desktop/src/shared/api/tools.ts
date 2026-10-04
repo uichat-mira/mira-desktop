@@ -18,7 +18,7 @@ export function getTools() {
   return get<ToolDefinition[]>("/tools");
 }
 
-export type McpToolDomain =
+export type ToolDomain =
   | "read"
   | "edit"
   | "web_search"
@@ -27,11 +27,11 @@ export type McpToolDomain =
   | "external_mcp"
   | (string & {});
 
-export type McpToolDefinition = {
+export type HarnessToolDefinition = {
   id: string;
   title: string;
   description: string;
-  domain: McpToolDomain;
+  domain: ToolDomain;
   source: "internal" | "external";
   mode: "sync" | "stream";
   inputSchema: Record<string, unknown>;
@@ -54,7 +54,7 @@ export type McpToolDefinition = {
   };
 };
 
-export type McpArtifact = {
+export type ToolArtifact = {
   id: string;
   kind:
     | "text"
@@ -74,7 +74,7 @@ export type McpArtifact = {
   metadata?: Record<string, unknown>;
 };
 
-export type McpInvocationEvent =
+export type ToolInvocationEvent =
   | {
       type: "invocation:start";
       invocationId: string;
@@ -104,7 +104,7 @@ export type McpInvocationEvent =
   | {
       type: "invocation:artifact";
       invocationId: string;
-      artifact: McpArtifact;
+      artifact: ToolArtifact;
       at: string;
     }
   | {
@@ -126,7 +126,7 @@ export type McpInvocationEvent =
       at: string;
     };
 
-export type McpTraceSpanKind =
+export type ToolTraceSpanKind =
   | "invocation"
   | "permission_check"
   | "strategy_selection"
@@ -137,26 +137,26 @@ export type McpTraceSpanKind =
   | "artifact_emit"
   | "result_normalization";
 
-export type McpTraceSpan = {
+export type ToolTraceSpan = {
   id: string;
   traceId: string;
   invocationId: string;
   parentSpanId?: string;
   name: string;
-  kind: McpTraceSpanKind;
+  kind: ToolTraceSpanKind;
   status: "running" | "completed" | "failed" | "cancelled";
   startedAt: string;
   finishedAt?: string;
   metadata?: Record<string, unknown>;
 };
 
-export type McpInvocationTrace = {
+export type ToolTrace = {
   traceId: string;
   invocationId: string;
   toolId: string;
   startedAt: string;
   finishedAt?: string;
-  spans: McpTraceSpan[];
+  spans: ToolTraceSpan[];
 };
 
 export type McpWorkspaceSelection = {
@@ -473,11 +473,11 @@ export function selectMcpWorkspaceRoot(rootPath: string) {
 }
 
 export function getMcpTools() {
-  return get<McpToolDefinition[]>("/mcp/tools?source=agent_intent");
+  return get<HarnessToolDefinition[]>("/mcp/tools?source=agent_intent");
 }
 
 export function getMcpInvocationTrace(invocationId: string) {
-  return get<McpInvocationTrace>(`/mcp/invocations/${invocationId}/trace`);
+  return get<ToolTrace>(`/mcp/invocations/${invocationId}/trace`);
 }
 
 const decodeSseEvents = (buffer: string) => {
@@ -503,7 +503,7 @@ export async function executeMcpInvocationStream(
     args?: Record<string, unknown>;
     signal?: AbortSignal;
   },
-  onEvent: (event: McpInvocationEvent) => void | Promise<void>,
+  onEvent: (event: ToolInvocationEvent) => void | Promise<void>,
 ) {
   const session = getSession();
   const response = await fetch(`${getApiBaseUrl()}/mcp/invocations/stream`, {
@@ -553,7 +553,7 @@ export async function executeMcpInvocationStream(
         continue;
       }
 
-      const event = JSON.parse(dataLines.join("\n")) as McpInvocationEvent;
+      const event = JSON.parse(dataLines.join("\n")) as ToolInvocationEvent;
       await onEvent(event);
     }
   }
