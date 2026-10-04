@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveHarnessToolExposure } from "./exposure.js";
-import { clearHarnessRegistry, registerCapability } from "./registry.js";
+import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { codebaseExploreTool } from "../mcp/managed-codegraph/codebase-explore.tool.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
 import { readDiscoverTool } from "../mcp/tools/read-discover.tool.js";
@@ -27,7 +27,7 @@ describe("public read tool surface", () => {
       grepTool,
       readOpenTool,
       codebaseExploreTool,
-    ].forEach(registerCapability);
+    ].forEach(registerTool);
 
     const readToolIds = resolveHarnessToolExposure({
       source: "agent_intent",

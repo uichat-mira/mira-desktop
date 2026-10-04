@@ -188,7 +188,7 @@ const setupToolExposure = (
   query: string,
   definitions: Array<ReturnType<typeof makeToolDefinition>>,
 ) => {
-  vi.spyOn(registry, "listCapabilityDefinitions").mockReturnValue(definitions);
+  vi.spyOn(registry, "listToolDefinitions").mockReturnValue(definitions);
   vi.spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding").mockResolvedValue(
     makeToolIntentResult(query, definitions),
   );

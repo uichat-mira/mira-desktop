@@ -5,7 +5,7 @@ import { resolveHarnessToolCandidatesForTurn } from "../candidates-core/index.js
 import { resolveHarnessToolExposure } from "../exposure-core/index.js";
 import type { ToolIntentCandidate } from "@/agent/intent/types.js";
 import type { HarnessTurnSource } from "../shared/types.js";
-import { listCapabilityDefinitions } from "../registry.js";
+import { listToolDefinitions } from "../registry.js";
 import { resolveAgentEligibleExternalMcpCapabilities } from "@/mcp/external";
 
 export interface HarnessCapabilityDiagnosticsInput {
@@ -117,7 +117,7 @@ export const resolveHarnessCapabilityDiagnostics = async (
   );
   const eligibleExternalCapabilityIds = resolveAgentEligibleExternalMcpCapabilities().map((item) => item.id);
   const eligibleSet = new Set(input.allowedExternalToolIds ?? eligibleExternalCapabilityIds);
-  const registeredExternal = listCapabilityDefinitions().filter((item) => item.source === "external");
+  const registeredExternal = listToolDefinitions().filter((item) => item.source === "external");
   const exposureDecision = resolveHarnessToolExposure({
     source,
     query: input.query,

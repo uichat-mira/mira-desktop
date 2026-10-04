@@ -6,7 +6,7 @@ import {
   resolveWenshuOfficePackRoot,
   resolveWenshuOfficeSitePackages,
 } from "@/microapps/office-suite/runtime-pack-paths.js";
-import { clearHarnessRegistry, listCapabilityDefinitions } from "./registry.js";
+import { clearHarnessRegistry, listToolDefinitions } from "./registry.js";
 import {
   reconcileWenshuOfficeHarnessCapabilities,
   WENSHU_OPTIONAL_CAPABILITY_IDS,
@@ -37,7 +37,7 @@ describe("WenShu Office Harness capability reconciliation", () => {
 
     expect(state.runtimePackAvailable).toBe(false);
     expect(state.registeredCapabilityIds).toEqual([]);
-    expect(listCapabilityDefinitions().map((definition) => definition.id)).toEqual([]);
+    expect(listToolDefinitions().map((definition) => definition.id)).toEqual([]);
   });
 
   it("keeps optional Office capabilities absent even when the Runtime Pack is ready", () => {
@@ -53,7 +53,7 @@ describe("WenShu Office Harness capability reconciliation", () => {
     expect(available.runtimePackAvailable).toBe(true);
     expect(available.registeredCapabilityIds).toEqual([]);
     expect(
-      listCapabilityDefinitions()
+      listToolDefinitions()
         .map((definition) => definition.id)
         .filter((id) => WENSHU_OPTIONAL_CAPABILITY_IDS.includes(id)),
     ).toEqual([]);
@@ -62,7 +62,7 @@ describe("WenShu Office Harness capability reconciliation", () => {
     const unavailable = reconcileWenshuOfficeHarnessCapabilities();
     expect(unavailable.runtimePackAvailable).toBe(false);
     expect(
-      listCapabilityDefinitions()
+      listToolDefinitions()
         .map((definition) => definition.id)
         .filter((id) => WENSHU_OPTIONAL_CAPABILITY_IDS.includes(id)),
     ).toEqual([]);

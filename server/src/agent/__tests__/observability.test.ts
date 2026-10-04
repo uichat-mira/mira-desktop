@@ -98,7 +98,8 @@ const makeToolIntentResult = (input: {
     exposedDefinitions: input.exposedDefinitions,
     reason: [],
     blockedCapabilityIds: [],
-  },});
+  },
+});
 
 beforeEach(() => {
   vi.spyOn(contextBudgetService, "pack").mockImplementation((input) => {
@@ -171,7 +172,7 @@ test("agentGraph tracing stays disabled by default", async () => {
   __setAgentTraceSinkForTests((record) => {
     records.push(record);
   });
-  vi.spyOn(registry, "listCapabilityDefinitions").mockReturnValue([readOpen]);
+  vi.spyOn(registry, "listToolDefinitions").mockReturnValue([readOpen]);
   vi.spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding").mockResolvedValue(
     makeToolIntentResult({
       query: "open README.md",
@@ -253,7 +254,7 @@ test("agentGraph tracing emits sanitized Phoenix-ready node spans when enabled",
   __setAgentTraceSinkForTests((record) => {
     records.push(record);
   });
-  vi.spyOn(registry, "listCapabilityDefinitions").mockReturnValue([readOpen]);
+  vi.spyOn(registry, "listToolDefinitions").mockReturnValue([readOpen]);
   vi.spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding").mockResolvedValue(
     makeToolIntentResult({
       query: "open README.md",

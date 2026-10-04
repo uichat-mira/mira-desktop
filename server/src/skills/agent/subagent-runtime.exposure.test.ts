@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearHarnessRegistry,
-  registerCapability,
+  registerTool,
 } from "@/harness/registry.js";
 import {
   githubActionsTool,
@@ -63,10 +63,10 @@ const createGitHubSkillContext = (
 });
 
 const registerGitHubTools = () => {
-  registerCapability(githubRepositoryTool);
-  registerCapability(githubIssueTool);
-  registerCapability(githubPullRequestTool);
-  registerCapability(githubActionsTool);
+  registerTool(githubRepositoryTool);
+  registerTool(githubIssueTool);
+  registerTool(githubPullRequestTool);
+  registerTool(githubActionsTool);
 };
 
 afterEach(() => {

@@ -184,8 +184,8 @@ test("policyNode blocks non-frozen legacy tool calls", async () => {
 });
 
 test("policyNode allows low-risk frozen pendingToolCall without modifying it", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
         id: "web_search",
@@ -214,13 +214,13 @@ test("policyNode allows low-risk frozen pendingToolCall without modifying it", a
     assert.deepEqual(result.pendingToolCall?.args, { query: "search docs" });
     assert.equal(result.pendingToolCall?.toolId, "web_search");
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode uses frozen pendingToolCall.toolMeta as the primary SSOT", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
         id: "web_search",
@@ -267,13 +267,13 @@ test("policyNode uses frozen pendingToolCall.toolMeta as the primary SSOT", asyn
     assert.equal(result.pendingApproval, undefined);
     assert.deepEqual(result.pendingToolCall, pendingToolCall);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode raises approval for risky frozen pendingToolCall", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
         id: "workspace_mutation",
@@ -310,13 +310,13 @@ test("policyNode raises approval for risky frozen pendingToolCall", async () => 
     assert.deepEqual(result.pendingToolCall, pendingToolCall);
     assert.ok(emitted.length > 0);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode blocks execution when policy denies the frozen call", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
         id: "web_search",
@@ -353,13 +353,13 @@ test("policyNode blocks execution when policy denies the frozen call", async () 
     assert.equal(result.errorMessage, "Denied by policy for test coverage.");
   } finally {
     evaluatePolicySpy.mockRestore();
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode bypasses approval only for the exact approved frozen invocation", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
         id: "terminal_session",
@@ -398,13 +398,13 @@ test("policyNode bypasses approval only for the exact approved frozen invocation
     assert.equal(result.policyDecision?.type, "allow");
     assert.deepEqual(result.pendingToolCall, pendingToolCall);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode does not reuse approval when inputHash does not match", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
         id: "terminal_session",
@@ -443,13 +443,13 @@ test("policyNode does not reuse approval when inputHash does not match", async (
     assert.equal(result.pendingApproval?.toolCallId, pendingToolCall.id);
     assert.equal(result.pendingApproval?.inputHash, pendingToolCall.inputHash);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode blocks unknown tool ids instead of guessing fallbacks", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([]);
 
   try {
@@ -467,13 +467,13 @@ test("policyNode blocks unknown tool ids instead of guessing fallbacks", async (
     assert.equal(result.policyDecision?.type, "error");
     assert.match(result.errorMessage ?? "", /unknown tool/i);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode does not read toolIntent.toolExposure as a fallback execution source", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([]);
 
   try {
@@ -510,6 +510,6 @@ test("policyNode does not read toolIntent.toolExposure as a fallback execution s
     assert.equal(result.policyDecision?.type, "error");
     assert.match(result.errorMessage ?? "", /unknown tool/i);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });

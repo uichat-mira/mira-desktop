@@ -133,8 +133,8 @@ import {
   migrateLegacyMicroAppBindings,
 } from "@/microapps/legacy-sync.js";
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability.js";
-import { getCapabilityImplementation } from "@/harness/registry.js";
-import { registerCapability } from "@/harness/registry.js";
+import { getToolImplementation } from "@/harness/registry.js";
+import { registerTool } from "@/harness/registry.js";
 import { computerUseRepository, createPersistentComputerUseTaskStore, createPersistentComputerUseEvidenceStore } from "@/db/repositories/computer-use/repository.js";
 import {
   initializeForgeRuntime,
@@ -251,7 +251,7 @@ const computerUseBrowserSessions = new BrowserSessionManager({
 });
 const computerUseBrowserService = new BrowserService(computerUseBrowserSessions);
 for (const tool of createComputerUseBrowserTools(computerUseBrowserService, { sessionManager: computerUseBrowserSessions })) {
-  registerCapability(tool);
+  registerTool(tool);
 }
 const nowIso = () => new Date().toISOString();
 
@@ -556,7 +556,7 @@ const newsHubService = createNewsHubService({
 });
 const codeGraphStudioService = createCodeGraphStudioService({
   getCapabilityRegistrationState: () =>
-    Boolean(getCapabilityImplementation("codebase_explore")),
+    Boolean(getToolImplementation("codebase_explore")),
   onStateChanged: () => {
     reconcileCodeGraphHarnessCapability();
   },

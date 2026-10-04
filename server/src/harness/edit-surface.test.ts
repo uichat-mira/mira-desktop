@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveHarnessToolExposure } from "./exposure.js";
 import {
   clearHarnessRegistry,
-  listCapabilityDefinitions,
+  listToolDefinitions,
 } from "./registry.js";
 import {
   initializeHarnessRuntime,
@@ -24,7 +24,7 @@ describe("public edit tool surface", () => {
   it("exposes exactly four direct edit actions while keeping legacy wrappers compatibility-only", () => {
     initializeHarnessRuntime();
 
-    const registeredEditToolIds = listCapabilityDefinitions()
+    const registeredEditToolIds = listToolDefinitions()
       .filter((definition) => definition.domain === "edit")
       .map((definition) => definition.id)
       .sort();

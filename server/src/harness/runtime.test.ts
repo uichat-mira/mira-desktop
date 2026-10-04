@@ -11,7 +11,7 @@ import { reconcileCodeGraphHarnessCapability } from "./codegraph-capability.js";
 import { resolveHarnessToolExposure } from "./exposure.js";
 import {
   clearHarnessRegistry,
-  listCapabilityDefinitions,
+  listToolDefinitions,
 } from "./registry.js";
 import { initializeHarnessRuntime, resetHarnessRuntime } from "./runtime.js";
 
@@ -34,13 +34,13 @@ const resetRuntime = () => {
   fs.rmSync(appDataRoot, { recursive: true, force: true });
 };
 
-describe("initializeHarnessRuntime capability registration", () => {
+describe("initializeHarnessRuntime tool registration", () => {
   afterEach(resetRuntime);
 
   it("keeps codebase_explore registered by default", () => {
     initializeHarnessRuntime();
 
-    expect(listCapabilityDefinitions().map((definition) => definition.id)).toContain(
+    expect(listToolDefinitions().map((definition) => definition.id)).toContain(
       "codebase_explore",
     );
 
@@ -54,7 +54,7 @@ describe("initializeHarnessRuntime capability registration", () => {
   it("registers exactly four GitHub domain tools and no legacy read wrappers", () => {
     initializeHarnessRuntime();
 
-    const githubToolIds = listCapabilityDefinitions()
+    const githubToolIds = listToolDefinitions()
       .filter((definition) => definition.domain === "github")
       .map((definition) => definition.id)
       .sort();

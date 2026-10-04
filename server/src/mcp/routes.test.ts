@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import mcpRoutes from "./routes.js";
 import {
   clearHarnessRegistry,
-  getCapabilityImplementation,
-  registerCapability,
+  getToolImplementation,
+  registerTool,
 } from "../harness/registry.js";
 import { clearHarnessInvocations } from "../harness/invocations.js";
 import { resetHarnessRuntime } from "./bootstrap.js";
@@ -170,13 +170,13 @@ describe("mcp routes", () => {
       observe: async () => ({ ok: true }),
       act: async () => ({ ok: true }),
       assert: async () => ({ ok: true }),
-    } as never).forEach(registerCapability);
+    } as never).forEach(registerTool);
     [
       browserAttachedLookTool,
       browserAttachedBrowseTool,
       browserAttachedActTool,
       browserAttachedTransferTool,
-    ].forEach(registerCapability);
+    ].forEach(registerTool);
 
     const app = Fastify({
       logger: getLoggerConfig(),
@@ -833,7 +833,7 @@ describe("mcp routes", () => {
     }).data;
     expect(internalToolDefinitions.every((tool) => tool.source === "internal")).toBe(true);
 
-    const projectedToolImplementation = getCapabilityImplementation("mcp:remote-docs:tool:search_docs");
+    const projectedToolImplementation = getToolImplementation("mcp:remote-docs:tool:search_docs");
     expect(projectedToolImplementation?.definition).toMatchObject({
       id: "mcp:remote-docs:tool:search_docs",
       source: "external",
@@ -1335,7 +1335,7 @@ describe("mcp routes", () => {
         .discoveredTools,
     ).toMatchObject([{ projectedCapabilityId: "mcp:local-docs:tool:read_local_docs" }]);
 
-    expect(getCapabilityImplementation("mcp:local-docs:tool:read_local_docs")?.definition).toMatchObject({
+    expect(getToolImplementation("mcp:local-docs:tool:read_local_docs")?.definition).toMatchObject({
       id: "mcp:local-docs:tool:read_local_docs",
       domain: "external_mcp",
       source: "external",
@@ -1521,7 +1521,7 @@ describe("mcp routes", () => {
         .discoveredTools,
     ).toMatchObject([{ projectedCapabilityId: "mcp:mutable-remote:tool:search_docs" }]);
 
-    expect(getCapabilityImplementation("mcp:mutable-remote:tool:search_docs")?.definition).toMatchObject({
+    expect(getToolImplementation("mcp:mutable-remote:tool:search_docs")?.definition).toMatchObject({
       id: "mcp:mutable-remote:tool:search_docs",
       domain: "external_mcp",
       source: "external",
@@ -1597,7 +1597,7 @@ describe("mcp routes", () => {
         .discoveredTools,
     ).toMatchObject([{ projectedCapabilityId: "mcp:mutable-remote:tool:lookup_docs" }]);
 
-    expect(getCapabilityImplementation("mcp:mutable-remote:tool:lookup_docs")?.definition).toMatchObject({
+    expect(getToolImplementation("mcp:mutable-remote:tool:lookup_docs")?.definition).toMatchObject({
       id: "mcp:mutable-remote:tool:lookup_docs",
       domain: "external_mcp",
       source: "external",

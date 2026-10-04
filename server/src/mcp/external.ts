@@ -2,10 +2,10 @@ import { getSqlite } from "@/db";
 import { mcpBadRequest, mcpInternalError, mcpNotFound } from "./core/errors.js";
 import type { ToolDefinition, ToolImplementation } from "./core/definitions.js";
 import {
-  getCapabilityImplementation,
-  listCapabilityDefinitions,
-  registerCapability,
-  unregisterCapability,
+  getToolImplementation,
+  listToolDefinitions,
+  registerTool,
+  unregisterTool,
 } from "../harness/registry.js";
 import { StdioMcpSession } from "./stdio-session.js";
 import { redactExternalMcpValue } from "./external-redaction.js";
@@ -1521,7 +1521,7 @@ const registerProjectedTool = (
         const discovered = current.discoveredTools.find(
           (item) => item.name === tool.name && item.projectedCapabilityId === tool.projectedCapabilityId,
         );
-        const registered = getCapabilityImplementation(tool.projectedCapabilityId);
+        const registered = getToolImplementation(tool.projectedCapabilityId);
         if (
           !current.enabled ||
           !current.agentEnabled ||
@@ -1574,25 +1574,25 @@ const registerProjectedTool = (
       }
     },
   };
-  registerCapability(implementation);
+  registerTool(implementation);
 };
 
 const unregisterExternalMcpServerCapabilities = (
   server: Pick<ExternalMcpServerRecord, "id" | "discoveredTools">,
 ) => {
   const canonicalPrefix = `mcp:${server.id}:tool:`;
-  for (const definition of listCapabilityDefinitions()) {
+  for (const definition of listToolDefinitions()) {
     if (
       definition.source === "external" &&
       definition.id.startsWith(canonicalPrefix) &&
       definition.tags.includes(server.id)
     ) {
-      unregisterCapability(definition.id);
+      unregisterTool(definition.id);
     }
   }
   for (const tool of server.discoveredTools) {
     const canonicalId = toProjectedCapabilityId(server.id, tool.name);
-    unregisterCapability(canonicalId);
+    unregisterTool(canonicalId);
   }
 };
 
@@ -1647,7 +1647,7 @@ export const resolveAgentEligibleExternalMcpCapabilities = (): ToolDefinition[] 
       if (tool.projectedCapabilityId !== canonicalId) {
         continue;
       }
-      const implementation = getCapabilityImplementation(canonicalId);
+      const implementation = getToolImplementation(canonicalId);
       if (!implementation || implementation.definition.source !== "external") {
         continue;
       }

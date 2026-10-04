@@ -11,8 +11,8 @@ import {
 } from "@/harness/invocations.js";
 import {
   clearHarnessRegistry,
-  listCapabilityDefinitions,
-  registerCapability,
+  listToolDefinitions,
+  registerTool,
 } from "@/harness/registry.js";
 import {
   initializeHarnessRuntime,
@@ -157,7 +157,7 @@ describe("Attached Browser Harness tools", () => {
     ).rejects.toThrow(/trusted authenticated user context/i);
     expect(invokeWebBridgeMock).not.toHaveBeenCalled();
 
-    registerCapability(browserAttachedLookTool);
+    registerTool(browserAttachedLookTool);
     await expect(
       executeHarnessInvocation({
         toolId: "browser_attached_look",
@@ -176,7 +176,7 @@ describe("Attached Browser Harness tools", () => {
         suggestedAction: "look",
       }),
     );
-    registerCapability(browserAttachedLookTool);
+    registerTool(browserAttachedLookTool);
 
     const invocation = await executeHarnessInvocation({
       toolId: "browser_attached_look",
@@ -269,7 +269,7 @@ describe("Attached Browser Harness tools", () => {
       ],
     };
     invokeWebBridgeMock.mockResolvedValue(result);
-    registerCapability(browserAttachedLookTool);
+    registerTool(browserAttachedLookTool);
 
     const invocation = await executeHarnessInvocation({
       toolId: "browser_attached_look",
@@ -370,7 +370,7 @@ describe("Attached Browser Harness tools", () => {
 
   it("registers only browser_attached IDs in Harness runtime", () => {
     initializeHarnessRuntime();
-    const ids = listCapabilityDefinitions().map((definition) => definition.id);
+    const ids = listToolDefinitions().map((definition) => definition.id);
     expect(ids).toEqual(
       expect.arrayContaining([
         "browser_attached_look",
@@ -391,7 +391,7 @@ describe("Attached Browser Harness tools", () => {
       .spyOn(computerUseRepository, "persistEvents")
       .mockImplementation(() => undefined);
     invokeWebBridgeMock.mockResolvedValue({ url: "https://example.com" });
-    registerCapability(browserAttachedLookTool);
+    registerTool(browserAttachedLookTool);
 
     const record = await executeHarnessInvocation({
       toolId: "browser_attached_look",

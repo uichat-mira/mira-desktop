@@ -12,7 +12,7 @@ import {
 } from "../harness/invocations.js";
 import {
   getReadableResourceImplementation,
-  listInternalCapabilityDefinitions,
+  listInternalToolDefinitions,
   listReadableResourceDefinitions,
 } from "../harness/registry.js";
 import { resolveHarnessToolExposure } from "../harness/exposure.js";
@@ -778,7 +778,7 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to list MCP tools", async (request) => {
-      const internalDefinitions = listInternalCapabilityDefinitions();
+      const internalDefinitions = listInternalToolDefinitions();
       if (!request.query.query && !request.query.source) {
         return success(withWorkbenchMetadata(internalDefinitions));
       }

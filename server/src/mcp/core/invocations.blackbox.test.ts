@@ -6,7 +6,7 @@ import {
   getHarnessInvocationTrace,
   listHarnessInvocationEvents,
 } from "../../harness/invocations.js";
-import { clearHarnessRegistry, registerCapability } from "../../harness/registry.js";
+import { clearHarnessRegistry, registerTool } from "../../harness/registry.js";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import type { ToolImplementation } from "./definitions.js";
 import { configureInvocationRetention } from "./invocations.js";
@@ -20,7 +20,7 @@ const createBoundaryEnvironment = (workspaceRoot = "D:\\CODEX_TEST_FOLDER_ALT") 
   });
 
 const registerBlackboxTool = (tool: ToolImplementation) => {
-  registerCapability(tool);
+  registerTool(tool);
   return tool;
 };
 

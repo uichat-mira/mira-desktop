@@ -5,7 +5,7 @@ import {
   getHarnessInvocationTrace,
   listHarnessInvocationEvents,
 } from "../../harness/invocations.js";
-import { clearHarnessRegistry, registerCapability } from "../../harness/registry.js";
+import { clearHarnessRegistry, registerTool } from "../../harness/registry.js";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { ToolApprovalRequiredError } from "./errors.js";
 import type { ToolImplementation } from "./definitions.js";
@@ -52,7 +52,7 @@ describe("mcp invocations", () => {
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "test_tool",
@@ -112,7 +112,7 @@ describe("mcp invocations", () => {
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "approval_tool",
@@ -150,7 +150,7 @@ describe("mcp invocations", () => {
   });
 
   it("records structured failureCode for schema validation failures thrown by tools", async () => {
-    registerCapability({
+    registerTool({
       definition: {
         id: "tool_schema_failure",
         title: "Tool Schema Failure",
@@ -209,7 +209,7 @@ describe("mcp invocations", () => {
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "preflight_approval_tool",
@@ -250,7 +250,7 @@ describe("mcp invocations", () => {
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "approved_tool",
@@ -304,7 +304,7 @@ describe("mcp invocations", () => {
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const approvedArgs = {
       command: "pwd",
@@ -360,7 +360,7 @@ describe("mcp invocations", () => {
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "thread_context_tool",
@@ -377,7 +377,7 @@ describe("mcp invocations", () => {
   it("rejects invocation args that do not satisfy the declared input schema", async () => {
     let executed = false;
 
-    registerCapability({
+    registerTool({
       definition: {
         id: "schema_tool",
         title: "Schema Tool",
@@ -418,7 +418,7 @@ describe("mcp invocations", () => {
   });
 
   it("accepts only a concrete toolId and rejects an unregistered capabilityId", async () => {
-    registerCapability({
+    registerTool({
       definition: {
         id: "read_list",
         title: "Read List",
@@ -451,7 +451,7 @@ describe("mcp invocations", () => {
   it("uses definition-declared workspace boundary keys instead of implicit path/cwd guessing", async () => {
     let executed = false;
 
-    registerCapability({
+    registerTool({
       definition: {
         id: "boundary_tool",
         title: "Boundary Tool",
@@ -536,7 +536,7 @@ describe("mcp invocations", () => {
   it("keeps POSIX absolute paths visible to the workspace boundary on Windows-style roots", async () => {
     let executed = false;
 
-    registerCapability({
+    registerTool({
       definition: {
         id: "boundary_tool_root_relative",
         title: "Boundary Tool Root Relative",
@@ -638,7 +638,7 @@ describe("mcp invocations", () => {
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
     configureInvocationRetention({
       maxEntries: 1,
       ttlMs: 1000 * 60 * 30,

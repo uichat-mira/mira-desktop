@@ -36,7 +36,7 @@ import {
 } from "../mcp/external.js";
 import { webSearchSettingsRepository } from "@/db/repositories/web-search-settings.repository.js";
 import { reconcileCodeGraphHarnessCapability } from "./codegraph-capability.js";
-import { registerCapability, registerReadableResource } from "./registry.js";
+import { registerTool, registerReadableResource } from "./registry.js";
 import { reconcileWenshuOfficeHarnessCapabilities } from "./wenshu-office-capability.js";
 
 let initialized = false;
@@ -47,19 +47,19 @@ export const initializeHarnessRuntime = () => {
   }
 
   registerReadableResource(workspaceResource);
-  registerCapability(readListTool);
-  registerCapability(readLocateTool);
-  registerCapability(readOpenTool);
-  registerCapability(readDiscoverTool);
-  registerCapability(grepTool);
-  registerCapability(readExtractTool);
-  registerCapability(readSliceTool);
-  registerCapability(readTool);
+  registerTool(readListTool);
+  registerTool(readLocateTool);
+  registerTool(readOpenTool);
+  registerTool(readDiscoverTool);
+  registerTool(grepTool);
+  registerTool(readExtractTool);
+  registerTool(readSliceTool);
+  registerTool(readTool);
 
-  registerCapability(writeFileTool);
-  registerCapability(replaceBlockTool);
-  registerCapability(deletePathTool);
-  registerCapability(movePathTool);
+  registerTool(writeFileTool);
+  registerTool(replaceBlockTool);
+  registerTool(deletePathTool);
+  registerTool(movePathTool);
 
   // WenShu document types are exposed as Skills, not duplicate Harness tools.
   // Keep runtime-pack readiness observable while ensuring legacy office_* wrappers
@@ -68,29 +68,29 @@ export const initializeHarnessRuntime = () => {
 
   // Compatibility-only implementations for persisted/legacy invocations.
   // Exposure policy keeps these out of the Agent-visible edit surface.
-  registerCapability(editFileTool);
-  registerCapability(workspaceMutationTool);
+  registerTool(editFileTool);
+  registerTool(workspaceMutationTool);
 
-  registerCapability(webSearchTool);
-  registerCapability(newsSearchTool);
-  registerCapability(mailQueryTool);
+  registerTool(webSearchTool);
+  registerTool(newsSearchTool);
+  registerTool(mailQueryTool);
 
   // GitHub exposes exactly four stable domain tools. Legacy *_read implementations
-  // remain internal delegates but are intentionally not registered as capabilities.
-  registerCapability(githubRepositoryTool);
-  registerCapability(githubIssueTool);
-  registerCapability(githubPullRequestTool);
-  registerCapability(githubActionsTool);
+  // remain internal delegates but are intentionally not registered as tools.
+  registerTool(githubRepositoryTool);
+  registerTool(githubIssueTool);
+  registerTool(githubPullRequestTool);
+  registerTool(githubActionsTool);
 
-  registerCapability(terminalSessionTool);
+  registerTool(terminalSessionTool);
   for (const tool of createBrowserAttachedTools()) {
-    registerCapability(tool);
+    registerTool(tool);
   }
-  registerCapability(askExternalExpertTool);
+  registerTool(askExternalExpertTool);
   reconcileCodeGraphHarnessCapability();
   // External MCP persistence is optional at bootstrap time. Some callers
   // (notably route-level tests and early app startup before DB wiring) only
-  // need the built-in harness capabilities. In those cases we should not fail
+  // need the built-in harness tools. In those cases we should not fail
   // the whole server just because DATABASE_URL has not been resolved yet.
   if (process.env.DATABASE_URL) {
     initializeExternalMcpDatabase();

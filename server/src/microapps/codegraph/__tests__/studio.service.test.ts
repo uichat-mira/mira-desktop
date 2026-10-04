@@ -9,7 +9,7 @@ import {
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability.js";
 import {
   clearHarnessRegistry,
-  listCapabilityDefinitions,
+  listToolDefinitions,
 } from "@/harness/registry.js";
 import { initializeHarnessRuntime, resetHarnessRuntime } from "@/harness/runtime.js";
 import { getTestArtifactDir } from "@/test-support/artifacts.js";
@@ -263,7 +263,7 @@ describe("CodeGraph Studio service", () => {
       workspaceRoot: caseWorkspaceRoot,
       storageRoot: caseStorageRoot,
       getCapabilityRegistrationState: () =>
-        listCapabilityDefinitions().some((item) => item.id === "codebase_explore"),
+        listToolDefinitions().some((item) => item.id === "codebase_explore"),
       onStateChanged: () => {
         reconcileCodeGraphHarnessCapability();
       },
@@ -286,7 +286,7 @@ describe("CodeGraph Studio service", () => {
 
     expect(started.report.runtime.processAlive).toBe(true);
     expect(healthy.report.status).toBe("ready");
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     await service.saveConfig({
       agentCapabilityEnabled: true,
@@ -298,7 +298,7 @@ describe("CodeGraph Studio service", () => {
     expect(enabledReport.capability.available).toBe(true);
     expect(enabledReport.capability.registered).toBe(true);
     expect(enabledReport.config.capabilityRegistered).toBe(true);
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     await service.saveConfig({
       agentCapabilityEnabled: false,
@@ -310,7 +310,7 @@ describe("CodeGraph Studio service", () => {
     expect(disabledReport.capability.available).toBe(false);
     expect(disabledReport.capability.registered).toBe(false);
     expect(disabledReport.config.capabilityRegistered).toBe(true);
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
   });
 
   it("stops the old manager on runtime config changes and keeps capability unavailable until an explicit restart", async () => {
@@ -329,7 +329,7 @@ describe("CodeGraph Studio service", () => {
       workspaceRoot: caseWorkspaceRoot,
       storageRoot: caseStorageRoot,
       getCapabilityRegistrationState: () =>
-        listCapabilityDefinitions().some((item) => item.id === "codebase_explore"),
+        listToolDefinitions().some((item) => item.id === "codebase_explore"),
       onStateChanged: () => {
         reconcileCodeGraphHarnessCapability();
       },
@@ -349,7 +349,7 @@ describe("CodeGraph Studio service", () => {
 
     const started = await service.start();
     expect(started.report.status).toBe("ready");
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     const previousContext = service.getManagedCapabilityContext(caseWorkspaceRoot);
     expect(previousContext.ok).toBe(true);
@@ -364,7 +364,7 @@ describe("CodeGraph Studio service", () => {
     expect(changedReport.capability.available).toBe(false);
     expect(changedReport.capability.registered).toBe(false);
     expect(changedReport.config.capabilityRegistered).toBe(true);
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     const currentContext = service.getManagedCapabilityContext(caseWorkspaceRoot);
     expect(currentContext.ok).toBe(false);
@@ -387,7 +387,7 @@ describe("CodeGraph Studio service", () => {
       workspaceRoot: caseWorkspaceRoot,
       storageRoot: caseStorageRoot,
       getCapabilityRegistrationState: () =>
-        listCapabilityDefinitions().some((item) => item.id === "codebase_explore"),
+        listToolDefinitions().some((item) => item.id === "codebase_explore"),
       onStateChanged: () => {
         reconcileCodeGraphHarnessCapability();
       },
@@ -409,7 +409,7 @@ describe("CodeGraph Studio service", () => {
 
     await service.start();
     await service.health();
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     process.env.FAKE_SHUTDOWN_DELAY_MS = "250";
     const nextStartArgs = [fixturePath, "--mcp", "--session-id", `new-${Date.now()}`];
@@ -418,7 +418,7 @@ describe("CodeGraph Studio service", () => {
     });
 
     await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
     expect(service.getManagedCapabilityContext(caseWorkspaceRoot).ok).toBe(false);
 
     await savePromise;
@@ -467,7 +467,7 @@ describe("CodeGraph Studio service", () => {
       workspaceRoot: caseWorkspaceRoot,
       storageRoot: caseStorageRoot,
       getCapabilityRegistrationState: () =>
-        listCapabilityDefinitions().some((item) => item.id === "codebase_explore"),
+        listToolDefinitions().some((item) => item.id === "codebase_explore"),
       onStateChanged: () => {
         reconcileCodeGraphHarnessCapability();
       },
@@ -525,7 +525,7 @@ describe("CodeGraph Studio service", () => {
       workspaceRoot: caseWorkspaceRoot,
       storageRoot: caseStorageRoot,
       getCapabilityRegistrationState: () =>
-        listCapabilityDefinitions().some((item) => item.id === "codebase_explore"),
+        listToolDefinitions().some((item) => item.id === "codebase_explore"),
       onStateChanged: () => {
         reconcileCodeGraphHarnessCapability();
       },
@@ -547,12 +547,12 @@ describe("CodeGraph Studio service", () => {
 
     await service.start();
     await service.health();
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     const stopPromise = service.stop();
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
     expect(service.getManagedCapabilityContext(caseWorkspaceRoot).ok).toBe(false);
 
     const stopResult = await stopPromise;
@@ -577,7 +577,7 @@ describe("CodeGraph Studio service", () => {
       workspaceRoot: caseWorkspaceRoot,
       storageRoot: caseStorageRoot,
       getCapabilityRegistrationState: () =>
-        listCapabilityDefinitions().some((item) => item.id === "codebase_explore"),
+        listToolDefinitions().some((item) => item.id === "codebase_explore"),
       onStateChanged: () => {
         reconcileCodeGraphHarnessCapability();
       },
@@ -615,7 +615,7 @@ describe("CodeGraph Studio service", () => {
     expect(afterExitReport.runtime.processAlive).toBe(false);
     expect(afterExitReport.capability.registered).toBe(false);
     expect(afterExitReport.config.capabilityRegistered).toBe(true);
-    expect(listCapabilityDefinitions().map((item) => item.id)).toContain("codebase_explore");
+    expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
 
     const afterExitContext = service.getManagedCapabilityContext(caseWorkspaceRoot);
     expect(afterExitContext.ok).toBe(false);

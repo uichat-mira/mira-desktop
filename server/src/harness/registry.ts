@@ -6,43 +6,33 @@ import type {
 } from "../mcp/core/definitions.js";
 import {
   clearRegistry,
-  getResourceImplementation,
-  getToolImplementation,
-  listResourceDefinitions,
-  listToolDefinitions,
-  registerResource,
-  registerTool,
-  unregisterTool,
+  getResourceImplementation as getCoreResourceImplementation,
+  getToolImplementation as getCoreToolImplementation,
+  listResourceDefinitions as listCoreResourceDefinitions,
+  listToolDefinitions as listCoreToolDefinitions,
+  registerResource as registerCoreResource,
+  registerTool as registerCoreTool,
+  unregisterTool as unregisterCoreTool,
 } from "../mcp/core/registry.js";
 
-export const registerCapability = (capability: ToolImplementation) =>
-  registerTool(capability);
+export const registerTool = (tool: ToolImplementation) => registerCoreTool(tool);
 
-export const unregisterCapability = (capabilityId: string) =>
-  unregisterTool(capabilityId);
+export const unregisterTool = (toolId: string) => unregisterCoreTool(toolId);
 
 export const registerReadableResource = (resource: McpResourceImplementation) =>
-  registerResource(resource);
+  registerCoreResource(resource);
 
-export const listCapabilityDefinitions = (): ToolDefinition[] =>
-  listToolDefinitions();
+export const listToolDefinitions = (): ToolDefinition[] => listCoreToolDefinitions();
 
-export const listHarnessToolDefinitions = (): ToolDefinition[] =>
-  listToolDefinitions();
-
-export const listInternalCapabilityDefinitions = (): ToolDefinition[] =>
-  listToolDefinitions().filter((definition) => definition.source === "internal");
+export const listInternalToolDefinitions = (): ToolDefinition[] =>
+  listCoreToolDefinitions().filter((definition) => definition.source === "internal");
 
 export const listReadableResourceDefinitions = (): McpResourceDefinition[] =>
-  listResourceDefinitions();
+  listCoreResourceDefinitions();
 
-export const getCapabilityImplementation = (capabilityId: string) =>
-  getToolImplementation(capabilityId);
-
-export const getHarnessToolImplementation = (toolId: string) =>
-  getToolImplementation(toolId);
+export const getToolImplementation = (toolId: string) => getCoreToolImplementation(toolId);
 
 export const getReadableResourceImplementation = (resourceId: string) =>
-  getResourceImplementation(resourceId);
+  getCoreResourceImplementation(resourceId);
 
 export const clearHarnessRegistry = () => clearRegistry();
