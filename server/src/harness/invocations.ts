@@ -1,7 +1,7 @@
 import type {
-  McpInvocationRecord,
-  McpInvocationTrace,
-  McpStreamEvent,
+  ToolInvocation,
+  ToolTrace,
+  ToolInvocationEvent,
 } from "../mcp/core/definitions.js";
 import {
   clearInvocations,
@@ -17,7 +17,7 @@ import {
   type HarnessLlmContent,
 } from "./llm-content.js";
 
-export type HarnessInvocationRecord = McpInvocationRecord & {
+export type HarnessInvocationRecord = ToolInvocation & {
   llmContent?: HarnessLlmContent;
 };
 
@@ -42,10 +42,10 @@ export const getHarnessInvocation = (invocationId: string) =>
 
 export const listHarnessInvocationEvents = (
   invocationId: string,
-): McpStreamEvent[] => listInvocationEvents(invocationId);
+): ToolInvocationEvent[] => listInvocationEvents(invocationId);
 
 export const getHarnessInvocationTrace = (
   invocationId: string,
-): McpInvocationTrace | undefined => getInvocationTraceRecord(invocationId);
+): ToolTrace | undefined => getInvocationTraceRecord(invocationId);
 
 export const clearHarnessInvocations = () => clearInvocations();

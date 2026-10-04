@@ -1,4 +1,4 @@
-import type { McpSandboxProfile } from "../../mcp/core/definitions.js";
+import type { SandboxProfile } from "../../mcp/core/definitions.js";
 import { resolveHarnessActionProfiles } from "../action-profiles.js";
 import { resolveHarnessCapabilityProfiles } from "../profiles/index.js";
 import { resolveHarnessToolCandidatesForTurn } from "../candidates-core/index.js";
@@ -17,7 +17,7 @@ export interface HarnessCapabilityDiagnosticsInput {
   selectedMinScore?: number;
   allowExternal?: boolean;
   allowedExternalToolIds?: string[];
-  sandboxProfiles?: Partial<Record<McpSandboxProfile, boolean>>;
+  sandboxProfiles?: Partial<Record<SandboxProfile, boolean>>;
 }
 
 export interface HarnessCapabilityDiagnosticsResult {

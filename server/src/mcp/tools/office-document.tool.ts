@@ -5,7 +5,7 @@ import type {
   OfficeRuntimeWordCreateParagraph,
   OfficeRuntimeWordCreateTable,
 } from "@/microapps/office-suite/contract.js";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import {
   ensureParentDir,
@@ -97,7 +97,7 @@ const defaultReviewOutputPath = (inputPath: string) => {
   return `${base}-wenshu.docx`;
 };
 
-export const officeDocumentTool: McpToolImplementation = {
+export const officeDocumentTool: ToolImplementation = {
   definition: {
     id: "office_document",
     title: "Office Document",

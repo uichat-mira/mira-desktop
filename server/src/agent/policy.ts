@@ -1,17 +1,17 @@
-import type { McpToolDefinition } from "@/mcp/core/definitions";
+import type { ToolDefinition } from "@/mcp/core/definitions";
 
 export type AgentPolicyDecision =
   | { type: "allow"; reason: string }
   | { type: "require_approval"; reason: string }
   | { type: "deny"; reason: string };
 
-const SAFE_AUTO_DOMAINS = new Set<McpToolDefinition["domain"]>([
+const SAFE_AUTO_DOMAINS = new Set<ToolDefinition["domain"]>([
   "read",
   "web_search",
 ]);
 
 export const evaluateAgentToolPolicy = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
 ): AgentPolicyDecision => {
   if (definition.capabilities.requiresApproval) {
     return {

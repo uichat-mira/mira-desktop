@@ -1,8 +1,8 @@
-import type { McpToolDefinition } from "./core/definitions.js";
+import type { ToolDefinition } from "./core/definitions.js";
 import { resolveHarnessCapabilityProfiles } from "../harness/profiles/resolver.js";
 
 type WorkbenchPresentation = Omit<
-  NonNullable<McpToolDefinition["workbench"]>,
+  NonNullable<ToolDefinition["workbench"]>,
   "groupId" | "defaultArgs"
 >;
 
@@ -106,9 +106,9 @@ const fallbackDomainMetadata = (domain: string) => ({
 });
 
 export const withWorkbenchMetadata = (
-  definitions: McpToolDefinition[],
-  ownershipDefinitions: McpToolDefinition[] = definitions,
-): McpToolDefinition[] => {
+  definitions: ToolDefinition[],
+  ownershipDefinitions: ToolDefinition[] = definitions,
+): ToolDefinition[] => {
   const explicitOwnership = new Map<
     string,
     { groupId: string; presentation: WorkbenchPresentation }

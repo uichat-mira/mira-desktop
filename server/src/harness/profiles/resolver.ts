@@ -1,11 +1,11 @@
-import type { McpToolDefinition } from "../../mcp/core/definitions.js";
+import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessCapabilityProfile } from "./types.js";
 
 const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   id: string;
   title: string;
   description: string;
-  domain: McpToolDefinition["domain"];
+  domain: ToolDefinition["domain"];
   tags: string[];
   preferredToolId: string;
   supportingToolIds: string[];
@@ -162,7 +162,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
 ];
 
 const createFallbackProfile = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
 ): HarnessCapabilityProfile => ({
   id: definition.id,
   title: definition.title,
@@ -177,7 +177,7 @@ const createFallbackProfile = (
 });
 
 export const resolveHarnessCapabilityProfiles = (
-  definitions: McpToolDefinition[],
+  definitions: ToolDefinition[],
 ): HarnessCapabilityProfile[] => {
   const definitionMap = new Map(definitions.map((definition) => [definition.id, definition]));
   const consumed = new Set<string>();

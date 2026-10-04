@@ -1,9 +1,9 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { executeReadList } from "../read/runtime.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
-export const readListTool: McpToolImplementation = {
+export const readListTool: ToolImplementation = {
   definition: {
     id: "read_list",
     title: "Read List",

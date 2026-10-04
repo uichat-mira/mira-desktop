@@ -1,6 +1,6 @@
 import type {
-  McpExecutionEnvironment,
-  McpStreamEventInput,
+  ToolExecutionEnvironment,
+  ToolInvocationEventInput,
 } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import {
@@ -13,7 +13,7 @@ import {
 import type { TerminalRuntimeId } from "./runtime-contract.js";
 
 export type TerminalShellProfile =
-  McpExecutionEnvironment["terminal"]["shellProfile"];
+  ToolExecutionEnvironment["terminal"]["shellProfile"];
 
 const escapeRegex = (input: string) =>
   input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -73,7 +73,7 @@ export const runPersistentCommand = async (input: {
   reusedSession: boolean;
   timeoutMs: number;
   signal: AbortSignal;
-  pushEvent?: (event: McpStreamEventInput) => void;
+  pushEvent?: (event: ToolInvocationEventInput) => void;
 }) => {
   if (input.signal.aborted) {
     throw new Error("Terminal session aborted");

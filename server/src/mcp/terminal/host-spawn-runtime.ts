@@ -3,7 +3,7 @@ import { statSync } from "node:fs";
 import path from "node:path";
 
 import type { SandboxOutputEncoding } from "@/harness/sandbox/contract.js";
-import type { McpExecutionEnvironment } from "../core/definitions.js";
+import type { ToolExecutionEnvironment } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { decodeTerminalOutput } from "./encoding.js";
 import { killTerminalProcessTree } from "./process-tree.js";
@@ -423,5 +423,5 @@ export const executeHostCommand = async (
 };
 
 export const toHostShellProfile = (
-  profile: McpExecutionEnvironment["terminal"]["shellProfile"],
+  profile: ToolExecutionEnvironment["terminal"]["shellProfile"],
 ): HostShellProfile => ({ ...profile });

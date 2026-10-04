@@ -1,7 +1,7 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { readOpenTool } from "./read-open.tool.js";
 
-export const readTool: McpToolImplementation = {
+export const readTool: ToolImplementation = {
   definition: {
     id: "read",
     title: "Read",

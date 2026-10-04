@@ -8,7 +8,7 @@ import {
 } from "../../harness/invocations.js";
 import { clearHarnessRegistry, registerCapability } from "../../harness/registry.js";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
-import type { McpToolImplementation } from "./definitions.js";
+import type { ToolImplementation } from "./definitions.js";
 import { configureInvocationRetention } from "./invocations.js";
 
 const createBoundaryEnvironment = (workspaceRoot = "D:\\CODEX_TEST_FOLDER_ALT") =>
@@ -19,7 +19,7 @@ const createBoundaryEnvironment = (workspaceRoot = "D:\\CODEX_TEST_FOLDER_ALT") 
     },
   });
 
-const registerBlackboxTool = (tool: McpToolImplementation) => {
+const registerBlackboxTool = (tool: ToolImplementation) => {
   registerCapability(tool);
   return tool;
 };

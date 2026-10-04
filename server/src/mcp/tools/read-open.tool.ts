@@ -1,6 +1,6 @@
 import { loadSkillResource } from "@/skills/context/index.js";
 import { createArtifact } from "../core/artifacts.js";
-import type { McpStreamEventInput, McpToolImplementation } from "../core/definitions.js";
+import type { ToolInvocationEventInput, ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { sliceExtractedText } from "../document-readers.js";
 import { executeReadOpen } from "../read/runtime.js";
@@ -51,7 +51,7 @@ const parseSkillId = (uri: string) => {
 const executeSkillResourceOpen = async (input: {
   uri: string;
   selection?: unknown;
-  pushEvent?: (event: McpStreamEventInput) => void;
+  pushEvent?: (event: ToolInvocationEventInput) => void;
 }) => {
   const skillId = parseSkillId(input.uri);
   const loaded = await loadSkillResource({ skillId, uri: input.uri });
@@ -107,7 +107,7 @@ const executeSkillResourceOpen = async (input: {
   };
 };
 
-export const readOpenTool: McpToolImplementation = {
+export const readOpenTool: ToolImplementation = {
   definition: {
     id: "read_open",
     title: "Read Open",

@@ -1,13 +1,13 @@
-import type { McpStreamEvent, McpStreamEventInput } from "./definitions.js";
+import type { ToolInvocationEvent, ToolInvocationEventInput } from "./definitions.js";
 
 export const withEventMeta = (
   invocationId: string,
-  event: McpStreamEventInput,
-): McpStreamEvent => ({
+  event: ToolInvocationEventInput,
+): ToolInvocationEvent => ({
   ...event,
   invocationId,
   at: new Date().toISOString(),
-} as McpStreamEvent);
+} as ToolInvocationEvent);
 
-export const toSseChunk = (event: McpStreamEvent) =>
+export const toSseChunk = (event: ToolInvocationEvent) =>
   `data: ${JSON.stringify(event)}\n\n`;

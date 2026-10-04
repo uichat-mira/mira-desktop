@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { resolveWorkspacePath, resolveWorkspaceWritePath } from "../workspace.js";
 import { executeSpreadsheetSkillRuntime } from "@/microapps/office-suite/skill-runtime.js";
@@ -40,7 +40,7 @@ const resolveExistingWorkbook = (value: unknown) => {
   return { inputPath, resolved };
 };
 
-export const officeSpreadsheetTool: McpToolImplementation = {
+export const officeSpreadsheetTool: ToolImplementation = {
   definition: {
     id: "office_spreadsheet",
     title: "Office Spreadsheet Diagnostics",

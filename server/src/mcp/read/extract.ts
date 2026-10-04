@@ -1,4 +1,4 @@
-import type { McpExecutionEnvironment, McpStreamEventInput } from "../core/definitions.js";
+import type { ToolExecutionEnvironment, ToolInvocationEventInput } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { assertReadEnvironment, assertPathExists, readStructuredDocument, sliceExtractedText } from "../document-readers.js";
 import { resolveWorkspacePath } from "../workspace.js";
@@ -12,7 +12,7 @@ export type ReadExtractArgs = {
 };
 
 export const describeExtractPlan = (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   targetPath: string,
 ) => {
   const harnessEnvironment = assertReadEnvironment(environment);
@@ -34,9 +34,9 @@ export const describeExtractPlan = (
 };
 
 export const executeReadExtract = async (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   rawArgs: ReadExtractArgs,
-  pushEvent?: (event: McpStreamEventInput) => void,
+  pushEvent?: (event: ToolInvocationEventInput) => void,
 ) => {
   const harnessEnvironment = assertReadEnvironment(environment);
   const pathValue = typeof rawArgs.path === "string" ? rawArgs.path.trim() : "";

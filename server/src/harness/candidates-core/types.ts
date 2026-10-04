@@ -1,4 +1,4 @@
-import type { McpSandboxProfile, McpToolDefinition } from "../../mcp/core/definitions.js";
+import type { SandboxProfile, ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessTurnSource } from "../shared/types.js";
 
 export interface HarnessCapabilityMatch {
@@ -21,7 +21,7 @@ export interface HarnessToolCandidate {
   toolId: string;
   title: string;
   description: string;
-  domain: McpToolDefinition["domain"];
+  domain: ToolDefinition["domain"];
   source: "internal" | "external";
   tags: string[];
   score: number;
@@ -37,7 +37,7 @@ export interface HarnessToolCandidate {
 
 export interface HarnessToolExposure {
   exposedToolIds: string[];
-  exposedDefinitions: McpToolDefinition[];
+  exposedDefinitions: ToolDefinition[];
   reason: string[];
   blockedCapabilityIds: string[];
   blockedCapabilityReasons: Record<string, string>;
@@ -52,7 +52,7 @@ export interface ResolveHarnessToolCandidatesForTurnInput {
   minScore?: number;
   allowExternal?: boolean;
   allowedExternalToolIds?: string[];
-  sandboxProfiles?: Partial<Record<McpSandboxProfile, boolean>>;
+  sandboxProfiles?: Partial<Record<SandboxProfile, boolean>>;
 }
 
 export interface ResolveHarnessToolCandidatesForTurnResult {

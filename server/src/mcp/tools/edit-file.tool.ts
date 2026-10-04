@@ -1,9 +1,9 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { executeEditFileRuntime } from "../edit/runtime.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
-export const editFileTool: McpToolImplementation = {
+export const editFileTool: ToolImplementation = {
   definition: {
     id: "edit_file",
     title: "Edit File",

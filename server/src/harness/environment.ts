@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import type { McpExecutionEnvironment } from "../mcp/core/definitions.js";
+import type { ToolExecutionEnvironment } from "../mcp/core/definitions.js";
 import { getWorkspaceSelection } from "../mcp/workspace.js";
 import { probeRipgrepProvider } from "../mcp/read/ripgrep-provider.js";
 
@@ -51,7 +51,7 @@ const resolveWindowsShellExecutable = () => {
   return cachedWindowsShellPath;
 };
 
-const defaultReadCapabilities: McpExecutionEnvironment["read"]["capabilities"] = [
+const defaultReadCapabilities: ToolExecutionEnvironment["read"]["capabilities"] = [
   {
     id: "node-fs-directory",
     kind: "directory",
@@ -142,7 +142,7 @@ const defaultReadCapabilities: McpExecutionEnvironment["read"]["capabilities"] =
   },
 ];
 
-const defaultEditCapabilities: McpExecutionEnvironment["edit"]["capabilities"] = [
+const defaultEditCapabilities: ToolExecutionEnvironment["edit"]["capabilities"] = [
   {
     id: "node-fs-write-file",
     kind: "write",
@@ -159,7 +159,7 @@ const defaultEditCapabilities: McpExecutionEnvironment["edit"]["capabilities"] =
   },
 ];
 
-const defaultWebSearchCapabilities: McpExecutionEnvironment["web_search"]["capabilities"] = [
+const defaultWebSearchCapabilities: ToolExecutionEnvironment["web_search"]["capabilities"] = [
   {
     id: "tavily-search",
     kind: "fallback",
@@ -176,7 +176,7 @@ const defaultWebSearchCapabilities: McpExecutionEnvironment["web_search"]["capab
   },
 ];
 
-const defaultTerminalCapabilities: McpExecutionEnvironment["terminal"]["capabilities"] = [
+const defaultTerminalCapabilities: ToolExecutionEnvironment["terminal"]["capabilities"] = [
   {
     id: "child-process-shell-command",
     kind: "write",
@@ -196,7 +196,7 @@ const defaultTerminalCapabilities: McpExecutionEnvironment["terminal"]["capabili
 // Resolved per snapshot instead of once at module load so the platform is read
 // at call time. Import-time evaluation froze the first host's shell profile for
 // the whole process, which made platform-dependent behavior untestable.
-const createDefaultTerminalShellProfile = (): McpExecutionEnvironment["terminal"]["shellProfile"] =>
+const createDefaultTerminalShellProfile = (): ToolExecutionEnvironment["terminal"]["shellProfile"] =>
   process.platform === "win32"
     ? {
         shell: resolveWindowsShellExecutable(),
@@ -214,10 +214,10 @@ const createDefaultTerminalShellProfile = (): McpExecutionEnvironment["terminal"
       };
 
 export const createHarnessEnvironmentSnapshot = (
-  overrides: Partial<McpExecutionEnvironment> & {
+  overrides: Partial<ToolExecutionEnvironment> & {
     toolConfig?: HarnessToolConfig;
   } = {},
-): McpExecutionEnvironment => {
+): ToolExecutionEnvironment => {
   const workspace = getWorkspaceSelection();
 
   return {

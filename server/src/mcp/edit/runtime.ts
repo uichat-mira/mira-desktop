@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import type {
-  McpArtifact,
-  McpExecutionEnvironment,
-  McpExecutionEnvironmentCapability,
-  McpStreamEventInput,
+  ToolArtifact,
+  ToolExecutionEnvironment,
+  RuntimeCapability,
+  ToolInvocationEventInput,
 } from "../core/definitions.js";
 import { createArtifact } from "../core/artifacts.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
@@ -11,8 +11,8 @@ import { ensureParentDir, resolveWorkspaceWritePath } from "../workspace.js";
 
 type EditExecutionContext = {
   args: Record<string, unknown>;
-  environment?: McpExecutionEnvironment;
-  pushEvent?: (event: McpStreamEventInput) => void;
+  environment?: ToolExecutionEnvironment;
+  pushEvent?: (event: ToolInvocationEventInput) => void;
 };
 
 type EditExecutionResult = {
@@ -22,13 +22,13 @@ type EditExecutionResult = {
     dryRun: boolean;
     bytes: number;
   };
-  artifacts: McpArtifact[];
+  artifacts: ToolArtifact[];
 };
 
 type EditOperation = EditExecutionResult["contents"]["operation"];
-type EditCapability = McpExecutionEnvironment["edit"]["capabilities"][number];
+type EditCapability = ToolExecutionEnvironment["edit"]["capabilities"][number];
 
-const assertEditEnvironment = (environment?: McpExecutionEnvironment) => {
+const assertEditEnvironment = (environment?: ToolExecutionEnvironment) => {
   if (!environment || environment.source !== "harness") {
     throw mcpInternalError("Edit execution requires a harness environment snapshot");
   }
@@ -36,7 +36,7 @@ const assertEditEnvironment = (environment?: McpExecutionEnvironment) => {
   return environment;
 };
 
-const sortCapabilities = (environment: McpExecutionEnvironment) =>
+const sortCapabilities = (environment: ToolExecutionEnvironment) =>
   [...environment.edit.capabilities]
     .filter((capability) => capability.available)
     .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
@@ -49,11 +49,11 @@ const getSelectedOperation = (value: unknown): EditOperation => {
   throw mcpBadRequest("Unsupported edit operation");
 };
 
-const resolveCapabilityKind = (operation: EditOperation): McpExecutionEnvironmentCapability["kind"] =>
+const resolveCapabilityKind = (operation: EditOperation): RuntimeCapability["kind"] =>
   operation === "write_file" ? "write" : "replace";
 
 const selectEditCapability = (
-  environment: McpExecutionEnvironment,
+  environment: ToolExecutionEnvironment,
   operation: EditOperation,
 ) => {
   const kind = resolveCapabilityKind(operation);
@@ -129,7 +129,7 @@ const executeCapability = (
 };
 
 export const describeEditPlan = (
-  environment: McpExecutionEnvironment | undefined,
+  environment: ToolExecutionEnvironment | undefined,
   args: Record<string, unknown>,
 ) => {
   const harnessEnvironment = assertEditEnvironment(environment);

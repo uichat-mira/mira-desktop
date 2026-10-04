@@ -1,9 +1,9 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { editFileTool } from "./edit-file.tool.js";
 import { workspaceMutationTool } from "./workspace-mutation.tool.js";
 
 const delegateReplaceBlock = (
-  context: Parameters<McpToolImplementation["execute"]>[0],
+  context: Parameters<ToolImplementation["execute"]>[0],
 ) =>
   editFileTool.execute({
     ...context,
@@ -14,7 +14,7 @@ const delegateReplaceBlock = (
   });
 
 const delegateWorkspaceMutation = (
-  context: Parameters<McpToolImplementation["execute"]>[0],
+  context: Parameters<ToolImplementation["execute"]>[0],
   operation: "write" | "delete" | "move",
 ) =>
   workspaceMutationTool.execute({
@@ -30,7 +30,7 @@ const delegateWorkspaceMutation = (
     },
   });
 
-export const writeFileTool: McpToolImplementation = {
+export const writeFileTool: ToolImplementation = {
   definition: {
     id: "write_file",
     title: "Write File",
@@ -63,7 +63,7 @@ export const writeFileTool: McpToolImplementation = {
   execute: async (context) => delegateWorkspaceMutation(context, "write"),
 };
 
-export const replaceBlockTool: McpToolImplementation = {
+export const replaceBlockTool: ToolImplementation = {
   definition: {
     id: "replace_block",
     title: "Replace Block",
@@ -95,7 +95,7 @@ export const replaceBlockTool: McpToolImplementation = {
   execute: async (context) => delegateReplaceBlock(context),
 };
 
-export const deletePathTool: McpToolImplementation = {
+export const deletePathTool: ToolImplementation = {
   definition: {
     id: "delete_path",
     title: "Delete Path",
@@ -126,7 +126,7 @@ export const deletePathTool: McpToolImplementation = {
   execute: async (context) => delegateWorkspaceMutation(context, "delete"),
 };
 
-export const movePathTool: McpToolImplementation = {
+export const movePathTool: ToolImplementation = {
   definition: {
     id: "move_path",
     title: "Move Path",

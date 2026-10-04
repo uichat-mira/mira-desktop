@@ -1,4 +1,4 @@
-import type { McpInvocationContext, McpToolImplementation } from "../core/definitions.js";
+import type { ToolInvocationContext, ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import {
   externalExpertService,
@@ -21,7 +21,7 @@ const askExternalExpertInputSchema = {
 
 export const createAskExternalExpertTool = (
   service: ExternalExpertConsultationService = externalExpertService,
-): McpToolImplementation => ({
+): ToolImplementation => ({
   definition: {
     id: "ask_external_expert",
     title: "Ask External Expert",
@@ -55,7 +55,7 @@ export const createAskExternalExpertTool = (
       longRunning: true,
     },
   },
-  execute: async (context: McpInvocationContext) => {
+  execute: async (context: ToolInvocationContext) => {
     if (context.userId === undefined || !Number.isInteger(context.userId)) {
       throw mcpBadRequest(
         "External Expert requires a trusted authenticated user context",

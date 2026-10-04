@@ -1,4 +1,4 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { searchNewsHubCache } from "@/microapps/news-hub/news-search.adapter.js";
 
@@ -24,7 +24,7 @@ const normalizeMaxResults = (value: unknown) => {
   return Math.min(MAX_MAX_RESULTS, Math.max(MIN_MAX_RESULTS, Math.trunc(value)));
 };
 
-export const newsSearchTool: McpToolImplementation = {
+export const newsSearchTool: ToolImplementation = {
   definition: {
     id: "news_search",
     title: "News Search",

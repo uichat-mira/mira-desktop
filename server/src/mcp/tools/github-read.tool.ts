@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import type {
-  McpInvocationContext,
-  McpToolImplementation,
+  ToolInvocationContext,
+  ToolImplementation,
 } from "../core/definitions.js";
 import { mcpBadRequest, mcpNotFound } from "../core/errors.js";
 import {
@@ -453,7 +453,7 @@ const normalizeEnum = <T extends string>(
 };
 
 const authorizeRepository = async (
-  context: McpInvocationContext,
+  context: ToolInvocationContext,
   client: GitHubReadClient,
   repository: string,
 ) => {
@@ -481,7 +481,7 @@ const authorizeRepository = async (
 };
 
 const addResultArtifact = (
-  context: McpInvocationContext,
+  context: ToolInvocationContext,
   input: {
     kind: "document" | "table";
     title: string;
@@ -514,7 +514,7 @@ const commonWorkbench = (defaultArgs: Record<string, unknown>) => ({
   defaultArgs,
 });
 
-const createRepoReadTool = (client: GitHubReadClient): McpToolImplementation => ({
+const createRepoReadTool = (client: GitHubReadClient): ToolImplementation => ({
   definition: {
     id: "github_repo_read",
     title: "GitHub Repository Read",
@@ -770,7 +770,7 @@ const createRepoReadTool = (client: GitHubReadClient): McpToolImplementation => 
   },
 });
 
-const createIssueReadTool = (client: GitHubReadClient): McpToolImplementation => ({
+const createIssueReadTool = (client: GitHubReadClient): ToolImplementation => ({
   definition: {
     id: "github_issue_read",
     title: "GitHub Issue Read",
@@ -1059,7 +1059,7 @@ const createIssueReadTool = (client: GitHubReadClient): McpToolImplementation =>
 
 const createPullRequestReadTool = (
   client: GitHubReadClient,
-): McpToolImplementation => ({
+): ToolImplementation => ({
   definition: {
     id: "github_pr_read",
     title: "GitHub Pull Request Read",
@@ -1373,7 +1373,7 @@ const createPullRequestReadTool = (
 
 const createActionsStatusTool = (
   client: GitHubReadClient,
-): McpToolImplementation => ({
+): ToolImplementation => ({
   definition: {
     id: "github_actions_status",
     title: "GitHub Actions Status",

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubConnectionRecord } from "@/db/repositories/github-connection.repository.js";
-import type { McpInvocationContext } from "../core/definitions.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
 import { createGitHubReadTools } from "./github-read.tool.js";
 
 const connection: GitHubConnectionRecord = {
@@ -27,7 +27,7 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const createContext = (args: Record<string, unknown>): McpInvocationContext => ({
+const createContext = (args: Record<string, unknown>): ToolInvocationContext => ({
   invocationId: "github-test",
   args,
   signal: new AbortController().signal,

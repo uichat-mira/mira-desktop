@@ -1,7 +1,7 @@
 import type {
-  McpInvocationContext,
-  McpToolEvidence,
-  McpToolImplementation,
+  ToolInvocationContext,
+  ToolEvidence,
+  ToolImplementation,
 } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { BrowserService } from "@/microapps/computer-use/browser/service.js";
@@ -79,7 +79,7 @@ const agentAssertSchema = {
 } as const;
 
 const emitBrowserArtifacts = (
-  context: McpInvocationContext,
+  context: ToolInvocationContext,
   result: BrowserToolResult,
 ) => {
   for (const artifact of result.artifacts) {
@@ -95,7 +95,7 @@ const emitBrowserArtifacts = (
 const createBrowserEvidence = (
   operation: "observe" | "act" | "assert",
   result: BrowserToolResult,
-): McpToolEvidence => ({
+): ToolEvidence => ({
   actionTaken: result.ok
     ? `Completed managed browser ${operation}.`
     : `Managed browser ${operation} failed.`,
@@ -130,10 +130,10 @@ const requireObject = <T extends object>(value: unknown, name: string): T => {
 export const createComputerUseBrowserTools = (
   browser: BrowserService,
   options: { sessionManager?: BrowserSessionManager } = {},
-): McpToolImplementation[] => {
+): ToolImplementation[] => {
   const sessionsByContext = new Map<string, string>();
   const sessionManager = options.sessionManager;
-  const resolveSessionId = async (context: McpInvocationContext, args: Record<string, unknown>) => {
+  const resolveSessionId = async (context: ToolInvocationContext, args: Record<string, unknown>) => {
     const explicitSessionId = typeof args.sessionId === "string" ? args.sessionId : undefined;
     if (explicitSessionId) {
       if (context.threadId) sessionsByContext.set(context.threadId, explicitSessionId);
@@ -169,7 +169,7 @@ export const createComputerUseBrowserTools = (
     return created.id;
   };
 
-  const observe: McpToolImplementation = {
+  const observe: ToolImplementation = {
     definition: {
       id: "browser_observe",
       title: "Browser Observe",
@@ -204,7 +204,7 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  const act: McpToolImplementation = {
+  const act: ToolImplementation = {
     definition: {
       id: "browser_act",
       title: "Browser Act",
@@ -239,7 +239,7 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  const assert: McpToolImplementation = {
+  const assert: ToolImplementation = {
     definition: {
       id: "browser_assert",
       title: "Browser Assert",

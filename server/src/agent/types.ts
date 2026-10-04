@@ -3,7 +3,7 @@ import type { NormalizedChatMessage } from "@/services/provider-proxy.message-pr
 import type { RetrievedChunk } from "@/services/rag-nodes";
 import type { ContextBudgetAudit } from "@/services/context-budget/index";
 import type { SandboxOutputEncoding } from "@/harness/sandbox/contract";
-import type { McpInvocationFailureCode, McpToolDefinition, McpToolEvidence } from "@/mcp/core/definitions";
+import type { ToolInvocationFailureCode, ToolDefinition, ToolEvidence } from "@/mcp/core/definitions";
 import type { ConversationArtifactReference } from "@/services/conversation-artifact.service";
 import type {
   AgentIntentEmbeddingConfig,
@@ -58,11 +58,11 @@ export interface AgentToolMeta {
   toolId: string;
   title: string;
   description: string;
-  inputSchema?: McpToolDefinition["inputSchema"];
-  domain?: McpToolDefinition["domain"];
-  source?: McpToolDefinition["source"];
+  inputSchema?: ToolDefinition["inputSchema"];
+  domain?: ToolDefinition["domain"];
+  source?: ToolDefinition["source"];
   tags?: string[];
-  capabilities?: McpToolDefinition["capabilities"];
+  capabilities?: ToolDefinition["capabilities"];
 }
 
 export interface PendingToolCall {
@@ -119,10 +119,10 @@ export interface AgentToolExecutionResult {
   invocationId?: string;
   status: "completed" | "failed" | "awaiting_approval" | "denied";
   failureKind?: "recoverable" | "terminal";
-  failureCode?: McpInvocationFailureCode;
+  failureCode?: ToolInvocationFailureCode;
   recoveryAttemptCount?: number;
   result?: unknown;
-  evidence?: McpToolEvidence;
+  evidence?: ToolEvidence;
   errorMessage?: string;
   approval?: AgentApprovalRequest;
   summary?: AgentEvidenceSummary;

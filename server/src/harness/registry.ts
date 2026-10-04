@@ -1,8 +1,8 @@
 import type {
   McpResourceDefinition,
   McpResourceImplementation,
-  McpToolDefinition,
-  McpToolImplementation,
+  ToolDefinition,
+  ToolImplementation,
 } from "../mcp/core/definitions.js";
 import {
   clearRegistry,
@@ -15,7 +15,7 @@ import {
   unregisterTool,
 } from "../mcp/core/registry.js";
 
-export const registerCapability = (capability: McpToolImplementation) =>
+export const registerCapability = (capability: ToolImplementation) =>
   registerTool(capability);
 
 export const unregisterCapability = (capabilityId: string) =>
@@ -24,13 +24,13 @@ export const unregisterCapability = (capabilityId: string) =>
 export const registerReadableResource = (resource: McpResourceImplementation) =>
   registerResource(resource);
 
-export const listCapabilityDefinitions = (): McpToolDefinition[] =>
+export const listCapabilityDefinitions = (): ToolDefinition[] =>
   listToolDefinitions();
 
-export const listHarnessToolDefinitions = (): McpToolDefinition[] =>
+export const listHarnessToolDefinitions = (): ToolDefinition[] =>
   listToolDefinitions();
 
-export const listInternalCapabilityDefinitions = (): McpToolDefinition[] =>
+export const listInternalCapabilityDefinitions = (): ToolDefinition[] =>
   listToolDefinitions().filter((definition) => definition.source === "internal");
 
 export const listReadableResourceDefinitions = (): McpResourceDefinition[] =>

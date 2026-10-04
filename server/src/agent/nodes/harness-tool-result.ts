@@ -3,7 +3,7 @@ import {
   type HarnessLlmContent,
 } from "@/harness/llm-content";
 import { getHarnessInvocation } from "@/harness/invocations";
-import type { McpStructuredInvocationErrorDetail } from "@/mcp/core/definitions";
+import type { StructuredInvocationErrorDetail } from "@/mcp/core/definitions";
 import type {
   AgentNodeState,
   EmitAgentExecutionNode,
@@ -13,7 +13,7 @@ import { toolNode as baseToolNode } from "./tool-node";
 
 export type AgentToolExecutionWithLlmContent = AgentToolExecutionResult & {
   llmContent?: HarnessLlmContent;
-  invocationError?: McpStructuredInvocationErrorDetail;
+  invocationError?: StructuredInvocationErrorDetail;
 };
 
 export const attachHarnessLlmContentToExecution = (

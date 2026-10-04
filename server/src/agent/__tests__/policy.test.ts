@@ -5,12 +5,12 @@ import * as registry from "@/harness/registry";
 import type { AgentNodeState } from "../node-runtime";
 import * as policy from "../policy";
 import { policyNode } from "../nodes/policy-node";
-import type { McpToolDefinition } from "@/mcp/core/definitions";
+import type { ToolDefinition } from "@/mcp/core/definitions";
 import type { PendingToolCall } from "../types";
 
 const createTool = (
-  overrides: Partial<McpToolDefinition>,
-): McpToolDefinition => ({
+  overrides: Partial<ToolDefinition>,
+): ToolDefinition => ({
   id: overrides.id ?? "tool",
   title: overrides.title ?? "tool",
   description: overrides.description ?? "tool",
