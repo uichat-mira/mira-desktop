@@ -2,7 +2,7 @@
  * 工具执行节点：执行已审批或免审的工具调用，并将结果加入证据。
  */
 import { executeHarnessInvocation } from "@/harness/invocations";
-import { getCapabilityImplementation } from "@/harness/registry";
+import { getToolImplementation } from "@/harness/registry";
 import { createHarnessEnvironmentSnapshot } from "@/harness/environment";
 import { runWithWorkspaceRootOverride } from "@/mcp/workspace";
 import type { ToolInvocationFailureCode } from "@/mcp/core/definitions";
@@ -86,7 +86,7 @@ const buildExecutionRecord = (input: {
   toolId: input.toolId,
   inputHash: input.pendingToolCall.inputHash,
   args:
-    (getCapabilityImplementation(input.toolId)?.definition.source === "external" ||
+    (getToolImplementation(input.toolId)?.definition.source === "external" ||
       input.toolId.startsWith("mcp:"))
       ? (redactExternalMcpValue(input.pendingToolCall.args) as Record<string, unknown>)
       : input.pendingToolCall.args,

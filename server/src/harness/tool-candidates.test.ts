@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as embedding from "@/services/internal-capabilities/local-embedding.js";
 import * as rerank from "@/services/internal-capabilities/local-rerank.js";
-import { clearHarnessRegistry, registerCapability } from "./registry.js";
+import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessToolCandidatesForTurn } from "./tool-candidates.js";
 import { readOpenTool } from "../mcp/tools/read-open.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
@@ -57,7 +57,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     "exposes every public tool and skips ranking when the set has %s tools",
     async (count) => {
       for (let index = 0; index < count; index += 1) {
-        registerCapability(createEligibleTool(`eligible_tool_${index}`));
+        registerTool(createEligibleTool(`eligible_tool_${index}`));
       }
 
       const embeddingSpy = vi
@@ -79,9 +79,9 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
   );
 
   it("does not let caller topK/maxTools/minScore shrink a <=20 public tool set", async () => {
-    registerCapability(readOpenTool);
-    registerCapability(webSearchTool);
-    registerCapability(terminalSessionTool);
+    registerTool(readOpenTool);
+    registerTool(webSearchTool);
+    registerTool(terminalSessionTool);
 
     const result = await resolveHarnessToolCandidatesForTurn({
       query: "README",
@@ -99,9 +99,9 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
 
   it("ranks only when the public tool set exceeds 20 and exposes exactly the top 20", async () => {
     for (let index = 0; index < 20; index += 1) {
-      registerCapability(createEligibleTool(`noise_tool_${index}`));
+      registerTool(createEligibleTool(`noise_tool_${index}`));
     }
-    registerCapability(createEligibleTool("tail_target_tool"));
+    registerTool(createEligibleTool("tail_target_tool"));
 
     vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
       embeddingModel: "test-embedding",
@@ -149,9 +149,9 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
 
   it("uses embedding score only to break equal rerank scores", async () => {
     for (let index = 0; index < 20; index += 1) {
-      registerCapability(createEligibleTool(`tie_noise_tool_${index}`));
+      registerTool(createEligibleTool(`tie_noise_tool_${index}`));
     }
-    registerCapability(createEligibleTool("embedding_tiebreak_tool"));
+    registerTool(createEligibleTool("embedding_tiebreak_tool"));
 
     vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
       embeddingModel: "test-embedding",
@@ -188,7 +188,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     "falls back to exactly 20 deterministic tools when ranking is unavailable: %s",
     async (count) => {
       for (let index = 0; index < count; index += 1) {
-        registerCapability(createEligibleTool(`large_set_tool_${index}`));
+        registerTool(createEligibleTool(`large_set_tool_${index}`));
       }
 
       vi.spyOn(embedding, "executeLocalEmbedding").mockRejectedValue(
@@ -212,7 +212,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
   it("does not use score thresholds as an additional blocking rule above 20 tools", async () => {
     const count = 21;
     for (let index = 0; index < count; index += 1) {
-      registerCapability(createEligibleTool(`low_score_tool_${index}`));
+      registerTool(createEligibleTool(`low_score_tool_${index}`));
     }
 
     vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
@@ -262,9 +262,9 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
       },
     };
 
-    registerCapability(browserObserve);
-    registerCapability(writeFile);
-    registerCapability(terminalSessionTool);
+    registerTool(browserObserve);
+    registerTool(writeFile);
+    registerTool(terminalSessionTool);
 
     const result = await resolveHarnessToolCandidatesForTurn({
       query: "打开公众号网页，整理成 HTML，保存到工作区，必要时运行终端脚本",
@@ -277,8 +277,8 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
   });
 
   it("uses explicit Agent Access as the only external-MCP availability gate", async () => {
-    registerCapability(externalFakeTool);
-    registerCapability(readOpenTool);
+    registerTool(externalFakeTool);
+    registerTool(readOpenTool);
 
     const hidden = await resolveHarnessToolCandidatesForTurn({
       query: "use external system",

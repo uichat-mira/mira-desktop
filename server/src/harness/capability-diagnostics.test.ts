@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as embedding from "@/services/internal-capabilities/local-embedding.js";
 import * as rerank from "@/services/internal-capabilities/local-rerank.js";
-import { clearHarnessRegistry, registerCapability } from "./registry.js";
+import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessCapabilityDiagnostics } from "./capability-diagnostics.js";
 import { readOpenTool } from "../mcp/tools/read-open.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
@@ -71,7 +71,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
   });
 
   it("returns grouped tool diagnostics without selecting tools", async () => {
-    registerCapability({
+    registerTool({
       definition: {
         id: "read_discover",
         title: "Read Discover",
@@ -90,7 +90,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
         return {};
       },
     });
-    registerCapability({
+    registerTool({
       definition: {
         id: "read_open",
         title: "Read Open",
@@ -152,8 +152,8 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
   });
 
   it("keeps eligible workspace candidates when local embedding is unavailable", async () => {
-    registerCapability(readOpenTool);
-    registerCapability({
+    registerTool(readOpenTool);
+    registerTool({
       definition: {
         id: "read_discover",
         title: "Read Discover",
@@ -202,7 +202,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
   });
 
   it("returns action profile metadata for terminal capability diagnostics", async () => {
-    registerCapability(terminalSessionTool);
+    registerTool(terminalSessionTool);
 
     vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
       embeddingModel: "test",
@@ -249,8 +249,8 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
   });
 
   it("keeps exposure reasons and candidate facts for workspace diagnostics", async () => {
-    registerCapability(readOpenTool);
-    registerCapability(webSearchTool);
+    registerTool(readOpenTool);
+    registerTool(webSearchTool);
 
     vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
       embeddingModel: "test",
@@ -369,7 +369,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
       expectedTopToolId,
     }) => {
       for (const tool of tools) {
-        registerCapability(tool);
+        registerTool(tool);
       }
       mockRecallOrder(rerankOrder);
 
@@ -442,7 +442,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
         return {};
       },
     };
-    [...eligibleTools, blockedTool].forEach(registerCapability);
+    [...eligibleTools, blockedTool].forEach(registerTool);
     vi.mocked(resolveAgentEligibleExternalMcpCapabilities).mockReturnValue(
       eligibleTools.map((tool) => tool.definition),
     );

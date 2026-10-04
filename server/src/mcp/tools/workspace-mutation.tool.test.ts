@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { executeHarnessInvocation } from "../../harness/invocations.js";
 import { clearHarnessInvocations } from "../../harness/invocations.js";
-import { clearHarnessRegistry, registerCapability } from "../../harness/registry.js";
+import { clearHarnessRegistry, registerTool } from "../../harness/registry.js";
 import { clearWorkspaceSelection } from "../workspace.js";
 import { workspaceMutationTool } from "./workspace-mutation.tool.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
@@ -43,7 +43,7 @@ describe("workspace_mutation tool", () => {
     clearWorkspaceSelection();
     clearHarnessRegistry();
     clearHarnessInvocations();
-    registerCapability(workspaceMutationTool);
+    registerTool(workspaceMutationTool);
   });
 
   afterEach(() => {

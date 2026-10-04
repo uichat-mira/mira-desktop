@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "../../mcp/core/definitions.js";
-import { listCapabilityDefinitions } from "../registry.js";
+import { listToolDefinitions } from "../registry.js";
 import {
   getDefinitionBlockReason,
   shouldIncludeDefinition,
@@ -24,7 +24,7 @@ const applyExposureSchema = (
 export const resolveHarnessToolExposure = (
   input: HarnessExposurePolicyInput,
 ): HarnessExposureDecision => {
-  const definitions = listCapabilityDefinitions();
+  const definitions = listToolDefinitions();
   const blockedCapabilityIds: string[] = [];
   const blockedCapabilityReasons: Record<string, string> = {};
 

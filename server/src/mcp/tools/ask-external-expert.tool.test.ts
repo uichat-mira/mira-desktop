@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ToolInvocationContext } from "../core/definitions.js";
 import { executeHarnessInvocation } from "@/harness/invocations.js";
-import { registerCapability, unregisterCapability } from "@/harness/registry.js";
+import { registerTool, unregisterTool } from "@/harness/registry.js";
 import {
   attachHarnessLlmContentToExecution,
 } from "@/agent/nodes/harness-tool-result.js";
@@ -27,7 +27,7 @@ const context = (args: Record<string, unknown>): ToolInvocationContext => ({
 });
 
 afterEach(() => {
-  unregisterCapability(askExternalExpertTool.definition.id);
+  unregisterTool(askExternalExpertTool.definition.id);
 });
 
 describe("ask_external_expert", () => {
@@ -80,7 +80,7 @@ describe("ask_external_expert", () => {
         latencyMs: 88,
       }),
     });
-    registerCapability(tool);
+    registerTool(tool);
 
     const invocation = await executeHarnessInvocation({
       toolId: "ask_external_expert",

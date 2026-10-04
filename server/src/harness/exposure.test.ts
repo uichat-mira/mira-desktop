@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { clearHarnessRegistry, registerCapability } from "./registry.js";
+import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessToolExposure } from "./exposure.js";
 import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
@@ -42,7 +42,7 @@ describe("resolveHarnessToolExposure", () => {
   });
 
   it("keeps the full terminal runtime schema", () => {
-    registerCapability(terminalSessionTool);
+    registerTool(terminalSessionTool);
 
     const [definition] = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -60,8 +60,8 @@ describe("resolveHarnessToolExposure", () => {
     "打开网页然后保存文件",
     "run pnpm check",
   ])("does not use user wording to hide terminal_session: %s", (query) => {
-    registerCapability(terminalSessionTool);
-    registerCapability(readOpenTool);
+    registerTool(terminalSessionTool);
+    registerTool(readOpenTool);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -73,7 +73,7 @@ describe("resolveHarnessToolExposure", () => {
   });
 
   it("does not use sandbox profile state to hide registered public tools", () => {
-    registerCapability(terminalSessionTool);
+    registerTool(terminalSessionTool);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -88,9 +88,9 @@ describe("resolveHarnessToolExposure", () => {
   });
 
   it("does not use chat_surface domain heuristics to hide registered public tools", () => {
-    registerCapability(terminalSessionTool);
-    registerCapability(readOpenTool);
-    registerCapability(webSearchTool);
+    registerTool(terminalSessionTool);
+    registerTool(readOpenTool);
+    registerTool(webSearchTool);
 
     const decision = resolveHarnessToolExposure({
       source: "chat_surface",
@@ -103,7 +103,7 @@ describe("resolveHarnessToolExposure", () => {
   });
 
   it("preserves approval metadata but does not use it as an exposure heuristic", () => {
-    registerCapability({
+    registerTool({
       ...terminalSessionTool,
       definition: {
         ...terminalSessionTool.definition,
@@ -127,9 +127,9 @@ describe("resolveHarnessToolExposure", () => {
   });
 
   it("keeps implementation primitives out of the public tool contract", () => {
-    registerCapability(readTool);
-    registerCapability(readSliceTool);
-    registerCapability(readOpenTool);
+    registerTool(readTool);
+    registerTool(readSliceTool);
+    registerTool(readOpenTool);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -142,7 +142,7 @@ describe("resolveHarnessToolExposure", () => {
   });
 
   it("uses only explicit Agent Access to determine whether an external MCP tool is public", () => {
-    registerCapability(externalFakeTool);
+    registerTool(externalFakeTool);
 
     const hidden = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -160,9 +160,9 @@ describe("resolveHarnessToolExposure", () => {
   });
 
   it("does not create semantic or runtime policy reasons for public built-in tools", () => {
-    registerCapability(readOpenTool);
-    registerCapability(webSearchTool);
-    registerCapability(terminalSessionTool);
+    registerTool(readOpenTool);
+    registerTool(webSearchTool);
+    registerTool(terminalSessionTool);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",

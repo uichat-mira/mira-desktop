@@ -2,7 +2,7 @@
  * 上下文准备节点：收集线程消息、可用工具、策略允许的自动工具列表和按需 Skill 语义。
  */
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability";
-import { listCapabilityDefinitions } from "@/harness/registry";
+import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
 import { withWorkbenchMetadata } from "@/mcp/workbench-metadata.js";
@@ -51,7 +51,7 @@ const filterExternalExpertExposure = <T extends Awaited<
 };
 
 const resolveRequestedToolGroupHints = (
-  definitions: ReturnType<typeof listCapabilityDefinitions>,
+  definitions: ReturnType<typeof listToolDefinitions>,
   requestedGroupIds: string[] | undefined,
 ): AgentRequestedToolGroupHint[] => {
   const requested = [
@@ -330,7 +330,7 @@ export const prepareContextNode = async (
   const wenshuCapabilityState = reconcileWenshuOfficeHarnessCapabilities();
   const externalExpertAvailable = externalExpertService.isAgentAvailable(state.userId);
 
-  const toolDefinitions = listCapabilityDefinitions();
+  const toolDefinitions = listToolDefinitions();
   const autoAllowedTools = toolDefinitions
     .filter((definition) =>
       evaluateAgentToolPolicy(definition).type === "allow"

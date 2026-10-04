@@ -4,7 +4,7 @@ import * as embedding from "@/services/internal-capabilities/local-embedding.js"
 import * as rerank from "@/services/internal-capabilities/local-rerank.js";
 import * as harnessInvocations from "@/harness/invocations";
 import * as registry from "@/harness/registry";
-import { clearHarnessRegistry, registerCapability } from "@/harness/registry";
+import { clearHarnessRegistry, registerTool } from "@/harness/registry";
 import { resolveHarnessCapabilityDiagnostics } from "@/harness/capability-diagnostics";
 import { contextBudgetService } from "@/services/context-budget/index";
 import { providerProxyService } from "@/services/provider-proxy.service/index";
@@ -147,13 +147,14 @@ const makeToolIntentResult = (
     exposedDefinitions: definitions,
     reason: [],
     blockedCapabilityIds: [],
-  },});
+  },
+});
 
 const setupToolExposure = (
   query: string,
   definitions: Array<ReturnType<typeof makeToolDefinition>>,
 ) => {
-  vi.spyOn(registry, "listCapabilityDefinitions").mockReturnValue(definitions);
+  vi.spyOn(registry, "listToolDefinitions").mockReturnValue(definitions);
   vi.spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding").mockResolvedValue(
     makeToolIntentResult(query, definitions),
   );
@@ -228,13 +229,13 @@ afterEach(() => {
 });
 
 test("diagnostics closure explains workspace-local web_search hiding with blocked ids and scores", async () => {
-  registerCapability({
+  registerTool({
     definition: readOpenTool(),
     execute() {
       return {};
     },
   });
-  registerCapability({
+  registerTool({
     definition: webSearchTool(),
     execute() {
       return {};

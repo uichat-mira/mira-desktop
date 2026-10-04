@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { getHarnessEnvironmentSnapshot } from "@/harness/environment.js";
 import { executeHarnessInvocation } from "@/harness/invocations.js";
-import { getCapabilityImplementation } from "@/harness/registry.js";
+import { getToolImplementation } from "@/harness/registry.js";
 import type { ToolArtifact, ToolImplementation } from "@/mcp/core/definitions.js";
 import { officeDocumentTool } from "@/mcp/tools/office-document.tool.js";
 import { officePdfTool } from "@/mcp/tools/office-pdf.tool.js";
@@ -209,7 +209,7 @@ export const createHarnessSkillAgentToolBinding = (input: {
   toolId: string;
   execution: SkillAgentExecutionInput;
 }): SkillAgentToolBinding => {
-  const implementation = getCapabilityImplementation(input.toolId);
+  const implementation = getToolImplementation(input.toolId);
   if (!implementation) {
     throw new Error(`Skill Agent Harness tool is unavailable: ${input.toolId}`);
   }

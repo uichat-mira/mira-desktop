@@ -1,7 +1,7 @@
 /**
  * 策略审批节点：根据工具策略判断是否需要人工审批，并生成审批请求。
  */
-import { listCapabilityDefinitions } from "@/harness/registry";
+import { listToolDefinitions } from "@/harness/registry";
 import { evaluateAgentToolPolicy } from "../policy";
 import {
   emitStepNode,
@@ -78,13 +78,13 @@ const resolvePolicyToolDefinition = (
     };
   }
 
-  return listCapabilityDefinitions().find(
+  return listToolDefinitions().find(
     (definition) => definition.id === pendingToolCall.toolId,
   );
 };
 
 const getPolicyRiskDetails = (
-  definition: ReturnType<typeof listCapabilityDefinitions>[number],
+  definition: ReturnType<typeof listToolDefinitions>[number],
 ) => {
   const capabilities = definition.capabilities;
   const requiresApproval =

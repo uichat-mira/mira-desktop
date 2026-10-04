@@ -2,7 +2,7 @@ import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { getSqlite } from "@/db";
-import { clearHarnessRegistry, getCapabilityImplementation } from "../harness/registry.js";
+import { clearHarnessRegistry, getToolImplementation } from "../harness/registry.js";
 import {
   clearExternalMcpServers,
   connectExternalMcpServer,
@@ -404,19 +404,19 @@ describe("external MCP connect", () => {
     registerAllExternalMcpCapabilities();
     const disabled = updateExternalMcpEnabled(server.id, false);
     expect(disabled.agentEnabled).toBe(true);
-    expect(getCapabilityImplementation("mcp:stale-server:tool:search")).toBeUndefined();
+    expect(getToolImplementation("mcp:stale-server:tool:search")).toBeUndefined();
     expect(resolveAgentEligibleExternalMcpCapabilities()).toHaveLength(0);
 
     const reenabled = updateExternalMcpEnabled(server.id, true);
     expect(reenabled.enabled).toBe(true);
-    expect(getCapabilityImplementation("mcp:stale-server:tool:search")).toBeDefined();
+    expect(getToolImplementation("mcp:stale-server:tool:search")).toBeDefined();
 
     getSqlite()
       .prepare("UPDATE external_mcp_servers SET discovered_tools_json = '[]' WHERE id = ?")
       .run(server.id);
     updateExternalMcpEnabled(server.id, false);
     updateExternalMcpEnabled(server.id, true);
-    expect(getCapabilityImplementation("mcp:stale-server:tool:search")).toBeUndefined();
+    expect(getToolImplementation("mcp:stale-server:tool:search")).toBeUndefined();
   });
 
   it("removes deleted server projections from the registry and Agent eligibility", () => {
@@ -446,11 +446,11 @@ describe("external MCP connect", () => {
       );
     updateExternalMcpAccess(server.id, { agentEnabled: true });
     registerAllExternalMcpCapabilities();
-    expect(getCapabilityImplementation("mcp:deleted-server:tool:search")).toBeDefined();
+    expect(getToolImplementation("mcp:deleted-server:tool:search")).toBeDefined();
 
     deleteExternalMcpServer(server.id);
 
-    expect(getCapabilityImplementation("mcp:deleted-server:tool:search")).toBeUndefined();
+    expect(getToolImplementation("mcp:deleted-server:tool:search")).toBeUndefined();
     expect(resolveAgentEligibleExternalMcpCapabilities()).toHaveLength(0);
   });
 
@@ -538,20 +538,20 @@ describe("external MCP connect", () => {
     clearHarnessRegistry();
     registerAllExternalMcpCapabilities();
 
-    expect(getCapabilityImplementation("mcp:startup-valid:tool:search")).toBeDefined();
-    expect(getCapabilityImplementation("mcp:startup-disabled:tool:search")).toBeUndefined();
-    expect(getCapabilityImplementation("mcp:startup-empty:tool:search")).toBeUndefined();
-    expect(getCapabilityImplementation("mcp:startup-incomplete:tool:search")).toBeUndefined();
-    expect(getCapabilityImplementation("mcp:startup-stale:tool:search")).toBeUndefined();
-    expect(getCapabilityImplementation("mcp:startup-mismatched:tool:search")).toBeUndefined();
+    expect(getToolImplementation("mcp:startup-valid:tool:search")).toBeDefined();
+    expect(getToolImplementation("mcp:startup-disabled:tool:search")).toBeUndefined();
+    expect(getToolImplementation("mcp:startup-empty:tool:search")).toBeUndefined();
+    expect(getToolImplementation("mcp:startup-incomplete:tool:search")).toBeUndefined();
+    expect(getToolImplementation("mcp:startup-stale:tool:search")).toBeUndefined();
+    expect(getToolImplementation("mcp:startup-mismatched:tool:search")).toBeUndefined();
 
     registerExternalMcpServerCapabilities(collisionOwnerRecord);
     registerExternalMcpServerCapabilities(maliciousRecord);
-    expect(getCapabilityImplementation("mcp:collision-owner:tool:search")?.definition.title).toBe(
+    expect(getToolImplementation("mcp:collision-owner:tool:search")?.definition.title).toBe(
       "Owner Search",
     );
     registerExternalMcpServerCapabilities(maliciousRecord);
-    expect(getCapabilityImplementation("mcp:collision-owner:tool:search")?.definition.title).toBe(
+    expect(getToolImplementation("mcp:collision-owner:tool:search")?.definition.title).toBe(
       "Owner Search",
     );
   });

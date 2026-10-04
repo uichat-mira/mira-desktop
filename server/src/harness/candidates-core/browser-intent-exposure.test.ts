@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolImplementation } from "../../mcp/core/definitions.js";
 import {
   clearHarnessRegistry,
-  registerCapability,
+  registerTool,
 } from "../registry.js";
 import { resolveHarnessToolCandidatesForTurn } from "./resolver.js";
 
@@ -74,7 +74,7 @@ describe("browser-intent Harness candidate exposure", () => {
     );
     rerankMock.mockImplementation(async ({ matches }) => ({ matches }));
 
-    registerCapability(
+    registerTool(
       createTool({
         id: "browser_observe",
         domain: "browser_action",
@@ -84,7 +84,7 @@ describe("browser-intent Harness candidate exposure", () => {
         networkAccess: true,
       }),
     );
-    registerCapability(
+    registerTool(
       createTool({
         id: "browser_act",
         domain: "browser_action",
@@ -94,7 +94,7 @@ describe("browser-intent Harness candidate exposure", () => {
         networkAccess: true,
       }),
     );
-    registerCapability(
+    registerTool(
       createTool({
         id: "browser_assert",
         domain: "browser_action",
@@ -110,7 +110,7 @@ describe("browser-intent Harness candidate exposure", () => {
       "browser_attached_act",
       "browser_attached_transfer",
     ]) {
-      registerCapability(
+      registerTool(
         createTool({
           id,
           domain: "browser_action",
@@ -130,7 +130,7 @@ describe("browser-intent Harness candidate exposure", () => {
         }),
       );
     }
-    registerCapability(
+    registerTool(
       createTool({
         id: "write_file",
         domain: "edit",
@@ -139,7 +139,7 @@ describe("browser-intent Harness candidate exposure", () => {
         requiresApproval: true,
       }),
     );
-    registerCapability(
+    registerTool(
       createTool({
         id: "terminal_session",
         domain: "terminal",
@@ -150,7 +150,7 @@ describe("browser-intent Harness candidate exposure", () => {
       }),
     );
     for (let index = 0; index < 13; index += 1) {
-      registerCapability(
+      registerTool(
         createTool({
           id: `unrelated_tool_${index}`,
           domain: "terminal",

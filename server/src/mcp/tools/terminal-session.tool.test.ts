@@ -314,13 +314,13 @@ describe("terminal_session tool", () => {
       return mock.session;
     });
 
-    const { clearHarnessRegistry, registerCapability } = await import("../../harness/registry.js");
+    const { clearHarnessRegistry, registerTool } = await import("../../harness/registry.js");
     const { clearHarnessInvocations, executeHarnessInvocation } = await import("../../harness/invocations.js");
     const { terminalSessionTool } = await import("./terminal-session.tool.js");
 
     clearHarnessRegistry();
     clearHarnessInvocations();
-    registerCapability(terminalSessionTool);
+    registerTool(terminalSessionTool);
 
     const record = await executeHarnessInvocation({
       toolId: "terminal_session",
@@ -715,13 +715,13 @@ describe("terminal_session tool", () => {
   });
 
   it("surfaces approval-required requests through harness invocation status", async () => {
-    const { clearHarnessRegistry, registerCapability } = await import("../../harness/registry.js");
+    const { clearHarnessRegistry, registerTool } = await import("../../harness/registry.js");
     const { clearHarnessInvocations, executeHarnessInvocation } = await import("../../harness/invocations.js");
     const { ToolApprovalRequiredError } = await import("../core/errors.js");
 
     clearHarnessRegistry();
     clearHarnessInvocations();
-    registerCapability({
+    registerTool({
       definition: {
         id: "approval-tool",
         title: "Approval Tool",
