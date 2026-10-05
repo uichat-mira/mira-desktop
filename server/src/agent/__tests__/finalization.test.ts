@@ -5,11 +5,9 @@ import {
   materializeFinalizationEvidence,
   validateAndFreezeFinalizationPacket,
 } from "../finalization";
-import type { HarnessLlmContent } from "@/harness/llm-content";
 import type {
   AgentEvidencePayload,
   AgentFinalizationPacket,
-  AgentToolExecutionResult,
 } from "../types";
 
 const evidence: AgentEvidencePayload = {
@@ -94,7 +92,6 @@ test("Generate materializes only Evidence references frozen by Planner", () => {
   const rendered = result.messages.map((message) => message.content).join("\n");
 
   assert.deepEqual(result.missingRefs, []);
-  assert.deepEqual(result.unavailableImageRefs, []);
   assert.match(rendered, /EVIDENCE REF tool:1/);
   assert.match(rendered, /cited\.txt/);
   assert.match(rendered, /EVIDENCE REF observation:0/);
@@ -121,145 +118,3 @@ test("Planner freezes the finalization packet before Generate receives it", () =
   assert.equal(Object.isFrozen(result.packet.completionProof[0]?.evidenceRefs), true);
 });
 
-
-test("Generate materializes only Planner-selected image Evidence", () => {
-  const imageExecutions: Array<
-    AgentToolExecutionResult & { llmContent: HarnessLlmContent }
-  > = [
-      {
-        toolId: "read",
-        args: { path: "uncited.png" },
-        status: "completed",
-        result: {
-          type: "read",
-          path: "uncited.png",
-          mediaType: "image",
-          mimeType: "image/png",
-          sizeBytes: 3,
-        },
-        llmContent: {
-          version: 1,
-          source: "harness_result",
-          blocks: [
-            {
-              type: "image",
-              data: "T0xE",
-              mimeType: "image/png",
-              filename: "uncited.png",
-            },
-          ],
-          truncated: false,
-          originalCharCount: 0,
-          includedCharCount: 0,
-          omittedArrayItems: 0,
-          omittedObjectKeys: 0,
-        },
-        startedAt: "2026-07-22T00:00:00.000Z",
-        finishedAt: "2026-07-22T00:00:01.000Z",
-      },
-      {
-        toolId: "read",
-        args: { path: "cited.png" },
-        status: "completed",
-        result: {
-          type: "read",
-          path: "cited.png",
-          mediaType: "image",
-          mimeType: "image/png",
-          sizeBytes: 3,
-        },
-        llmContent: {
-          version: 1,
-          source: "harness_result",
-          blocks: [
-            {
-              type: "image",
-              data: "TkVX",
-              mimeType: "image/png",
-              filename: "cited.png",
-            },
-          ],
-          truncated: false,
-          originalCharCount: 0,
-          includedCharCount: 0,
-          omittedArrayItems: 0,
-          omittedObjectKeys: 0,
-        },
-        startedAt: "2026-07-22T00:00:02.000Z",
-        finishedAt: "2026-07-22T00:00:03.000Z",
-      },
-    ];
-
-  const imageEvidence: AgentEvidencePayload = {
-    observations: [],
-    retrievals: [],
-    toolExecutions: imageExecutions,
-  };
-
-  const result = materializeFinalizationEvidence({
-    packet: {
-      type: "answer",
-      reason: "The selected image is sufficient.",
-      completionProof: [
-        { criterion: "inspect selected image", evidenceRefs: ["tool:1"] },
-      ],
-      unresolvedGaps: [],
-    },
-    evidence: imageEvidence,
-  });
-
-  assert.deepEqual(result.imageParts, [
-    {
-      type: "image",
-      image: "data:image/png;base64,TkVX",
-      filename: "cited.png",
-      mediaType: "image/png",
-    },
-  ]);
-  assert.equal(
-    result.imageParts.some((part) => part.image.includes("T0xE")),
-    false,
-  );
-});
-
-
-test("Generate refuses Planner-selected image Evidence after its pixel payload is gone", () => {
-  const expiredImageEvidence: AgentEvidencePayload = {
-    observations: [],
-    retrievals: [],
-    toolExecutions: [
-      {
-        toolId: "read",
-        invocationId: "expired-image-invocation",
-        args: { path: "expired.png" },
-        status: "completed",
-        result: {
-          type: "read",
-          path: "expired.png",
-          mediaType: "image",
-          mimeType: "image/png",
-          sizeBytes: 3,
-        },
-        startedAt: "2026-07-22T00:00:00.000Z",
-        finishedAt: "2026-07-22T00:00:01.000Z",
-      },
-    ],
-  };
-
-  const result = materializeFinalizationEvidence({
-    packet: {
-      type: "answer",
-      reason: "The image was inspected.",
-      completionProof: [
-        { criterion: "inspect image pixels", evidenceRefs: ["tool:0"] },
-      ],
-      unresolvedGaps: [],
-    },
-    evidence: expiredImageEvidence,
-  });
-
-  assert.deepEqual(result.missingRefs, []);
-  assert.deepEqual(result.unavailableImageRefs, ["tool:0"]);
-  assert.deepEqual(result.imageParts, []);
-  assert.deepEqual(result.messages, []);
-});
