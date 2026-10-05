@@ -316,7 +316,7 @@ const getRequiredTargetActions = (
       requiredWork.requiredActions.includes("verify")
     )
   ) {
-    actions.push("read_open");
+    actions.push("read");
   }
   if (requiredWork.requiredActions.includes("mutate")) {
     actions.push("mutation_execution");
@@ -344,7 +344,7 @@ const getObservedCompletedTargetActions = (
     actions.push("locate");
   }
   if (progress.opened || progress.verified) {
-    actions.push("read_open");
+    actions.push("read");
   }
   if (progress.mutated || progress.terminalMutationFailure) {
     actions.push("mutation_execution");
@@ -364,7 +364,7 @@ const isTargetActionCompleted = (action: string, progress: TargetProgress) => {
         progress.mutated ||
         progress.verified
       );
-    case "read_open":
+    case "read":
       return progress.opened || progress.verified;
     case "mutation_execution":
       return progress.mutated || Boolean(progress.terminalMutationFailure);
@@ -432,7 +432,7 @@ export const reduceAgentCoverageState = (input: {
             return false;
           }
 
-          if (action === "read_open" && !hasPresence) {
+          if (action === "read" && !hasPresence) {
             return false;
           }
 
@@ -484,7 +484,7 @@ export const reduceAgentCoverageState = (input: {
     requiredWork.requiredActions.includes("read_content") &&
     requiredWork.requiredTargets.length === 0
   ) {
-    globalPendingActions.push("read_open");
+    globalPendingActions.push("read");
   }
   if (
     requiredWork.requiredActions.includes("mutate") &&
