@@ -92,6 +92,31 @@ test("coverage reducer completes list task from read_list evidence", () => {
   assert.deepEqual(state.globalPendingActions, []);
 });
 
+test("coverage reducer completes locate-only task from canonical glob evidence", () => {
+  const state = reduceAgentCoverageState({
+    question: "README.md 在哪里？",
+    latestSummary: {
+      source: "tool",
+      status: "completed",
+      toolId: "glob",
+      actionTaken: "Matched workspace files.",
+      keyFindings: ["matchedPath=README.md"],
+      data: {
+        kind: "glob",
+        pattern: "**/README.md",
+        root: ".",
+        matchCount: 1,
+        matchedPaths: ["README.md"],
+        matchesPreview: ["README.md"],
+        truncated: false,
+      },
+    },
+  });
+
+  assert.equal(state.taskCompletable, true);
+  assert.deepEqual(state.globalPendingActions, []);
+});
+
 test("coverage reducer completes locate-only task from read_locate evidence", () => {
   const state = reduceAgentCoverageState({
     question: "README.md 在哪里？",
