@@ -38,9 +38,13 @@ export const appendHarnessImagesToLatestUserMessage = (
 ): NormalizedChatMessage[] => {
   if (imageParts.length === 0) return messages;
 
-  const latestUserIndex = messages.findLastIndex(
-    (message) => message.role === "user",
-  );
+  let latestUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      latestUserIndex = index;
+      break;
+    }
+  }
   if (latestUserIndex < 0) return messages;
 
   return messages.map((message, index) => {
