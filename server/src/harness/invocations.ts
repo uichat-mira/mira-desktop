@@ -23,6 +23,8 @@ export type HarnessInvocationRecord = ToolInvocation & {
   llmContent?: HarnessLlmContent;
 };
 
+const modelContentByInvocation = new WeakMap<ToolInvocation, HarnessLlmContent>();
+
 export const executeHarnessInvocation = async (
   input: ExecuteInvocationInput,
 ): Promise<HarnessInvocationRecord> => {
@@ -58,11 +60,20 @@ export const executeHarnessInvocation = async (
           ),
         }
       : projected;
+  if (llmContent) {
+    modelContentByInvocation.set(record, llmContent);
+  }
   return llmContent ? { ...record, llmContent } : record;
 };
 
-export const getHarnessInvocation = (invocationId: string) =>
-  getInvocation(invocationId);
+export const getHarnessInvocation = (
+  invocationId: string,
+): HarnessInvocationRecord | undefined => {
+  const record = getInvocation(invocationId);
+  if (!record) return undefined;
+  const llmContent = modelContentByInvocation.get(record);
+  return llmContent ? { ...record, llmContent } : record;
+};
 
 export const listHarnessInvocationEvents = (
   invocationId: string,
