@@ -154,12 +154,12 @@ test("resolveChatToolSurface respects custom allowlist and maxTools trimming", (
   initializeHarnessRuntime();
 
   const toolSurface = resolveChatToolSurface({
-    allowlist: ["web_search", "read_list", "read_open"],
+    allowlist: ["web_search", "read_list", "read"],
     maxTools: 2,
   });
 
   assert.equal(toolSurface.length, 2);
-  assert.deepEqual(new Set(toolSurface.map((tool) => tool.id)), new Set(["read_open", "web_search"]));
+  assert.deepEqual(new Set(toolSurface.map((tool) => tool.id)), new Set(["read", "web_search"]));
   assert.ok(toolSurface.every((tool) => tool.id !== "read_list"));
   assert.ok(toolSurface.every((tool) => tool.id !== "terminal_session"));
 });
