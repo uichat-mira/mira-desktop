@@ -131,7 +131,7 @@ const markCompletedSummary = (
       addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
     case "glob":
-      addLocateMatchTargets(map, summary.data.matchesPreview);
+      addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
     case "read_open": {
       const target = normalizeTaskTargetPath(summary.data.path);
