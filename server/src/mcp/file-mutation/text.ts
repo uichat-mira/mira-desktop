@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import iconv from "iconv-lite";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
+import type { FileMutationFilesystem } from "./filesystem.js";
 
 export type MutationTextEncoding =
   | "utf-8"
@@ -24,8 +24,6 @@ type DetectedText =
   | {
       kind: "text";
       encoding: MutationTextEncoding;
-      iconvEncoding: string;
-      bom: Buffer;
       text: string;
     }
   | { kind: "binary" }
@@ -61,8 +59,6 @@ const decodeWithBom = (
 ): DetectedText => ({
   kind: "text",
   encoding: input.encoding,
-  iconvEncoding: input.iconvEncoding,
-  bom: input.bom,
   text: iconv.decode(buffer.subarray(input.bom.length), input.iconvEncoding),
 });
 
@@ -104,8 +100,6 @@ const detectText = (
     return {
       kind: "text",
       encoding: "utf-8",
-      iconvEncoding: "utf8",
-      bom: Buffer.alloc(0),
       text,
     };
   } catch {
@@ -114,8 +108,6 @@ const detectText = (
       return {
         kind: "text",
         encoding: "gb18030",
-        iconvEncoding: "gb18030",
-        bom: Buffer.alloc(0),
         text,
       };
     }
@@ -167,9 +159,12 @@ export const adaptLineEndings = (
   return text.replace(/\r\n|\r|\n/g, "\n").replace(/\n/g, lineEnding);
 };
 
-const readBuffer = (targetPath: string) => {
+const readBuffer = (
+  targetPath: string,
+  filesystem: FileMutationFilesystem,
+) => {
   try {
-    return fs.readFileSync(targetPath);
+    return filesystem.readFile(targetPath);
   } catch (error) {
     throw mcpInternalError(`Failed to read workspace file: ${targetPath}`, {
       cause: error,
@@ -177,22 +172,12 @@ const readBuffer = (targetPath: string) => {
   }
 };
 
-const readProbe = (targetPath: string) => {
+const readProbe = (
+  targetPath: string,
+  filesystem: FileMutationFilesystem,
+) => {
   try {
-    const handle = fs.openSync(targetPath, "r");
-    try {
-      const buffer = Buffer.alloc(FORMAT_PROBE_BYTES);
-      const bytesRead = fs.readSync(
-        handle,
-        buffer,
-        0,
-        FORMAT_PROBE_BYTES,
-        0,
-      );
-      return buffer.subarray(0, bytesRead);
-    } finally {
-      fs.closeSync(handle);
-    }
+    return filesystem.readPrefix(targetPath, FORMAT_PROBE_BYTES);
   } catch (error) {
     throw mcpInternalError(`Failed to inspect workspace file: ${targetPath}`, {
       cause: error,
@@ -200,8 +185,11 @@ const readProbe = (targetPath: string) => {
   }
 };
 
-export const readMutationTextFile = (targetPath: string): MutationTextFile => {
-  const detected = detectText(readBuffer(targetPath));
+export const readMutationTextFile = (
+  targetPath: string,
+  filesystem: FileMutationFilesystem,
+): MutationTextFile => {
+  const detected = detectText(readBuffer(targetPath, filesystem));
   if (detected.kind === "binary") {
     throw mcpBadRequest("edit only supports text files");
   }
@@ -218,8 +206,9 @@ export const readMutationTextFile = (targetPath: string): MutationTextFile => {
 
 export const inspectMutationTextFormat = (
   targetPath: string,
+  filesystem: FileMutationFilesystem,
 ): MutationTextFormat | null => {
-  const detected = detectText(readProbe(targetPath), {
+  const detected = detectText(readProbe(targetPath, filesystem), {
     allowTrailingIncompleteUtf8: true,
   });
   if (detected.kind !== "text") {

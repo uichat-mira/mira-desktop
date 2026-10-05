@@ -1,14 +1,20 @@
-import fs from "node:fs";
 import path from "node:path";
 import type { ToolInvocationEventInput } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
+import { commitFileBuffer, replaceDirectorySafely } from "./commit.js";
 import {
-  ensureParentDir,
-  resolveWorkspaceDirectoryPath,
-  resolveWorkspaceFilePath,
-  resolveWorkspacePath,
-  resolveWorkspaceWritePath,
-} from "../workspace.js";
+  nodeFileMutationFilesystem,
+  type FileMutationFilesystem,
+} from "./filesystem.js";
+import { withMutationLocks } from "./locks.js";
+import {
+  assertMutationPathVersion,
+  assertStableMutationPath,
+  captureMutationPathVersion,
+  isSameMutationIdentity,
+  resolveMutationPath,
+  type ResolvedMutationPath,
+} from "./path-policy.js";
 import {
   adaptLineEndings,
   encodeMutationText,
@@ -20,6 +26,7 @@ import {
 export type FileMutationRuntimeContext = {
   signal?: AbortSignal;
   pushEvent?: (event: ToolInvocationEventInput) => void;
+  filesystem?: FileMutationFilesystem;
 };
 
 export type WriteMutationInput = {
@@ -91,36 +98,33 @@ const requireNonEmptyPath = (value: string, field: string) => {
   return value.trim();
 };
 
-const resolveExistingMutationPath = (inputPath: string) => {
-  const resolved = resolveWorkspacePath(inputPath);
-  if (!fs.existsSync(resolved)) {
-    throw mcpBadRequest(`path does not exist: ${inputPath}`);
-  }
+const mutationFilesystem = (context: FileMutationRuntimeContext) =>
+  context.filesystem ?? nodeFileMutationFilesystem;
 
-  const stat = fs.statSync(resolved);
-  if (stat.isFile()) {
-    return {
-      path: resolveWorkspaceFilePath(inputPath),
-      type: "file" as const,
-    };
-  }
-  if (stat.isDirectory()) {
-    return {
-      path: resolveWorkspaceDirectoryPath(inputPath),
-      type: "directory" as const,
-    };
-  }
+const preparePath = (
+  inputPath: string,
+  filesystem: FileMutationFilesystem,
+  options: {
+    mustExist?: boolean;
+    expectedType?: "file" | "directory";
+  } = {},
+) => resolveMutationPath(inputPath, filesystem, options);
 
-  throw mcpBadRequest(`unsupported filesystem target: ${inputPath}`);
-};
-
-const writeBuffer = (targetPath: string, content: Buffer) => {
+const wrapMutationFailure = (
+  message: string,
+  run: () => void,
+) => {
   try {
-    fs.writeFileSync(targetPath, content);
+    run();
   } catch (error) {
-    throw mcpInternalError(`Failed to write workspace file: ${targetPath}`, {
-      cause: error,
-    });
+    if (
+      error &&
+      typeof error === "object" &&
+      "statusCode" in error
+    ) {
+      throw error;
+    }
+    throw mcpInternalError(message, { cause: error });
   }
 };
 
@@ -129,43 +133,103 @@ export const executeWriteMutation = async (
   context: FileMutationRuntimeContext = {},
 ): Promise<WriteMutationResult> => {
   const inputPath = requireNonEmptyPath(input.path, "path");
-  const targetPath = resolveWorkspaceWritePath(inputPath);
-  const exists = fs.existsSync(targetPath);
+  const filesystem = mutationFilesystem(context);
+  const preflight = preparePath(inputPath, filesystem);
 
-  if (exists && fs.statSync(targetPath).isDirectory()) {
+  if (preflight.type === "directory") {
     throw mcpBadRequest("write does not support directory targets");
   }
-  if (exists && input.overwrite !== true) {
+  if (preflight.exists && input.overwrite !== true) {
     throw mcpBadRequest("path already exists; set overwrite=true to replace it");
   }
 
-  const existingFormat = exists ? inspectMutationTextFormat(targetPath) : null;
-  const encoded = existingFormat
-    ? encodeMutationText(input.content, existingFormat)
-    : Buffer.from(input.content, "utf8");
+  return await withMutationLocks(
+    [preflight.canonicalPath],
+    context.signal,
+    async () => {
+      const current = preparePath(inputPath, filesystem);
+      if (!isSameMutationIdentity(preflight, current)) {
+        throw mcpBadRequest("file mutation target changed while waiting for lock");
+      }
 
-  context.pushEvent?.({
-    type: "invocation:progress",
-    message: exists ? "Prepared whole-file overwrite" : "Prepared file create",
-  });
-  assertNotAborted(context.signal);
+      if (current.type === "directory") {
+        throw mcpBadRequest("write does not support directory targets");
+      }
+      if (current.exists && input.overwrite !== true) {
+        throw mcpBadRequest(
+          "path already exists; set overwrite=true to replace it",
+        );
+      }
 
-  try {
-    ensureParentDir(targetPath);
-  } catch (error) {
-    throw mcpInternalError(`Failed to create parent directory for: ${inputPath}`, {
-      cause: error,
-    });
-  }
-  writeBuffer(targetPath, encoded);
+      let existingVersion:
+        | ReturnType<typeof captureMutationPathVersion>
+        | undefined;
+      let existingFormat:
+        | ReturnType<typeof inspectMutationTextFormat>
+        | null = null;
 
-  return {
-    operation: "write",
-    path: inputPath,
-    created: !exists,
-    overwritten: exists,
-    bytes: encoded.byteLength,
-  };
+      if (current.exists) {
+        existingVersion = captureMutationPathVersion(
+          current.lexicalPath,
+          filesystem,
+        );
+        existingFormat = inspectMutationTextFormat(
+          current.lexicalPath,
+          filesystem,
+        );
+        assertMutationPathVersion(
+          existingVersion,
+          current.lexicalPath,
+          filesystem,
+        );
+      }
+
+      const encoded = existingFormat
+        ? encodeMutationText(input.content, existingFormat)
+        : Buffer.from(input.content, "utf8");
+
+      context.pushEvent?.({
+        type: "invocation:progress",
+        message: current.exists
+          ? "Prepared atomic whole-file overwrite"
+          : "Prepared atomic file create",
+      });
+      assertNotAborted(context.signal);
+
+      // Creating missing parents is part of canonical write semantics. Re-check
+      // the target afterwards so a path redirected through a changed symlink is
+      // rejected before the commit attempt.
+      filesystem.mkdir(path.dirname(current.lexicalPath));
+      const beforeCommit = preparePath(inputPath, filesystem);
+      assertStableMutationPath(current, beforeCommit);
+      if (current.exists && existingVersion) {
+        assertMutationPathVersion(
+          existingVersion,
+          beforeCommit.lexicalPath,
+          filesystem,
+        );
+      }
+
+      wrapMutationFailure(
+        `Failed to commit workspace file: ${inputPath}`,
+        () =>
+          commitFileBuffer({
+            targetPath: beforeCommit.lexicalPath,
+            content: encoded,
+            overwrite: beforeCommit.exists,
+            filesystem,
+          }),
+      );
+
+      return {
+        operation: "write",
+        path: inputPath,
+        created: !beforeCommit.exists,
+        overwritten: beforeCommit.exists,
+        bytes: encoded.byteLength,
+      };
+    },
+  );
 };
 
 type LocatedEdit = EditMutation & {
@@ -284,7 +348,7 @@ const findAllMatches = (haystack: string, needle: string) => {
   return matches;
 };
 
-const locateExactEdit = (
+const locateEdit = (
   content: string,
   edit: EditMutation,
   index: number,
@@ -376,40 +440,106 @@ export const executeEditMutation = async (
     throw mcpBadRequest("edits must contain at least one edit");
   }
 
-  const targetPath = resolveWorkspaceFilePath(inputPath);
-  const currentFile = readMutationTextFile(targetPath);
-  const located = validateNonOverlappingEdits(
-    input.edits.map((edit, index) =>
-      locateExactEdit(currentFile.text, edit, index),
-    ),
-  );
-  const next = applyLocatedEdits(
-    currentFile.text,
-    located,
-    currentFile.lineEnding,
-  );
-
-  const tolerantCount = located.filter(
-    (edit) => edit.match === "tolerant",
-  ).length;
-  context.pushEvent?.({
-    type: "invocation:progress",
-    message:
-      tolerantCount > 0
-        ? `Validated ${located.length} file edit(s), including ${tolerantCount} deterministic tolerant match(es)`
-        : `Validated ${located.length} exact file edit(s)`,
+  const filesystem = mutationFilesystem(context);
+  const preflight = preparePath(inputPath, filesystem, {
+    mustExist: true,
+    expectedType: "file",
   });
-  assertNotAborted(context.signal);
 
-  const encoded = encodeMutationText(next, currentFile);
-  writeBuffer(targetPath, encoded);
+  return await withMutationLocks(
+    [preflight.canonicalPath],
+    context.signal,
+    async () => {
+      const current = preparePath(inputPath, filesystem, {
+        mustExist: true,
+        expectedType: "file",
+      });
+      if (!isSameMutationIdentity(preflight, current)) {
+        throw mcpBadRequest("file mutation target changed while waiting for lock");
+      }
 
-  return {
-    operation: "edit",
-    path: inputPath,
-    editsApplied: located.length,
-    bytes: encoded.byteLength,
-  };
+      const version = captureMutationPathVersion(
+        current.lexicalPath,
+        filesystem,
+      );
+      const currentFile = readMutationTextFile(
+        current.lexicalPath,
+        filesystem,
+      );
+      assertMutationPathVersion(
+        version,
+        current.lexicalPath,
+        filesystem,
+      );
+
+      const located = validateNonOverlappingEdits(
+        input.edits.map((edit, index) =>
+          locateEdit(currentFile.text, edit, index),
+        ),
+      );
+      const next = applyLocatedEdits(
+        currentFile.text,
+        located,
+        currentFile.lineEnding,
+      );
+      const encoded = encodeMutationText(next, currentFile);
+
+      const tolerantCount = located.filter(
+        (edit) => edit.match === "tolerant",
+      ).length;
+      context.pushEvent?.({
+        type: "invocation:progress",
+        message:
+          tolerantCount > 0
+            ? `Validated ${located.length} file edit(s), including ${tolerantCount} deterministic tolerant match(es)`
+            : `Validated ${located.length} exact file edit(s)`,
+      });
+      assertNotAborted(context.signal);
+
+      const beforeCommit = preparePath(inputPath, filesystem, {
+        mustExist: true,
+        expectedType: "file",
+      });
+      assertStableMutationPath(current, beforeCommit);
+      assertMutationPathVersion(
+        version,
+        beforeCommit.lexicalPath,
+        filesystem,
+      );
+
+      wrapMutationFailure(
+        `Failed to commit workspace edit: ${inputPath}`,
+        () =>
+          commitFileBuffer({
+            targetPath: beforeCommit.lexicalPath,
+            content: encoded,
+            overwrite: true,
+            filesystem,
+          }),
+      );
+
+      return {
+        operation: "edit",
+        path: inputPath,
+        editsApplied: located.length,
+        bytes: encoded.byteLength,
+      };
+    },
+  );
+};
+
+const assertMoveOverwriteTypes = (
+  source: ResolvedMutationPath,
+  destination: ResolvedMutationPath,
+) => {
+  if (
+    destination.exists &&
+    source.type !== destination.type
+  ) {
+    throw mcpBadRequest(
+      "move overwrite requires source and destination to have the same path type",
+    );
+  }
 };
 
 export const executeMoveMutation = async (
@@ -421,44 +551,115 @@ export const executeMoveMutation = async (
     input.destinationPath,
     "destinationPath",
   );
-  const source = resolveExistingMutationPath(sourcePath);
-  const destination = resolveWorkspaceWritePath(destinationPath);
+  const filesystem = mutationFilesystem(context);
+  const sourcePreflight = preparePath(sourcePath, filesystem, {
+    mustExist: true,
+  });
+  const destinationPreflight = preparePath(destinationPath, filesystem);
 
-  if (path.resolve(source.path) === path.resolve(destination)) {
+  if (isSameMutationIdentity(sourcePreflight, destinationPreflight)) {
     throw mcpBadRequest("path and destinationPath must be different");
   }
-  if (fs.existsSync(destination)) {
-    if (input.overwrite === true) {
-      throw mcpBadRequest(
-        "move overwrite is not enabled until atomic replacement is hardened",
-      );
-    }
+  assertMoveOverwriteTypes(sourcePreflight, destinationPreflight);
+  if (destinationPreflight.exists && input.overwrite !== true) {
     throw mcpBadRequest(
-      "destinationPath already exists; overwrite requires the hardened move path",
+      "destinationPath already exists; set overwrite=true to replace it",
     );
   }
 
-  context.pushEvent?.({
-    type: "invocation:progress",
-    message: "Prepared workspace move",
-  });
-  assertNotAborted(context.signal);
+  return await withMutationLocks(
+    [sourcePreflight.canonicalPath, destinationPreflight.canonicalPath],
+    context.signal,
+    async () => {
+      const source = preparePath(sourcePath, filesystem, {
+        mustExist: true,
+      });
+      const destination = preparePath(destinationPath, filesystem);
+      if (
+        !isSameMutationIdentity(sourcePreflight, source) ||
+        !isSameMutationIdentity(destinationPreflight, destination)
+      ) {
+        throw mcpBadRequest("file mutation target changed while waiting for lock");
+      }
+      assertMoveOverwriteTypes(source, destination);
+      const sourceVersion = captureMutationPathVersion(
+        source.lexicalPath,
+        filesystem,
+      );
+      const destinationVersion = destination.exists
+        ? captureMutationPathVersion(destination.lexicalPath, filesystem)
+        : undefined;
 
-  try {
-    fs.renameSync(source.path, destination);
-  } catch (error) {
-    throw mcpInternalError(
-      `Failed to move workspace target from ${sourcePath} to ${destinationPath}`,
-      { cause: error },
-    );
-  }
+      if (destination.exists && input.overwrite !== true) {
+        throw mcpBadRequest(
+          "destinationPath already exists; set overwrite=true to replace it",
+        );
+      }
 
-  return {
-    operation: "move",
-    path: sourcePath,
-    destinationPath,
-    overwritten: false,
-  };
+      context.pushEvent?.({
+        type: "invocation:progress",
+        message: destination.exists
+          ? "Prepared safe workspace move with destination replacement"
+          : "Prepared workspace move",
+      });
+      assertNotAborted(context.signal);
+      filesystem.mkdir(path.dirname(destination.lexicalPath));
+
+      const sourceBeforeCommit = preparePath(sourcePath, filesystem, {
+        mustExist: true,
+      });
+      const destinationBeforeCommit = preparePath(
+        destinationPath,
+        filesystem,
+      );
+      assertStableMutationPath(source, sourceBeforeCommit);
+      assertStableMutationPath(destination, destinationBeforeCommit);
+      assertMutationPathVersion(
+        sourceVersion,
+        sourceBeforeCommit.lexicalPath,
+        filesystem,
+      );
+      if (destinationVersion) {
+        assertMutationPathVersion(
+          destinationVersion,
+          destinationBeforeCommit.lexicalPath,
+          filesystem,
+        );
+      }
+
+      wrapMutationFailure(
+        `Failed to move workspace target from ${sourcePath} to ${destinationPath}`,
+        () => {
+          if (
+            destinationBeforeCommit.exists &&
+            sourceBeforeCommit.type === "directory"
+          ) {
+            replaceDirectorySafely({
+              sourcePath: sourceBeforeCommit.lexicalPath,
+              destinationPath: destinationBeforeCommit.lexicalPath,
+              filesystem,
+            });
+            return;
+          }
+
+          // rename never delete-first. For file overwrite it replaces the
+          // destination as one filesystem operation. EXDEV is surfaced rather
+          // than hidden behind copy+delete in this phase.
+          filesystem.rename(
+            sourceBeforeCommit.lexicalPath,
+            destinationBeforeCommit.lexicalPath,
+          );
+        },
+      );
+
+      return {
+        operation: "move",
+        path: sourcePath,
+        destinationPath,
+        overwritten: destinationBeforeCommit.exists,
+      };
+    },
+  );
 };
 
 export const executeDeleteMutation = async (
@@ -466,44 +667,78 @@ export const executeDeleteMutation = async (
   context: FileMutationRuntimeContext = {},
 ): Promise<DeleteMutationResult> => {
   const inputPath = requireNonEmptyPath(input.path, "path");
-  const target = resolveExistingMutationPath(inputPath);
-  const recursive = input.recursive === true;
-
-  if (target.type === "directory" && !recursive) {
-    const entries = fs.readdirSync(target.path);
-    if (entries.length > 0) {
-      throw mcpBadRequest(
-        "recursive=true is required to delete a non-empty directory",
-      );
-    }
-  }
-
-  context.pushEvent?.({
-    type: "invocation:progress",
-    message: `Prepared ${target.type} delete`,
+  const filesystem = mutationFilesystem(context);
+  const preflight = preparePath(inputPath, filesystem, {
+    mustExist: true,
   });
-  assertNotAborted(context.signal);
 
-  try {
-    if (target.type === "directory") {
-      if (recursive) {
-        fs.rmSync(target.path, { recursive: true, force: false });
-      } else {
-        fs.rmdirSync(target.path);
+  return await withMutationLocks(
+    [preflight.canonicalPath],
+    context.signal,
+    async () => {
+      const target = preparePath(inputPath, filesystem, {
+        mustExist: true,
+      });
+      if (!isSameMutationIdentity(preflight, target)) {
+        throw mcpBadRequest("file mutation target changed while waiting for lock");
       }
-    } else {
-      fs.unlinkSync(target.path);
-    }
-  } catch (error) {
-    throw mcpInternalError(`Failed to delete workspace target: ${inputPath}`, {
-      cause: error,
-    });
-  }
+      const recursive = input.recursive === true;
 
-  return {
-    operation: "delete",
-    path: inputPath,
-    deletedType: target.type,
-    recursive: target.type === "directory" ? recursive : false,
-  };
+      if (target.type === "directory" && !recursive) {
+        const entries = filesystem.readdir(target.lexicalPath);
+        if (entries.length > 0) {
+          throw mcpBadRequest(
+            "recursive=true is required to delete a non-empty directory",
+          );
+        }
+      }
+
+      const version = captureMutationPathVersion(
+        target.lexicalPath,
+        filesystem,
+      );
+      context.pushEvent?.({
+        type: "invocation:progress",
+        message: `Prepared ${target.type} delete`,
+      });
+      assertNotAborted(context.signal);
+
+      const beforeCommit = preparePath(inputPath, filesystem, {
+        mustExist: true,
+      });
+      assertStableMutationPath(target, beforeCommit);
+      assertMutationPathVersion(
+        version,
+        beforeCommit.lexicalPath,
+        filesystem,
+      );
+
+      wrapMutationFailure(
+        `Failed to delete workspace target: ${inputPath}`,
+        () => {
+          if (beforeCommit.type === "directory") {
+            if (recursive) {
+              filesystem.remove(beforeCommit.lexicalPath, {
+                recursive: true,
+                force: false,
+              });
+            } else {
+              filesystem.rmdir(beforeCommit.lexicalPath);
+            }
+          } else {
+            filesystem.unlink(beforeCommit.lexicalPath);
+          }
+        },
+      );
+
+      return {
+        operation: "delete",
+        path: inputPath,
+        deletedType:
+          beforeCommit.type === "directory" ? "directory" : "file",
+        recursive:
+          beforeCommit.type === "directory" ? recursive : false,
+      };
+    },
+  );
 };
