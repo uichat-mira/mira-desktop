@@ -121,6 +121,7 @@ test("production routes place home, chat, dashboard, and settings below one appl
       "knowledge-base",
       "evaluation",
       "about",
+      "extensions",
       "development",
       "chat",
       "settings",

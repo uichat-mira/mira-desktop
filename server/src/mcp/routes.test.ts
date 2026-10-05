@@ -158,6 +158,7 @@ describe("mcp routes", () => {
   afterEach(() => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
     delete process.env.DATABASE_URL;
+    delete process.env.UI_CHAT_DATABASE_DIR;
     delete process.env.UI_CHAT_WORKSPACE_ROOT;
     clearWorkspaceSelection();
     vi.unstubAllGlobals();
@@ -287,6 +288,114 @@ describe("mcp routes", () => {
     expect(streamResponse.body).toContain("invocation:approval_required");
     expect(streamResponse.body).toContain('"status":"awaiting_approval"');
 
+    const streamEvents = streamResponse.body
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)) as { type: string; invocationId?: string });
+    const editInvocationId = streamEvents.find(
+      (event) => event.type === "invocation:start",
+    )?.invocationId;
+    expect(editInvocationId).toBeTruthy();
+
+    const invalidApprovalResponse = await app.inject({
+      method: "POST",
+      url: `/mcp/invocations/${editInvocationId}/approval`,
+      payload: {
+        decision: "reject",
+        toolId: "edit_file",
+        args: {
+          path: "a.txt",
+          operation: "replace_block",
+          expectedOldText: "hello",
+          newText: "world",
+        },
+      },
+    });
+    expect(invalidApprovalResponse.statusCode).toBe(400);
+    expect(fs.readFileSync(path.join(tempRoot, "a.txt"), "utf8")).toBe("hello");
+
+    const approvedResponse = await app.inject({
+      method: "POST",
+      url: `/mcp/invocations/${editInvocationId}/approval`,
+      payload: {
+        decision: "approved",
+        toolId: "edit_file",
+        args: {
+          path: "a.txt",
+          operation: "replace_block",
+          expectedOldText: "hello",
+          newText: "world",
+        },
+      },
+    });
+    expect(approvedResponse.statusCode).toBe(200);
+    expect(
+      (
+        approvedResponse.json() as {
+          data: {
+            originalInvocation: { status: string };
+            resumedInvocation: { status: string } | null;
+          };
+        }
+      ).data,
+    ).toMatchObject({
+      originalInvocation: { status: "completed" },
+      resumedInvocation: { status: "completed" },
+    });
+    expect(fs.readFileSync(path.join(tempRoot, "a.txt"), "utf8")).toBe("world");
+
+    const rejectedStreamResponse = await app.inject({
+      method: "POST",
+      url: "/mcp/invocations/stream",
+      payload: {
+        toolId: "edit_file",
+        args: {
+          path: "a.txt",
+          operation: "replace_block",
+          expectedOldText: "world",
+          newText: "rejected-change",
+        },
+      },
+    });
+    const rejectedEvents = rejectedStreamResponse.body
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)) as { type: string; invocationId?: string });
+    const rejectedInvocationId = rejectedEvents.find(
+      (event) => event.type === "invocation:start",
+    )?.invocationId;
+    expect(rejectedInvocationId).toBeTruthy();
+
+    const rejectedResponse = await app.inject({
+      method: "POST",
+      url: `/mcp/invocations/${rejectedInvocationId}/approval`,
+      payload: {
+        decision: "rejected",
+        toolId: "edit_file",
+        args: {
+          path: "a.txt",
+          operation: "replace_block",
+          expectedOldText: "world",
+          newText: "rejected-change",
+        },
+      },
+    });
+    expect(rejectedResponse.statusCode).toBe(200);
+    expect(
+      (
+        rejectedResponse.json() as {
+          data: {
+            originalInvocation: { status: string };
+            resumedInvocation: null;
+          };
+        }
+      ).data,
+    ).toMatchObject({
+      originalInvocation: { status: "cancelled" },
+      resumedInvocation: null,
+    });
+    expect(fs.readFileSync(path.join(tempRoot, "a.txt"), "utf8")).toBe("world");
+
     const locateResponse = await app.inject({
       method: "POST",
       url: "/mcp/invocations",
@@ -324,6 +433,169 @@ describe("mcp routes", () => {
             invocationId: locateInvocationId,
           },
         });
+
+    await app.close();
+  });
+
+  it("resets Tool Lab fixtures and freezes the managed workspace across approval replay", async () => {
+    delete process.env.UI_CHAT_WORKSPACE_ROOT;
+    const appDataRoot = path.join(tempRoot, "tool-lab-app-data");
+    process.env.UI_CHAT_DATABASE_DIR = appDataRoot;
+
+    const app = Fastify({
+      logger: getLoggerConfig(),
+      serializerOpts: { encoding: "utf8" },
+    });
+    app.setErrorHandler(sendRouteError);
+    await app.register(mcpRoutes);
+
+    const managedWorkspaceResponse = await app.inject({
+      method: "GET",
+      url: "/mcp/tool-lab/workspace/managed",
+    });
+    expect(managedWorkspaceResponse.statusCode).toBe(200);
+    expect(
+      (
+        managedWorkspaceResponse.json() as {
+          data: { rootPath: string; source: string };
+        }
+      ).data.source,
+    ).toBe("managed");
+
+    const resetResponse = await app.inject({
+      method: "POST",
+      url: "/mcp/tool-lab/fixtures/platform-read-success/reset",
+    });
+    expect(resetResponse.statusCode).toBe(200);
+    const resetData = (
+      resetResponse.json() as {
+        data: {
+          fixtureId: string;
+          workspace: { rootPath: string; source: string };
+          fixtureRoot: string;
+        };
+      }
+    ).data;
+    expect(resetData.fixtureId).toBe("platform-read-success");
+    expect(resetData.workspace.source).toBe("managed");
+    expect(fs.statSync(resetData.workspace.rootPath).isDirectory()).toBe(true);
+
+    const fixturePath = ".tool-lab-fixtures/platform-read-success/input.txt";
+    const readResponse = await app.inject({
+      method: "POST",
+      url: "/mcp/invocations",
+      payload: {
+        toolId: "read",
+        args: { path: fixturePath },
+        workspaceContext: "tool_lab_managed",
+      },
+    });
+    expect(readResponse.statusCode).toBe(200);
+    expect(
+      (readResponse.json() as { data: { status: string } }).data.status,
+    ).toBe("completed");
+
+    const missingResetResponse = await app.inject({
+      method: "POST",
+      url: "/mcp/tool-lab/fixtures/platform-read-missing/reset",
+    });
+    expect(missingResetResponse.statusCode).toBe(200);
+
+    const missingReadResponse = await app.inject({
+      method: "POST",
+      url: "/mcp/invocations",
+      payload: {
+        toolId: "read",
+        args: {
+          path: ".tool-lab-fixtures/platform-read-missing/missing.txt",
+        },
+        workspaceContext: "tool_lab_managed",
+      },
+    });
+    expect(missingReadResponse.statusCode).toBe(200);
+    expect(
+      (missingReadResponse.json() as {
+        data: {
+          status: string;
+          error?: { message?: string; failureCode?: string };
+        };
+      }).data,
+    ).toMatchObject({
+      status: "failed",
+      error: {
+        message: expect.any(String),
+        failureCode: expect.any(String),
+      },
+    });
+
+    const approvalStream = await app.inject({
+      method: "POST",
+      url: "/mcp/invocations/stream",
+      payload: {
+        toolId: "edit_file",
+        args: {
+          path: fixturePath,
+          operation: "replace_block",
+          expectedOldText: "Mira Tool Lab deterministic read fixture.",
+          newText: "Mira Tool Lab deterministic read fixture approved.",
+        },
+        workspaceContext: "tool_lab_managed",
+      },
+    });
+    expect(approvalStream.body).toContain("invocation:approval_required");
+
+    const approvalEvents = approvalStream.body
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)) as { type: string; invocationId?: string });
+    const approvalInvocationId = approvalEvents.find(
+      (event) => event.type === "invocation:start",
+    )?.invocationId;
+    expect(approvalInvocationId).toBeTruthy();
+
+    const otherRoot = path.join(tempRoot, "other-workspace");
+    fs.mkdirSync(otherRoot, { recursive: true });
+    const selectResponse = await app.inject({
+      method: "POST",
+      url: "/mcp/workspace/select",
+      payload: { rootPath: otherRoot },
+    });
+    expect(selectResponse.statusCode).toBe(200);
+
+    const approvalResponse = await app.inject({
+      method: "POST",
+      url: `/mcp/invocations/${approvalInvocationId}/approval`,
+      payload: {
+        decision: "approved",
+        toolId: "edit_file",
+        args: {
+          path: fixturePath,
+          operation: "replace_block",
+          expectedOldText: "Mira Tool Lab deterministic read fixture.",
+          newText: "Mira Tool Lab deterministic read fixture approved.",
+        },
+      },
+    });
+    expect(approvalResponse.statusCode).toBe(200);
+    expect(
+      fs.readFileSync(path.join(resetData.workspace.rootPath, fixturePath), "utf8"),
+    ).toContain("Mira Tool Lab deterministic read fixture approved.");
+    expect(fs.readdirSync(otherRoot)).toEqual([]);
+
+    const secondReset = await app.inject({
+      method: "POST",
+      url: "/mcp/tool-lab/fixtures/platform-read-success/reset",
+    });
+    expect(secondReset.statusCode).toBe(200);
+    expect(
+      fs.readFileSync(path.join(resetData.workspace.rootPath, fixturePath), "utf8"),
+    ).toContain("This file is reset before every case run.");
+
+    const unknownFixture = await app.inject({
+      method: "POST",
+      url: "/mcp/tool-lab/fixtures/not-registered/reset",
+    });
+    expect(unknownFixture.statusCode).toBe(400);
 
     await app.close();
   });

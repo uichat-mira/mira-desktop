@@ -166,6 +166,133 @@ describe("useToolsWorkbench", () => {
     });
   });
 
+  it("opens a Capability handoff as an editable copy without changing normal workbench defaults", async () => {
+    getMcpToolsMock.mockResolvedValueOnce([
+      {
+        id: "web_search",
+        title: "Web Search",
+        description: "",
+        domain: "web_search",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: [],
+        capabilities: {
+          sideEffect: "network",
+          requiresApproval: false,
+          networkAccess: true,
+        },
+        workbench: {
+          groupId: "web_search",
+          groupLabel: "网络搜索",
+          groupDescription: "网络搜索工具。",
+          groupOrder: 30,
+          icon: "globe",
+        },
+      },
+      {
+        id: "read_open",
+        title: "Read Open",
+        description: "",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: [],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+          workspaceBound: true,
+        },
+        workbench: {
+          groupId: "read",
+          groupLabel: "阅读",
+          groupDescription: "读取工具。",
+          groupOrder: 10,
+          icon: "file-search",
+        },
+      },
+    ]);
+
+    const useToolsWorkbench = await importHook();
+    const handoff = {
+      toolId: "read_open",
+      args: { path: "README.md" },
+    };
+    const { result } = renderHook(() =>
+      useToolsWorkbench(handoff),
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedTool?.id).toBe("read_open");
+    });
+
+    expect(result.current.activeGroupId).toBe("read");
+    expect(result.current.argsDraft).toBe(
+      JSON.stringify({ path: "README.md" }, null, 2),
+    );
+  });
+
+  it("applies a new Capability handoff when the mounted route receives new navigation state", async () => {
+    const createTool = (
+      id: string,
+      title: string,
+      groupId: string,
+      workspaceBound = false,
+    ) => ({
+      id,
+      title,
+      description: "",
+      domain: groupId,
+      source: "internal",
+      mode: "sync",
+      inputSchema: { type: "object" },
+      tags: [],
+      capabilities: {
+        sideEffect: "none",
+        requiresApproval: false,
+        ...(workspaceBound ? { workspaceBound: true } : {}),
+      },
+      workbench: {
+        groupId,
+        groupLabel: title,
+        groupDescription: title,
+        groupOrder: groupId === "read" ? 10 : 30,
+        icon: "wrench",
+      },
+    });
+    getMcpToolsMock.mockResolvedValue([
+      createTool("web_search", "Web Search", "web_search"),
+      createTool("read_open", "Read Open", "read", true),
+    ]);
+
+    const useToolsWorkbench = await importHook();
+    const { result, rerender } = renderHook(
+      ({ handoff, handoffKey }: {
+        handoff: { toolId: string; args: Record<string, unknown> } | null;
+        handoffKey: string;
+      }) => useToolsWorkbench(handoff, handoffKey),
+      { initialProps: { handoff: null, handoffKey: "first" } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedTool?.id).toBe("read_open");
+    });
+
+    rerender({
+      handoff: { toolId: "web_search", args: { query: "capabilities" } },
+      handoffKey: "second",
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedTool?.id).toBe("web_search");
+    });
+    expect(result.current.activeGroupId).toBe("web_search");
+    expect(result.current.argsDraft).toBe(
+      JSON.stringify({ query: "capabilities" }, null, 2),
+    );
+  });
+
   it("selects the first displayed group instead of the alphabetically first tool", async () => {
     const createTool = (
       id: string,

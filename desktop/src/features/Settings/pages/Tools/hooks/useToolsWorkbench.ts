@@ -17,6 +17,7 @@ import {
 import type {
   ToolGroupSummary,
   ToolWorkbenchGroupId,
+  ToolWorkbenchHandoff,
   WorkbenchToolDefinition,
 } from "../types";
 import {
@@ -55,7 +56,10 @@ const normalizeWebSearchMaxResults = (value: unknown) => {
   );
 };
 
-export function useToolsWorkbench() {
+export function useToolsWorkbench(
+  initialHandoff?: ToolWorkbenchHandoff | null,
+  handoffKey = "initial",
+) {
   const { t } = useTranslation();
   const [activeGroupId, setActiveGroupId] = useState<ToolWorkbenchGroupId | null>(null);
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
@@ -111,14 +115,26 @@ export function useToolsWorkbench() {
           maxResults: normalizeWebSearchMaxResults(persistedWebSearchConfig.maxResults),
         });
 
-        const nextActiveGroupId = getToolGroups(sortedTools)[0] ?? null;
-        const nextSelectedTool = nextActiveGroupId
-          ? sortedTools.find((tool) => tool.workbench.groupId === nextActiveGroupId) ?? null
+        const handoff = initialHandoff ?? null;
+        const requestedTool = handoff
+          ? sortedTools.find((tool) => tool.id === handoff.toolId) ?? null
           : null;
+        const nextActiveGroupId =
+          requestedTool?.workbench.groupId ?? getToolGroups(sortedTools)[0] ?? null;
+        const nextSelectedTool =
+          requestedTool ??
+          (nextActiveGroupId
+            ? sortedTools.find((tool) => tool.workbench.groupId === nextActiveGroupId) ?? null
+            : null);
+
         if (nextSelectedTool) {
           setSelectedToolId(nextSelectedTool.id);
           setActiveGroupId(nextActiveGroupId);
-          setArgsDraft(buildToolDraft(nextSelectedTool));
+          setArgsDraft(
+            requestedTool && handoff
+              ? JSON.stringify(handoff.args, null, 2)
+              : buildToolDraft(nextSelectedTool),
+          );
         }
       } catch (error) {
         if (!disposed) {
@@ -139,7 +155,7 @@ export function useToolsWorkbench() {
     return () => {
       disposed = true;
     };
-  }, [t]);
+  }, [handoffKey, initialHandoff, t]);
 
   const selectedTool = useMemo(
     () => tools.find((tool) => tool.id === selectedToolId) ?? null,
@@ -280,6 +296,9 @@ export function useToolsWorkbench() {
           args: parsedArgs,
         },
         async (event) => {
+          if (event.type === "invocation:done") {
+            return;
+          }
           if (!invocationId && event.type === "invocation:start") {
             invocationId = event.invocationId;
           }

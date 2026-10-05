@@ -70,6 +70,10 @@ const persistComputerUseInvocation = (record: ToolInvocation) => {
 
 const invocationMap = new Map<string, ToolInvocation>();
 const invocationEvents = new Map<string, ToolInvocationEvent[]>();
+const invocationWorkspaceSnapshots = new Map<
+  string,
+  ToolExecutionEnvironment["workspace"]
+>();
 let invocationRetentionConfig: RetentionConfig = {
   ...DEFAULT_RETENTION_CONFIG,
 };
@@ -87,17 +91,28 @@ const sweepInvocations = () => {
   sweepRetentionMap(invocationMap, {
     config: invocationRetentionConfig,
     getUpdatedAt: (record) => record.finishedAt ?? record.startedAt,
-    keep: (record) => !record.finishedAt,
+    keep: (record) =>
+      !record.finishedAt || record.status === "awaiting_approval",
   });
   sweepRetentionMap(invocationEvents, {
     config: invocationRetentionConfig,
     getUpdatedAt: (_events) => undefined,
   });
   sweepInvocationTraces();
+  for (const invocationId of invocationWorkspaceSnapshots.keys()) {
+    if (!invocationMap.has(invocationId)) {
+      invocationWorkspaceSnapshots.delete(invocationId);
+    }
+  }
 };
 
 export const getInvocation = (invocationId: string) =>
   invocationMap.get(invocationId) ?? computerUseRepository.getInvocation(invocationId) ?? undefined;
+
+export const getInvocationWorkspaceSnapshot = (invocationId: string) => {
+  const snapshot = invocationWorkspaceSnapshots.get(invocationId);
+  return snapshot ? { ...snapshot } : undefined;
+};
 
 export const listInvocationEvents = (invocationId: string) =>
   invocationEvents.get(invocationId) ?? computerUseRepository.getEvents(invocationId);
@@ -133,6 +148,7 @@ export const resolveInvocationApproval = (input: {
   invocationMap.set(record.id, record);
   persistComputerUseInvocation(record);
   appendEvent(record.id, { type: "invocation:finish", status: record.status, at: resolvedAt, invocationId: record.id });
+  invocationWorkspaceSnapshots.delete(record.id);
   return record;
 };
 
@@ -225,12 +241,14 @@ export const finalizeClaimedInvocationApproval = (input: {
     at: finishedAt,
     invocationId: record.id,
   });
+  invocationWorkspaceSnapshots.delete(record.id);
   return record;
 };
 
 export const clearInvocations = () => {
   invocationMap.clear();
   invocationEvents.clear();
+  invocationWorkspaceSnapshots.clear();
   clearInvocationTraces();
 };
 
@@ -309,6 +327,11 @@ export const executeInvocation = async (
     startedAt,
   };
   invocationMap.set(invocationId, record);
+  if (input.environment?.workspace) {
+    invocationWorkspaceSnapshots.set(invocationId, {
+      ...input.environment.workspace,
+    });
+  }
   persistComputerUseInvocation(record);
 
   const emit = async (event: ToolInvocationEventInput) => {
