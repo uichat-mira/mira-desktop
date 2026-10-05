@@ -190,7 +190,7 @@ const isLikelyBinary = (buffer: Buffer) => {
 
 const READ_ENCODING_PROBE_BYTES = 64 * 1024;
 
-const readEncodingProbe = (targetPath: string) => {
+const readEncodingProbe = (targetPath: string, sizeBytes: number) => {
   const handle = fs.openSync(targetPath, "r");
   try {
     const buffer = Buffer.alloc(READ_ENCODING_PROBE_BYTES);
@@ -201,13 +201,20 @@ const readEncodingProbe = (targetPath: string) => {
       READ_ENCODING_PROBE_BYTES,
       0,
     );
-    return buffer.subarray(0, bytesRead);
+    return {
+      buffer: buffer.subarray(0, bytesRead),
+      complete: sizeBytes <= READ_ENCODING_PROBE_BYTES,
+    };
   } finally {
     fs.closeSync(handle);
   }
 };
 
-const detectTextEncoding = (buffer: Buffer): DetectedTextEncoding => {
+const detectTextEncoding = (probe: {
+  buffer: Buffer;
+  complete: boolean;
+}): DetectedTextEncoding => {
+  const { buffer, complete } = probe;
   if (
     buffer.length >= 3 &&
     buffer[0] === 0xef &&
@@ -245,7 +252,9 @@ const detectTextEncoding = (buffer: Buffer): DetectedTextEncoding => {
   }
 
   try {
-    new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    new TextDecoder("utf-8", { fatal: true }).decode(buffer, {
+      stream: !complete,
+    });
     return {
       kind: "text",
       encoding: "utf-8",
@@ -276,7 +285,7 @@ const readTextWindow = async (
     maxValue: MAX_GENERIC_READ_LIMIT,
   });
   const sizeBytes = fs.statSync(targetPath).size;
-  const detected = detectTextEncoding(readEncodingProbe(targetPath));
+  const detected = detectTextEncoding(readEncodingProbe(targetPath, sizeBytes));
   if (detected.kind === "binary") {
     return { kind: "binary" } as const;
   }
