@@ -223,12 +223,14 @@ describe("ToolResult B-prime normalization", () => {
         structuredContent: {
           type: "glob",
           pattern: "**/*.ts",
-          root: "src",
+          path: "src",
           matches: ["src/a.ts", "src/b.ts", "src/c.ts"],
+          offset: 0,
           returnedCount: 3,
           totalCount: 8,
           hasMore: true,
           truncated: true,
+          nextOffset: 3,
         },
       }),
     );
@@ -236,8 +238,10 @@ describe("ToolResult B-prime normalization", () => {
     expect(glob?.data).toMatchObject({
       kind: "glob",
       pattern: "**/*.ts",
-      root: "src",
+      path: "src",
       matchCount: 8,
+      offset: 0,
+      nextOffset: 3,
       matchedPaths: ["src/a.ts", "src/b.ts", "src/c.ts"],
       matchesPreview: ["src/a.ts", "src/b.ts", "src/c.ts"],
       truncated: true,
@@ -249,7 +253,8 @@ describe("ToolResult B-prime normalization", () => {
         structuredContent: {
           type: "grep",
           pattern: "answerReadiness",
-          root: "src",
+          path: "src",
+          offset: 0,
           matches: [
             {
               path: "src/planner.ts",
@@ -276,8 +281,9 @@ describe("ToolResult B-prime normalization", () => {
     expect(grep?.data).toMatchObject({
       kind: "grep",
       pattern: "answerReadiness",
-      root: "src",
+      path: "src",
       matchCount: 1,
+      offset: 0,
       matchedPaths: ["src/planner.ts"],
       matchesPreview: [
         "src/planner.ts:12:7: const answerReadiness = true;",
@@ -290,30 +296,34 @@ describe("ToolResult B-prime normalization", () => {
       definition("read"),
       normalizeToolResult({
         structuredContent: {
-          type: "open",
+          type: "read",
           path: "README.md",
           source: { text: "# Intro\nbody\n## Details\nmore", metadata: {} },
-          window: {
-            startLine: 1,
-            endLine: 4,
-            totalLines: 10,
-            truncated: true,
-            nextStartLine: 5,
-          },
+          offset: 0,
+          limit: 4,
+          returnedCount: 4,
+          totalLines: 10,
+          startLine: 1,
+          endLine: 4,
+          hasMore: true,
+          truncated: true,
+          nextOffset: 4,
         },
       }),
     );
     expect(opened?.status).toBe("truncated");
-    expect(opened?.facts).toContain("nextStartLine=5");
+    expect(opened?.facts).toContain("nextOffset=4");
     expect(opened?.data).toMatchObject({
       kind: "read",
       keySections: ["Intro", "Details"],
-      window: {
+      pagination: {
+        offset: 0,
+        limit: 4,
+        returnedCount: 4,
+        totalLines: 10,
         startLine: 1,
         endLine: 4,
-        totalLines: 10,
-        truncated: true,
-        nextStartLine: 5,
+        nextOffset: 4,
       },
     });
 
