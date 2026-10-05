@@ -15,6 +15,27 @@ const tempRoot = createTimestampedTestArtifactPath(
   "workspace",
   "file-mutation-runtime-safety",
 );
+const outsideRoot = createTimestampedTestArtifactPath(
+  "workspace",
+  "file-mutation-runtime-safety-outside",
+);
+
+const resolveExistingPathCaseInsensitively = (targetPath: string) => {
+  if (fs.existsSync(targetPath)) {
+    return targetPath;
+  }
+
+  const parent = path.dirname(targetPath);
+  if (!fs.existsSync(parent)) {
+    return targetPath;
+  }
+
+  const targetName = path.basename(targetPath).toLowerCase();
+  const actualName = fs
+    .readdirSync(parent)
+    .find((entry) => entry.toLowerCase() === targetName);
+  return actualName ? path.join(parent, actualName) : targetPath;
+};
 
 describe("file mutation runtime safety", () => {
   beforeEach(() => {
@@ -25,6 +46,7 @@ describe("file mutation runtime safety", () => {
 
   afterEach(() => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
+    fs.rmSync(outsideRoot, { recursive: true, force: true });
     delete process.env.UI_CHAT_WORKSPACE_ROOT;
     clearWorkspaceSelection();
   });
@@ -46,6 +68,51 @@ describe("file mutation runtime safety", () => {
     expect(fs.readFileSync(path.join(tempRoot, "race.txt"), "utf8")).toBe(
       "second",
     );
+  });
+
+  it("supports case-only renames without overwrite intent", async () => {
+    const source = path.join(tempRoot, "Readme.md");
+    fs.writeFileSync(source, "hello", "utf8");
+
+    const caseInsensitiveFilesystem = {
+      ...nodeFileMutationFilesystem,
+      lstat(targetPath: string) {
+        return nodeFileMutationFilesystem.lstat(
+          resolveExistingPathCaseInsensitively(targetPath),
+        );
+      },
+      realpath(targetPath: string) {
+        return nodeFileMutationFilesystem.realpath(
+          resolveExistingPathCaseInsensitively(targetPath),
+        );
+      },
+    };
+
+    const result = await executeMoveMutation(
+      {
+        path: "Readme.md",
+        destinationPath: "README.md",
+      },
+      { filesystem: caseInsensitiveFilesystem },
+    );
+
+    expect(result).toMatchObject({
+      operation: "move",
+      path: "Readme.md",
+      destinationPath: "README.md",
+      overwritten: false,
+    });
+    expect(fs.readdirSync(tempRoot)).toContain("README.md");
+    expect(fs.readFileSync(path.join(tempRoot, "README.md"), "utf8")).toBe(
+      "hello",
+    );
+
+    await expect(
+      executeMoveMutation({
+        path: "README.md",
+        destinationPath: "README.md",
+      }),
+    ).rejects.toThrow("path and destinationPath must be different");
   });
 
   it("keeps source and destination when file overwrite move fails", async () => {
@@ -117,6 +184,38 @@ describe("file mutation runtime safety", () => {
     expect(
       fs.readdirSync(tempRoot).filter((name) => name.includes(".mira-backup-")),
     ).toEqual([]);
+  });
+
+  it("rejects a parent-directory symlink swap before commit", async () => {
+    const parent = path.join(tempRoot, "safe");
+    const parkedParent = path.join(tempRoot, "safe-original");
+    fs.mkdirSync(parent);
+    fs.mkdirSync(outsideRoot, { recursive: true });
+    let swapped = false;
+
+    const racingFilesystem = {
+      ...nodeFileMutationFilesystem,
+      mkdir(targetPath: string) {
+        nodeFileMutationFilesystem.mkdir(targetPath);
+        if (!swapped && targetPath === parent) {
+          swapped = true;
+          fs.renameSync(parent, parkedParent);
+          fs.symlinkSync(outsideRoot, parent, "junction");
+        }
+      },
+    };
+
+    await expect(
+      executeWriteMutation(
+        {
+          path: "safe/escape.txt",
+          content: "must stay inside",
+        },
+        { filesystem: racingFilesystem },
+      ),
+    ).rejects.toThrow("path must stay inside workspace root");
+
+    expect(fs.existsSync(path.join(outsideRoot, "escape.txt"))).toBe(false);
   });
 
   it("rejects final symbolic-link targets across all mutation actions", async () => {

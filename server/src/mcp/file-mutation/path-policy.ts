@@ -141,9 +141,35 @@ export const resolveMutationPath = (
 
 const normalizeIdentity = (value: string) => {
   const normalized = path.normalize(path.resolve(value)).normalize("NFC");
-  return process.platform === "win32" || process.platform === "darwin"
-    ? normalized.toLowerCase()
-    : normalized;
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+};
+
+const normalizeLexicalIdentity = (value: string) =>
+  path.normalize(path.resolve(value)).normalize("NFC");
+
+export const isCaseOnlyMutationRename = (
+  source: ResolvedMutationPath,
+  destination: ResolvedMutationPath,
+) => {
+  if (!source.exists || !destination.exists || source.type !== destination.type) {
+    return false;
+  }
+
+  const sourceCanonical = normalizeLexicalIdentity(source.canonicalPath);
+  const destinationCanonical = normalizeLexicalIdentity(
+    destination.canonicalPath,
+  );
+  if (sourceCanonical !== destinationCanonical) {
+    return false;
+  }
+
+  const sourceLexical = normalizeLexicalIdentity(source.lexicalPath);
+  const destinationLexical = normalizeLexicalIdentity(destination.lexicalPath);
+  if (sourceLexical === destinationLexical) {
+    return false;
+  }
+
+  return sourceLexical.toLowerCase() === destinationLexical.toLowerCase();
 };
 
 export const assertStableMutationPath = (

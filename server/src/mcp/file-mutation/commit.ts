@@ -4,7 +4,7 @@ import type { FileMutationFilesystem } from "./filesystem.js";
 
 const createSiblingScratchPath = (
   targetPath: string,
-  label: "backup" | "write",
+  label: "backup" | "write" | "rename",
 ) =>
   path.join(
     path.dirname(targetPath),
@@ -48,6 +48,29 @@ export const commitFileBuffer = async (input: {
     if (filesystem.exists(scratchPath)) {
       filesystem.remove(scratchPath, { recursive: false, force: true });
     }
+  }
+};
+
+export const renameCaseOnlySafely = (input: {
+  sourcePath: string;
+  destinationPath: string;
+  filesystem: FileMutationFilesystem;
+}) => {
+  const { sourcePath, destinationPath, filesystem } = input;
+  const scratchPath = createSiblingScratchPath(sourcePath, "rename");
+  filesystem.rename(sourcePath, scratchPath);
+
+  try {
+    filesystem.rename(scratchPath, destinationPath);
+  } catch (commitError) {
+    try {
+      filesystem.rename(scratchPath, sourcePath);
+    } catch (rollbackError) {
+      throw new Error(
+        `case-only rename failed and rollback also failed: commit=${errorMessage(commitError)}; rollback=${errorMessage(rollbackError)}; scratch=${scratchPath}`,
+      );
+    }
+    throw commitError;
   }
 };
 

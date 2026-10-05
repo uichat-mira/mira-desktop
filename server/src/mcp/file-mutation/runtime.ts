@@ -1,7 +1,11 @@
 import path from "node:path";
 import type { ToolInvocationEventInput } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
-import { commitFileBuffer, replaceDirectorySafely } from "./commit.js";
+import {
+  commitFileBuffer,
+  renameCaseOnlySafely,
+  replaceDirectorySafely,
+} from "./commit.js";
 import {
   nodeFileMutationFilesystem,
   type FileMutationFilesystem,
@@ -11,6 +15,7 @@ import {
   assertMutationPathVersion,
   assertStableMutationPath,
   captureMutationPathVersion,
+  isCaseOnlyMutationRename,
   isSameMutationIdentity,
   resolveMutationPath,
   type ResolvedMutationPath,
@@ -556,12 +561,23 @@ export const executeMoveMutation = async (
     mustExist: true,
   });
   const destinationPreflight = preparePath(destinationPath, filesystem);
+  const caseOnlyPreflight = isCaseOnlyMutationRename(
+    sourcePreflight,
+    destinationPreflight,
+  );
 
-  if (isSameMutationIdentity(sourcePreflight, destinationPreflight)) {
+  if (
+    isSameMutationIdentity(sourcePreflight, destinationPreflight) &&
+    !caseOnlyPreflight
+  ) {
     throw mcpBadRequest("path and destinationPath must be different");
   }
   assertMoveOverwriteTypes(sourcePreflight, destinationPreflight);
-  if (destinationPreflight.exists && input.overwrite !== true) {
+  if (
+    destinationPreflight.exists &&
+    !caseOnlyPreflight &&
+    input.overwrite !== true
+  ) {
     throw mcpBadRequest(
       "destinationPath already exists; set overwrite=true to replace it",
     );
@@ -581,6 +597,10 @@ export const executeMoveMutation = async (
       ) {
         throw mcpBadRequest("file mutation target changed while waiting for lock");
       }
+      const caseOnlyRename = isCaseOnlyMutationRename(source, destination);
+      if (caseOnlyRename !== caseOnlyPreflight) {
+        throw mcpBadRequest("file mutation target changed while waiting for lock");
+      }
       assertMoveOverwriteTypes(source, destination);
       const sourceVersion = captureMutationPathVersion(
         source.canonicalPath,
@@ -590,7 +610,11 @@ export const executeMoveMutation = async (
         ? captureMutationPathVersion(destination.canonicalPath, filesystem)
         : undefined;
 
-      if (destination.exists && input.overwrite !== true) {
+      if (
+        destination.exists &&
+        !caseOnlyRename &&
+        input.overwrite !== true
+      ) {
         throw mcpBadRequest(
           "destinationPath already exists; set overwrite=true to replace it",
         );
@@ -598,9 +622,11 @@ export const executeMoveMutation = async (
 
       context.pushEvent?.({
         type: "invocation:progress",
-        message: destination.exists
-          ? "Prepared safe workspace move with destination replacement"
-          : "Prepared workspace move",
+        message: caseOnlyRename
+          ? "Prepared case-only workspace rename"
+          : destination.exists
+            ? "Prepared safe workspace move with destination replacement"
+            : "Prepared workspace move",
       });
       assertNotAborted(context.signal);
       filesystem.mkdir(path.dirname(destination.canonicalPath));
@@ -630,6 +656,15 @@ export const executeMoveMutation = async (
       await wrapMutationFailure(
         `Failed to move workspace target from ${sourcePath} to ${destinationPath}`,
         () => {
+          if (caseOnlyRename) {
+            renameCaseOnlySafely({
+              sourcePath: sourceBeforeCommit.canonicalPath,
+              destinationPath: destinationBeforeCommit.lexicalPath,
+              filesystem,
+            });
+            return;
+          }
+
           if (
             destinationBeforeCommit.exists &&
             sourceBeforeCommit.type === "directory"
@@ -656,7 +691,7 @@ export const executeMoveMutation = async (
         operation: "move",
         path: sourcePath,
         destinationPath,
-        overwritten: destinationBeforeCommit.exists,
+        overwritten: !caseOnlyRename && destinationBeforeCommit.exists,
       };
     },
   );
