@@ -3,6 +3,7 @@ import { resolveHarnessToolExposure } from "./exposure.js";
 import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { codebaseExploreTool } from "../mcp/managed-codegraph/codebase-explore.tool.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
+import { globTool } from "../mcp/tools/glob.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
 import { readDiscoverTool } from "../mcp/tools/read-discover.tool.js";
 import { readExtractTool } from "../mcp/tools/read-extract.tool.js";
@@ -21,6 +22,7 @@ describe("public read tool surface", () => {
     [
       readTool,
       listTool,
+      globTool,
       readListTool,
       readLocateTool,
       readExtractTool,
@@ -40,7 +42,7 @@ describe("public read tool surface", () => {
       .sort();
 
     expect(readToolIds).toEqual(
-      ["codebase_explore", "grep", "list", "read", "read_discover"].sort(),
+      ["codebase_explore", "glob", "grep", "list", "read", "read_discover"].sort(),
     );
   });
 });
