@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import iconv from "iconv-lite";
+import { lookup as lookupMimeType } from "mime-types";
 import { createArtifact } from "../core/artifacts.js";
 import type {
   ToolArtifact,
@@ -24,15 +25,16 @@ const OFFICE_SKILLS = new Map<string, "docx" | "xlsx" | "pptx" | "pdf">([
   [".pdf", "pdf"],
 ]);
 
-const IMAGE_MIME_TYPES = new Map<string, string>([
-  [".png", "image/png"],
-  [".jpg", "image/jpeg"],
-  [".jpeg", "image/jpeg"],
-  [".gif", "image/gif"],
-  [".webp", "image/webp"],
-  [".bmp", "image/bmp"],
-  [".avif", "image/avif"],
-]);
+const resolveImageMimeType = (targetPath: string) => {
+  const extension = path.extname(targetPath).toLowerCase();
+  if (extension === ".svg") {
+    return undefined;
+  }
+  const mimeType = lookupMimeType(targetPath);
+  return typeof mimeType === "string" && mimeType.startsWith("image/")
+    ? mimeType
+    : undefined;
+};
 
 const CODE_EXTENSIONS = new Set([
   ".js",
@@ -389,7 +391,7 @@ export const executeGenericRead = async ({
     };
   }
 
-  const imageMimeType = IMAGE_MIME_TYPES.get(extension);
+  const imageMimeType = resolveImageMimeType(targetPath);
   if (imageMimeType) {
     if (stat.size > MAX_GENERIC_IMAGE_BYTES) {
       return {
