@@ -48,6 +48,7 @@ type ListExecutionResult = {
 type ListExecutionContext = {
   args: Record<string, unknown>;
   environment?: ToolExecutionEnvironment;
+  signal?: AbortSignal;
   pushEvent?: (event: ToolInvocationEventInput) => void;
 };
 
@@ -80,6 +81,7 @@ const typeRank = (type: ListEntry["type"]) =>
 export const executeList = async ({
   args,
   environment,
+  signal,
   pushEvent,
 }: ListExecutionContext): Promise<ListExecutionResult> => {
   assertHarnessEnvironment(environment);
@@ -127,10 +129,11 @@ export const executeList = async ({
     });
   }
 
-  const visibleMatches = filterGitIgnoredPaths(
+  const visibleMatches = await filterGitIgnoredPaths(
     workspaceRoot,
     matches.map(normalizeWorkspaceRelativePath),
     includeIgnored,
+    { signal },
   );
 
   const entries = visibleMatches
