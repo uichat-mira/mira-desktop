@@ -66,23 +66,10 @@ describe("read tool", () => {
     ).rejects.toThrow("path is required");
   });
 
-  it("behaves as a read_open alias", async () => {
-    fs.writeFileSync(path.join(tempRoot, "alias.txt"), "alias target");
-
-    const result = await readTool.execute({
-      invocationId: "read-3",
-      args: {
-        path: "alias.txt",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "artifact-1", ...artifact };
-      },
-    });
-
-    expect((result.structuredContent as { source: { text: string } }).source.text).toContain("alias target");
+  it("is the canonical read tool rather than a compatibility alias", () => {
+    expect(readTool.definition.id).toBe("read");
+    expect(readTool.definition.description).not.toContain("Compatibility alias");
+    expect(readTool.definition.tags).not.toContain("alias");
   });
 
   it("rejects execution without harness environment", async () => {
