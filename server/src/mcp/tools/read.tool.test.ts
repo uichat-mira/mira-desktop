@@ -94,6 +94,51 @@ describe("read tool", () => {
     expect(text).toContain("line-450");
   });
 
+  it("returns image content through canonical read without putting base64 in structuredContent", async () => {
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=";
+    fs.writeFileSync(
+      path.join(tempRoot, "pixel.png"),
+      Buffer.from(pngBase64, "base64"),
+    );
+
+    const result = await readTool.execute(context({ path: "pixel.png" }));
+
+    expect(result.structuredContent).toEqual({
+      type: "read",
+      path: "pixel.png",
+      mediaType: "image",
+      mimeType: "image/png",
+      sizeBytes: Buffer.from(pngBase64, "base64").byteLength,
+    });
+    expect(JSON.stringify(result.structuredContent)).not.toContain(pngBase64);
+    expect(result.content).toEqual([
+      { type: "text", text: "Read image file: pixel.png" },
+      {
+        type: "image",
+        data: pngBase64,
+        mimeType: "image/png",
+        filename: "pixel.png",
+      },
+    ]);
+  });
+
+  it("keeps SVG on the text read path like Gemini CLI", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>Mira</text></svg>';
+    fs.writeFileSync(path.join(tempRoot, "diagram.svg"), svg, "utf8");
+
+    const result = await readTool.execute(context({ path: "diagram.svg" }));
+    expect(result.structuredContent).toMatchObject({
+      type: "read",
+      path: "diagram.svg",
+      source: {
+        kind: "text",
+        text: svg,
+      },
+    });
+    expect(result.content).toBeUndefined();
+  });
+
   it("routes Office-native files out of generic read without parsing them", async () => {
     fs.writeFileSync(path.join(tempRoot, "sample.docx"), Buffer.from([0x50, 0x4b, 0x03, 0x04]));
     const result = await readTool.execute(context({ path: "sample.docx" }));
