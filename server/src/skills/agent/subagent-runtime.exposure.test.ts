@@ -89,11 +89,11 @@ describe("resolveSubAgentHarnessToolIds", () => {
       resolveSubAgentHarnessToolIds({
         origin: "built-in",
         declaredToolIds: githubTools,
-        canonicalToolIds: ["github_repository", "read_open"],
+        canonicalToolIds: ["github_repository", "read"],
       }),
     ).toEqual([
       "github_repository",
-      "read_open",
+      "read",
       "github_issue",
       "github_pull_request",
       "github_actions",
