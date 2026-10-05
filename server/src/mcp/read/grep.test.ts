@@ -250,6 +250,32 @@ describe("canonical grep runtime", () => {
     );
   });
 
+  it("terminates a pathological Node-fallback regex at the grep deadline", async () => {
+    fs.writeFileSync(
+      path.join(tempRoot, "src", "redos.txt"),
+      `${"a".repeat(200_000)}!\n`,
+      "utf8",
+    );
+
+    await expect(
+      executeGrep(
+        {
+          args: {
+            pattern: "(a+)+$",
+            include: "**/*.txt",
+            includeIgnored: true,
+          },
+          environment: createHarnessEnvironmentSnapshot(),
+          signal: new AbortController().signal,
+        },
+        {
+          resolveExecutable: () => ({ source: "unavailable" }),
+          timeoutMs: 50,
+        },
+      ),
+    ).rejects.toThrow("grep timed out after 50ms");
+  });
+
   it("cancels a spawned process through AbortSignal", async () => {
     const controller = new AbortController();
     const pending = runBoundedProcess({
