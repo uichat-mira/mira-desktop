@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { Worker } from "node:worker_threads";
 import fg from "fast-glob";
 import { createArtifact } from "../core/artifacts.js";
 import type {
@@ -24,6 +25,7 @@ export const MAX_GREP_LIMIT = 500;
 export const MAX_GREP_CONTEXT = 20;
 export const DEFAULT_GREP_TIMEOUT_MS = 30_000;
 const GREP_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
+const NODE_FALLBACK_MAX_FILE_BYTES = 8 * 1024 * 1024;
 const PREVIEW_MAX_LENGTH = 160;
 
 export type GrepProvider =
@@ -63,6 +65,7 @@ export type GrepResult = {
   nextOffset?: number;
   provider: GrepProvider;
   providerAttempts: GrepProviderAttempt[];
+  skippedLargeFiles?: string[];
 };
 
 type GrepExecutionContext = {
@@ -88,6 +91,7 @@ export type BoundedProcessResult =
       exitCode: number | null;
       stdout: string;
       stderr: string;
+      stoppedByLimit?: boolean;
     }
   | {
       status: "failed";
@@ -182,7 +186,7 @@ const parseContext = (value: unknown) => {
 const regexEscape = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const buildMatcher = (input: {
+const buildMatcherSpec = (input: {
   pattern: string;
   literal: boolean;
   caseSensitive?: boolean;
@@ -191,11 +195,178 @@ const buildMatcher = (input: {
   const caseSensitive =
     input.caseSensitive ??
     (input.pattern.toLocaleLowerCase() !== input.pattern);
-  try {
-    return new RegExp(source, caseSensitive ? "u" : "iu");
-  } catch {
-    throw mcpBadRequest(`Invalid grep regular expression: ${input.pattern}`);
+  return {
+    source,
+    flags: caseSensitive ? "u" : "iu",
+  };
+};
+
+type NodeFallbackWorkerResult = {
+  matches: GrepMatch[];
+  skippedLargeFiles: string[];
+};
+
+const NODE_FALLBACK_WORKER_SOURCE = String.raw`
+const { parentPort, workerData } = require("node:worker_threads");
+const fs = require("node:fs");
+const path = require("node:path");
+
+try {
+  const matcher = new RegExp(workerData.source, workerData.flags);
+  const matches = [];
+  const skippedLargeFiles = [];
+
+  outer:
+  for (const filePath of workerData.files) {
+    const absolutePath = path.resolve(workerData.workspaceRoot, filePath);
+    let stat;
+    try {
+      stat = fs.statSync(absolutePath);
+    } catch {
+      continue;
+    }
+    if (stat.size > workerData.maxFileBytes) {
+      skippedLargeFiles.push(filePath);
+      continue;
+    }
+
+    let buffer;
+    try {
+      buffer = fs.readFileSync(absolutePath);
+    } catch {
+      continue;
+    }
+    if (buffer.includes(0)) continue;
+
+    const lines = buffer.toString("utf8").split(/\\r?\\n/);
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex] || "";
+      const match = matcher.exec(line);
+      if (!match) continue;
+      matches.push({
+        path: filePath,
+        line: lineIndex + 1,
+        column: match.index + 1,
+        preview: line,
+      });
+      if (matches.length >= workerData.providerLimit) {
+        break outer;
+      }
+    }
   }
+
+  parentPort.postMessage({ ok: true, matches, skippedLargeFiles });
+} catch (error) {
+  parentPort.postMessage({
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+`;
+
+const runNodeFallbackWorker = async (input: {
+  workspaceRoot: string;
+  files: string[];
+  pattern: string;
+  literal: boolean;
+  caseSensitive?: boolean;
+  providerLimit: number;
+  signal: AbortSignal;
+  deadlineAt: number;
+  timeoutMs: number;
+}): Promise<NodeFallbackWorkerResult> => {
+  assertActive(input);
+  const matcher = buildMatcherSpec(input);
+  const worker = new Worker(NODE_FALLBACK_WORKER_SOURCE, {
+    eval: true,
+    workerData: {
+      workspaceRoot: input.workspaceRoot,
+      files: input.files,
+      source: matcher.source,
+      flags: matcher.flags,
+      providerLimit: input.providerLimit,
+      maxFileBytes: NODE_FALLBACK_MAX_FILE_BYTES,
+    },
+  });
+
+  return await new Promise<NodeFallbackWorkerResult>((resolve, reject) => {
+    let settled = false;
+    const timeoutMs = Math.max(1, input.deadlineAt - Date.now());
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      input.signal.removeEventListener("abort", abort);
+    };
+    const finish = (result: NodeFallbackWorkerResult) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const terminate = () => {
+      void worker.terminate().catch(() => undefined);
+    };
+    const abort = () => {
+      terminate();
+      fail(new Error("Grep cancelled"));
+    };
+
+    timer = setTimeout(() => {
+      terminate();
+      fail(mcpInternalError(`grep timed out after ${input.timeoutMs}ms`));
+    }, timeoutMs);
+
+    input.signal.addEventListener("abort", abort, { once: true });
+    if (input.signal.aborted) {
+      abort();
+      return;
+    }
+
+    worker.once("message", (payload: unknown) => {
+      const result = payload as
+        | { ok: true; matches: GrepMatch[]; skippedLargeFiles: string[] }
+        | { ok: false; error: string };
+      if (!result.ok) {
+        fail(mcpBadRequest(`Invalid grep regular expression: ${input.pattern}`, {
+          cause: new Error(result.error),
+        }));
+        return;
+      }
+      finish({
+        matches: result.matches.map((match) => ({
+          ...match,
+          path: normalizeWorkspaceRelativePath(match.path),
+          preview: shortenPreview(match.preview),
+        })),
+        skippedLargeFiles: result.skippedLargeFiles.map(
+          normalizeWorkspaceRelativePath,
+        ),
+      });
+    });
+    worker.once("error", (error) => {
+      fail(
+        mcpInternalError("Node grep fallback worker failed", {
+          cause: error,
+        }),
+      );
+    });
+    worker.once("exit", (code) => {
+      if (!settled && code !== 0) {
+        fail(
+          mcpInternalError(
+            `Node grep fallback worker exited with code ${code}`,
+          ),
+        );
+      }
+    });
+  });
 };
 
 const sortMatches = (matches: GrepMatch[]) =>
@@ -344,12 +515,16 @@ export const runBoundedProcess = (input: {
       if (stream === "stdout") {
         stdout += chunk;
         if (input.shouldStopAfterStdoutChunk?.(chunk)) {
+          const lastNewline = stdout.lastIndexOf("\n");
+          const completeStdout =
+            lastNewline >= 0 ? stdout.slice(0, lastNewline + 1) : "";
           terminate();
           finish({
             status: "completed",
-            exitCode: activeChild.exitCode,
-            stdout,
+            exitCode: 0,
+            stdout: completeStdout,
             stderr,
+            stoppedByLimit: true,
           });
         }
       } else {
@@ -463,7 +638,7 @@ const executeNodeFallback = async (input: {
   signal: AbortSignal;
   deadlineAt: number;
   timeoutMs: number;
-}): Promise<GrepMatch[]> => {
+}): Promise<NodeFallbackWorkerResult> => {
   assertActive(input);
 
   const localPattern = input.include ?? "**/*";
@@ -493,50 +668,19 @@ const executeNodeFallback = async (input: {
     },
   );
 
-  assertActive(input);
-  const matcher = buildMatcher({
+  return await runNodeFallbackWorker({
+    workspaceRoot: input.workspaceRoot,
+    files: files.sort((left, right) =>
+      left.localeCompare(right, undefined, { numeric: true }),
+    ),
     pattern: input.pattern,
     literal: input.literal,
     caseSensitive: input.caseSensitive,
+    providerLimit: input.providerLimit,
+    signal: input.signal,
+    deadlineAt: input.deadlineAt,
+    timeoutMs: input.timeoutMs,
   });
-  const matches: GrepMatch[] = [];
-
-  for (const filePath of files.sort((left, right) =>
-    left.localeCompare(right, undefined, { numeric: true }),
-  )) {
-    assertActive(input);
-
-    const normalizedPath = normalizeWorkspaceRelativePath(filePath);
-    let buffer: Buffer;
-    try {
-      buffer = await fs.promises.readFile(
-        path.resolve(input.workspaceRoot, filePath),
-      );
-    } catch {
-      continue;
-    }
-    if (buffer.includes(0)) continue;
-
-    const lines = buffer.toString("utf8").split(/\r?\n/);
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-      assertActive(input);
-      const line = lines[lineIndex] ?? "";
-      const match = matcher.exec(line);
-      if (!match) continue;
-
-      matches.push({
-        path: normalizedPath,
-        line: lineIndex + 1,
-        column: match.index + 1,
-        preview: shortenPreview(line),
-      });
-      if (matches.length >= input.providerLimit) {
-        return sortMatches(matches);
-      }
-    }
-  }
-
-  return sortMatches(matches);
 };
 
 const toRipgrepCandidates = (
@@ -579,10 +723,13 @@ const enrichContext = async (input: {
     let lines = cache.get(match.path);
     if (!lines) {
       try {
-        const content = await fs.promises.readFile(
-          path.resolve(input.workspaceRoot, match.path),
-          "utf8",
-        );
+        const absolutePath = path.resolve(input.workspaceRoot, match.path);
+        const stat = await fs.promises.stat(absolutePath);
+        if (stat.size > NODE_FALLBACK_MAX_FILE_BYTES) {
+          result.push(match);
+          continue;
+        }
+        const content = await fs.promises.readFile(absolutePath, "utf8");
         lines = content.split(/\r?\n/);
         cache.set(match.path, lines);
       } catch {
@@ -617,6 +764,7 @@ const finalizeResult = async (input: {
   signal: AbortSignal;
   deadlineAt: number;
   timeoutMs: number;
+  skippedLargeFiles?: string[];
 }): Promise<GrepResult> => {
   const visible = input.matches.slice(input.offset, input.offset + input.limit);
   const continuation = buildContinuation({
@@ -654,6 +802,9 @@ const finalizeResult = async (input: {
       : { nextOffset: continuation.nextOffset }),
     provider: input.provider,
     providerAttempts: input.attempts,
+    ...(input.skippedLargeFiles && input.skippedLargeFiles.length > 0
+      ? { skippedLargeFiles: input.skippedLargeFiles }
+      : {}),
   };
 };
 
@@ -857,7 +1008,7 @@ export const executeGrep = async (
     message: "Grep provider: node-content-scan fallback",
   });
 
-  const nodeMatches = await executeNodeFallback({
+  const nodeResult = await executeNodeFallback({
     workspaceRoot,
     relativePath,
     pattern,
@@ -880,7 +1031,7 @@ export const executeGrep = async (
     literal,
     caseSensitive,
     context,
-    matches: nodeMatches,
+    matches: nodeResult.matches,
     offset,
     limit,
     provider: "node-content-scan",
@@ -888,6 +1039,7 @@ export const executeGrep = async (
     signal,
     deadlineAt,
     timeoutMs,
+    skippedLargeFiles: nodeResult.skippedLargeFiles,
   });
 
   return {
@@ -911,6 +1063,9 @@ export const executeGrep = async (
           returnedCount: contents.returnedCount,
           hasMore: contents.hasMore,
           includeIgnored,
+          ...(contents.skippedLargeFiles
+            ? { skippedLargeFiles: contents.skippedLargeFiles }
+            : {}),
           ...(contents.nextOffset === undefined
             ? {}
             : { nextOffset: contents.nextOffset }),
