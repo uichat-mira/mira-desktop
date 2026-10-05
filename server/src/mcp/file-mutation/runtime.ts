@@ -110,12 +110,12 @@ const preparePath = (
   } = {},
 ) => resolveMutationPath(inputPath, filesystem, options);
 
-const wrapMutationFailure = (
+const wrapMutationFailure = async <T>(
   message: string,
-  run: () => void,
-) => {
+  run: () => Promise<T> | T,
+): Promise<T> => {
   try {
-    run();
+    return await run();
   } catch (error) {
     if (
       error &&
@@ -170,16 +170,16 @@ export const executeWriteMutation = async (
 
       if (current.exists) {
         existingVersion = captureMutationPathVersion(
-          current.lexicalPath,
+          current.canonicalPath,
           filesystem,
         );
         existingFormat = inspectMutationTextFormat(
-          current.lexicalPath,
+          current.canonicalPath,
           filesystem,
         );
         assertMutationPathVersion(
           existingVersion,
-          current.lexicalPath,
+          current.canonicalPath,
           filesystem,
         );
       }
@@ -199,22 +199,22 @@ export const executeWriteMutation = async (
       // Creating missing parents is part of canonical write semantics. Re-check
       // the target afterwards so a path redirected through a changed symlink is
       // rejected before the commit attempt.
-      filesystem.mkdir(path.dirname(current.lexicalPath));
+      filesystem.mkdir(path.dirname(current.canonicalPath));
       const beforeCommit = preparePath(inputPath, filesystem);
       assertStableMutationPath(current, beforeCommit);
       if (current.exists && existingVersion) {
         assertMutationPathVersion(
           existingVersion,
-          beforeCommit.lexicalPath,
+          beforeCommit.canonicalPath,
           filesystem,
         );
       }
 
-      wrapMutationFailure(
+      await wrapMutationFailure(
         `Failed to commit workspace file: ${inputPath}`,
         () =>
           commitFileBuffer({
-            targetPath: beforeCommit.lexicalPath,
+            targetPath: beforeCommit.canonicalPath,
             content: encoded,
             overwrite: beforeCommit.exists,
             filesystem,
@@ -459,16 +459,16 @@ export const executeEditMutation = async (
       }
 
       const version = captureMutationPathVersion(
-        current.lexicalPath,
+        current.canonicalPath,
         filesystem,
       );
       const currentFile = readMutationTextFile(
-        current.lexicalPath,
+        current.canonicalPath,
         filesystem,
       );
       assertMutationPathVersion(
         version,
-        current.lexicalPath,
+        current.canonicalPath,
         filesystem,
       );
 
@@ -503,15 +503,15 @@ export const executeEditMutation = async (
       assertStableMutationPath(current, beforeCommit);
       assertMutationPathVersion(
         version,
-        beforeCommit.lexicalPath,
+        beforeCommit.canonicalPath,
         filesystem,
       );
 
-      wrapMutationFailure(
+      await wrapMutationFailure(
         `Failed to commit workspace edit: ${inputPath}`,
         () =>
           commitFileBuffer({
-            targetPath: beforeCommit.lexicalPath,
+            targetPath: beforeCommit.canonicalPath,
             content: encoded,
             overwrite: true,
             filesystem,
@@ -583,11 +583,11 @@ export const executeMoveMutation = async (
       }
       assertMoveOverwriteTypes(source, destination);
       const sourceVersion = captureMutationPathVersion(
-        source.lexicalPath,
+        source.canonicalPath,
         filesystem,
       );
       const destinationVersion = destination.exists
-        ? captureMutationPathVersion(destination.lexicalPath, filesystem)
+        ? captureMutationPathVersion(destination.canonicalPath, filesystem)
         : undefined;
 
       if (destination.exists && input.overwrite !== true) {
@@ -603,7 +603,7 @@ export const executeMoveMutation = async (
           : "Prepared workspace move",
       });
       assertNotAborted(context.signal);
-      filesystem.mkdir(path.dirname(destination.lexicalPath));
+      filesystem.mkdir(path.dirname(destination.canonicalPath));
 
       const sourceBeforeCommit = preparePath(sourcePath, filesystem, {
         mustExist: true,
@@ -616,18 +616,18 @@ export const executeMoveMutation = async (
       assertStableMutationPath(destination, destinationBeforeCommit);
       assertMutationPathVersion(
         sourceVersion,
-        sourceBeforeCommit.lexicalPath,
+        sourceBeforeCommit.canonicalPath,
         filesystem,
       );
       if (destinationVersion) {
         assertMutationPathVersion(
           destinationVersion,
-          destinationBeforeCommit.lexicalPath,
+          destinationBeforeCommit.canonicalPath,
           filesystem,
         );
       }
 
-      wrapMutationFailure(
+      await wrapMutationFailure(
         `Failed to move workspace target from ${sourcePath} to ${destinationPath}`,
         () => {
           if (
@@ -635,8 +635,8 @@ export const executeMoveMutation = async (
             sourceBeforeCommit.type === "directory"
           ) {
             replaceDirectorySafely({
-              sourcePath: sourceBeforeCommit.lexicalPath,
-              destinationPath: destinationBeforeCommit.lexicalPath,
+              sourcePath: sourceBeforeCommit.canonicalPath,
+              destinationPath: destinationBeforeCommit.canonicalPath,
               filesystem,
             });
             return;
@@ -646,8 +646,8 @@ export const executeMoveMutation = async (
           // destination as one filesystem operation. EXDEV is surfaced rather
           // than hidden behind copy+delete in this phase.
           filesystem.rename(
-            sourceBeforeCommit.lexicalPath,
-            destinationBeforeCommit.lexicalPath,
+            sourceBeforeCommit.canonicalPath,
+            destinationBeforeCommit.canonicalPath,
           );
         },
       );
@@ -685,7 +685,7 @@ export const executeDeleteMutation = async (
       const recursive = input.recursive === true;
 
       if (target.type === "directory" && !recursive) {
-        const entries = filesystem.readdir(target.lexicalPath);
+        const entries = filesystem.readdir(target.canonicalPath);
         if (entries.length > 0) {
           throw mcpBadRequest(
             "recursive=true is required to delete a non-empty directory",
@@ -694,7 +694,7 @@ export const executeDeleteMutation = async (
       }
 
       const version = captureMutationPathVersion(
-        target.lexicalPath,
+        target.canonicalPath,
         filesystem,
       );
       context.pushEvent?.({
@@ -709,24 +709,24 @@ export const executeDeleteMutation = async (
       assertStableMutationPath(target, beforeCommit);
       assertMutationPathVersion(
         version,
-        beforeCommit.lexicalPath,
+        beforeCommit.canonicalPath,
         filesystem,
       );
 
-      wrapMutationFailure(
+      await wrapMutationFailure(
         `Failed to delete workspace target: ${inputPath}`,
         () => {
           if (beforeCommit.type === "directory") {
             if (recursive) {
-              filesystem.remove(beforeCommit.lexicalPath, {
+              filesystem.remove(beforeCommit.canonicalPath, {
                 recursive: true,
                 force: false,
               });
             } else {
-              filesystem.rmdir(beforeCommit.lexicalPath);
+              filesystem.rmdir(beforeCommit.canonicalPath);
             }
           } else {
-            filesystem.unlink(beforeCommit.lexicalPath);
+            filesystem.unlink(beforeCommit.canonicalPath);
           }
         },
       );

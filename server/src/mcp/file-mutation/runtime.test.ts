@@ -215,7 +215,7 @@ describe("file mutation runtime", () => {
     );
   });
 
-  it("moves only when the destination does not already exist", async () => {
+  it("moves normally and replaces an existing destination only with explicit overwrite", async () => {
     fs.writeFileSync(path.join(tempRoot, "source.txt"), "source", "utf8");
 
     const moved = await executeMoveMutation({
@@ -234,19 +234,21 @@ describe("file mutation runtime", () => {
     );
 
     fs.writeFileSync(path.join(tempRoot, "other.txt"), "other", "utf8");
-    await expect(
-      executeMoveMutation({
-        path: "other.txt",
-        destinationPath: "moved.txt",
-        overwrite: true,
-      }),
-    ).rejects.toThrow("atomic replacement");
+    const overwritten = await executeMoveMutation({
+      path: "other.txt",
+      destinationPath: "moved.txt",
+      overwrite: true,
+    });
+    expect(overwritten).toMatchObject({
+      operation: "move",
+      path: "other.txt",
+      destinationPath: "moved.txt",
+      overwritten: true,
+    });
     expect(fs.readFileSync(path.join(tempRoot, "moved.txt"), "utf8")).toBe(
-      "source",
-    );
-    expect(fs.readFileSync(path.join(tempRoot, "other.txt"), "utf8")).toBe(
       "other",
     );
+    expect(fs.existsSync(path.join(tempRoot, "other.txt"))).toBe(false);
   });
 
   it("deletes files directly and requires recursive intent for non-empty directories", async () => {

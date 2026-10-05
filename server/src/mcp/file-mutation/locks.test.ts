@@ -1,31 +1,45 @@
 import { describe, expect, it } from "vitest";
 import { withMutationLocks } from "./locks.js";
 
+const deferred = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+};
+
 describe("file mutation locks", () => {
   it("serializes same-path mutations in call order", async () => {
     const order: string[] = [];
-    let releaseFirst!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+    const firstEntered = deferred();
+    const releaseFirst = deferred();
 
-    const first = withMutationLocks(["/workspace/a.txt"], undefined, async () => {
-      order.push("first:start");
-      await gate;
-      order.push("first:end");
-    });
+    const first = withMutationLocks(
+      ["/workspace/a.txt"],
+      undefined,
+      async () => {
+        order.push("first:start");
+        firstEntered.resolve();
+        await releaseFirst.promise;
+        order.push("first:end");
+      },
+    );
 
-    await Promise.resolve();
+    await firstEntered.promise;
 
-    const second = withMutationLocks(["/workspace/a.txt"], undefined, async () => {
-      order.push("second:start");
-      order.push("second:end");
-    });
+    const second = withMutationLocks(
+      ["/workspace/a.txt"],
+      undefined,
+      async () => {
+        order.push("second:start");
+        order.push("second:end");
+      },
+    );
 
-    await Promise.resolve();
     expect(order).toEqual(["first:start"]);
 
-    releaseFirst();
+    releaseFirst.resolve();
     await Promise.all([first, second]);
 
     expect(order).toEqual([
@@ -38,21 +52,20 @@ describe("file mutation locks", () => {
 
   it("sorts multi-path locks so reversed move pairs cannot deadlock", async () => {
     const order: string[] = [];
-    let releaseFirst!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+    const firstEntered = deferred();
+    const releaseFirst = deferred();
 
     const first = withMutationLocks(
       ["/workspace/b", "/workspace/a"],
       undefined,
       async () => {
         order.push("first");
-        await gate;
+        firstEntered.resolve();
+        await releaseFirst.promise;
       },
     );
 
-    await Promise.resolve();
+    await firstEntered.promise;
 
     const second = withMutationLocks(
       ["/workspace/a", "/workspace/b"],
@@ -62,10 +75,9 @@ describe("file mutation locks", () => {
       },
     );
 
-    await Promise.resolve();
     expect(order).toEqual(["first"]);
 
-    releaseFirst();
+    releaseFirst.resolve();
     await Promise.all([first, second]);
     expect(order).toEqual(["first", "second"]);
   });

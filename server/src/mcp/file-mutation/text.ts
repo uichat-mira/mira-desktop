@@ -130,9 +130,9 @@ export const detectLineEnding = (text: string): MutationLineEnding | null => {
     count: number;
     first: number;
   }> = [
-    { value: "\r\n", count: crlf, first: text.indexOf("\r\n") },
-    { value: "\n", count: lf, first: text.indexOf("\n") },
-    { value: "\r", count: cr, first: text.indexOf("\r") },
+    { value: "\r\n" as MutationLineEnding, count: crlf, first: text.indexOf("\r\n") },
+    { value: "\n" as MutationLineEnding, count: lf, first: text.indexOf("\n") },
+    { value: "\r" as MutationLineEnding, count: cr, first: text.indexOf("\r") },
   ].filter((candidate) => candidate.count > 0);
 
   if (candidates.length === 0) {

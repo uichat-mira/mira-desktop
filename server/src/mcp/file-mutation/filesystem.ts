@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import writeFileAtomic from "write-file-atomic";
 
 export type FileMutationFilesystem = {
   exists(targetPath: string): boolean;
@@ -8,11 +9,11 @@ export type FileMutationFilesystem = {
   mkdir(targetPath: string): void;
   readFile(targetPath: string): Buffer;
   readPrefix(targetPath: string, maxBytes: number): Buffer;
-  writeFileSynced(
+  writeAtomic(
     targetPath: string,
     content: Buffer,
     options?: { mode?: number },
-  ): void;
+  ): Promise<void>;
   rename(sourcePath: string, destinationPath: string): void;
   remove(
     targetPath: string,
@@ -43,18 +44,11 @@ export const nodeFileMutationFilesystem: FileMutationFilesystem = {
       fs.closeSync(handle);
     }
   },
-  writeFileSynced: (targetPath, content, options) => {
-    const handle = fs.openSync(
-      targetPath,
-      "wx",
-      options?.mode,
-    );
-    try {
-      fs.writeFileSync(handle, content);
-      fs.fsyncSync(handle);
-    } finally {
-      fs.closeSync(handle);
-    }
+  writeAtomic: async (targetPath, content, options) => {
+    await writeFileAtomic(targetPath, content, {
+      fsync: true,
+      ...(options?.mode === undefined ? {} : { mode: options.mode }),
+    });
   },
   rename: (sourcePath, destinationPath) => {
     fs.renameSync(sourcePath, destinationPath);

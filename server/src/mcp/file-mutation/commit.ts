@@ -14,37 +14,39 @@ const createSiblingScratchPath = (
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-export const commitFileBuffer = (input: {
+export const commitFileBuffer = async (input: {
   targetPath: string;
   content: Buffer;
   overwrite: boolean;
   filesystem: FileMutationFilesystem;
 }) => {
   const { targetPath, content, overwrite, filesystem } = input;
-  const tempPath = createSiblingScratchPath(targetPath, "write");
+  const scratchPath = createSiblingScratchPath(targetPath, "write");
   const existingMode = overwrite
     ? filesystem.stat(targetPath).mode
     : undefined;
 
-  filesystem.writeFileSynced(tempPath, content, {
+  // Delegate durable scratch-file writing to write-file-atomic. The library is
+  // intentionally not given targetPath: it realpaths its target, while Mira's
+  // mutation policy must stay authoritative over final symlink/path semantics.
+  await filesystem.writeAtomic(scratchPath, content, {
     ...(existingMode === undefined ? {} : { mode: existingMode }),
   });
 
   try {
     if (overwrite) {
-      // Same-directory temp + fsync + rename mirrors the established
-      // write-file-atomic commit strategy without delete-first replacement.
-      filesystem.rename(tempPath, targetPath);
+      // Same-directory rename replaces the directory entry without a
+      // delete-first window. A failed rename leaves the old target in place.
+      filesystem.rename(scratchPath, targetPath);
       return;
     }
 
-    // Publish create-only writes with a hard link so a target that appears
-    // after preflight is never silently replaced by rename semantics.
-    filesystem.link(tempPath, targetPath);
-    filesystem.unlink(tempPath);
+    // Create-only publish must never replace a path that appeared after
+    // preflight. Hard-link creation is exclusive and fails if targetPath exists.
+    filesystem.link(scratchPath, targetPath);
   } finally {
-    if (filesystem.exists(tempPath)) {
-      filesystem.remove(tempPath, { recursive: false, force: true });
+    if (filesystem.exists(scratchPath)) {
+      filesystem.remove(scratchPath, { recursive: false, force: true });
     }
   }
 };
