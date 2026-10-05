@@ -137,7 +137,22 @@ const markCompletedSummary = (
     case "grep":
       addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
-    case "read":
+    case "read": {
+      const target = normalizeTaskTargetPath(summary.data.path);
+      if (!target) {
+        return;
+      }
+      const progress = ensureTargetProgress(map, target);
+      progress.located = true;
+      progress.opened = true;
+      // A paged read is valid evidence for the returned window, but it must not
+      // masquerade as whole-file verification. The Planner may still stop when
+      // that window answers the user's bounded question.
+      if (summary.status !== "truncated") {
+        progress.verified = true;
+      }
+      return;
+    }
     case "read_open": {
       const target = normalizeTaskTargetPath(summary.data.path);
       if (!target) {
