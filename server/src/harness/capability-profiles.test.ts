@@ -38,8 +38,8 @@ describe("resolveHarnessCapabilityProfiles", () => {
         },
       },
       {
-        id: "read_open",
-        title: "Read Open",
+        id: "read",
+        title: "Read",
         description: "open",
         domain: "read",
         source: "internal",
@@ -57,8 +57,8 @@ describe("resolveHarnessCapabilityProfiles", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "workspace_lookup",
-          preferredToolId: "read_open",
-          supportingToolIds: ["read_discover", "read_open"],
+          preferredToolId: "read",
+          supportingToolIds: ["read_discover", "read"],
         }),
       ]),
     );
