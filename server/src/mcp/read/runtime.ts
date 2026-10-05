@@ -29,9 +29,9 @@ type ReadExecutionResult = {
   artifacts: ToolArtifact[];
 };
 
-const DEFAULT_READ_MAX_LINES = 400;
+export const DEFAULT_READ_MAX_LINES = 400;
 
-const toReadWindow = (
+export const createReadWindow = (
   slice: { startLine: number; endLine: number; totalLines: number },
   requestedEndLine: number,
 ): ReadWindow => {
@@ -123,7 +123,7 @@ export const executeReadOpen = async ({
     maxLines: DEFAULT_READ_MAX_LINES,
   });
   const requestedEndLine = selection?.end ?? slice.totalLines;
-  const window = toReadWindow(slice, requestedEndLine);
+  const window = createReadWindow(slice, requestedEndLine);
   const contents: ReadOpenResult = {
     type: "open",
     path: String(args.path),
