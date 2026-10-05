@@ -1,5 +1,6 @@
 import {
   Braces,
+  Boxes,
   CircleHelp,
   ExternalLink,
   FolderKanban,
@@ -10,8 +11,11 @@ import {
   ListChecks,
   LogOut,
   MessageSquareText,
+  Puzzle,
   Settings2,
   Smartphone,
+  Sparkles,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -30,9 +34,7 @@ type RailLinkItem = {
   to: string;
 };
 
-type RailMenuItem = {
-  id: "projects";
-};
+type RailMenuItem = { id: "projects" } | { id: "extensions" };
 
 type PrimaryRailItem = RailLinkItem | RailMenuItem;
 
@@ -56,6 +58,7 @@ const primaryItems: PrimaryRailItem[] = [
     to: "/dashboard",
   },
   { id: "projects" },
+  { id: "extensions" },
   {
     id: "forge",
     label: "app.navigation.forge",
@@ -70,6 +73,12 @@ function matchesRoute(pathname: string, route: string) {
 
 function resolveActiveItem(pathname: string): RailLinkId | null {
   if (pathname === "/" || matchesRoute(pathname, "/chat")) return "home";
+  if (
+    matchesRoute(pathname, "/settings/mcp") ||
+    matchesRoute(pathname, "/settings/skills")
+  ) {
+    return null;
+  }
   if (matchesRoute(pathname, "/settings")) return "settings";
   if (matchesRoute(pathname, "/forge")) return "forge";
   if (matchesRoute(pathname, "/remote-access")) return "remote-access";
@@ -105,6 +114,26 @@ function isAboutRoute(pathname: string) {
 
 function isDevelopmentRoute(pathname: string) {
   return matchesRoute(pathname, "/development");
+}
+
+function isExtensionCapabilitiesRoute(pathname: string) {
+  return matchesRoute(pathname, "/extensions/capabilities");
+}
+
+function isExtensionMcpRoute(pathname: string) {
+  return matchesRoute(pathname, "/settings/mcp");
+}
+
+function isExtensionSkillsRoute(pathname: string) {
+  return matchesRoute(pathname, "/settings/skills");
+}
+
+function isExtensionsRoute(pathname: string) {
+  return (
+    matchesRoute(pathname, "/extensions") ||
+    isExtensionMcpRoute(pathname) ||
+    isExtensionSkillsRoute(pathname)
+  );
 }
 
 function RailButton({
@@ -170,12 +199,79 @@ function UserMenu() {
       ]}
       onSelect={(item) => {
         if (item.id === "settings") {
-          navigate("/settings/general");
+          void navigate("/settings/general");
           return;
         }
 
         if (item.id === "logout") {
           logout();
+        }
+      }}
+    />
+  );
+}
+
+function ExtensionsMenu({
+  active = false,
+  pathname,
+}: {
+  active?: boolean;
+  pathname: string;
+}) {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const triggerClassName = `group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+    active
+      ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+      : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
+  }`;
+
+  return (
+    <DropdownMenu
+      align="start"
+      side="right"
+      sideOffset={8}
+      trigger={
+        <button
+          type="button"
+          aria-label={t("app.navigation.extensions")}
+          title={t("app.navigation.extensions")}
+          aria-current={active ? "page" : undefined}
+          className={triggerClassName}
+        >
+          <Puzzle
+            className="h-[18px] w-[18px]"
+            strokeWidth={active ? 2.2 : 1.8}
+          />
+        </button>
+      }
+      items={[
+        {
+          id: "capabilities",
+          label: t("app.navigation.capabilities"),
+          leadingIcon: <Wrench className="h-4 w-4" />,
+          selected: isExtensionCapabilitiesRoute(pathname),
+        },
+        {
+          id: "mcp",
+          label: t("app.navigation.mcp"),
+          leadingIcon: <Boxes className="h-4 w-4" />,
+          selected: isExtensionMcpRoute(pathname),
+        },
+        {
+          id: "skills",
+          label: t("app.navigation.skills"),
+          leadingIcon: <Sparkles className="h-4 w-4" />,
+          selected: isExtensionSkillsRoute(pathname),
+        },
+      ]}
+      onSelect={(item) => {
+        if (item.id === "capabilities") {
+          void navigate("/extensions/capabilities");
+        } else if (item.id === "mcp") {
+          void navigate("/settings/mcp");
+        } else if (item.id === "skills") {
+          void navigate("/settings/skills");
         }
       }}
     />
@@ -236,9 +332,9 @@ function ResourceMenu({
       ]}
       onSelect={(item) => {
         if (item.id === "about") {
-          navigate("/about");
+          void navigate("/about");
         } else if (item.id === "development") {
-          navigate("/development/logs");
+          void navigate("/development/logs");
         } else if (item.id === "help") {
           void openExternalUrl("https://mira.tomz.io").catch(() => {
             message.error(t("app.navigation.helpOpenFailed"));
@@ -298,7 +394,7 @@ function LibraryMenu({
         },
       ]}
       onSelect={(item) => {
-        navigate(
+        void navigate(
           item.id === "knowledge-base"
             ? "/knowledge-base"
             : "/evaluation/center",
@@ -334,6 +430,11 @@ export function AppNavigationRail() {
           <div key={item.id}>
             {item.id === "projects" ? (
               <LibraryMenu active={isLibraryRoute(pathname)} pathname={pathname} />
+            ) : item.id === "extensions" ? (
+              <ExtensionsMenu
+                active={isExtensionsRoute(pathname)}
+                pathname={pathname}
+              />
             ) : (
               <RailButton
                 item={{ ...item, label: t(item.label) }}

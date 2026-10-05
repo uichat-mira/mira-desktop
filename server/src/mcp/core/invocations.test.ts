@@ -4,13 +4,20 @@ import {
   executeHarnessInvocation,
   getHarnessInvocationTrace,
   listHarnessInvocationEvents,
+  resolveHarnessInvocationApproval,
 } from "../../harness/invocations.js";
 import { clearHarnessRegistry, registerTool } from "../../harness/registry.js";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { ToolApprovalRequiredError } from "./errors.js";
 import { getHarnessLlmContentText } from "../../harness/llm-content.js";
 import type { ToolImplementation } from "./definitions.js";
-import { configureInvocationRetention, sweepStoredInvocations } from "./invocations.js";
+import {
+  configureInvocationRetention,
+  executeInvocation,
+  getInvocationWorkspaceSnapshot,
+  resolveInvocationApproval,
+  sweepStoredInvocations,
+} from "./invocations.js";
 
 describe("mcp invocations", () => {
   beforeEach(() => {
@@ -315,6 +322,53 @@ describe("mcp invocations", () => {
 
     expect(record.status).toBe("awaiting_approval");
     expect(record.approval?.reason).toContain("requires explicit approval");
+    expect(executed).toBe(false);
+  });
+
+  it("fails closed when an approval replay has lost its frozen workspace snapshot", async () => {
+    let executed = false;
+
+    registerTool({
+      definition: {
+        id: "missing_workspace_snapshot_tool",
+        title: "Missing Workspace Snapshot Tool",
+        description: "approval replay requires the frozen workspace",
+        domain: "edit",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "local-write",
+          requiresApproval: true,
+        },
+      },
+      execute() {
+        executed = true;
+        return {
+          structuredContent: { ok: true },
+        };
+      },
+    });
+
+    const record = await executeInvocation({
+      toolId: "missing_workspace_snapshot_tool",
+      args: {},
+    });
+
+    expect(record.status).toBe("awaiting_approval");
+    expect(getInvocationWorkspaceSnapshot(record.id)).toBeUndefined();
+
+    await expect(
+      resolveHarnessInvocationApproval({
+        invocationId: record.id,
+        decision: "approved",
+        toolId: "missing_workspace_snapshot_tool",
+        args: {},
+      }),
+    ).rejects.toThrow("workspace snapshot is unavailable");
+
+    expect(record.status).toBe("awaiting_approval");
     expect(executed).toBe(false);
   });
 
@@ -753,5 +807,74 @@ describe("mcp invocations", () => {
     expect(listHarnessInvocationEvents(first.id)).toEqual([]);
     expect(getHarnessInvocationTrace(first.id)).toBeUndefined();
     expect(listHarnessInvocationEvents(second.id).length).toBeGreaterThan(0);
+  });
+
+  it("retains a pending approval workspace snapshot until the approval resolves", async () => {
+    registerTool({
+      definition: {
+        id: "retention_approval_tool",
+        title: "Retention Approval Tool",
+        description: "retention approval",
+        domain: "edit",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "local-write",
+          requiresApproval: true,
+        },
+      },
+      execute() {
+        return {
+          structuredContent: { ok: true },
+        };
+      },
+    });
+    registerTool({
+      definition: {
+        id: "retention_completed_tool",
+        title: "Retention Completed Tool",
+        description: "retention completed",
+        domain: "read",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      execute() {
+        return {
+          structuredContent: { ok: true },
+        };
+      },
+    });
+    configureInvocationRetention({
+      maxEntries: 1,
+      ttlMs: 1000 * 60 * 30,
+    });
+
+    const pending = await executeHarnessInvocation({
+      toolId: "retention_approval_tool",
+      args: {},
+    });
+    await executeHarnessInvocation({
+      toolId: "retention_completed_tool",
+      args: {},
+    });
+
+    expect(pending.status).toBe("awaiting_approval");
+    expect(getInvocationWorkspaceSnapshot(pending.id)).toBeDefined();
+
+    sweepStoredInvocations();
+
+    expect(getInvocationWorkspaceSnapshot(pending.id)).toBeDefined();
+
+    resolveInvocationApproval({
+      invocationId: pending.id,
+      decision: "rejected",
+    });
+    expect(getInvocationWorkspaceSnapshot(pending.id)).toBeUndefined();
   });
 });
