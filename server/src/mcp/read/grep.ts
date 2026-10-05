@@ -269,6 +269,16 @@ export const runBoundedProcess = (input: {
       return;
     }
 
+    if (!child) {
+      finish({
+        status: "failed",
+        exitCode: null,
+        stdout,
+        stderr,
+        reason: "spawn-error",
+      });
+      return;
+    }
     const activeChild = child;
     activeChild.stdout.setEncoding("utf8");
     activeChild.stderr.setEncoding("utf8");
@@ -386,6 +396,11 @@ const executeNodeFallback = async (input: {
     input.relativeRoot === "."
       ? "**/*"
       : `${escapeGlobPath(input.relativeRoot)}/**/*`;
+  if (input.signal.aborted) throw new Error("Grep cancelled");
+  if (Date.now() >= input.deadlineAt) {
+    throw mcpInternalError(`grep timed out after ${input.timeoutMs}ms`);
+  }
+
   const files = await fg(filePattern, {
     cwd: input.workspaceRoot,
     onlyFiles: true,
@@ -395,6 +410,11 @@ const executeNodeFallback = async (input: {
     followSymbolicLinks: false,
     ignore: loadWorkspaceIgnorePatterns(input.workspaceRoot),
   });
+  if (input.signal.aborted) throw new Error("Grep cancelled");
+  if (Date.now() >= input.deadlineAt) {
+    throw mcpInternalError(`grep timed out after ${input.timeoutMs}ms`);
+  }
+
   const matcher = buildMatcher(input.pattern);
   const matches: GrepMatch[] = [];
   const assertActive = () => {
@@ -516,7 +536,7 @@ export const executeGrep = async (
     dependencies.resolveExecutable?.() ?? resolveTerminalRuntimeExecutable("ripgrep");
   const attempts: GrepProviderAttempt[] = [];
   const runProcess = dependencies.runProcess ?? runBoundedProcess;
-  const timeoutMs = dependencies.timeoutMs ?? DEFAULT_GREP_TIMEOUT_MS;
+  const timeoutMs = Math.max(1, dependencies.timeoutMs ?? DEFAULT_GREP_TIMEOUT_MS);
   const deadlineAt = Date.now() + timeoutMs;
   const candidates = toRipgrepCandidates(resolution);
   if (candidates.length === 0) {
