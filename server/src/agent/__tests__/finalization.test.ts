@@ -5,9 +5,11 @@ import {
   materializeFinalizationEvidence,
   validateAndFreezeFinalizationPacket,
 } from "../finalization";
+import type { HarnessLlmContent } from "@/harness/llm-content";
 import type {
   AgentEvidencePayload,
   AgentFinalizationPacket,
+  AgentToolExecutionResult,
 } from "../types";
 
 const evidence: AgentEvidencePayload = {
@@ -120,10 +122,9 @@ test("Planner freezes the finalization packet before Generate receives it", () =
 
 
 test("Generate materializes only Planner-selected image Evidence", () => {
-  const imageEvidence: AgentEvidencePayload = {
-    observations: [],
-    retrievals: [],
-    toolExecutions: [
+  const imageExecutions: Array<
+    AgentToolExecutionResult & { llmContent: HarnessLlmContent }
+  > = [
       {
         toolId: "read",
         args: { path: "uncited.png" },
@@ -186,7 +187,12 @@ test("Generate materializes only Planner-selected image Evidence", () => {
         startedAt: "2026-07-22T00:00:02.000Z",
         finishedAt: "2026-07-22T00:00:03.000Z",
       },
-    ],
+    ];
+
+  const imageEvidence: AgentEvidencePayload = {
+    observations: [],
+    retrievals: [],
+    toolExecutions: imageExecutions,
   };
 
   const result = materializeFinalizationEvidence({
