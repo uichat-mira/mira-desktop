@@ -22,7 +22,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     domain: "read",
     tags: ["workspace", "read", "list", "directory", "glob", "pattern", "lookup", "locate", "search", "grep", "symbol", "reference", "open"],
     preferredToolId: "read",
-    supportingToolIds: ["glob", "grep", "list", "read_discover", "read"],
+    supportingToolIds: ["glob", "grep", "list", "read"],
   },
   {
     id: "codebase_understanding",
