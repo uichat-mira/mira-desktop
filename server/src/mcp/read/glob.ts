@@ -8,7 +8,7 @@ import type {
   ToolInvocationEventInput,
 } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
-import { getWorkspaceRoot, resolveWorkspacePath } from "../workspace.js";
+import { getWorkspaceRoot, resolveWorkspaceDirectoryPath } from "../workspace.js";
 import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 import {
   escapeGlobPath,
@@ -95,13 +95,7 @@ export const executeGlob = async ({
   const includeIgnored = parseIncludeIgnored(args.includeIgnored);
 
   const workspaceRoot = getWorkspaceRoot();
-  const targetPath = resolveWorkspacePath(inputPath);
-  if (!fs.existsSync(targetPath)) {
-    throw mcpBadRequest(`Path does not exist: ${targetPath}`);
-  }
-  if (!fs.statSync(targetPath).isDirectory()) {
-    throw mcpBadRequest("glob path must be a directory");
-  }
+  const targetPath = resolveWorkspaceDirectoryPath(inputPath);
 
   const relativeBase =
     normalizeWorkspaceRelativePath(path.relative(workspaceRoot, targetPath)) || ".";
