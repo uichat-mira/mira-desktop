@@ -9,7 +9,7 @@ source: Mira
 status: review
 execution.context: fork
 execution.agent: miradocs
-execution.allowedTools: read_discover, read, terminal_session, github_repository, github_pull_request, github_actions
+execution.allowedTools: list, glob, grep, read, terminal_session, github_repository, github_pull_request, github_actions
 ---
 
 # MiraDocs Skill V1
@@ -238,7 +238,9 @@ MiraDocs Skill 负责：
 
 | 任务 | 能力 |
 | --- | --- |
-| 定位本地站点、目录和文件 | `read_discover` |
+| 查看已知目录 | `list` |
+| 按路径模式定位站点或文件 | `glob` |
+| 按正文定位配置或内容 | `grep` |
 | 打开已知文件与 Skill 参考资源 | `read` |
 | 本地写入、修改、删除、重命名、安装、检查、构建和预览 | `terminal_session` |
 | GitHub 仓库、installation、分支、远程文件和 Pages | `github_repository` |
@@ -251,7 +253,7 @@ MiraDocs Skill 负责：
 
 ```text
 create_site / local
-→ read_discover + read + terminal_session
+→ list + glob + read + terminal_session
 
 create_site / github
 → github_repository：仓库、installation、远程文件和 Pages
@@ -269,7 +271,7 @@ publish_content / github
 → 需要上线验证时再取 github_actions
 
 maintain_site / local
-→ read_discover 或 read
+→ list / glob / grep / read
 → 需要实际修改、诊断或构建时取 terminal_session
 
 maintain_site / github
