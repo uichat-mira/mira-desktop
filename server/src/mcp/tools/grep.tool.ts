@@ -1,6 +1,6 @@
 import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
-import { executeReadLocateRuntime } from "../read/runtime.js";
+import { executeGrep } from "../read/grep.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
 export const grepTool: ToolImplementation = {
@@ -8,7 +8,7 @@ export const grepTool: ToolImplementation = {
     id: "grep",
     title: "Grep",
     description:
-      "Search workspace text for exact strings or ripgrep-style patterns and return matching files, lines, columns, and previews. Prefer this for symbols, references, imports, config keys, error strings, and repeated code search before opening files.",
+      "Search workspace text with a bounded ripgrep-first runtime. Returns matching workspace-relative files, line/column locations, and previews; falls back deterministically when ripgrep is unavailable.",
     domain: "read",
     source: "internal",
     mode: "sync",
@@ -60,40 +60,14 @@ export const grepTool: ToolImplementation = {
       throw mcpBadRequest("pattern is required");
     }
 
-    const maxResults = context.args.maxResults;
-    if (
-      maxResults !== undefined &&
-      (typeof maxResults !== "number" ||
-        !Number.isInteger(maxResults) ||
-        maxResults < 1 ||
-        maxResults > 100)
-    ) {
-      throw mcpBadRequest("maxResults must be an integer between 1 and 100");
-    }
-
-    const extensions = context.args.extensions;
-    if (
-      extensions !== undefined &&
-      (!Array.isArray(extensions) ||
-        extensions.some((extension) => typeof extension !== "string" || !extension.trim()))
-    ) {
-      throw mcpBadRequest("extensions must be a non-empty string array when provided");
-    }
-
-    const result = await executeReadLocateRuntime({
-      args: {
-        query: pattern,
-        searchMode: "content",
-        ...(typeof context.args.root === "string" ? { path: context.args.root } : {}),
-        ...(Array.isArray(extensions) ? { extensions } : {}),
-        ...(typeof maxResults === "number" ? { limit: maxResults } : {}),
-      },
+    const result = await executeGrep({
+      args: context.args,
       environment: context.environment,
+      signal: context.signal,
       pushEvent: context.pushEvent,
     });
 
     emitArtifacts(context, result.artifacts);
-
     return {
       structuredContent: result.contents,
     };
