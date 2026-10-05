@@ -9,7 +9,7 @@ import type {
   ToolInvocationEventInput,
 } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
-import { resolveWorkspacePath } from "../workspace.js";
+import { resolveWorkspaceFilePath } from "../workspace.js";
 import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 
 export const DEFAULT_GENERIC_READ_LIMIT = 400;
@@ -353,14 +353,7 @@ export const executeGenericRead = async ({
     throw mcpBadRequest("path is required");
   }
 
-  const targetPath = resolveWorkspacePath(inputPath);
-  if (!fs.existsSync(targetPath)) {
-    throw mcpBadRequest(`Path does not exist: ${targetPath}`);
-  }
-  const stat = fs.statSync(targetPath);
-  if (!stat.isFile()) {
-    throw mcpBadRequest("read requires a file path");
-  }
+  const targetPath = resolveWorkspaceFilePath(inputPath);
 
   const extension = path.extname(targetPath).toLowerCase();
   const officeSkill = OFFICE_SKILLS.get(extension);
