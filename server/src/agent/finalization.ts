@@ -3,6 +3,7 @@ import {
   projectHarnessResultForLlm,
   type HarnessLlmContent,
 } from "@/harness/llm-content";
+import { getHarnessInvocation } from "@/harness/invocations";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
 import {
   projectHarnessImagesToMessageParts,
@@ -194,7 +195,9 @@ export const materializeFinalizationEvidence = (input: {
       messages.push(toSystemMessage(renderToolEvidence(ref, execution)));
       imageParts.push(
         ...projectHarnessImagesToMessageParts(
-          (execution as ToolExecutionWithLlmContent).llmContent,
+          execution.invocationId
+            ? getHarnessInvocation(execution.invocationId)?.llmContent
+            : undefined,
         ),
       );
       continue;
