@@ -115,22 +115,35 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
     const path = typeof result.path === "string" ? result.path : "unknown";
     const reason = typeof result.reason === "string" ? result.reason : "unsupported";
     const fileType = typeof result.fileType === "string" ? result.fileType : undefined;
+    const mimeType = typeof result.mimeType === "string" ? result.mimeType : undefined;
+    const sizeBytes =
+      typeof result.sizeBytes === "number" ? result.sizeBytes : undefined;
+    const maxBytes =
+      typeof result.maxBytes === "number" ? result.maxBytes : undefined;
     const suggestedSkill =
       typeof result.suggestedSkill === "string" ? result.suggestedSkill : undefined;
     const gap =
       reason === "office_owned"
         ? `Office-native file ${path} is owned by the ${suggestedSkill ?? fileType ?? "Office"} Skill domain.`
-        : reason === "multimodal_projection_unavailable"
-          ? `Generic image reading for ${path} requires the shared multimodal ToolResult projection.`
-          : `Generic read does not decode binary file ${path} as text.`;
+        : reason === "file_too_large"
+          ? `Image file ${path} exceeds the canonical read image transport limit.`
+          : reason === "unknown_encoding"
+            ? `Text encoding for ${path} could not be identified safely.`
+            : `Generic read does not decode binary file ${path} as text.`;
     return baseEvidence({
       result,
       isError,
-      actionTaken: `Generic read did not consume ${path} as text.`,
+      actionTaken:
+        reason === "file_too_large"
+          ? `Image read was not emitted for oversized file ${path}.`
+          : `Generic read did not consume ${path} as ordinary text.`,
       facts: [
         `path=${path}`,
         `reason=${reason}`,
         ...(fileType ? [`fileType=${fileType}`] : []),
+        ...(mimeType ? [`mimeType=${mimeType}`] : []),
+        ...(sizeBytes === undefined ? [] : [`sizeBytes=${sizeBytes}`]),
+        ...(maxBytes === undefined ? [] : [`maxBytes=${maxBytes}`]),
         ...(suggestedSkill ? [`suggestedSkill=${suggestedSkill}`] : []),
       ],
       gaps: [gap],
@@ -142,6 +155,9 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
           path,
           reason,
           ...(fileType ? { fileType } : {}),
+          ...(mimeType ? { mimeType } : {}),
+          ...(sizeBytes === undefined ? {} : { sizeBytes }),
+          ...(maxBytes === undefined ? {} : { maxBytes }),
           ...(suggestedSkill ? { suggestedSkill } : {}),
         },
         truncated: false,
