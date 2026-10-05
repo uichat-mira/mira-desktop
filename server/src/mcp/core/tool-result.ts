@@ -200,31 +200,60 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       },
     });
   }
-  if (toolId === "read_list") {
+  if (toolId === "list" || toolId === "read_list") {
     const path = typeof result.path === "string" ? result.path : "unknown";
-    const entries = Array.isArray(result.entries) ? result.entries.filter(asRecord).map((entry) => ({
-      name: typeof entry.name === "string" ? entry.name : "unknown",
-      type: entry.type === "directory" ? "directory" : "file",
-    })) : [];
-    const returnedCount = typeof result.returnedCount === "number" ? result.returnedCount : entries.length;
-    const totalCount = typeof result.totalCount === "number" ? result.totalCount : returnedCount;
+    const entries = Array.isArray(result.entries)
+      ? result.entries.filter(asRecord).map((entry) => ({
+          name: typeof entry.name === "string" ? entry.name : "unknown",
+          type:
+            entry.type === "directory"
+              ? "directory"
+              : entry.type === "symlink"
+                ? "symlink"
+                : "file",
+        }))
+      : [];
+    const returnedCount =
+      typeof result.returnedCount === "number" ? result.returnedCount : entries.length;
+    const totalCount =
+      typeof result.totalCount === "number" ? result.totalCount : returnedCount;
     const fileCount = entries.filter((entry) => entry.type === "file").length;
     const directoryCount = entries.filter((entry) => entry.type === "directory").length;
-    const entriesPreview = entries.slice(0, 5).map((entry) => `${entry.type === "directory" ? "[D]" : "[F]"} ${entry.name}`);
-    const truncated = result.truncated === true || result.hasMore === true || returnedCount < totalCount;
+    const symlinkCount = entries.filter((entry) => entry.type === "symlink").length;
+    const entriesPreview = entries.slice(0, 5).map((entry) => {
+      const prefix =
+        entry.type === "directory" ? "[D]" : entry.type === "symlink" ? "[L]" : "[F]";
+      return `${prefix} ${entry.name}`;
+    });
+    const truncated =
+      result.truncated === true ||
+      result.hasMore === true ||
+      returnedCount < totalCount;
     return baseEvidence({
       result,
       isError,
       actionTaken: `Listed workspace directory ${path}.`,
-      facts: [`path=${path}`, `entryCount=${totalCount}`, `fileCount=${fileCount}`, `directoryCount=${directoryCount}`, ...entriesPreview],
-      gaps: truncated ? ["Directory listing is truncated."] : entries.length === 0 ? ["Directory is empty."] : undefined,
+      facts: [
+        `path=${path}`,
+        `entryCount=${totalCount}`,
+        `fileCount=${fileCount}`,
+        `directoryCount=${directoryCount}`,
+        ...(symlinkCount > 0 ? [`symlinkCount=${symlinkCount}`] : []),
+        ...entriesPreview,
+      ],
+      gaps: truncated
+        ? ["Directory listing is truncated."]
+        : entries.length === 0
+          ? ["Directory is empty."]
+          : undefined,
       status: truncated ? "truncated" : undefined,
       data: {
-        kind: "read_list",
+        kind: toolId === "list" ? "list" : "read_list",
         path,
         entryCount: totalCount,
         fileCount,
         directoryCount,
+        ...(symlinkCount > 0 ? { symlinkCount } : {}),
         entriesPreview,
         truncated,
       },
