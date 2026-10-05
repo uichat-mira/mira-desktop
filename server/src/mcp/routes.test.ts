@@ -534,17 +534,24 @@ describe("mcp routes", () => {
       },
     });
 
+    const mutationResetResponse = await app.inject({
+      method: "POST",
+      url: "/mcp/tool-lab/fixtures/file-mutation/reset",
+    });
+    expect(mutationResetResponse.statusCode).toBe(200);
+    const mutationFixturePath =
+      ".tool-lab-fixtures/file-mutation/created.txt";
+    const mutationArgs = {
+      path: mutationFixturePath,
+      content: "created by Mira Tool Lab\n",
+    };
+
     const approvalStream = await app.inject({
       method: "POST",
       url: "/mcp/invocations/stream",
       payload: {
-        toolId: "edit_file",
-        args: {
-          path: fixturePath,
-          operation: "replace_block",
-          expectedOldText: "Mira Tool Lab deterministic read fixture.",
-          newText: "Mira Tool Lab deterministic read fixture approved.",
-        },
+        toolId: "write",
+        args: mutationArgs,
         workspaceContext: "tool_lab_managed",
       },
     });
@@ -573,29 +580,27 @@ describe("mcp routes", () => {
       url: `/mcp/invocations/${approvalInvocationId}/approval`,
       payload: {
         decision: "approved",
-        toolId: "edit_file",
-        args: {
-          path: fixturePath,
-          operation: "replace_block",
-          expectedOldText: "Mira Tool Lab deterministic read fixture.",
-          newText: "Mira Tool Lab deterministic read fixture approved.",
-        },
+        toolId: "write",
+        args: mutationArgs,
       },
     });
     expect(approvalResponse.statusCode).toBe(200);
     expect(
-      fs.readFileSync(path.join(resetData.workspace.rootPath, fixturePath), "utf8"),
-    ).toContain("Mira Tool Lab deterministic read fixture approved.");
+      fs.readFileSync(
+        path.join(resetData.workspace.rootPath, mutationFixturePath),
+        "utf8",
+      ),
+    ).toBe("created by Mira Tool Lab\n");
     expect(fs.readdirSync(otherRoot)).toEqual([]);
 
     const secondReset = await app.inject({
       method: "POST",
-      url: "/mcp/tool-lab/fixtures/platform-read-success/reset",
+      url: "/mcp/tool-lab/fixtures/file-mutation/reset",
     });
     expect(secondReset.statusCode).toBe(200);
     expect(
-      fs.readFileSync(path.join(resetData.workspace.rootPath, fixturePath), "utf8"),
-    ).toContain("This file is reset before every case run.");
+      fs.existsSync(path.join(resetData.workspace.rootPath, mutationFixturePath)),
+    ).toBe(false);
 
     const unknownFixture = await app.inject({
       method: "POST",
