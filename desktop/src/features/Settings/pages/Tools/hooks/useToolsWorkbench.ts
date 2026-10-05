@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/shared/ui/Message";
 import {
@@ -56,10 +56,11 @@ const normalizeWebSearchMaxResults = (value: unknown) => {
   );
 };
 
-export function useToolsWorkbench(initialHandoff?: ToolWorkbenchHandoff | null) {
+export function useToolsWorkbench(
+  initialHandoff?: ToolWorkbenchHandoff | null,
+  handoffKey = "initial",
+) {
   const { t } = useTranslation();
-  const initialHandoffRef = useRef(initialHandoff ?? null);
-  const didApplyInitialHandoffRef = useRef(false);
   const [activeGroupId, setActiveGroupId] = useState<ToolWorkbenchGroupId | null>(null);
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   const [argsDraft, setArgsDraft] = useState("{}");
@@ -114,9 +115,7 @@ export function useToolsWorkbench(initialHandoff?: ToolWorkbenchHandoff | null) 
           maxResults: normalizeWebSearchMaxResults(persistedWebSearchConfig.maxResults),
         });
 
-        const handoff = didApplyInitialHandoffRef.current
-          ? null
-          : initialHandoffRef.current;
+        const handoff = initialHandoff ?? null;
         const requestedTool = handoff
           ? sortedTools.find((tool) => tool.id === handoff.toolId) ?? null
           : null;
@@ -127,8 +126,6 @@ export function useToolsWorkbench(initialHandoff?: ToolWorkbenchHandoff | null) 
           (nextActiveGroupId
             ? sortedTools.find((tool) => tool.workbench.groupId === nextActiveGroupId) ?? null
             : null);
-
-        didApplyInitialHandoffRef.current = true;
 
         if (nextSelectedTool) {
           setSelectedToolId(nextSelectedTool.id);
@@ -158,7 +155,7 @@ export function useToolsWorkbench(initialHandoff?: ToolWorkbenchHandoff | null) 
     return () => {
       disposed = true;
     };
-  }, [t]);
+  }, [handoffKey, initialHandoff, t]);
 
   const selectedTool = useMemo(
     () => tools.find((tool) => tool.id === selectedToolId) ?? null,

@@ -215,11 +215,12 @@ describe("useToolsWorkbench", () => {
     ]);
 
     const useToolsWorkbench = await importHook();
+    const handoff = {
+      toolId: "read_open",
+      args: { path: "README.md" },
+    };
     const { result } = renderHook(() =>
-      useToolsWorkbench({
-        toolId: "read_open",
-        args: { path: "README.md" },
-      }),
+      useToolsWorkbench(handoff),
     );
 
     await waitFor(() => {
@@ -229,6 +230,66 @@ describe("useToolsWorkbench", () => {
     expect(result.current.activeGroupId).toBe("read");
     expect(result.current.argsDraft).toBe(
       JSON.stringify({ path: "README.md" }, null, 2),
+    );
+  });
+
+  it("applies a new Capability handoff when the mounted route receives new navigation state", async () => {
+    const createTool = (
+      id: string,
+      title: string,
+      groupId: string,
+      workspaceBound = false,
+    ) => ({
+      id,
+      title,
+      description: "",
+      domain: groupId,
+      source: "internal",
+      mode: "sync",
+      inputSchema: { type: "object" },
+      tags: [],
+      capabilities: {
+        sideEffect: "none",
+        requiresApproval: false,
+        ...(workspaceBound ? { workspaceBound: true } : {}),
+      },
+      workbench: {
+        groupId,
+        groupLabel: title,
+        groupDescription: title,
+        groupOrder: groupId === "read" ? 10 : 30,
+        icon: "wrench",
+      },
+    });
+    getMcpToolsMock.mockResolvedValue([
+      createTool("web_search", "Web Search", "web_search"),
+      createTool("read_open", "Read Open", "read", true),
+    ]);
+
+    const useToolsWorkbench = await importHook();
+    const { result, rerender } = renderHook(
+      ({ handoff, handoffKey }: {
+        handoff: { toolId: string; args: Record<string, unknown> } | null;
+        handoffKey: string;
+      }) => useToolsWorkbench(handoff, handoffKey),
+      { initialProps: { handoff: null, handoffKey: "first" } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedTool?.id).toBe("read_open");
+    });
+
+    rerender({
+      handoff: { toolId: "web_search", args: { query: "capabilities" } },
+      handoffKey: "second",
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedTool?.id).toBe("web_search");
+    });
+    expect(result.current.activeGroupId).toBe("web_search");
+    expect(result.current.argsDraft).toBe(
+      JSON.stringify({ query: "capabilities" }, null, 2),
     );
   });
 

@@ -20,6 +20,7 @@ const caseDefinition: CapabilityAcceptanceCase = {
   purpose: "Read a file",
   expectedObservation: "Completed",
   args: { path: "README.md" },
+  workspace: "managed",
   group: "Native",
 };
 

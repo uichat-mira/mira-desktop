@@ -50,7 +50,7 @@ export default function CapabilitiesPage() {
   const [resultConsoleOpen, setResultConsoleOpen] = useState(Boolean(invocation));
   const toolGroups = useMemo(
     () => buildCapabilityGroups(capabilities.tools, t),
-    [capabilities.tools],
+    [capabilities.tools, t],
   );
   const visibleGroups = useMemo(
     () => filterCapabilityGroups(toolGroups, catalogFilter),

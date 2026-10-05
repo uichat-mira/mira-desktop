@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { Button } from "@/shared/ui/Button";
@@ -41,7 +41,11 @@ const getToolWorkbenchHandoff = (state: unknown): ToolWorkbenchHandoff | null =>
 export default function ToolsSettings() {
   const { t } = useTranslation();
   const location = useLocation();
-  const workbench = useToolsWorkbench(getToolWorkbenchHandoff(location.state));
+  const capabilitiesHandoff = useMemo(
+    () => getToolWorkbenchHandoff(location.state),
+    [location.state],
+  );
+  const workbench = useToolsWorkbench(capabilitiesHandoff, location.key);
   const [isArgsModalOpen, setIsArgsModalOpen] = useState(false);
 
   return (
