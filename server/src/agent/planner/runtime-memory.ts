@@ -201,7 +201,7 @@ export const buildPlannerRecentImageEvidenceParts = (
       projectHarnessImagesToMessageParts(
         execution.invocationId
           ? getHarnessInvocation(execution.invocationId)?.llmContent
-          : undefined,
+          : (execution as AgentToolExecutionWithLlmContent).llmContent,
       ),
     );
 
