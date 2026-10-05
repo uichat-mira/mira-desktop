@@ -8,8 +8,10 @@ import type {
 } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { resolveWorkspacePath } from "../workspace.js";
+import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 
-export const DEFAULT_GENERIC_READ_MAX_LINES = 400;
+export const DEFAULT_GENERIC_READ_LIMIT = 400;
+export const MAX_GENERIC_READ_LIMIT = 2_000;
 
 const OFFICE_SKILLS = new Map<string, "docx" | "xlsx" | "pptx" | "pdf">([
   [".docx", "docx"],
@@ -49,26 +51,18 @@ const CODE_EXTENSIONS = new Set([
   ".sql",
 ]);
 
-export type GenericReadSelection = {
-  kind: "lines" | "range";
-  start: number;
-  end: number;
-};
-
-export type GenericReadWindow = {
-  startLine: number;
-  endLine: number;
-  totalLines: number;
-  truncated: boolean;
-  nextStartLine?: number;
-};
-
 export type GenericReadTextResult = {
   type: "read";
   path: string;
-  operation: "read" | "range";
-  selection?: GenericReadSelection;
-  window: GenericReadWindow;
+  offset: number;
+  limit: number;
+  returnedCount: number;
+  totalLines: number;
+  startLine: number;
+  endLine: number;
+  hasMore: boolean;
+  truncated: boolean;
+  nextOffset?: number;
   source: {
     kind: "text";
     mimeType: string;
@@ -119,58 +113,33 @@ const assertHarnessEnvironment = (
   return environment;
 };
 
-export const parseGenericReadSelection = (
-  value: unknown,
-): GenericReadSelection | undefined => {
-  if (value === undefined) return undefined;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw mcpBadRequest("selection must be an object");
-  }
-  const selection = value as Record<string, unknown>;
-  if (selection.kind !== "lines" && selection.kind !== "range") {
-    throw mcpBadRequest("selection.kind must be one of: lines, range");
-  }
-  if (!Number.isInteger(selection.start) || !Number.isInteger(selection.end)) {
-    throw mcpBadRequest("selection.start and selection.end must be integers");
-  }
-  const start = selection.start as number;
-  const end = selection.end as number;
-  if (start < 1 || end < start) {
-    throw mcpBadRequest("selection must use a positive inclusive range");
-  }
-  if (
-    Object.keys(selection).some(
-      (key) => !["kind", "start", "end"].includes(key),
-    )
-  ) {
-    throw mcpBadRequest("selection contains unsupported fields");
-  }
-  return { kind: selection.kind, start, end };
-};
-
 export const sliceGenericText = (
   text: string,
-  selection?: GenericReadSelection,
-): { text: string; window: GenericReadWindow } => {
+  input: { offset?: unknown; limit?: unknown } = {},
+) => {
+  const offset = parseOffset(input.offset);
+  const limit = parseBoundedLimit(input.limit, {
+    defaultValue: DEFAULT_GENERIC_READ_LIMIT,
+    maxValue: MAX_GENERIC_READ_LIMIT,
+  });
   const lines = text.split(/\r?\n/);
-  const startLine = selection?.start ?? 1;
-  const requestedEndLine = Math.min(selection?.end ?? lines.length, lines.length);
-  const endLine = Math.min(
-    requestedEndLine,
-    startLine + DEFAULT_GENERIC_READ_MAX_LINES - 1,
-  );
-  const selected = lines.slice(startLine - 1, endLine);
-  const truncated = endLine < requestedEndLine;
+  const selected = lines.slice(offset, offset + limit);
+  const continuation = buildContinuation({
+    offset,
+    returnedCount: selected.length,
+    totalCount: lines.length,
+  });
+  const startLine = selected.length > 0 ? offset + 1 : Math.min(offset + 1, lines.length + 1);
+  const endLine = selected.length > 0 ? offset + selected.length : Math.min(offset, lines.length);
 
   return {
     text: selected.join("\n"),
-    window: {
-      startLine,
-      endLine,
-      totalLines: lines.length,
-      truncated,
-      ...(truncated ? { nextStartLine: endLine + 1 } : {}),
-    },
+    offset,
+    limit,
+    totalLines: lines.length,
+    startLine,
+    endLine,
+    ...continuation,
   };
 };
 
@@ -337,15 +306,23 @@ export const executeGenericRead = async ({
     };
   }
 
-  const selection = parseGenericReadSelection(args.selection);
-  const sliced = sliceGenericText(decoded.text, selection);
+  const sliced = sliceGenericText(decoded.text, {
+    offset: args.offset,
+    limit: args.limit,
+  });
   const mimeType = mimeTypeForText(extension);
   const contents: GenericReadTextResult = {
     type: "read",
     path: inputPath,
-    operation: selection ? "range" : "read",
-    ...(selection ? { selection } : {}),
-    window: sliced.window,
+    offset: sliced.offset,
+    limit: sliced.limit,
+    returnedCount: sliced.returnedCount,
+    totalLines: sliced.totalLines,
+    startLine: sliced.startLine,
+    endLine: sliced.endLine,
+    hasMore: sliced.hasMore,
+    truncated: sliced.truncated,
+    ...(sliced.nextOffset === undefined ? {} : { nextOffset: sliced.nextOffset }),
     source: {
       kind: "text",
       mimeType,
@@ -374,8 +351,12 @@ export const executeGenericRead = async ({
           path: inputPath,
           encoding: decoded.encoding,
           sizeBytes: decoded.sizeBytes,
-          ...(selection ? { selection } : {}),
-          window: sliced.window,
+          offset: sliced.offset,
+          limit: sliced.limit,
+          returnedCount: sliced.returnedCount,
+          totalLines: sliced.totalLines,
+          hasMore: sliced.hasMore,
+          ...(sliced.nextOffset === undefined ? {} : { nextOffset: sliced.nextOffset }),
         },
       }),
     ],
