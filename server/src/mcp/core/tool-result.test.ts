@@ -371,6 +371,41 @@ describe("ToolResult B-prime normalization", () => {
     });
   });
 
+  it("keeps image base64 out of structured Evidence", () => {
+    const base64 = "BASE64_SHOULD_NOT_ENTER_EVIDENCE";
+    const evidence = projectToolEvidence(
+      definition("read"),
+      normalizeToolResult({
+        content: [
+          { type: "text", text: "Read image file: diagram.png" },
+          {
+            type: "image",
+            data: base64,
+            mimeType: "image/png",
+            filename: "diagram.png",
+          },
+        ],
+        structuredContent: {
+          type: "read",
+          path: "diagram.png",
+          mediaType: "image",
+          mimeType: "image/png",
+          sizeBytes: 123,
+        },
+      }),
+    );
+
+    expect(evidence?.data).toMatchObject({
+      kind: "read",
+      path: "diagram.png",
+      mediaType: "image",
+      mimeType: "image/png",
+      sizeBytes: 123,
+      truncated: false,
+    });
+    expect(JSON.stringify(evidence)).not.toContain(base64);
+  });
+
   it("keeps Evidence data bounded and redacted instead of copying structured results", () => {
     const secret = "secret-value";
     const value = {
