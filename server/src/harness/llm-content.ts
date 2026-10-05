@@ -480,6 +480,16 @@ export const getHarnessLlmContentText = (
     .map((block) => block.text)
     .join("\n\n") ?? "";
 
+export const projectHarnessTextOnlyContent = (
+  content: HarnessLlmContent | undefined,
+): HarnessLlmContent | undefined => {
+  if (!content) return undefined;
+  const blocks = content.blocks.filter(
+    (block): block is HarnessLlmTextBlock => block.type === "text",
+  );
+  return blocks.length > 0 ? { ...content, blocks } : undefined;
+};
+
 export const getHarnessLlmContentImages = (
   content: HarnessLlmContent | undefined,
 ) =>
