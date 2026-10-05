@@ -166,6 +166,72 @@ describe("useToolsWorkbench", () => {
     });
   });
 
+  it("opens a Tool Lab handoff as an editable copy without changing normal workbench defaults", async () => {
+    getMcpToolsMock.mockResolvedValueOnce([
+      {
+        id: "web_search",
+        title: "Web Search",
+        description: "",
+        domain: "web_search",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: [],
+        capabilities: {
+          sideEffect: "network",
+          requiresApproval: false,
+          networkAccess: true,
+        },
+        workbench: {
+          groupId: "web_search",
+          groupLabel: "网络搜索",
+          groupDescription: "网络搜索工具。",
+          groupOrder: 30,
+          icon: "globe",
+        },
+      },
+      {
+        id: "read_open",
+        title: "Read Open",
+        description: "",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: [],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+          workspaceBound: true,
+        },
+        workbench: {
+          groupId: "read",
+          groupLabel: "阅读",
+          groupDescription: "读取工具。",
+          groupOrder: 10,
+          icon: "file-search",
+        },
+      },
+    ]);
+
+    const useToolsWorkbench = await importHook();
+    const { result } = renderHook(() =>
+      useToolsWorkbench({
+        toolId: "read_open",
+        args: { path: "README.md" },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedTool?.id).toBe("read_open");
+    });
+
+    expect(result.current.activeGroupId).toBe("read");
+    expect(result.current.argsDraft).toBe(
+      JSON.stringify({ path: "README.md" }, null, 2),
+    );
+  });
+
   it("selects the first displayed group instead of the alphabetically first tool", async () => {
     const createTool = (
       id: string,

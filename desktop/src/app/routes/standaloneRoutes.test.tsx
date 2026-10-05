@@ -51,6 +51,9 @@ vi.mock("@/features/Development/pages/ClientTests/index", () => ({
 vi.mock("@/features/Development/pages/ServerTests/index", () => ({
   default: () => null,
 }));
+vi.mock("@/features/Extensions/Tools/index", () => ({
+  default: () => <div data-testid="extensions-tools">extensions-tools</div>,
+}));
 
 function renderStandaloneRoute(path: string) {
   const router = createMemoryRouter(
@@ -85,5 +88,18 @@ describe("standalone routes", () => {
     renderStandaloneRoute("/development/logs");
 
     expect(await screen.findByTestId("development-logs")).toBeInTheDocument();
+  });
+
+  it("redirects /extensions to the Tools surface", async () => {
+    const router = renderStandaloneRoute("/extensions");
+
+    expect(await screen.findByTestId("extensions-tools")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/extensions/tools");
+  });
+
+  it("mounts the Tools surface at /extensions/tools", async () => {
+    renderStandaloneRoute("/extensions/tools");
+
+    expect(await screen.findByTestId("extensions-tools")).toBeInTheDocument();
   });
 });

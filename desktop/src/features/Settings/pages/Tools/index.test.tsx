@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ToolsSettings from "./index";
 
@@ -57,12 +58,20 @@ vi.mock("./components/ToolsPackagePanel", () => ({
   ),
 }));
 
+function renderToolsSettings() {
+  return render(
+    <MemoryRouter>
+      <ToolsSettings />
+    </MemoryRouter>,
+  );
+}
+
 describe("ToolsSettings", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("wires sidebar, tool selection, and execution", async () => {
     const user = userEvent.setup();
-    render(<ToolsSettings />);
+    renderToolsSettings();
     await user.click(screen.getByRole("button", { name: "sidebar" }));
     await user.click(screen.getByRole("button", { name: "tool" }));
     await user.click(screen.getByRole("button", { name: "run" }));
@@ -73,7 +82,7 @@ describe("ToolsSettings", () => {
 
   it("opens web-search configuration and saves it on confirmation", async () => {
     const user = userEvent.setup();
-    render(<ToolsSettings />);
+    renderToolsSettings();
     await user.click(screen.getByRole("button", { name: "config" }));
     expect(screen.getByText("Web Search")).toBeInTheDocument();
     expect(screen.getByDisplayValue("key")).toBeInTheDocument();

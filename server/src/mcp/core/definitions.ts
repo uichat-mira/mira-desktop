@@ -102,7 +102,7 @@ export interface ToolExecutionEnvironment {
   source: "harness";
   workspace: {
     rootPath: string | null;
-    source: "selected" | "configured" | "unset";
+    source: "selected" | "configured" | "managed" | "unset";
   };
   approvals: {
     outsideWorkspace: "prompt";

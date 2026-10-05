@@ -7,6 +7,11 @@ import type {
 
 export type ToolWorkbenchGroupId = string;
 
+export type ToolWorkbenchHandoff = {
+  toolId: string;
+  args: Record<string, unknown>;
+};
+
 export type ToolGroupSummary = {
   id: ToolWorkbenchGroupId;
   label: string;

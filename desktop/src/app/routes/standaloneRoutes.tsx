@@ -5,6 +5,7 @@ import DevelopmentLogsPage from "@/features/Development/pages/Logs/index";
 import DevelopmentDatabasePage from "@/features/Development/pages/Database/index";
 import DevelopmentClientTestsPage from "@/features/Development/pages/ClientTests/index";
 import DevelopmentServerTestsPage from "@/features/Development/pages/ServerTests/index";
+import ExtensionsToolsPage from "@/features/Extensions/Tools/index";
 import StandaloneWorkspace from "@/app/Layouts/StandaloneWorkspace";
 import KnowledgeBaseSettings from "@/features/KnowledgeBase/index";
 import KnowledgeBaseAddWizard from "@/features/KnowledgeBase/Add";
@@ -47,6 +48,14 @@ export const standaloneRoutes = [
     path: "about",
     element: <StandaloneWorkspace />,
     children: [{ index: true, element: <About /> }],
+  },
+  {
+    path: "extensions",
+    element: <StandaloneWorkspace />,
+    children: [
+      { index: true, element: <Navigate to="tools" replace /> },
+      { path: "tools", element: <ExtensionsToolsPage /> },
+    ],
   },
   {
     path: "development",

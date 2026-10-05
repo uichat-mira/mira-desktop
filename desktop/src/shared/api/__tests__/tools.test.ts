@@ -31,10 +31,15 @@ import {
   getExternalMcpServerConfig,
   updateExternalMcpServerConfig,
   getMcpWorkspaceSelection,
+  getMcpToolLabWorkspaceSelection,
+  getMcpManagedToolLabWorkspaceSelection,
+  resetMcpToolLabFixture,
   getMcpWebSearchConfig,
   saveMcpWebSearchConfig,
   selectMcpWorkspaceRoot,
   getMcpTools,
+  getMcpRegisteredTools,
+  getMcpInvocation,
   getMcpInvocationTrace,
   executeMcpInvocationStream,
   type ToolDefinition,
@@ -43,6 +48,7 @@ import {
   type McpWorkspaceSelection,
   type McpWebSearchConfig,
   type HarnessToolDefinition,
+  type ToolInvocation,
   type ToolTrace,
 } from "../tools";
 
@@ -126,6 +132,17 @@ const sampleTrace: ToolTrace = {
   toolId: "mcp-tool-1",
   startedAt: "2026-07-06T00:00:00.000Z",
   spans: [],
+};
+
+const sampleInvocation: ToolInvocation = {
+  id: "inv-1",
+  toolId: "mcp-tool-1",
+  status: "completed",
+  args: {},
+  artifacts: [],
+  traceId: "trace-1",
+  startedAt: "2026-07-06T00:00:00.000Z",
+  finishedAt: "2026-07-06T00:00:00.010Z",
 };
 
 describe("tools api", () => {
@@ -318,6 +335,57 @@ describe("tools api", () => {
     expect(result).toBe(sampleWorkspaceSelection);
   });
 
+  it("getMcpToolLabWorkspaceSelection 获取 Tool Lab 有效工作区", async () => {
+    vi.mocked(get).mockResolvedValueOnce({
+      rootPath: "/managed/tool-lab/workspace",
+      source: "managed",
+    });
+
+    const result = await getMcpToolLabWorkspaceSelection();
+
+    expect(get).toHaveBeenCalledWith("/mcp/tool-lab/workspace");
+    expect(result).toEqual({
+      rootPath: "/managed/tool-lab/workspace",
+      source: "managed",
+    });
+  });
+
+  it("getMcpManagedToolLabWorkspaceSelection 获取隔离验收工作区", async () => {
+    vi.mocked(get).mockResolvedValueOnce({
+      rootPath: "/managed/tool-lab/workspace",
+      source: "managed",
+    });
+
+    const result = await getMcpManagedToolLabWorkspaceSelection();
+
+    expect(get).toHaveBeenCalledWith("/mcp/tool-lab/workspace/managed");
+    expect(result).toEqual({
+      rootPath: "/managed/tool-lab/workspace",
+      source: "managed",
+    });
+  });
+
+  it("resetMcpToolLabFixture 只提交注册 fixture id", async () => {
+    const resetResult = {
+      fixtureId: "platform-read-success",
+      workspace: {
+        rootPath: "/managed/tool-lab/workspace",
+        source: "managed" as const,
+      },
+      fixtureRoot:
+        "/managed/tool-lab/workspace/.tool-lab-fixtures/platform-read-success",
+      resetAt: "2026-10-05T00:00:00.000Z",
+    };
+    vi.mocked(post).mockResolvedValueOnce(resetResult);
+
+    const result = await resetMcpToolLabFixture("platform-read-success");
+
+    expect(post).toHaveBeenCalledWith(
+      "/mcp/tool-lab/fixtures/platform-read-success/reset",
+    );
+    expect(result).toEqual(resetResult);
+  });
+
   it("getMcpWebSearchConfig 获取搜索配置", async () => {
     vi.mocked(get).mockResolvedValueOnce(sampleWebSearchConfig);
 
@@ -357,6 +425,24 @@ describe("tools api", () => {
     expect(result).toEqual([sampleMcpTool]);
   });
 
+  it("getMcpRegisteredTools 获取 Tool Lab 使用的已注册内部 Tool", async () => {
+    vi.mocked(get).mockResolvedValueOnce([sampleMcpTool]);
+
+    const result = await getMcpRegisteredTools();
+
+    expect(get).toHaveBeenCalledWith("/mcp/tools");
+    expect(result).toEqual([sampleMcpTool]);
+  });
+
+  it("getMcpInvocation 获取完整调用记录", async () => {
+    vi.mocked(get).mockResolvedValueOnce(sampleInvocation);
+
+    const result = await getMcpInvocation("inv-1");
+
+    expect(get).toHaveBeenCalledWith("/mcp/invocations/inv-1");
+    expect(result).toBe(sampleInvocation);
+  });
+
   it("getMcpInvocationTrace 获取调用链路", async () => {
     vi.mocked(get).mockResolvedValueOnce(sampleTrace);
 
@@ -374,7 +460,13 @@ describe("tools api", () => {
       toolId: "mcp-tool-1",
       at: "2026-07-06T00:00:00.000Z",
     });
-    const bytes = encoder.encode(`data: ${event}\n\n`);
+    const doneEvent = JSON.stringify({
+      type: "invocation:done",
+      invocationId: "inv-1",
+    });
+    const bytes = encoder.encode(
+      `data: ${event}\n\ndata: ${doneEvent}\n\n`,
+    );
 
     vi.stubGlobal(
       "fetch",
@@ -392,9 +484,12 @@ describe("tools api", () => {
     );
 
     const events: unknown[] = [];
-    await executeMcpInvocationStream({ toolId: "mcp-tool-1" }, (event) => {
-      events.push(event);
-    });
+    await executeMcpInvocationStream(
+      { toolId: "mcp-tool-1", workspaceContext: "tool_lab_managed" },
+      (event) => {
+        events.push(event);
+      },
+    );
 
     expect(fetch).toHaveBeenCalledWith(
       "http://localhost:3000/mcp/invocations/stream",
@@ -403,10 +498,15 @@ describe("tools api", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer token-1",
         }),
-        body: JSON.stringify({ toolId: "mcp-tool-1", args: {} }),
+        body: JSON.stringify({
+          toolId: "mcp-tool-1",
+          args: {},
+          workspaceContext: "tool_lab_managed",
+        }),
       }),
     );
-    expect(events).toHaveLength(1);
+    expect(events).toHaveLength(2);
     expect((events[0] as { type: string }).type).toBe("invocation:start");
+    expect((events[1] as { type: string }).type).toBe("invocation:done");
   });
 });
