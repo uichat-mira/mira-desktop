@@ -149,8 +149,9 @@ export const readTool: ToolImplementation = {
         });
 
     emitArtifacts(context, result.artifacts);
+    const content = "content" in result ? result.content : undefined;
     return {
-      ...(result.content?.length ? { content: result.content } : {}),
+      ...(content?.length ? { content } : {}),
       structuredContent: result.contents,
     };
   },
