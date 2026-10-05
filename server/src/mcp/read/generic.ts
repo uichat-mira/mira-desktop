@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import iconv from "iconv-lite";
 import { createArtifact } from "../core/artifacts.js";
 import type {
   ToolArtifact,
@@ -68,7 +69,7 @@ export type GenericReadTextResult = {
     mimeType: string;
     text: string;
     metadata: {
-      encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be";
+      encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" | "gb18030";
       sizeBytes: number;
     };
   };
@@ -77,7 +78,11 @@ export type GenericReadTextResult = {
 export type GenericReadUnsupportedResult = {
   type: "unsupported";
   path: string;
-  reason: "office_owned" | "binary" | "multimodal_projection_unavailable";
+  reason:
+    | "office_owned"
+    | "binary"
+    | "unknown_encoding"
+    | "multimodal_projection_unavailable";
   fileType?: string;
   mimeType?: string;
   suggestedSkill?: "docx" | "xlsx" | "pptx" | "pdf";
@@ -157,7 +162,9 @@ const isLikelyBinary = (buffer: Buffer) => {
   return controlBytes / buffer.length > 0.1;
 };
 
-const decodeText = (buffer: Buffer): DecodedText | null => {
+const decodeText = (
+  buffer: Buffer,
+): DecodedText | { unsupportedEncoding: true } | null => {
   const sizeBytes = buffer.byteLength;
 
   if (
@@ -197,11 +204,26 @@ const decodeText = (buffer: Buffer): DecodedText | null => {
 
   if (isLikelyBinary(buffer)) return null;
 
-  return {
-    text: buffer.toString("utf8"),
-    encoding: "utf-8",
-    sizeBytes,
-  };
+  try {
+    return {
+      text: new TextDecoder("utf-8", { fatal: true }).decode(buffer),
+      encoding: "utf-8",
+      sizeBytes,
+    };
+  } catch {
+    // GB18030 is a superset of GBK and is already a direct server dependency
+    // through iconv-lite. Only accept it when the decoded text round-trips to
+    // the exact original bytes so invalid UTF-8 never silently becomes mojibake.
+    const decoded = iconv.decode(buffer, "gb18030");
+    if (iconv.encode(decoded, "gb18030").equals(buffer)) {
+      return {
+        text: decoded,
+        encoding: "gb18030",
+        sizeBytes,
+      };
+    }
+    return { unsupportedEncoding: true };
+  }
 };
 
 const mimeTypeForText = (extension: string) => {
@@ -300,6 +322,21 @@ export const executeGenericRead = async ({
         type: "unsupported",
         path: inputPath,
         reason: "binary",
+        fileType: extension ? extension.slice(1) : undefined,
+      },
+      artifacts: [],
+    };
+  }
+  if ("unsupportedEncoding" in decoded) {
+    pushEvent?.({
+      type: "invocation:progress",
+      message: "Generic read outcome: text encoding could not be identified safely",
+    });
+    return {
+      contents: {
+        type: "unsupported",
+        path: inputPath,
+        reason: "unknown_encoding",
         fileType: extension ? extension.slice(1) : undefined,
       },
       artifacts: [],
