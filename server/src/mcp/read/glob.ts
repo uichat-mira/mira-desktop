@@ -9,24 +9,28 @@ import type {
 } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { getWorkspaceRoot, resolveWorkspacePath } from "../workspace.js";
+import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 import {
   escapeGlobPath,
-  loadWorkspaceIgnorePatterns,
   normalizeWorkspaceRelativePath,
+  resolveWorkspaceIgnorePatterns,
 } from "./path-policy.js";
 
-export const DEFAULT_GLOB_MAX_RESULTS = 100;
-export const MAX_GLOB_RESULTS = 200;
+export const DEFAULT_GLOB_LIMIT = 200;
+export const MAX_GLOB_LIMIT = 1_000;
 
 export type GlobResult = {
   type: "glob";
   pattern: string;
-  root: string;
+  path: string;
   matches: string[];
+  offset: number;
+  limit: number;
   returnedCount: number;
   totalCount: number;
   hasMore: boolean;
   truncated: boolean;
+  nextOffset?: number;
 };
 
 type GlobExecutionResult = {
@@ -49,14 +53,6 @@ const assertHarnessEnvironment = (
   return environment;
 };
 
-const parseMaxResults = (value: unknown) => {
-  if (value === undefined) return DEFAULT_GLOB_MAX_RESULTS;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    throw mcpBadRequest("maxResults must be a positive integer");
-  }
-  return Math.min(value, MAX_GLOB_RESULTS);
-};
-
 const parsePattern = (value: unknown) => {
   if (typeof value !== "string" || !value.trim()) {
     throw mcpBadRequest("pattern is required");
@@ -67,9 +63,17 @@ const parsePattern = (value: unknown) => {
     /^[A-Za-z]:\//u.test(normalized) ||
     normalized.split("/").some((segment) => segment === "..")
   ) {
-    throw mcpBadRequest("pattern must stay inside the selected root");
+    throw mcpBadRequest("pattern must stay inside the selected path");
   }
   return normalized;
+};
+
+const parseIncludeIgnored = (value: unknown) => {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") {
+    throw mcpBadRequest("includeIgnored must be a boolean");
+  }
+  return value;
 };
 
 export const executeGlob = async ({
@@ -80,27 +84,36 @@ export const executeGlob = async ({
   assertHarnessEnvironment(environment);
 
   const pattern = parsePattern(args.pattern);
-  const root = typeof args.root === "string" && args.root.trim() ? args.root.trim() : ".";
+  const inputPath =
+    typeof args.path === "string" && args.path.trim() ? args.path.trim() : ".";
+  const offset = parseOffset(args.offset);
+  const limit = parseBoundedLimit(args.limit, {
+    defaultValue: DEFAULT_GLOB_LIMIT,
+    maxValue: MAX_GLOB_LIMIT,
+  });
+  const includeIgnored = parseIncludeIgnored(args.includeIgnored);
+
   const workspaceRoot = getWorkspaceRoot();
-  const rootPath = resolveWorkspacePath(root);
-  if (!fs.existsSync(rootPath)) {
-    throw mcpBadRequest(`Path does not exist: ${rootPath}`);
+  const targetPath = resolveWorkspacePath(inputPath);
+  if (!fs.existsSync(targetPath)) {
+    throw mcpBadRequest(`Path does not exist: ${targetPath}`);
   }
-  if (!fs.statSync(rootPath).isDirectory()) {
-    throw mcpBadRequest("glob root must be a directory path");
+  if (!fs.statSync(targetPath).isDirectory()) {
+    throw mcpBadRequest("glob path must be a directory");
   }
 
-  const relativeRoot =
-    normalizeWorkspaceRelativePath(path.relative(workspaceRoot, rootPath)) || ".";
+  const relativeBase =
+    normalizeWorkspaceRelativePath(path.relative(workspaceRoot, targetPath)) || ".";
   const workspacePattern =
-    relativeRoot === "."
+    relativeBase === "."
       ? pattern
-      : `${escapeGlobPath(relativeRoot)}/${pattern}`;
-  const maxResults = parseMaxResults(args.maxResults);
+      : `${escapeGlobPath(relativeBase)}/${pattern}`;
 
   pushEvent?.({
     type: "invocation:progress",
-    message: "Glob plan: fast-glob -> shared-ignore-policy",
+    message: includeIgnored
+      ? "Glob plan: path pattern including ignored paths"
+      : "Glob plan: path pattern with default ignores",
   });
 
   let discovered: string[];
@@ -112,13 +125,12 @@ export const executeGlob = async ({
       unique: true,
       suppressErrors: false,
       followSymbolicLinks: false,
-      ignore: loadWorkspaceIgnorePatterns(workspaceRoot),
+      ignore: resolveWorkspaceIgnorePatterns(workspaceRoot, includeIgnored),
     });
   } catch (error) {
-    throw mcpBadRequest(
-      `Invalid or unreadable glob pattern: ${pattern}`,
-      { cause: error },
-    );
+    throw mcpBadRequest(`Invalid or unreadable glob pattern: ${pattern}`, {
+      cause: error,
+    });
   }
 
   const allMatches = discovered
@@ -126,17 +138,27 @@ export const executeGlob = async ({
     .sort((left, right) =>
       left.localeCompare(right, undefined, { numeric: true }),
     );
-  const visibleMatches = allMatches.slice(0, maxResults);
-  const truncated = visibleMatches.length < allMatches.length;
+  const visibleMatches = allMatches.slice(offset, offset + limit);
+  const continuation = buildContinuation({
+    offset,
+    returnedCount: visibleMatches.length,
+    totalCount: allMatches.length,
+  });
+
   const contents: GlobResult = {
     type: "glob",
     pattern,
-    root,
+    path: inputPath,
     matches: visibleMatches,
-    returnedCount: visibleMatches.length,
+    offset,
+    limit,
+    returnedCount: continuation.returnedCount,
     totalCount: allMatches.length,
-    hasMore: truncated,
-    truncated,
+    hasMore: continuation.hasMore,
+    truncated: continuation.truncated,
+    ...(continuation.nextOffset === undefined
+      ? {}
+      : { nextOffset: continuation.nextOffset }),
   };
 
   return {
@@ -148,10 +170,16 @@ export const executeGlob = async ({
         data: visibleMatches,
         metadata: {
           pattern,
-          root,
+          path: inputPath,
+          offset,
+          limit,
           returnedCount: visibleMatches.length,
           totalCount: allMatches.length,
-          truncated,
+          hasMore: continuation.hasMore,
+          includeIgnored,
+          ...(continuation.nextOffset === undefined
+            ? {}
+            : { nextOffset: continuation.nextOffset }),
         },
       }),
     ],
