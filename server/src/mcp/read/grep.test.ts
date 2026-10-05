@@ -129,6 +129,71 @@ describe("canonical grep runtime", () => {
     ]);
   });
 
+  it("builds a deterministic ripgrep request without letting include reopen default ignores", async () => {
+    let receivedArgs: string[] = [];
+    const result = await executeGrep(
+      {
+        args: {
+          pattern: "needle",
+          include: "**/*.ts",
+          literal: true,
+          limit: 1,
+        },
+        environment: createHarnessEnvironmentSnapshot(),
+        signal: new AbortController().signal,
+      },
+      {
+        resolveExecutable: () => ({
+          source: "system",
+          executablePath: "rg",
+        }),
+        runProcess: async (input) => {
+          receivedArgs = input.args;
+          return {
+            status: "completed" as const,
+            exitCode: 0,
+            stdout: [
+              JSON.stringify({
+                type: "match",
+                data: {
+                  path: { text: "src/alpha.ts" },
+                  lines: { text: "Needle one\\n" },
+                  line_number: 2,
+                  submatches: [{ start: 0 }],
+                },
+              }),
+              JSON.stringify({
+                type: "match",
+                data: {
+                  path: { text: "src/beta.ts" },
+                  lines: { text: "Needle two\\n" },
+                  line_number: 1,
+                  submatches: [{ start: 0 }],
+                },
+              }),
+            ].join("\\n"),
+            stderr: "",
+          };
+        },
+      },
+    );
+
+    expect(receivedArgs).toEqual(
+      expect.arrayContaining(["--sort", "path", "--fixed-strings"]),
+    );
+    const includeIndex = receivedArgs.indexOf("**/*.ts");
+    const defaultExcludeIndex = receivedArgs.lastIndexOf("!**/node_modules/**");
+    expect(includeIndex).toBeGreaterThan(-1);
+    expect(defaultExcludeIndex).toBeGreaterThan(includeIndex);
+    expect(result.contents).toMatchObject({
+      provider: "system-ripgrep",
+      returnedCount: 1,
+      hasMore: true,
+      nextOffset: 1,
+      matches: [expect.objectContaining({ path: "src/alpha.ts" })],
+    });
+  });
+
   it("cancels a spawned process through AbortSignal", async () => {
     const controller = new AbortController();
     const pending = runBoundedProcess({
