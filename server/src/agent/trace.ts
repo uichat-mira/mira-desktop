@@ -76,6 +76,7 @@ export const getToolTraceTargetPreview = (
   if (
     (toolId === "read" ||
       toolId === "read_open" ||
+      toolId === "list" ||
       toolId === "read_list" ||
       toolId === "read_locate") &&
     typeof args.path === "string"
