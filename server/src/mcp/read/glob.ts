@@ -65,7 +65,7 @@ const parsePattern = (value: unknown) => {
   if (
     path.posix.isAbsolute(normalized) ||
     /^[A-Za-z]:\//u.test(normalized) ||
-    normalized.split("/").some((segment) => segment === "..")
+    normalized.includes("..")
   ) {
     throw mcpBadRequest("pattern must stay inside the selected root");
   }
