@@ -309,8 +309,21 @@ export const runBoundedProcess = (input: {
     }
 
     const activeChild = child;
-    activeChild.stdout.setEncoding("utf8");
-    activeChild.stderr.setEncoding("utf8");
+    const stdoutStream = activeChild.stdout;
+    const stderrStream = activeChild.stderr;
+    if (!stdoutStream || !stderrStream) {
+      finish({
+        status: "failed",
+        exitCode: activeChild.exitCode,
+        stdout,
+        stderr,
+        reason: "spawn-error",
+      });
+      return;
+    }
+
+    stdoutStream.setEncoding("utf8");
+    stderrStream.setEncoding("utf8");
 
     const append = (stream: "stdout" | "stderr", chunk: string) => {
       if (settled) return;
@@ -330,8 +343,8 @@ export const runBoundedProcess = (input: {
       else stderr += chunk;
     };
 
-    activeChild.stdout.on("data", (chunk: string) => append("stdout", chunk));
-    activeChild.stderr.on("data", (chunk: string) => append("stderr", chunk));
+    stdoutStream.on("data", (chunk: string) => append("stdout", chunk));
+    stderrStream.on("data", (chunk: string) => append("stderr", chunk));
     activeChild.on("error", () => {
       finish({
         status: "failed",
