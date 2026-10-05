@@ -3,6 +3,7 @@ import {
   type HarnessLlmContent,
 } from "@/harness/llm-content";
 import { projectHarnessImagesToMessageParts } from "../harness-multimodal";
+import { getHarnessInvocation } from "@/harness/invocations";
 import type {
   AgentExecutionObservation,
   AgentToolExecutionResult,
@@ -198,7 +199,9 @@ export const buildPlannerRecentImageEvidenceParts = (
     .slice(-PLANNER_RECENT_EVIDENCE_ITEM_LIMIT)
     .flatMap((execution) =>
       projectHarnessImagesToMessageParts(
-        (execution as AgentToolExecutionWithLlmContent).llmContent,
+        execution.invocationId
+          ? getHarnessInvocation(execution.invocationId)?.llmContent
+          : undefined,
       ),
     );
 
