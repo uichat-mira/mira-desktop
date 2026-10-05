@@ -483,10 +483,14 @@ const executeNodeFallback = async (input: {
       input.includeIgnored,
     ),
   });
-  const files = filterGitIgnoredPaths(
+  const files = await filterGitIgnoredPaths(
     input.workspaceRoot,
     discoveredFiles.map(normalizeWorkspaceRelativePath),
     input.includeIgnored,
+    {
+      signal: input.signal,
+      timeoutMs: Math.max(1, input.deadlineAt - Date.now()),
+    },
   );
 
   assertActive(input);
