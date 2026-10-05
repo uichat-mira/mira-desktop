@@ -206,12 +206,14 @@ export interface AgentReadEvidenceData {
   contentLength: number;
   truncated: boolean;
   keySections?: string[];
-  window?: {
-    startLine: number;
-    endLine: number;
-    totalLines: number;
-    truncated: boolean;
-    nextStartLine?: number;
+  pagination?: {
+    offset: number;
+    limit?: number;
+    returnedCount?: number;
+    totalLines?: number;
+    startLine?: number;
+    endLine?: number;
+    nextOffset?: number;
   };
 }
 
@@ -234,21 +236,25 @@ export interface AgentReadOpenEvidenceData {
 export interface AgentGlobEvidenceData {
   kind: "glob";
   pattern: string;
-  root: string;
+  path: string;
   matchCount: number;
   matchedPaths: string[];
   matchesPreview: string[];
+  offset?: number;
+  nextOffset?: number;
   truncated: boolean;
 }
 
 export interface AgentGrepEvidenceData {
   kind: "grep";
   pattern: string;
-  root: string;
+  path: string;
   matchCount: number;
   matchedPaths: string[];
   matchesPreview: string[];
   provider: string;
+  offset?: number;
+  nextOffset?: number;
   truncated: boolean;
 }
 
