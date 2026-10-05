@@ -235,6 +235,7 @@ describe("ToolResult B-prime normalization", () => {
       }),
     );
     expect(glob?.status).toBe("truncated");
+    expect(glob?.facts).toContain("nextOffset=3");
     expect(glob?.data).toMatchObject({
       kind: "glob",
       pattern: "**/*.ts",
