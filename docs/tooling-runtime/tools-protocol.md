@@ -330,10 +330,13 @@ Completed invocation 可以产生：
 
 - structured result；
 - bounded `llmContent`；
+- text / image model-facing content blocks；
 - included / original chars；
 - truncated metadata；
 - artifact；
 - trace spans。
+
+Canonical image read 使用中性的 image content block（MIME + base64）。图片 payload 不进入 structured result、Evidence 或普通 invocation 读取；Harness 仅在进程内 model-content cache 中保存，Agent 在模型调用边界再投影到现有 message image part。Provider-specific 图片格式仍由既有 Provider adapter 负责。
 
 Failed invocation 不生成成功的 LLM projection。
 
