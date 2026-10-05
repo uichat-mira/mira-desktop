@@ -108,54 +108,13 @@ const isLikelyBinary = (buffer: Buffer) => {
   return controlBytes / buffer.length > 0.1;
 };
 
-type DecodedTextBuffer = {
-  text: string;
-  encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be";
-  sizeBytes: number;
-};
-
-const readTextBuffer = (filePath: string): DecodedTextBuffer | null => {
+const readTextBuffer = (filePath: string) => {
   const buffer = fs.readFileSync(filePath);
-  const sizeBytes = buffer.length;
-
-  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
-    return {
-      text: buffer.subarray(3).toString("utf-8"),
-      encoding: "utf-8-bom",
-      sizeBytes,
-    };
-  }
-
-  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
-    return {
-      text: buffer.subarray(2).toString("utf16le"),
-      encoding: "utf-16le",
-      sizeBytes,
-    };
-  }
-
-  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
-    const swapped = Buffer.allocUnsafe(buffer.length - 2);
-    for (let index = 2; index + 1 < buffer.length; index += 2) {
-      swapped[index - 2] = buffer[index + 1]!;
-      swapped[index - 1] = buffer[index]!;
-    }
-    return {
-      text: swapped.toString("utf16le"),
-      encoding: "utf-16be",
-      sizeBytes,
-    };
-  }
-
   if (isLikelyBinary(buffer)) {
     return null;
   }
 
-  return {
-    text: buffer.toString("utf-8"),
-    encoding: "utf-8",
-    sizeBytes,
-  };
+  return buffer.toString("utf-8");
 };
 
 const readPdfCli = (filePath: string) => runCommand("pdftotext", ["-layout", "-nopgbrk", filePath, "-"]).trim();
@@ -285,36 +244,35 @@ const strategyImplementations: Record<string, ReadStrategyImplementation> = {
         return null;
       }
 
-      const decoded = readTextBuffer(target.targetPath);
-      if (decoded === null) {
+      const text = readTextBuffer(target.targetPath);
+      if (text === null) {
         return null;
       }
 
       return {
         kind: "text",
         mimeType: "text/plain",
-        text: decoded.text,
+        text,
         metadata: {
-          encoding: decoded.encoding,
-          sizeBytes: decoded.sizeBytes,
+          encoding: "utf-8",
+          sizeBytes: Buffer.byteLength(text, "utf-8"),
         },
       };
     },
   },
   "text-content-probe": {
     read: (target) => {
-      const decoded = readTextBuffer(target.targetPath);
-      if (decoded === null) {
+      const text = readTextBuffer(target.targetPath);
+      if (text === null) {
         return null;
       }
 
       return {
         kind: "text",
         mimeType: "text/plain",
-        text: decoded.text,
+        text,
         metadata: {
-          encoding: decoded.encoding,
-          sizeBytes: decoded.sizeBytes,
+          encoding: "utf-8",
           detectedBy: "content-probe",
           extension: target.extension || "(none)",
         },
