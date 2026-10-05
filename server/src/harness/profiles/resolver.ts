@@ -21,8 +21,8 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
       "Find, search text, inspect, and read relevant workspace files and excerpts for the current task.",
     domain: "read",
     tags: ["workspace", "read", "lookup", "locate", "search", "grep", "symbol", "reference", "open"],
-    preferredToolId: "read_open",
-    supportingToolIds: ["grep", "read_discover", "read_open"],
+    preferredToolId: "read",
+    supportingToolIds: ["grep", "read_discover", "read"],
   },
   {
     id: "codebase_understanding",
