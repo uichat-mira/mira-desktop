@@ -14,6 +14,7 @@ import { getWorkspaceRoot, resolveWorkspacePath } from "../workspace.js";
 import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 import {
   escapeGlobPath,
+  filterGitIgnoredPaths,
   normalizeWorkspaceRelativePath,
   resolveWorkspaceIgnorePatterns,
 } from "./path-policy.js";
@@ -455,7 +456,7 @@ const executeNodeFallback = async (input: {
     input.relativePath === "."
       ? localPattern
       : `${escapeGlobPath(input.relativePath)}/${localPattern}`;
-  const files = await fg(filePattern, {
+  const discoveredFiles = await fg(filePattern, {
     cwd: input.workspaceRoot,
     onlyFiles: true,
     dot: true,
@@ -467,6 +468,11 @@ const executeNodeFallback = async (input: {
       input.includeIgnored,
     ),
   });
+  const files = filterGitIgnoredPaths(
+    input.workspaceRoot,
+    discoveredFiles.map(normalizeWorkspaceRelativePath),
+    input.includeIgnored,
+  );
 
   assertActive(input);
   const matcher = buildMatcher({
