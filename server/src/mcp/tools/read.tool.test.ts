@@ -190,6 +190,41 @@ describe("read tool", () => {
     });
   });
 
+  it("keeps UTF-8 classification when the 64 KiB probe ends mid-character", async () => {
+    const prefix = Buffer.alloc(64 * 1024 - 1, 0x61);
+    fs.writeFileSync(
+      path.join(tempRoot, "utf8-probe-boundary.txt"),
+      Buffer.concat([prefix, Buffer.from("中\n尾", "utf8")]),
+    );
+
+    const result = await readTool.execute(
+      context({ path: "utf8-probe-boundary.txt" }),
+    );
+    expect(result.structuredContent).toMatchObject({
+      type: "read",
+      source: {
+        metadata: { encoding: "utf-8" },
+      },
+    });
+    expect(
+      (result.structuredContent as { source: { text: string } }).source.text,
+    ).toContain("中");
+  });
+
+  it("does not accept a genuinely truncated UTF-8 file as valid UTF-8", async () => {
+    fs.writeFileSync(
+      path.join(tempRoot, "invalid-utf8.txt"),
+      Buffer.from([0x61, 0xe4]),
+    );
+
+    const result = await readTool.execute(context({ path: "invalid-utf8.txt" }));
+    expect(result.structuredContent).toMatchObject({
+      type: "unsupported",
+      path: "invalid-utf8.txt",
+      reason: "unknown_encoding",
+    });
+  });
+
   it("decodes GB18030 text without mojibake", async () => {
     const expected = "这是 GBK/GB18030 编码内容，Mira 应该正确读取。";
     fs.writeFileSync(
