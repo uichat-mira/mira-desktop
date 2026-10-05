@@ -9,6 +9,10 @@ import {
   writeFileTool,
 } from "../mcp/tools/edit-actions.tool.js";
 import { editFileTool } from "../mcp/tools/edit-file.tool.js";
+import { writeTool } from "../mcp/tools/write.tool.js";
+import { editTool } from "../mcp/tools/edit.tool.js";
+import { moveTool } from "../mcp/tools/move.tool.js";
+import { deleteTool } from "../mcp/tools/delete.tool.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
 import { globTool } from "../mcp/tools/glob.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
@@ -56,10 +60,10 @@ export const initializeHarnessRuntime = () => {
   registerTool(readOpenTool);
   registerTool(readExtractTool);
 
-  registerTool(writeFileTool);
-  registerTool(replaceBlockTool);
-  registerTool(deletePathTool);
-  registerTool(movePathTool);
+  registerTool(writeTool);
+  registerTool(editTool);
+  registerTool(moveTool);
+  registerTool(deleteTool);
 
   // WenShu document types are exposed as Skills, not duplicate Harness tools.
   // Keep runtime-pack readiness observable while ensuring legacy office_* wrappers
@@ -68,6 +72,10 @@ export const initializeHarnessRuntime = () => {
 
   // Compatibility-only implementations for persisted/legacy invocations.
   // Exposure policy keeps these out of the Agent-visible edit surface.
+  registerTool(writeFileTool);
+  registerTool(replaceBlockTool);
+  registerTool(deletePathTool);
+  registerTool(movePathTool);
   registerTool(editFileTool);
   registerTool(workspaceMutationTool);
 

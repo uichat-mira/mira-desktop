@@ -11,6 +11,10 @@ const INTERNAL_READ_PRIMITIVE_TOOL_IDS = new Set([
 ]);
 
 const INTERNAL_EDIT_COMPAT_TOOL_IDS = new Set([
+  "write_file",
+  "replace_block",
+  "delete_path",
+  "move_path",
   "edit_file",
   "workspace_mutation",
 ]);

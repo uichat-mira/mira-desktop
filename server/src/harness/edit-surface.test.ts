@@ -28,8 +28,20 @@ describe("public edit tool surface", () => {
       .filter((definition) => definition.domain === "edit")
       .map((definition) => definition.id)
       .sort();
-    expect(registeredEditToolIds).toContain("edit_file");
-    expect(registeredEditToolIds).toContain("workspace_mutation");
+    expect(registeredEditToolIds).toEqual(
+      expect.arrayContaining([
+        "write",
+        "edit",
+        "move",
+        "delete",
+        "write_file",
+        "replace_block",
+        "delete_path",
+        "move_path",
+        "edit_file",
+        "workspace_mutation",
+      ]),
+    );
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -42,13 +54,21 @@ describe("public edit tool surface", () => {
       .sort();
 
     expect(exposedEditToolIds).toEqual([
-      "delete_path",
-      "move_path",
-      "replace_block",
-      "write_file",
+      "delete",
+      "edit",
+      "move",
+      "write",
     ]);
-    expect(exposedEditToolIds).not.toContain("edit_file");
-    expect(exposedEditToolIds).not.toContain("workspace_mutation");
+    expect(exposedEditToolIds).not.toEqual(
+      expect.arrayContaining([
+        "write_file",
+        "replace_block",
+        "delete_path",
+        "move_path",
+        "edit_file",
+        "workspace_mutation",
+      ]),
+    );
 
     for (const definition of exposedEditDefinitions) {
       const properties = (definition.inputSchema.properties ?? {}) as Record<string, unknown>;
