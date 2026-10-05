@@ -243,6 +243,49 @@ describe("ToolResult B-prime normalization", () => {
       truncated: true,
     });
 
+    const grep = projectToolEvidence(
+      definition("grep"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "grep",
+          pattern: "answerReadiness",
+          root: "src",
+          matches: [
+            {
+              path: "src/planner.ts",
+              line: 12,
+              column: 7,
+              preview: "const answerReadiness = true;",
+            },
+          ],
+          returnedCount: 1,
+          hasMore: false,
+          truncated: false,
+          provider: "node-content-scan",
+          providerAttempts: [
+            {
+              provider: "system-ripgrep",
+              status: "unavailable",
+              reason: "runtime-unavailable",
+            },
+            { provider: "node-content-scan", status: "success" },
+          ],
+        },
+      }),
+    );
+    expect(grep?.data).toMatchObject({
+      kind: "grep",
+      pattern: "answerReadiness",
+      root: "src",
+      matchCount: 1,
+      matchedPaths: ["src/planner.ts"],
+      matchesPreview: [
+        "src/planner.ts:12:7: const answerReadiness = true;",
+      ],
+      provider: "node-content-scan",
+      truncated: false,
+    });
+
     const opened = projectToolEvidence(
       definition("read"),
       normalizeToolResult({
