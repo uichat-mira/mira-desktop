@@ -352,6 +352,7 @@ const mimeTypeForText = (extension: string) => {
   if (extension === ".css") return "text/css";
   if (extension === ".csv") return "text/csv";
   if (extension === ".xml") return "application/xml";
+  if (extension === ".svg") return "image/svg+xml";
   return "text/plain";
 };
 
