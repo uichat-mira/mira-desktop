@@ -38,6 +38,20 @@ describe("resolveHarnessCapabilityProfiles", () => {
         },
       },
       {
+        id: "list",
+        title: "List",
+        description: "list directory",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {},
+        tags: ["read", "list"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      {
         id: "read",
         title: "Read",
         description: "open",
@@ -58,7 +72,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
         expect.objectContaining({
           id: "workspace_lookup",
           preferredToolId: "read",
-          supportingToolIds: ["read_discover", "read"],
+          supportingToolIds: ["list", "read_discover", "read"],
         }),
       ]),
     );
