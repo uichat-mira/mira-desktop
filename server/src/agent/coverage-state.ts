@@ -52,6 +52,10 @@ type TargetProgress = {
 
 const WORKSPACE_MUTATION_TOOL_IDS = new Set(["workspace_mutation", "edit_file"]);
 const WORKSPACE_READ_TOOL_IDS = new Set([
+  "read",
+  "list",
+  "glob",
+  "grep",
   "read_list",
   "read_open",
   "read_locate",
@@ -127,6 +131,28 @@ const markCompletedSummary = (
     case "read_locate":
       addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
+    case "glob":
+      addLocateMatchTargets(map, summary.data.matchedPaths);
+      return;
+    case "grep":
+      addLocateMatchTargets(map, summary.data.matchedPaths);
+      return;
+    case "read": {
+      const target = normalizeTaskTargetPath(summary.data.path);
+      if (!target) {
+        return;
+      }
+      const progress = ensureTargetProgress(map, target);
+      progress.located = true;
+      progress.opened = true;
+      // A paged read is valid evidence for the returned window, but it must not
+      // masquerade as whole-file verification. The Planner may still stop when
+      // that window answers the user's bounded question.
+      if (summary.status !== "truncated") {
+        progress.verified = true;
+      }
+      return;
+    }
     case "read_open": {
       const target = normalizeTaskTargetPath(summary.data.path);
       if (!target) {
@@ -269,10 +295,30 @@ const hasListEvidence = (input: {
     input.latestSummary,
   ];
 
+  return summaries.some((summary) => {
+    if (summary?.data?.kind === "list") {
+      return summary.status === "completed";
+    }
+    if (summary?.data?.kind === "read_list") {
+      return summary.status === "completed" || summary.status === "truncated";
+    }
+    return false;
+  });
+};
+
+const hasGlobEvidence = (input: {
+  evidence?: AgentEvidencePayload;
+  latestSummary?: AgentEvidenceSummary;
+}) => {
+  const summaries = [
+    ...(input.evidence?.toolExecutions.map((item) => item.summary) ?? []),
+    input.latestSummary,
+  ];
+
   return summaries.some(
     (summary) =>
-      summary?.data?.kind === "read_list" &&
-      (summary.status === "completed" || summary.status === "truncated"),
+      summary?.data?.kind === "glob" &&
+      summary.status === "completed",
   );
 };
 
@@ -315,7 +361,7 @@ const getRequiredTargetActions = (
       requiredWork.requiredActions.includes("verify")
     )
   ) {
-    actions.push("read_open");
+    actions.push("read");
   }
   if (requiredWork.requiredActions.includes("mutate")) {
     actions.push("mutation_execution");
@@ -343,7 +389,7 @@ const getObservedCompletedTargetActions = (
     actions.push("locate");
   }
   if (progress.opened || progress.verified) {
-    actions.push("read_open");
+    actions.push("read");
   }
   if (progress.mutated || progress.terminalMutationFailure) {
     actions.push("mutation_execution");
@@ -363,7 +409,7 @@ const isTargetActionCompleted = (action: string, progress: TargetProgress) => {
         progress.mutated ||
         progress.verified
       );
-    case "read_open":
+    case "read":
       return progress.opened || progress.verified;
     case "mutation_execution":
       return progress.mutated || Boolean(progress.terminalMutationFailure);
@@ -431,7 +477,7 @@ export const reduceAgentCoverageState = (input: {
             return false;
           }
 
-          if (action === "read_open" && !hasPresence) {
+          if (action === "read" && !hasPresence) {
             return false;
           }
 
@@ -458,7 +504,7 @@ export const reduceAgentCoverageState = (input: {
     requiredWork.requiredActions.includes("list") &&
     !hasListEvidence(input)
   ) {
-    globalPendingActions.push("read_list");
+    globalPendingActions.push("list");
   }
   if (
     requiredWork.requiredActions.includes("search") &&
@@ -475,15 +521,16 @@ export const reduceAgentCoverageState = (input: {
   if (
     requiredWork.requiredActions.includes("locate") &&
     requiredWork.requiredTargets.length === 0 &&
-    !hasListEvidence(input)
+    !hasListEvidence(input) &&
+    !hasGlobEvidence(input)
   ) {
-    globalPendingActions.push("read_locate");
+    globalPendingActions.push("glob");
   }
   if (
     requiredWork.requiredActions.includes("read_content") &&
     requiredWork.requiredTargets.length === 0
   ) {
-    globalPendingActions.push("read_open");
+    globalPendingActions.push("read");
   }
   if (
     requiredWork.requiredActions.includes("mutate") &&

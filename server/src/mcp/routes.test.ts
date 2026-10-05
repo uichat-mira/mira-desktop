@@ -200,16 +200,22 @@ describe("mcp routes", () => {
       url: "/mcp/tools",
     });
     expect(toolsResponse.statusCode).toBe(200);
-    expect(
-      (toolsResponse.json() as { data: Array<{ id: string }> }).data.some(
-        (tool) => tool.id === "read_open",
-      ),
-    ).toBe(true);
-    expect(
-      (toolsResponse.json() as { data: Array<{ id: string }> }).data.some(
-        (tool) => tool.id === "read_locate",
-      ),
-    ).toBe(true);
+    const toolIds = (toolsResponse.json() as { data: Array<{ id: string }> }).data.map(
+      (tool) => tool.id,
+    );
+    expect(toolIds).toEqual(
+      expect.arrayContaining(["read", "list", "glob", "grep"]),
+    );
+    expect(toolIds).not.toEqual(
+      expect.arrayContaining([
+        "read_discover",
+        "read_open",
+        "read_list",
+        "read_locate",
+        "read_extract",
+        "read_slice",
+      ]),
+    );
     const readTool = (toolsResponse.json() as {
       data: Array<{
         id: string;
@@ -223,7 +229,7 @@ describe("mcp routes", () => {
           defaultArgs?: Record<string, unknown>;
         };
       }>;
-    }).data.find((tool) => tool.id === "read_open");
+    }).data.find((tool) => tool.id === "read");
     expect(readTool?.workbench).toMatchObject({
       groupId: "read",
       groupLabel: "阅读",
@@ -396,25 +402,25 @@ describe("mcp routes", () => {
     });
     expect(fs.readFileSync(path.join(tempRoot, "a.txt"), "utf8")).toBe("world");
 
-    const locateResponse = await app.inject({
+    const globResponse = await app.inject({
       method: "POST",
       url: "/mcp/invocations",
       payload: {
-        toolId: "read_locate",
+        toolId: "glob",
         args: {
-          query: "a",
-          searchMode: "path",
+          pattern: "*a*",
+          path: ".",
         },
       },
     });
-    expect(locateResponse.statusCode).toBe(200);
+    expect(globResponse.statusCode).toBe(200);
 
-    const locateInvocationId = (
-      locateResponse.json() as { data: { id: string } }
+    const globInvocationId = (
+      globResponse.json() as { data: { id: string } }
     ).data.id;
       const traceResponse = await app.inject({
         method: "GET",
-        url: `/mcp/invocations/${locateInvocationId}/trace`,
+        url: `/mcp/invocations/${globInvocationId}/trace`,
       });
       expect(traceResponse.statusCode).toBe(200);
       expect((traceResponse.json() as {
@@ -428,14 +434,14 @@ describe("mcp routes", () => {
         };
       }).data)
         .toMatchObject({
-          invocationId: locateInvocationId,
+          invocationId: globInvocationId,
           debugView: {
-            invocationId: locateInvocationId,
+            invocationId: globInvocationId,
           },
         });
 
     await app.close();
-  });
+  }, 15_000);
 
   it("resets Tool Lab fixtures and freezes the managed workspace across approval replay", async () => {
     delete process.env.UI_CHAT_WORKSPACE_ROOT;

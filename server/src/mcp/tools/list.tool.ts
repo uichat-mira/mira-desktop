@@ -1,34 +1,28 @@
 import type { ToolImplementation } from "../core/definitions.js";
-import { executeGrep } from "../read/grep.js";
+import { executeList } from "../read/list.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
-export const grepTool: ToolImplementation = {
+export const listTool: ToolImplementation = {
   definition: {
-    id: "grep",
-    title: "Grep",
+    id: "list",
+    title: "List",
     description:
-      "Search file contents by regex or literal text. Returns matching paths and line locations; use glob to search filenames.",
+      "List the direct children of a known directory. Does not recurse.",
     domain: "read",
     source: "internal",
     mode: "sync",
     inputSchema: {
       type: "object",
-      required: ["pattern"],
       additionalProperties: false,
       properties: {
-        pattern: { type: "string" },
         path: { type: "string" },
-        include: { type: "string" },
-        literal: { type: "boolean" },
-        caseSensitive: { type: "boolean" },
-        context: { type: "integer", minimum: 0 },
         offset: { type: "integer", minimum: 0 },
         limit: { type: "integer", minimum: 1 },
         includeIgnored: { type: "boolean" },
       },
     },
     outputSchema: { type: "object" },
-    tags: ["grep", "content", "search"],
+    tags: ["list", "directory"],
     capabilities: {
       sideEffect: "none",
       requiresApproval: false,
@@ -40,16 +34,12 @@ export const grepTool: ToolImplementation = {
     },
   },
   execute: async (context) => {
-    const result = await executeGrep({
+    const result = await executeList({
       args: context.args,
       environment: context.environment,
-      signal: context.signal,
       pushEvent: context.pushEvent,
     });
-
     emitArtifacts(context, result.artifacts);
-    return {
-      structuredContent: result.contents,
-    };
+    return { structuredContent: result.contents };
   },
 };

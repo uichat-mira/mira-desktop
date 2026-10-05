@@ -111,3 +111,4 @@ test("planner recent evidence content keeps multiple canonical tool outputs beyo
   assert.match(content?.content ?? "", /FIRST_REAL_TOOL_MARKER/);
   assert.match(content?.content ?? "", /SECOND_REAL_TOOL_MARKER/);
 });
+

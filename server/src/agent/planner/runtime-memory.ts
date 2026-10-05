@@ -2,6 +2,7 @@ import {
   getHarnessLlmContentText,
   type HarnessLlmContent,
 } from "@/harness/llm-content";
+import { getInvocationImageMessageParts } from "../harness-multimodal";
 import type {
   AgentExecutionObservation,
   AgentToolExecutionResult,
@@ -189,6 +190,16 @@ type CanonicalEvidenceItem = {
   content: string;
 };
 
+export const buildPlannerRecentImageEvidenceParts = (
+  state: AgentGraphState,
+) =>
+  (state.evidence?.toolExecutions ?? [])
+    .filter((execution) => execution.status === "completed")
+    .slice(-PLANNER_RECENT_EVIDENCE_ITEM_LIMIT)
+    .flatMap((execution) =>
+      getInvocationImageMessageParts(execution.invocationId),
+    );
+
 const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
   const items: CanonicalEvidenceItem[] = [];
 
@@ -201,6 +212,7 @@ const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
     if (!llmContent || !text) {
       continue;
     }
+    const content = text;
     items.push({
       createdAt: execution.finishedAt || execution.startedAt,
       header: [
@@ -209,7 +221,7 @@ const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
         `args=${JSON.stringify(execution.args)}`,
         ...(execution.inputHash ? [`inputHash=${execution.inputHash}`] : []),
       ].join("\n"),
-      content: clipEvidenceText(text, PLANNER_SINGLE_EVIDENCE_CONTENT_CHAR_LIMIT),
+      content: clipEvidenceText(content, PLANNER_SINGLE_EVIDENCE_CONTENT_CHAR_LIMIT),
     });
   }
 

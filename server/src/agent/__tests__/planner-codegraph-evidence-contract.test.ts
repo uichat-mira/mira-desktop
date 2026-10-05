@@ -66,7 +66,7 @@ const observationContext: PlannerObservationContext = {
 };
 
 const toolExposure: AgentToolExposureState = {
-  exposedTools: ["codebase_explore", "read_open"],
+  exposedTools: ["codebase_explore", "read"],
   toolMeta: [
     {
       toolId: "codebase_explore",
@@ -86,8 +86,8 @@ const toolExposure: AgentToolExposureState = {
       },
     },
     {
-      toolId: "read_open",
-      title: "Read Open",
+      toolId: "read",
+      title: "Read",
       description: "Open a file.",
       domain: "read",
       source: "internal",
@@ -112,8 +112,8 @@ test("planner treats CodeGraph verifiedSource packets as source-body evidence", 
 
   const systemPrompt = messages[0]?.content ?? "";
   assert.match(systemPrompt, /verifiedSource/);
-  assert.match(systemPrompt, /不要为了形式验证而逐个 read_open/);
-  assert.match(systemPrompt, /禁止退化成无目标的逐文件 read_open crawl/);
+  assert.match(systemPrompt, /不要为了形式验证而逐个 read/);
+  assert.match(systemPrompt, /禁止退化成无目标的逐文件 read crawl/);
 
   const plannerPayload = JSON.parse(messages[1]?.content ?? "{}") as {
     observationContext?: PlannerObservationContext;

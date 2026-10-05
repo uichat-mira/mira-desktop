@@ -101,7 +101,7 @@ describe("read_open tool", () => {
     expect(events[0]).toContain("skill-resource");
   });
 
-  it("keeps the compatibility alias behavior through read", async () => {
+  it("keeps canonical read semantics when invoked through the public read tool", async () => {
     const { readTool } = await import("./read.tool.js");
     const result = await readTool.execute({
       invocationId: "read-open-alias-1",
@@ -114,7 +114,7 @@ describe("read_open tool", () => {
       },
     });
 
-    expect((result.structuredContent as { type: string }).type).toBe("open");
+    expect((result.structuredContent as { type: string }).type).toBe("read");
   });
 
   it("opens a declared line selection", async () => {

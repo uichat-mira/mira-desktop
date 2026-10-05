@@ -43,9 +43,18 @@ const createServer = (
   }) as ExternalMcpServerRecord;
 
 describe("Capability acceptance cases", () => {
-  it("keeps the Phase 2 surface on fixed canonical native cases", () => {
+  it("registers the platform baseline plus Universal Read acceptance cases", () => {
     expect(nativeCapabilityAcceptanceCases.map((caseDefinition) => caseDefinition.id)).toEqual([
       "core-read-success",
+      "universal-read-range",
+      "universal-read-image",
+      "universal-read-svg",
+      "universal-read-binary",
+      "universal-list-direct",
+      "universal-glob-match",
+      "universal-glob-no-match",
+      "universal-grep-match",
+      "universal-grep-no-match",
       "core-read-controlled-failure",
       "core-approval-boundary",
     ]);
@@ -59,6 +68,67 @@ describe("Capability acceptance cases", () => {
       workspace: "managed",
       fixture: "platform-read-success",
     });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-read-range"),
+    ).toMatchObject({
+      toolId: "read",
+      args: {
+        path: ".tool-lab-fixtures/universal-read/text/notes.txt",
+        offset: 1,
+        limit: 2,
+      },
+      workspace: "managed",
+      fixture: "universal-read",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-read-image"),
+    ).toMatchObject({
+      toolId: "read",
+      args: {
+        path: ".tool-lab-fixtures/universal-read/image/pixel.png",
+      },
+      fixture: "universal-read",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-list-direct"),
+    ).toMatchObject({
+      toolId: "list",
+      args: {
+        path: ".tool-lab-fixtures/universal-read/tree",
+        limit: 20,
+      },
+      fixture: "universal-read",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-glob-match"),
+    ).toMatchObject({
+      toolId: "glob",
+      args: {
+        pattern: "**/*.ts",
+        path: ".tool-lab-fixtures/universal-read/tree",
+        limit: 20,
+      },
+      fixture: "universal-read",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-grep-match"),
+    ).toMatchObject({
+      toolId: "grep",
+      args: expect.objectContaining({
+        pattern: "MIRA_NEEDLE",
+        path: ".tool-lab-fixtures/universal-read/tree",
+        include: "**/*.ts",
+        literal: true,
+        context: 1,
+      }),
+      fixture: "universal-read",
+    });
+
     expect(
       nativeCapabilityAcceptanceCases.find((item) => item.id === "core-read-controlled-failure"),
     ).toMatchObject({
@@ -68,6 +138,7 @@ describe("Capability acceptance cases", () => {
       workspace: "managed",
       fixture: "platform-read-missing",
     });
+
     expect(
       nativeCapabilityAcceptanceCases.find((item) => item.id === "core-approval-boundary"),
     ).toMatchObject({

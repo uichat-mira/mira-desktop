@@ -74,12 +74,21 @@ export const getToolTraceTargetPreview = (
   args: Record<string, unknown>,
 ) => {
   if (
-    (toolId === "read_open" ||
+    (toolId === "read" ||
+      toolId === "read_open" ||
+      toolId === "list" ||
       toolId === "read_list" ||
       toolId === "read_locate") &&
     typeof args.path === "string"
   ) {
     return getTraceValuePreview(args.path);
+  }
+
+  if (
+    (toolId === "glob" || toolId === "grep") &&
+    typeof args.pattern === "string"
+  ) {
+    return getTraceValuePreview(args.pattern);
   }
 
   if (toolId === "terminal_session" && typeof args.command === "string") {

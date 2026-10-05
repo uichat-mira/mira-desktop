@@ -79,59 +79,97 @@ Harness 是 concrete tool 的控制平面，不是 Planner、SubAgent 编排器�
 
 ## 3. 当前公共 Read 面
 
-Planner 当前看到的 Read 认知动作是：
+Phase 2 canonical Universal Read 已收敛为：
 
 ```text
-Read
-├─ read_discover
-├─ grep
-├─ read_open
-└─ codebase_explore
+read
+list
+glob
+grep
 ```
 
-### `read_discover`
+当前真实 Agent exposure 中：
 
-只负责 workspace 的目录、路径、文件名和候选目标发现：
+- canonical Universal Read 只暴露 `read / list / glob / grep`；
+- `codebase_explore`：独立 Code / Work Context 能力，不属于 Universal Read；
+- `read_discover / read_open / read_list / read_locate / read_extract / read_slice`：兼容实现，当前不进入新的 Agent exposure；是否删除取决于已验证的 Skill / runtime / persisted consumer。
 
-- `mode: list`：列出目录对象；
-- `mode: locate`：按路径或名称定位候选；
-- 返回有限 preview；
-- 不进行内容 grep；
-- 不打开正文。
+### `read`
+
+已知文件读取：
+
+- 输入保持简单：`path / offset? / limit?`；
+- `offset` 表示跳过多少行，返回的人类行号仍从 1 开始；
+- 单次输出有限，但通过 `nextOffset` 可以继续读取，不把单次上限当成文件能力上限；
+- 常见 UTF BOM / UTF-16 文本按明确编码读取；
+- 二进制返回 structured unsupported；
+- DOCX / XLSX / PPTX / PDF 不由 generic `read` 解析，返回 Office/WenShu Skill routing outcome；
+- 图片通过同一个 `read` 返回，不新增 `read_image`；
+- 图片实现以 Gemini CLI `read_file` 为单一参考基线：SVG 继续按文本读取，其他 `image/*` 文件在 20 MB 单文件上限内以 MIME + base64 的 model-facing image block 进入 Harness；
+- base64 不进入 structured result、Evidence、普通 invocation 读取或日志；Harness 仅把图片作为当前模型调用所需的内容传递；
+- 图片 payload 不是 durable Evidence；若 backend 重启或 retention 后 payload 已不可用，Planner 必须重新 `read` 该图片，Generate 不允许仅凭旧的“已读图片”元数据完成回答；
+- Planner 与 Generate 把需要的 Tool 图片投影到 Mira 已有的 latest-user image message path，Provider 继续使用既有图片适配，不由 `read` 了解 provider wire format。
+
+### `list`
+
+已知目录的直接子项观察：
+
+- 不递归；
+- 目录优先、稳定排序；
+- `offset / limit / nextOffset` 分页；
+- 默认应用 workspace ignore 规则；
+- `includeIgnored=true` 可显式查看默认忽略项，但不会扩大 workspace/symlink authority。
+
+### `glob`
+
+按文件路径 glob pattern 找文件：
+
+- 例如 `**/*.tsx`、`src/**/index.*`、`**/package.json`；
+- 不搜索文件正文；
+- `path` 只限定搜索起点，不改变 workspace authority；
+- `offset / limit / nextOffset` 分页；
+- 默认 ignore 可由 `includeIgnored=true` 显式覆盖；
+- 不跟随 symlink 目录越界。
 
 ### `grep`
 
-负责 deterministic workspace 内容搜索：
+按正文搜索并返回匹配位置：
 
-- 字面文本；
-- 代码符号；
-- 引用；
-- 配置键；
-- 文档正文；
-- 可选 root、扩展名和结果上限。
+- `pattern` 默认是正则；`literal=true` 时按字面文本；
+- omitted `caseSensitive` 使用 smart-case，显式 true/false 可覆盖；
+- `include` 使用 glob 筛选候选文件；
+- `context` 可返回有限上下文行；
+- `offset / limit / nextOffset` 支持继续取后续匹配；
+- `includeIgnored=true` 可显式搜索默认忽略项；
+- provider 顺序是 bundled ripgrep → system ripgrep → deterministic async Node fallback；
+- timeout / AbortSignal cancellation 适用于整个 provider/fallback deadline；
+- no-match 是成功空结果，不等于 runtime/provider failure。
 
-`grep` 是当前公开工具，不是 `read_locate` 的隐藏实现。
+四个 Tool 的选择原则是：
 
-### `read_open`
+```text
+read   known file      -> contents
+list   known directory -> direct children
+glob   path pattern    -> matching file paths
+grep   content query   -> matching content locations
+```
 
-打开已知目标：
+它们追求首选意图清晰，不追求为了“绝对互斥”而削弱能力。
 
-- workspace 文件；
-- 已披露的 `skill://` Resource；
-- 可选正数闭区间 line/range selection；
-- 结果可形成 text / code artifact。
+### `read_discover`
+
+当前仅作为兼容实现保留，已退出新的 Agent exposure。新 Planner / Skill / consumer 不再以它承载目录观察或路径发现；对应新语义分别使用 `list` / `glob` / `grep`。
 
 ### `codebase_explore`
 
 用于代码架构、关系、调用链和影响面探索：
 
-- Planner 只看见 `codebase_explore`；
 - 原生 CodeGraph 命令留在 wrapper 内；
 - 候选会回到当前 workspace 做 source verification；
 - 已核验 excerpt 可以进入 retrieval Evidence；
 - provider 不可用时工具仍存在，并返回结构化 degraded / fallback signal。
 
-它不是第二个 Planner，也不是“只要 Studio ready 就算 E2E 成功”。
+它不是 Universal Read，也不是第二个 Planner。
 
 ## 4. 当前公共 Edit 面
 

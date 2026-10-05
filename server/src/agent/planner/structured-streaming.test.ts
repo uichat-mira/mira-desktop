@@ -26,9 +26,14 @@ describe("streamed planner structured output", () => {
       toolId: "grep",
       args: {
         pattern: "Planner",
-        root: null,
-        extensions: null,
-        maxResults: null,
+        path: null,
+        include: null,
+        literal: null,
+        caseSensitive: null,
+        context: null,
+        offset: null,
+        limit: null,
+        includeIgnored: null,
         nested: {
           keep: "value",
           optional: null,

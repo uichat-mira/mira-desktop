@@ -66,9 +66,9 @@ const makeToolDefinition = (input: {
   },
 });
 
-const readOpenTool = () =>
+const canonicalReadTool = () =>
   makeToolDefinition({
-    id: "read_open",
+    id: "read",
     domain: "read",
     inputSchema: {
       type: "object",
@@ -231,7 +231,7 @@ afterEach(() => {
 
 test("diagnostics closure explains workspace-local web_search hiding with blocked ids and scores", async () => {
   registerTool({
-    definition: readOpenTool(),
+    definition: canonicalReadTool(),
     execute() {
       return {};
     },
@@ -242,21 +242,21 @@ test("diagnostics closure explains workspace-local web_search hiding with blocke
       return {};
     },
   });
-  mockRecallOrder(["read_open"]);
+  mockRecallOrder(["read"]);
 
   const result = await resolveHarnessCapabilityDiagnostics({
     query: "请打开 README.md 看看 Runtime 部分",
     source: "agent_intent",
   });
 
-  assert.deepEqual(result.toolExposure.exposedToolIds, ["read_open", "web_search"]);
+  assert.deepEqual(result.toolExposure.exposedToolIds, ["read", "web_search"]);
   assert.equal(result.blockedCapabilityIds.includes("web_search"), false);
   assert.equal(result.toolCandidates.length > 0, true);
-  assert.equal(result.toolCandidates.some((candidate) => candidate.toolId === "read_open"), true);
+  assert.equal(result.toolCandidates.some((candidate) => candidate.toolId === "read"), true);
 });
 
 test("diagnostics closure records planner and normalize reasons when the selected tool is not exposed", async () => {
-  const readOpen = readOpenTool();
+  const canonicalRead = canonicalReadTool();
   const plannerEvents: Array<Record<string, unknown>> = [];
   const normalizeEvents: Array<Record<string, unknown>> = [];
 
@@ -275,17 +275,17 @@ test("diagnostics closure records planner and normalize reasons when the selecte
       plan: basePlan,
       messages: [makeMessage("open README.md")],
       toolExposure: {
-        exposedTools: ["read_open"],
+        exposedTools: ["read"],
         toolMeta: [
           {
-            toolId: readOpen.id,
-            title: readOpen.title,
-            description: readOpen.description,
-            inputSchema: readOpen.inputSchema,
-            domain: readOpen.domain,
-            source: readOpen.source,
-            tags: readOpen.tags,
-            capabilities: readOpen.capabilities,
+            toolId: canonicalRead.id,
+            title: canonicalRead.title,
+            description: canonicalRead.description,
+            inputSchema: canonicalRead.inputSchema,
+            domain: canonicalRead.domain,
+            source: canonicalRead.source,
+            tags: canonicalRead.tags,
+            capabilities: canonicalRead.capabilities,
           },
         ],
       },
@@ -321,17 +321,17 @@ test("diagnostics closure records planner and normalize reasons when the selecte
         reason: "Need terminal.",
       },
       toolExposure: {
-        exposedTools: ["read_open"],
+        exposedTools: ["read"],
         toolMeta: [
           {
-            toolId: readOpen.id,
-            title: readOpen.title,
-            description: readOpen.description,
-            inputSchema: readOpen.inputSchema,
-            domain: readOpen.domain,
-            source: readOpen.source,
-            tags: readOpen.tags,
-            capabilities: readOpen.capabilities,
+            toolId: canonicalRead.id,
+            title: canonicalRead.title,
+            description: canonicalRead.description,
+            inputSchema: canonicalRead.inputSchema,
+            domain: canonicalRead.domain,
+            source: canonicalRead.source,
+            tags: canonicalRead.tags,
+            capabilities: canonicalRead.capabilities,
           },
         ],
       },
@@ -348,14 +348,14 @@ test("diagnostics closure records planner and normalize reasons when the selecte
 });
 
 test("diagnostics closure keeps schema invalid bounded replan out of Generate", async () => {
-  const readOpen = readOpenTool();
-  setupToolExposure("open README.md", [readOpen]);
+  const canonicalRead = canonicalReadTool();
+  setupToolExposure("open README.md", [canonicalRead]);
   vi.spyOn(providerProxyService, "streamTaskChatText")
     .mockImplementationOnce(async function* () {
-      yield '{"type":"use_tool","toolId":"read_open","args":{"missing":"README.md"},"reason":"Need file content."}';
+      yield '{"type":"use_tool","toolId":"read","args":{"missing":"README.md"},"reason":"Need file content."}';
     })
     .mockImplementationOnce(async function* () {
-      yield '{"type":"use_tool","toolId":"read_open","args":{"missing":"README.md"},"reason":"Still invalid."}';
+      yield '{"type":"use_tool","toolId":"read","args":{"missing":"README.md"},"reason":"Still invalid."}';
     });
   vi.spyOn(harnessInvocations, "executeHarnessInvocation");
   vi.spyOn(runnablesModule.agentGenerateTextRunnable, "invoke");

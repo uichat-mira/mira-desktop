@@ -25,6 +25,7 @@ import {
 import {
   projectHarnessResultForLlm,
   projectHarnessContentForLlm,
+  projectHarnessTextOnlyContent,
   type HarnessLlmContent,
 } from "./llm-content.js";
 import { runWithWorkspaceRootOverride } from "../mcp/workspace.js";
@@ -32,6 +33,8 @@ import { runWithWorkspaceRootOverride } from "../mcp/workspace.js";
 export type HarnessInvocationRecord = ToolInvocation & {
   llmContent?: HarnessLlmContent;
 };
+
+const modelContentByInvocation = new WeakMap<ToolInvocation, HarnessLlmContent>();
 
 export const executeHarnessInvocation = async (
   input: ExecuteInvocationInput,
@@ -67,13 +70,19 @@ export const executeHarnessInvocation = async (
       ? {
           ...projected,
           blocks: projected.blocks.map((block, index) =>
-            index === 0
+            index === 0 && block.type === "text"
               ? { ...block, text: `toolOutcome=error\n${block.text}` }
               : block,
           ),
         }
       : projected;
-  return llmContent ? { ...record, llmContent } : record;
+  if (llmContent) {
+    modelContentByInvocation.set(record, llmContent);
+  }
+  const serializableLlmContent = projectHarnessTextOnlyContent(llmContent);
+  return serializableLlmContent
+    ? { ...record, llmContent: serializableLlmContent }
+    : record;
 };
 
 export const resolveHarnessInvocationApproval = async (input: {
@@ -174,6 +183,13 @@ export const resolveHarnessInvocationApproval = async (input: {
 
 export const getHarnessInvocation = (invocationId: string) =>
   getInvocation(invocationId);
+
+export const getHarnessInvocationModelContent = (
+  invocationId: string,
+): HarnessLlmContent | undefined => {
+  const record = getInvocation(invocationId);
+  return record ? modelContentByInvocation.get(record) : undefined;
+};
 
 export const listHarnessInvocationEvents = (
   invocationId: string,

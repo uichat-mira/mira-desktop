@@ -3,6 +3,8 @@ import { resolveHarnessToolExposure } from "./exposure.js";
 import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { codebaseExploreTool } from "../mcp/managed-codegraph/codebase-explore.tool.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
+import { globTool } from "../mcp/tools/glob.tool.js";
+import { listTool } from "../mcp/tools/list.tool.js";
 import { readDiscoverTool } from "../mcp/tools/read-discover.tool.js";
 import { readExtractTool } from "../mcp/tools/read-extract.tool.js";
 import { readListTool } from "../mcp/tools/read-list.tool.js";
@@ -16,9 +18,11 @@ describe("public read tool surface", () => {
     clearHarnessRegistry();
   });
 
-  it("exposes exactly four read actions to the Agent while keeping legacy primitives internal", () => {
+  it("exposes canonical read list glob grep while keeping compatibility primitives internal", () => {
     [
       readTool,
+      listTool,
+      globTool,
       readListTool,
       readLocateTool,
       readExtractTool,
@@ -38,7 +42,7 @@ describe("public read tool surface", () => {
       .sort();
 
     expect(readToolIds).toEqual(
-      ["codebase_explore", "grep", "read_discover", "read_open"].sort(),
+      ["codebase_explore", "glob", "grep", "list", "read"].sort(),
     );
   });
 });

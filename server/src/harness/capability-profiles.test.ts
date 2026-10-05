@@ -24,22 +24,50 @@ describe("resolveHarnessCapabilityProfiles", () => {
   it("groups read family tools under one workspace capability profile", () => {
     const profiles = resolveHarnessCapabilityProfiles([
       {
-        id: "read_discover",
-        title: "Read Discover",
-        description: "discover",
+        id: "grep",
+        title: "Grep",
+        description: "search file contents",
         domain: "read",
         source: "internal",
         mode: "sync",
         inputSchema: {},
-        tags: ["read"],
+        tags: ["read", "grep"],
         capabilities: {
           sideEffect: "none",
           requiresApproval: false,
         },
       },
       {
-        id: "read_open",
-        title: "Read Open",
+        id: "glob",
+        title: "Glob",
+        description: "glob files",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {},
+        tags: ["read", "glob"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      {
+        id: "list",
+        title: "List",
+        description: "list directory",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {},
+        tags: ["read", "list"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      {
+        id: "read",
+        title: "Read",
         description: "open",
         domain: "read",
         source: "internal",
@@ -57,8 +85,8 @@ describe("resolveHarnessCapabilityProfiles", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "workspace_lookup",
-          preferredToolId: "read_open",
-          supportingToolIds: ["read_discover", "read_open"],
+          preferredToolId: "read",
+          supportingToolIds: ["glob", "grep", "list", "read"],
         }),
       ]),
     );

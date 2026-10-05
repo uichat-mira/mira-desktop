@@ -111,7 +111,158 @@ const baseEvidence = (input: {
 });
 
 const projectReadEvidence = (toolId: string, result: Record<string, unknown>, isError: boolean) => {
-  if (toolId === "read_open" || toolId === "read") {
+  if (toolId === "read" && result.type === "unsupported") {
+    const path = typeof result.path === "string" ? result.path : "unknown";
+    const reason = typeof result.reason === "string" ? result.reason : "unsupported";
+    const fileType = typeof result.fileType === "string" ? result.fileType : undefined;
+    const mimeType = typeof result.mimeType === "string" ? result.mimeType : undefined;
+    const sizeBytes =
+      typeof result.sizeBytes === "number" ? result.sizeBytes : undefined;
+    const maxBytes =
+      typeof result.maxBytes === "number" ? result.maxBytes : undefined;
+    const suggestedSkill =
+      typeof result.suggestedSkill === "string" ? result.suggestedSkill : undefined;
+    const gap =
+      reason === "office_owned"
+        ? `Office-native file ${path} is owned by the ${suggestedSkill ?? fileType ?? "Office"} Skill domain.`
+        : reason === "file_too_large"
+          ? `Image file ${path} exceeds the canonical read image transport limit.`
+          : reason === "unknown_encoding"
+            ? `Text encoding for ${path} could not be identified safely.`
+            : `Generic read does not decode binary file ${path} as text.`;
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken:
+        reason === "file_too_large"
+          ? `Image read was not emitted for oversized file ${path}.`
+          : `Generic read did not consume ${path} as ordinary text.`,
+      facts: [
+        `path=${path}`,
+        `reason=${reason}`,
+        ...(fileType ? [`fileType=${fileType}`] : []),
+        ...(mimeType ? [`mimeType=${mimeType}`] : []),
+        ...(sizeBytes === undefined ? [] : [`sizeBytes=${sizeBytes}`]),
+        ...(maxBytes === undefined ? [] : [`maxBytes=${maxBytes}`]),
+        ...(suggestedSkill ? [`suggestedSkill=${suggestedSkill}`] : []),
+      ],
+      gaps: [gap],
+      status: "partial",
+      data: {
+        kind: "generic_structured",
+        preview: {
+          type: "unsupported",
+          path,
+          reason,
+          ...(fileType ? { fileType } : {}),
+          ...(mimeType ? { mimeType } : {}),
+          ...(sizeBytes === undefined ? {} : { sizeBytes }),
+          ...(maxBytes === undefined ? {} : { maxBytes }),
+          ...(suggestedSkill ? { suggestedSkill } : {}),
+        },
+        truncated: false,
+        redacted: false,
+        unsupported: true,
+      },
+    });
+  }
+  if (toolId === "read" && result.mediaType === "image") {
+    const path = typeof result.path === "string" ? result.path : "unknown";
+    const mimeType =
+      typeof result.mimeType === "string" ? result.mimeType : "image/*";
+    const sizeBytes =
+      typeof result.sizeBytes === "number" ? result.sizeBytes : undefined;
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Read image file ${path}.`,
+      facts: [
+        `path=${path}`,
+        "mediaType=image",
+        `mimeType=${mimeType}`,
+        ...(sizeBytes === undefined ? [] : [`sizeBytes=${sizeBytes}`]),
+      ],
+      data: {
+        kind: "read",
+        path,
+        contentPreview: `[image ${mimeType}]`,
+        contentLength: 0,
+        truncated: false,
+        mediaType: "image",
+        mimeType,
+        ...(sizeBytes === undefined ? {} : { sizeBytes }),
+      },
+    });
+  }
+  if (toolId === "read") {
+    const path = typeof result.path === "string" ? result.path : "unknown";
+    const source = asRecord(result.source);
+    const text = typeof source?.text === "string" ? source.text : "";
+    const contentPreview = textPreview(text);
+    const previewTruncated = contentPreview.length < text.length;
+    const resultTruncated = result.truncated === true || result.hasMore === true;
+    const truncated = previewTruncated || resultTruncated;
+    const offset = typeof result.offset === "number" ? result.offset : 0;
+    const limit = typeof result.limit === "number" ? result.limit : undefined;
+    const returnedCount =
+      typeof result.returnedCount === "number" ? result.returnedCount : undefined;
+    const totalLines =
+      typeof result.totalLines === "number" ? result.totalLines : undefined;
+    const startLine =
+      typeof result.startLine === "number" ? result.startLine : undefined;
+    const endLine =
+      typeof result.endLine === "number" ? result.endLine : undefined;
+    const nextOffset =
+      typeof result.nextOffset === "number" ? result.nextOffset : undefined;
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Read file ${path}.`,
+      facts: [
+        `path=${path}`,
+        `contentLength=${text.length}`,
+        `offset=${offset}`,
+        ...(limit === undefined ? [] : [`limit=${limit}`]),
+        ...(returnedCount === undefined ? [] : [`returnedCount=${returnedCount}`]),
+        ...(totalLines === undefined ? [] : [`totalLines=${totalLines}`]),
+        ...(startLine === undefined ? [] : [`startLine=${startLine}`]),
+        ...(endLine === undefined ? [] : [`endLine=${endLine}`]),
+        ...(nextOffset === undefined ? [] : [`nextOffset=${nextOffset}`]),
+        ...(contentPreview ? [contentPreview] : []),
+      ],
+      gaps: truncated
+        ? [
+            resultTruncated
+              ? "File read is paged; continuation is available."
+              : "File content preview is truncated.",
+          ]
+        : undefined,
+      status: truncated ? "truncated" : undefined,
+      data: {
+        kind: "read",
+        path,
+        contentPreview,
+        contentLength: text.length,
+        truncated,
+        pagination: {
+          offset,
+          ...(limit === undefined ? {} : { limit }),
+          ...(returnedCount === undefined ? {} : { returnedCount }),
+          ...(totalLines === undefined ? {} : { totalLines }),
+          ...(startLine === undefined ? {} : { startLine }),
+          ...(endLine === undefined ? {} : { endLine }),
+          ...(nextOffset === undefined ? {} : { nextOffset }),
+        },
+        keySections: text
+          .split(/\r?\n+/)
+          .map((line) => line.trim())
+          .filter((line) => /^#{1,6}\s+/.test(line))
+          .slice(0, 5)
+          .map((line) => line.replace(/^#{1,6}\s+/, "")),
+      },
+    });
+  }
+  if (toolId === "read_open") {
     const path = typeof result.path === "string" ? result.path : "unknown";
     const source = asRecord(result.source);
     const text = typeof source?.text === "string" ? source.text : "";
@@ -121,8 +272,11 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       result,
       isError,
       actionTaken: `Opened file ${path}.`,
-      facts: [`contentLength=${text.length}`, ...(contentPreview ? [contentPreview] : [])],
-      gaps: truncated ? ["File content is truncated."] : undefined,
+      facts: [
+        `contentLength=${text.length}`,
+        ...(contentPreview ? [contentPreview] : []),
+      ],
+      gaps: truncated ? ["File content preview is truncated."] : undefined,
       status: truncated ? "truncated" : undefined,
       data: {
         kind: "read_open",
@@ -139,32 +293,122 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       },
     });
   }
-  if (toolId === "read_list") {
+  if (toolId === "list" || toolId === "read_list") {
     const path = typeof result.path === "string" ? result.path : "unknown";
-    const entries = Array.isArray(result.entries) ? result.entries.filter(asRecord).map((entry) => ({
-      name: typeof entry.name === "string" ? entry.name : "unknown",
-      type: entry.type === "directory" ? "directory" : "file",
-    })) : [];
-    const returnedCount = typeof result.returnedCount === "number" ? result.returnedCount : entries.length;
-    const totalCount = typeof result.totalCount === "number" ? result.totalCount : returnedCount;
+    const entries = Array.isArray(result.entries)
+      ? result.entries.filter(asRecord).map((entry) => ({
+          name: typeof entry.name === "string" ? entry.name : "unknown",
+          type:
+            entry.type === "directory"
+              ? "directory"
+              : entry.type === "symlink"
+                ? "symlink"
+                : "file",
+        }))
+      : [];
+    const returnedCount =
+      typeof result.returnedCount === "number" ? result.returnedCount : entries.length;
+    const totalCount =
+      typeof result.totalCount === "number" ? result.totalCount : returnedCount;
     const fileCount = entries.filter((entry) => entry.type === "file").length;
     const directoryCount = entries.filter((entry) => entry.type === "directory").length;
-    const entriesPreview = entries.slice(0, 5).map((entry) => `${entry.type === "directory" ? "[D]" : "[F]"} ${entry.name}`);
-    const truncated = result.truncated === true || result.hasMore === true || returnedCount < totalCount;
+    const symlinkCount = entries.filter((entry) => entry.type === "symlink").length;
+    const entriesPreview = entries.slice(0, 5).map((entry) => {
+      const prefix =
+        entry.type === "directory" ? "[D]" : entry.type === "symlink" ? "[L]" : "[F]";
+      return `${prefix} ${entry.name}`;
+    });
+    const truncated =
+      result.truncated === true ||
+      result.hasMore === true ||
+      returnedCount < totalCount;
     return baseEvidence({
       result,
       isError,
       actionTaken: `Listed workspace directory ${path}.`,
-      facts: [`path=${path}`, `entryCount=${totalCount}`, `fileCount=${fileCount}`, `directoryCount=${directoryCount}`, ...entriesPreview],
-      gaps: truncated ? ["Directory listing is truncated."] : entries.length === 0 ? ["Directory is empty."] : undefined,
+      facts: [
+        `path=${path}`,
+        `entryCount=${totalCount}`,
+        `fileCount=${fileCount}`,
+        `directoryCount=${directoryCount}`,
+        ...(toolId === "list" && typeof result.offset === "number"
+          ? [`offset=${result.offset}`]
+          : []),
+        ...(toolId === "list" && typeof result.nextOffset === "number"
+          ? [`nextOffset=${result.nextOffset}`]
+          : []),
+        ...(symlinkCount > 0 ? [`symlinkCount=${symlinkCount}`] : []),
+        ...entriesPreview,
+      ],
+      gaps: truncated
+        ? ["Directory listing is truncated."]
+        : entries.length === 0
+          ? ["Directory is empty."]
+          : undefined,
       status: truncated ? "truncated" : undefined,
       data: {
-        kind: "read_list",
+        kind: toolId === "list" ? "list" : "read_list",
         path,
         entryCount: totalCount,
         fileCount,
         directoryCount,
+        ...(symlinkCount > 0 ? { symlinkCount } : {}),
         entriesPreview,
+        ...(toolId === "list" && typeof result.offset === "number"
+          ? { offset: result.offset }
+          : {}),
+        ...(toolId === "list" && typeof result.nextOffset === "number"
+          ? { nextOffset: result.nextOffset }
+          : {}),
+        truncated,
+      },
+    });
+  }
+  if (toolId === "glob") {
+    const pattern = typeof result.pattern === "string" ? result.pattern : "";
+    const path = typeof result.path === "string" ? result.path : ".";
+    const matches = Array.isArray(result.matches)
+      ? result.matches.filter((value): value is string => typeof value === "string")
+      : [];
+    const returnedCount =
+      typeof result.returnedCount === "number" ? result.returnedCount : matches.length;
+    const totalCount =
+      typeof result.totalCount === "number" ? result.totalCount : returnedCount;
+    const truncated =
+      result.truncated === true ||
+      result.hasMore === true ||
+      returnedCount < totalCount;
+    const matchedPaths = matches.slice(0, 20);
+    const matchesPreview = matchedPaths.slice(0, 5);
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Matched workspace files with glob ${pattern || "(empty)"}.`,
+      facts: [
+        `pattern=${pattern}`,
+        `path=${path}`,
+        `matchCount=${totalCount}`,
+        ...(typeof result.offset === "number" ? [`offset=${result.offset}`] : []),
+        ...(typeof result.nextOffset === "number"
+          ? [`nextOffset=${result.nextOffset}`]
+          : []),
+        ...matchesPreview.map((match) => `matchedPath=${match}`),
+      ],
+      gaps: truncated
+        ? ["Glob results are truncated."]
+        : matches.length === 0
+          ? ["Glob pattern matched no files."]
+          : undefined,
+      status: truncated ? "truncated" : undefined,
+      data: {
+        kind: "glob",
+        pattern,
+        path,
+        matchCount: totalCount,
+        offset: typeof result.offset === "number" ? result.offset : 0,
+        ...(typeof result.nextOffset === "number" ? { nextOffset: result.nextOffset } : {}),
+        matchedPaths,
+        matchesPreview,
         truncated,
       },
     });
@@ -218,7 +462,61 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       },
     });
   }
-  if (toolId === "read_locate" || toolId === "grep") {
+  if (toolId === "grep") {
+    const pattern = typeof result.pattern === "string" ? result.pattern : "";
+    const path = typeof result.path === "string" ? result.path : ".";
+    const provider = typeof result.provider === "string" ? result.provider : "unknown";
+    const matches = Array.isArray(result.matches)
+      ? result.matches.filter(asRecord).map((match) => ({
+          path: typeof match.path === "string" ? match.path : "unknown",
+          line: typeof match.line === "number" ? match.line : 0,
+          column: typeof match.column === "number" ? match.column : 0,
+          preview:
+            typeof match.preview === "string"
+              ? textPreview(match.preview, 120)
+              : "",
+        }))
+      : [];
+    const truncated = result.truncated === true || result.hasMore === true;
+    const matchedPaths = [...new Set(matches.map((match) => match.path))].slice(0, 20);
+    const matchesPreview = matches.slice(0, 5).map((match) =>
+      `${match.path}:${match.line}:${match.column}${match.preview ? `: ${match.preview}` : ""}`,
+    );
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Searched workspace text for "${pattern}".`,
+      facts: [
+        `pattern=${pattern}`,
+        `path=${path}`,
+        `provider=${provider}`,
+        `matchCount=${matches.length}`,
+        ...(typeof result.offset === "number" ? [`offset=${result.offset}`] : []),
+        ...(typeof result.nextOffset === "number"
+          ? [`nextOffset=${result.nextOffset}`]
+          : []),
+        ...matchesPreview,
+      ],
+      gaps: [
+        ...(matches.length === 0 ? ["No workspace content matches were returned."] : []),
+        ...(truncated ? ["Grep results are truncated."] : []),
+      ],
+      status: truncated ? "truncated" : undefined,
+      data: {
+        kind: "grep",
+        pattern,
+        path,
+        matchCount: matches.length,
+        offset: typeof result.offset === "number" ? result.offset : 0,
+        ...(typeof result.nextOffset === "number" ? { nextOffset: result.nextOffset } : {}),
+        matchedPaths,
+        matchesPreview,
+        provider,
+        truncated,
+      },
+    });
+  }
+  if (toolId === "read_locate") {
     const query = typeof result.query === "string" ? result.query : "";
     const matches = Array.isArray(result.matches) ? result.matches : [];
     const sortedMatches = matches.filter(asRecord).map((match) => ({

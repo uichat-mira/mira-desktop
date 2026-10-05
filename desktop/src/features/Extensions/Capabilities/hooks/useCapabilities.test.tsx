@@ -357,7 +357,10 @@ describe("useCapabilities", () => {
     const useCapabilities = await importHook();
     const { result } = renderHook(() => useCapabilities());
 
-    await waitFor(() => expect(result.current.tools).toHaveLength(2));
+    await waitFor(() => {
+      expect(result.current.tools.some((tool) => tool.id === "read")).toBe(true);
+      expect(result.current.tools.some((tool) => tool.id === "write_file")).toBe(true);
+    });
 
     act(() => {
       result.current.selectTool("write_file");

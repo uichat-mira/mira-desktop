@@ -92,9 +92,9 @@ const makeToolDefinition = (input: {
   },
 });
 
-const readListTool = () =>
+const listToolDefinition = () =>
   makeToolDefinition({
-    id: "read_list",
+    id: "list",
     domain: "read",
     inputSchema: {
       type: "object",
@@ -107,9 +107,9 @@ const readListTool = () =>
     workspaceBound: true,
   });
 
-const readOpenTool = () =>
+const readToolDefinition = () =>
   makeToolDefinition({
-    id: "read_open",
+    id: "read",
     domain: "read",
     inputSchema: {
       type: "object",
@@ -365,10 +365,10 @@ describe("chat route approval resume smoke", () => {
     const app = await createAuthedApp();
     const { user, thread, token } = createUserThread();
 
-    setupToolExposure("看看当前 workspace 有哪些文件。", [readListTool()]);
+    setupToolExposure("看看当前 workspace 有哪些文件。", [listToolDefinition()]);
     vi.spyOn(providerProxyService, "streamTaskChatText")
       .mockImplementationOnce(async function* () {
-        yield '{"type":"use_tool","toolId":"read_list","args":{"path":"/workspace"},"reason":"Need the workspace listing."}';
+        yield '{"type":"use_tool","toolId":"list","args":{"path":"."},"reason":"Need the workspace listing."}';
       })
       .mockImplementationOnce(async function* () {
         yield '{"type":"answer","reason":"The workspace listing is sufficient.","completionProof":[{"criterion":"Report the current workspace listing to the user.","evidenceRefs":[]}],"unresolvedGaps":[]}';
@@ -376,8 +376,8 @@ describe("chat route approval resume smoke", () => {
     const executeSpy = vi
       .spyOn(harnessInvocations, "executeHarnessInvocation")
       .mockResolvedValue({
-        id: "invocation-s1-read-list",
-        toolId: "read_list",
+        id: "invocation-s1-list",
+        toolId: "list",
         status: "completed",
         result: {
           type: "list",
@@ -405,7 +405,7 @@ describe("chat route approval resume smoke", () => {
     assert.equal(response.statusCode, 200, response.body);
     assert.match(response.body, /workspace listing answer/);
     assert.equal(executeSpy.mock.calls.length, 1);
-    assert.equal(executeSpy.mock.calls[0]?.[0]?.toolId, "read_list");
+    assert.equal(executeSpy.mock.calls[0]?.[0]?.toolId, "list");
     assert.deepEqual(executeSpy.mock.calls[0]?.[0]?.args, { path: "." });
 
     const assistantMessage = getLatestAssistantMessage(thread.id, user.id);
@@ -657,17 +657,17 @@ describe("chat route approval resume smoke", () => {
     const app = await createAuthedApp();
     const { user, thread, token } = createUserThread();
 
-    setupToolExposure("打开一个不存在的文件。", [readOpenTool()]);
+    setupToolExposure("打开一个不存在的文件。", [readToolDefinition()]);
     vi.spyOn(providerProxyService, "streamTaskChatText")
       .mockImplementationOnce(async function* () {
-        yield '{"type":"use_tool","toolId":"read_open","args":{"path":"missing.md"},"reason":"Need the file content."}';
+        yield '{"type":"use_tool","toolId":"read","args":{"path":"missing.md"},"reason":"Need the file content."}';
       })
       .mockImplementationOnce(async function* () {
         yield '{"type":"answer","reason":"The read failed, so the file cannot be confirmed.","completionProof":[{"criterion":"Report that the requested file could not be opened.","evidenceRefs":[]}],"unresolvedGaps":[]}';
       });
     vi.spyOn(harnessInvocations, "executeHarnessInvocation").mockResolvedValue({
-      id: "invocation-s5-read-open-failed",
-      toolId: "read_open",
+      id: "invocation-s5-read-failed",
+      toolId: "read",
       status: "failed",
       error: {
         message: "File not found",
@@ -728,16 +728,16 @@ describe("chat route approval resume smoke", () => {
       const app = await createAuthedApp();
       const { user, thread, token } = createUserThread();
 
-      setupToolExposure("打开 README.md。", [readOpenTool()]);
+      setupToolExposure("打开 README.md。", [readToolDefinition()]);
       vi.spyOn(providerProxyService, "streamTaskChatText").mockImplementation(
         async function* () {
-          yield '{"type":"use_tool","toolId":"read_open","args":{"path":"README.md"},"reason":"Need the file content."}';
+          yield '{"type":"use_tool","toolId":"read","args":{"path":"README.md"},"reason":"Need the file content."}';
         },
       );
       const generateSpy = vi.spyOn(runnablesModule.agentGenerateTextRunnable, "invoke");
       vi.spyOn(harnessInvocations, "executeHarnessInvocation").mockResolvedValue({
-        id: "invocation-s6-read-open-terminal-failed",
-        toolId: "read_open",
+        id: "invocation-s6-read-terminal-failed",
+        toolId: "read",
         status: "failed",
         error: {
           message: "Tool protocol mismatch: result payload is invalid",

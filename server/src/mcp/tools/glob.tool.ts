@@ -1,13 +1,13 @@
 import type { ToolImplementation } from "../core/definitions.js";
-import { executeGrep } from "../read/grep.js";
+import { executeGlob } from "../read/glob.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
-export const grepTool: ToolImplementation = {
+export const globTool: ToolImplementation = {
   definition: {
-    id: "grep",
-    title: "Grep",
+    id: "glob",
+    title: "Glob",
     description:
-      "Search file contents by regex or literal text. Returns matching paths and line locations; use glob to search filenames.",
+      "Find file paths matching a glob pattern. Does not search file contents.",
     domain: "read",
     source: "internal",
     mode: "sync",
@@ -18,17 +18,13 @@ export const grepTool: ToolImplementation = {
       properties: {
         pattern: { type: "string" },
         path: { type: "string" },
-        include: { type: "string" },
-        literal: { type: "boolean" },
-        caseSensitive: { type: "boolean" },
-        context: { type: "integer", minimum: 0 },
         offset: { type: "integer", minimum: 0 },
         limit: { type: "integer", minimum: 1 },
         includeIgnored: { type: "boolean" },
       },
     },
     outputSchema: { type: "object" },
-    tags: ["grep", "content", "search"],
+    tags: ["glob", "path", "file"],
     capabilities: {
       sideEffect: "none",
       requiresApproval: false,
@@ -40,16 +36,12 @@ export const grepTool: ToolImplementation = {
     },
   },
   execute: async (context) => {
-    const result = await executeGrep({
+    const result = await executeGlob({
       args: context.args,
       environment: context.environment,
-      signal: context.signal,
       pushEvent: context.pushEvent,
     });
-
     emitArtifacts(context, result.artifacts);
-    return {
-      structuredContent: result.contents,
-    };
+    return { structuredContent: result.contents };
   },
 };

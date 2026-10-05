@@ -9,7 +9,7 @@ source: Mira
 status: review
 execution.context: fork
 execution.agent: subAgent
-execution.allowedTools: read_open, terminal_session
+execution.allowedTools: read, terminal_session
 execution.workspaceBound: true
 ---
 

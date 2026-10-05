@@ -269,7 +269,7 @@ renderer 不该做：
 
 例如：
 
-- `read_open`
+- `read`
 - `web_search`
 - `terminal_session`
 
@@ -431,7 +431,7 @@ MCP capability id 不能和内部核心 Tool id 冲突。
 
 内置 capability 继续保留稳定 id，例如：
 
-- `read_open`
+- `read`
 - `read_locate`
 - `web_search`
 - `terminal_session`

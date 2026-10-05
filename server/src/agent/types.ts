@@ -174,12 +174,15 @@ export interface AgentFinalizationPacket {
 }
 
 export interface AgentReadListEvidenceData {
-  kind: "read_list";
+  kind: "list" | "read_list";
   path: string;
   entryCount: number;
   fileCount: number;
   directoryCount: number;
+  symlinkCount?: number;
   entriesPreview: string[];
+  offset?: number;
+  nextOffset?: number;
   truncated: boolean;
 }
 
@@ -198,6 +201,27 @@ export interface AgentReadDiscoverEvidenceData {
   truncated: boolean;
 }
 
+export interface AgentReadEvidenceData {
+  kind: "read";
+  path: string;
+  contentPreview: string;
+  contentLength: number;
+  truncated: boolean;
+  mediaType?: "text" | "image";
+  mimeType?: string;
+  sizeBytes?: number;
+  keySections?: string[];
+  pagination?: {
+    offset: number;
+    limit?: number;
+    returnedCount?: number;
+    totalLines?: number;
+    startLine?: number;
+    endLine?: number;
+    nextOffset?: number;
+  };
+}
+
 export interface AgentReadOpenEvidenceData {
   kind: "read_open";
   path: string;
@@ -205,6 +229,38 @@ export interface AgentReadOpenEvidenceData {
   contentLength: number;
   truncated: boolean;
   keySections?: string[];
+  window?: {
+    startLine: number;
+    endLine: number;
+    totalLines: number;
+    truncated: boolean;
+    nextStartLine?: number;
+  };
+}
+
+export interface AgentGlobEvidenceData {
+  kind: "glob";
+  pattern: string;
+  path: string;
+  matchCount: number;
+  matchedPaths: string[];
+  matchesPreview: string[];
+  offset?: number;
+  nextOffset?: number;
+  truncated: boolean;
+}
+
+export interface AgentGrepEvidenceData {
+  kind: "grep";
+  pattern: string;
+  path: string;
+  matchCount: number;
+  matchedPaths: string[];
+  matchesPreview: string[];
+  provider: string;
+  offset?: number;
+  nextOffset?: number;
+  truncated: boolean;
 }
 
 export interface AgentReadLocateEvidenceData {
@@ -306,7 +362,10 @@ export type AgentEvidenceSummaryData =
   | AgentGenericStructuredEvidenceData
   | AgentReadDiscoverEvidenceData
   | AgentReadListEvidenceData
+  | AgentReadEvidenceData
   | AgentReadOpenEvidenceData
+  | AgentGlobEvidenceData
+  | AgentGrepEvidenceData
   | AgentReadLocateEvidenceData
   | AgentWebSearchEvidenceData
   | AgentTerminalSessionEvidenceData

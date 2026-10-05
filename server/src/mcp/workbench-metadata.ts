@@ -47,12 +47,12 @@ const DOMAIN_METADATA: Record<string, WorkbenchPresentation> = {
 };
 
 const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
-  read_discover: { mode: "list", path: "" },
+  read: { path: "" },
+  list: { path: "." },
+  glob: { pattern: "**/*", path: "." },
+  grep: { pattern: "", path: "." },
   read_open: { path: "" },
-  read_list: { path: "" },
-  read_locate: { query: "" },
   read_extract: { path: "" },
-  read_slice: { text: "" },
   write_file: { path: "", content: "" },
   replace_block: { path: "", expectedOldText: "", newText: "" },
   delete_path: { path: "" },

@@ -51,6 +51,31 @@ describe("initializeHarnessRuntime tool registration", () => {
     expect(decision.exposedToolIds).toContain("codebase_explore");
   });
 
+  it("retires obsolete read wrappers while preserving Office compatibility readers", () => {
+    initializeHarnessRuntime();
+
+    const toolIds = listToolDefinitions().map((definition) => definition.id);
+
+    expect(toolIds).toEqual(
+      expect.arrayContaining([
+        "read",
+        "list",
+        "glob",
+        "grep",
+        "read_open",
+        "read_extract",
+      ]),
+    );
+    expect(toolIds).not.toEqual(
+      expect.arrayContaining([
+        "read_discover",
+        "read_list",
+        "read_locate",
+        "read_slice",
+      ]),
+    );
+  });
+
   it("registers exactly four GitHub domain tools and no legacy read wrappers", () => {
     initializeHarnessRuntime();
 

@@ -24,6 +24,9 @@ const writeExecutable = (root: string, relativePath: string) => {
   fs.writeFileSync(destination, "test");
 };
 
+const systemExecutableName = (command: string) =>
+  process.platform === "win32" ? `${command}.exe` : command;
+
 const writeManifest = (resourcesRoot: string) => {
   const components = {
     node: "node-runtime/node.exe",
@@ -87,7 +90,7 @@ describe("Terminal Dev Runtime resolution", () => {
   it("preserves system PATH and reports unavailable components without a manifest", () => {
     const resourcesRoot = makeTempRoot();
     const systemRoot = makeTempRoot();
-    writeExecutable(systemRoot, "git.exe");
+    writeExecutable(systemRoot, systemExecutableName("git"));
     const resolution = inspectTerminalDevRuntime({
       resourcesRoot,
       systemPath: systemRoot,
@@ -117,7 +120,7 @@ describe("Terminal Dev Runtime resolution", () => {
     const resourcesRoot = makeTempRoot();
     const systemRoot = makeTempRoot();
     writeManifest(resourcesRoot);
-    writeExecutable(systemRoot, "rg.exe");
+    writeExecutable(systemRoot, systemExecutableName("rg"));
     const manifestPath = path.join(resourcesRoot, "terminal-runtime", "manifest.json");
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
     manifest.components.ripgrep.runtimeSha256 = "0".repeat(64);
@@ -134,7 +137,7 @@ describe("Terminal Dev Runtime resolution", () => {
 
     expect(resolution.components.ripgrep.source).toBe("system");
     expect(resolution.components.ripgrep.executablePath).toBe(
-      path.join(systemRoot, "rg.exe"),
+      path.join(systemRoot, systemExecutableName("rg")),
     );
     expect(resolvedEnv.PATH).not.toContain(
       path.join(resourcesRoot, "terminal-runtime", "bin"),

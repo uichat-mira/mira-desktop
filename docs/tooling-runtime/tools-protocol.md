@@ -64,7 +64,7 @@ Registry 中存在不代表：
 当前会隐藏内部 / 兼容工具：
 
 ```text
-read
+read_open
 read_list
 read_locate
 read_extract
@@ -155,7 +155,7 @@ Exposure schema 必须：
 使用短、稳定、领域无歧义的 id，例如：
 
 ```text
-read_open
+read
 grep
 write_file
 web_search
@@ -163,6 +163,21 @@ terminal_session
 browser_observe
 github_repository
 ```
+
+当前 Universal Read 的公开 known-target reader 是 `read`。
+
+Canonical Universal Read 的模型选择语义保持简单：
+
+```text
+read   known file      -> contents
+list   known directory -> direct children
+glob   path pattern    -> matching file paths
+grep   content query   -> matching content locations
+```
+
+Canonical Tool 的 `offset / limit / nextOffset` 是单次上下文预算与 continuation，不是最终能力上限。默认 ignore 规则允许通过显式 `includeIgnored` 覆盖，但 workspace/symlink authority 不因此放宽。
+
+历史 `read_open` 仅作为迁移期兼容入口保留，不进入新的 Agent exposure；待已验证的 persisted/runtime consumer 迁移完成后删除。
 
 ### External MCP Projected Tool
 
@@ -315,10 +330,13 @@ Completed invocation 可以产生：
 
 - structured result；
 - bounded `llmContent`；
+- text / image model-facing content blocks；
 - included / original chars；
 - truncated metadata；
 - artifact；
 - trace spans。
+
+Canonical image read 使用中性的 image content block（MIME + base64）。图片 payload 不进入 structured result 或 Evidence；Agent 在模型调用边界把它投影到现有 message image part，Provider-specific 图片格式仍由既有 Provider adapter 负责。
 
 Failed invocation 不生成成功的 LLM projection。
 

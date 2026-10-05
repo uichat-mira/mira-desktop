@@ -78,7 +78,7 @@ const resetFixtureDirectory = (workspaceRoot: string, fixtureId: string) => {
 
 const workspaceFixture = (input: {
   id: string;
-  files?: Record<string, string>;
+  files?: Record<string, string | Buffer>;
   directories?: string[];
 }): ToolLabFixtureDefinition => ({
   id: input.id,
@@ -119,6 +119,47 @@ const fixtureDefinitions: ToolLabFixtureDefinition[] = [
   }),
   workspaceFixture({
     id: "platform-approval-boundary",
+  }),
+  workspaceFixture({
+    id: "universal-read",
+    directories: [
+      "text",
+      "image",
+      "binary",
+      "tree/nested",
+      "tree/ignored",
+    ],
+    files: {
+      "text/notes.txt": [
+        "line one",
+        "line two",
+        "line three",
+        "line four",
+        "line five",
+        "",
+      ].join("\n"),
+      "image/pixel.png": Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlE7h8AAAAASUVORK5CYII=",
+        "base64",
+      ),
+      "image/icon.svg": [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">',
+        '  <rect width="16" height="16" fill="#000" />',
+        "</svg>",
+        "",
+      ].join("\n"),
+      "binary/blob.bin": Buffer.from([0, 255, 1, 254, 2, 253, 3, 252]),
+      "tree/alpha.txt": "alpha\n",
+      "tree/beta.md": "beta\n",
+      "tree/nested/gamma.ts": [
+        "export const before = true;",
+        'export const marker = "MIRA_NEEDLE";',
+        "export const after = true;",
+        "",
+      ].join("\n"),
+      "tree/.gitignore": "ignored/\n",
+      "tree/ignored/secret.ts": 'export const hidden = "MIRA_NEEDLE";\n',
+    },
   }),
 ];
 

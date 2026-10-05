@@ -1,6 +1,11 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { clearHarnessRegistry, registerTool } from "@/harness/registry.js";
-import { clearHarnessInvocations, executeHarnessInvocation } from "@/harness/invocations.js";
+import {
+  clearHarnessInvocations,
+  executeHarnessInvocation,
+  getHarnessInvocationModelContent,
+} from "@/harness/invocations.js";
+import { getHarnessLlmContentText } from "@/harness/llm-content.js";
 import type { ToolImplementation, ToolDefinition } from "./definitions.js";
 import { normalizeToolResult, projectToolEvidence } from "./tool-result.js";
 
@@ -37,7 +42,60 @@ describe("ToolResult B-prime normalization", () => {
 
     expect(record.status).toBe("completed");
     expect(record.result).toEqual({ ok: true });
-    expect(record.llmContent?.blocks[0]?.text).toContain("model-facing answer");
+    expect(getHarnessLlmContentText(record.llmContent)).toContain("model-facing answer");
+  });
+
+  it("ordinary Harness invocation reads do not expose cached image payloads", async () => {
+    registerTool({
+      definition: {
+        id: "test_tool_result_image_content",
+        title: "Test image",
+        description: "Test image",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: [],
+        capabilities: { sideEffect: "none", requiresApproval: false },
+      },
+      execute: () => ({
+        content: [
+          { type: "text", text: "Read image file: test.png" },
+          {
+            type: "image",
+            data: "SECRET_IMAGE_BASE64",
+            mimeType: "image/png",
+            filename: "test.png",
+          },
+        ],
+        structuredContent: {
+          type: "read",
+          path: "test.png",
+          mediaType: "image",
+          mimeType: "image/png",
+          sizeBytes: 10,
+        },
+      }),
+    });
+
+    const executed = await executeHarnessInvocation({
+      toolId: "test_tool_result_image_content",
+    });
+    expect(
+      executed.llmContent?.blocks.some((block) => block.type === "image"),
+    ).not.toBe(true);
+    expect(JSON.stringify(executed)).not.toContain("SECRET_IMAGE_BASE64");
+
+    expect(
+      getHarnessInvocationModelContent(executed.id)?.blocks.some(
+        (block) => block.type === "image" && block.data === "SECRET_IMAGE_BASE64",
+      ),
+    ).toBe(true);
+
+    const { getHarnessInvocation } = await import("@/harness/invocations.js");
+    const ordinary = getHarnessInvocation(executed.id);
+    expect(ordinary).not.toHaveProperty("llmContent");
+    expect(JSON.stringify(ordinary)).not.toContain("SECRET_IMAGE_BASE64");
   });
 
   it("keeps Tool isError on a completed invocation and projects failed evidence", async () => {
@@ -189,17 +247,168 @@ describe("ToolResult B-prime normalization", () => {
       truncated: true,
     });
 
-    const opened = projectToolEvidence(
-      definition("read_open"),
+    const canonicalList = projectToolEvidence(
+      definition("list"),
       normalizeToolResult({
         structuredContent: {
-          type: "open",
-          path: "README.md",
-          source: { text: "# Intro\nbody\n## Details\nmore", metadata: {} },
+          type: "list",
+          path: "docs",
+          entries: [
+            { name: "guides", type: "directory" },
+            { name: "README.md", type: "file" },
+            { name: "latest", type: "symlink" },
+          ],
+          returnedCount: 3,
+          totalCount: 5,
+          hasMore: true,
+          truncated: true,
         },
       }),
     );
-    expect(opened?.data).toMatchObject({ kind: "read_open", keySections: ["Intro", "Details"] });
+    expect(canonicalList?.data).toMatchObject({
+      kind: "list",
+      path: "docs",
+      fileCount: 1,
+      directoryCount: 1,
+      symlinkCount: 1,
+      entriesPreview: ["[D] guides", "[F] README.md", "[L] latest"],
+      truncated: true,
+    });
+
+    const glob = projectToolEvidence(
+      definition("glob"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "glob",
+          pattern: "**/*.ts",
+          path: "src",
+          matches: ["src/a.ts", "src/b.ts", "src/c.ts"],
+          offset: 0,
+          returnedCount: 3,
+          totalCount: 8,
+          hasMore: true,
+          truncated: true,
+          nextOffset: 3,
+        },
+      }),
+    );
+    expect(glob?.status).toBe("truncated");
+    expect(glob?.facts).toContain("nextOffset=3");
+    expect(glob?.data).toMatchObject({
+      kind: "glob",
+      pattern: "**/*.ts",
+      path: "src",
+      matchCount: 8,
+      offset: 0,
+      nextOffset: 3,
+      matchedPaths: ["src/a.ts", "src/b.ts", "src/c.ts"],
+      matchesPreview: ["src/a.ts", "src/b.ts", "src/c.ts"],
+      truncated: true,
+    });
+
+    const grep = projectToolEvidence(
+      definition("grep"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "grep",
+          pattern: "answerReadiness",
+          path: "src",
+          offset: 0,
+          matches: [
+            {
+              path: "src/planner.ts",
+              line: 12,
+              column: 7,
+              preview: "const answerReadiness = true;",
+            },
+          ],
+          returnedCount: 1,
+          hasMore: false,
+          truncated: false,
+          provider: "node-content-scan",
+          providerAttempts: [
+            {
+              provider: "system-ripgrep",
+              status: "unavailable",
+              reason: "runtime-unavailable",
+            },
+            { provider: "node-content-scan", status: "success" },
+          ],
+        },
+      }),
+    );
+    expect(grep?.data).toMatchObject({
+      kind: "grep",
+      pattern: "answerReadiness",
+      path: "src",
+      matchCount: 1,
+      offset: 0,
+      matchedPaths: ["src/planner.ts"],
+      matchesPreview: [
+        "src/planner.ts:12:7: const answerReadiness = true;",
+      ],
+      provider: "node-content-scan",
+      truncated: false,
+    });
+
+    const opened = projectToolEvidence(
+      definition("read"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "read",
+          path: "README.md",
+          source: { text: "# Intro\nbody\n## Details\nmore", metadata: {} },
+          offset: 0,
+          limit: 4,
+          returnedCount: 4,
+          totalLines: 10,
+          startLine: 1,
+          endLine: 4,
+          hasMore: true,
+          truncated: true,
+          nextOffset: 4,
+        },
+      }),
+    );
+    expect(opened?.status).toBe("truncated");
+    expect(opened?.facts).toContain("nextOffset=4");
+    expect(opened?.data).toMatchObject({
+      kind: "read",
+      keySections: ["Intro", "Details"],
+      pagination: {
+        offset: 0,
+        limit: 4,
+        returnedCount: 4,
+        totalLines: 10,
+        startLine: 1,
+        endLine: 4,
+        nextOffset: 4,
+      },
+    });
+
+    const officeRouted = projectToolEvidence(
+      definition("read"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "unsupported",
+          path: "proposal.docx",
+          reason: "office_owned",
+          fileType: "docx",
+          suggestedSkill: "docx",
+        },
+      }),
+    );
+    expect(officeRouted?.status).toBe("partial");
+    expect(officeRouted?.facts).toContain("suggestedSkill=docx");
+    expect(officeRouted?.data).toMatchObject({
+      kind: "generic_structured",
+      unsupported: true,
+      preview: {
+        path: "proposal.docx",
+        reason: "office_owned",
+        suggestedSkill: "docx",
+      },
+    });
 
     const search = projectToolEvidence(
       definition("web_search", "internal", "web_search"),
@@ -218,6 +427,41 @@ describe("ToolResult B-prime normalization", () => {
       resultCount: 1,
       citationsPreview: [{ title: "Mira", link: "https://example.com" }],
     });
+  });
+
+  it("keeps image base64 out of structured Evidence", () => {
+    const base64 = "BASE64_SHOULD_NOT_ENTER_EVIDENCE";
+    const evidence = projectToolEvidence(
+      definition("read"),
+      normalizeToolResult({
+        content: [
+          { type: "text", text: "Read image file: diagram.png" },
+          {
+            type: "image",
+            data: base64,
+            mimeType: "image/png",
+            filename: "diagram.png",
+          },
+        ],
+        structuredContent: {
+          type: "read",
+          path: "diagram.png",
+          mediaType: "image",
+          mimeType: "image/png",
+          sizeBytes: 123,
+        },
+      }),
+    );
+
+    expect(evidence?.data).toMatchObject({
+      kind: "read",
+      path: "diagram.png",
+      mediaType: "image",
+      mimeType: "image/png",
+      sizeBytes: 123,
+      truncated: false,
+    });
+    expect(JSON.stringify(evidence)).not.toContain(base64);
   });
 
   it("keeps Evidence data bounded and redacted instead of copying structured results", () => {

@@ -398,7 +398,7 @@ dist/sitemap.xml
 dist/robots.txt
 ```
 
-内容页数量按 `contentMode` 验证。只读文件清单优先使用 `read_discover`，不要为反复 `dir` / `ls` 申请 Terminal 审批。
+内容页数量按 `contentMode` 验证。已知目录清单优先使用 `list`，按路径模式找输出使用 `glob`，不要为反复 `dir` / `ls` 申请 Terminal 审批。
 
 ## 15. 禁止临场探索
 

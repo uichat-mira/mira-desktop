@@ -37,12 +37,12 @@ export type TerminalDevRuntimeResolution = {
 };
 
 const componentCommands: Record<RuntimeComponentName, string> = {
-  node: "node.exe",
-  npm: "npm.cmd",
-  npx: "npx.cmd",
-  git: "git.exe",
-  uv: "uv.exe",
-  ripgrep: "rg.exe",
+  node: "node",
+  npm: "npm",
+  npx: "npx",
+  git: "git",
+  uv: "uv",
+  ripgrep: "rg",
 };
 
 const expectedComponents = Object.keys(componentCommands) as RuntimeComponentName[];
