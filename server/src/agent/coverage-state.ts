@@ -52,6 +52,7 @@ type TargetProgress = {
 
 const WORKSPACE_MUTATION_TOOL_IDS = new Set(["workspace_mutation", "edit_file"]);
 const WORKSPACE_READ_TOOL_IDS = new Set([
+  "read",
   "read_list",
   "read_open",
   "read_locate",
