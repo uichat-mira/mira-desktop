@@ -199,6 +199,22 @@ export interface AgentReadDiscoverEvidenceData {
   truncated: boolean;
 }
 
+export interface AgentReadEvidenceData {
+  kind: "read";
+  path: string;
+  contentPreview: string;
+  contentLength: number;
+  truncated: boolean;
+  keySections?: string[];
+  window?: {
+    startLine: number;
+    endLine: number;
+    totalLines: number;
+    truncated: boolean;
+    nextStartLine?: number;
+  };
+}
+
 export interface AgentReadOpenEvidenceData {
   kind: "read_open";
   path: string;
@@ -335,6 +351,7 @@ export type AgentEvidenceSummaryData =
   | AgentGenericStructuredEvidenceData
   | AgentReadDiscoverEvidenceData
   | AgentReadListEvidenceData
+  | AgentReadEvidenceData
   | AgentReadOpenEvidenceData
   | AgentGlobEvidenceData
   | AgentGrepEvidenceData
