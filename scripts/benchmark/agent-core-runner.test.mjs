@@ -414,7 +414,14 @@ test("Core v0.1 Batch 2-5 fixture ids are registered", () => {
 
 test("fixture reset is deterministic for representative static fixtures", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-fixtures-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() =>
+    fs.rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    }),
+  );
   for (const fixtureId of ["i02-v1", "i04-v1", "i06-v1", "adv01-v1", "adv06-v1"]) {
     const workspace = path.join(root, fixtureId, "workspace");
     const external = path.join(root, fixtureId, "external");
