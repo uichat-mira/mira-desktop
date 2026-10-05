@@ -4,6 +4,7 @@ import {
   type HarnessLlmContent,
 } from "@/harness/llm-content";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
+import { projectHarnessImagesToMessageParts } from "./harness-multimodal";
 import type {
   AgentEvidencePayload,
   AgentEvidenceReference,
@@ -171,6 +172,7 @@ export const materializeFinalizationEvidence = (input: {
     ...new Set(input.packet.completionProof.flatMap((proof) => proof.evidenceRefs)),
   ];
   const messages: NormalizedChatMessage[] = [];
+  const imageParts = [];
   const missingRefs: AgentEvidenceReference[] = [];
 
   for (const ref of orderedRefs) {
@@ -187,6 +189,11 @@ export const materializeFinalizationEvidence = (input: {
         continue;
       }
       messages.push(toSystemMessage(renderToolEvidence(ref, execution)));
+      imageParts.push(
+        ...projectHarnessImagesToMessageParts(
+          (execution as ToolExecutionWithLlmContent).llmContent,
+        ),
+      );
       continue;
     }
 
@@ -234,5 +241,5 @@ export const materializeFinalizationEvidence = (input: {
     );
   }
 
-  return { messages, missingRefs };
+  return { messages, imageParts, missingRefs };
 };
