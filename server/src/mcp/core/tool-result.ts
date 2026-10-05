@@ -304,6 +304,12 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
         directoryCount,
         ...(symlinkCount > 0 ? { symlinkCount } : {}),
         entriesPreview,
+        ...(toolId === "list" && typeof result.offset === "number"
+          ? { offset: result.offset }
+          : {}),
+        ...(toolId === "list" && typeof result.nextOffset === "number"
+          ? { nextOffset: result.nextOffset }
+          : {}),
         truncated,
       },
     });
