@@ -11,8 +11,10 @@ import type { SkillManifest } from "./context/types.js";
 const skillsRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const MIRADOCS_ALLOWED_TOOLS = [
-  "read_discover",
-  "read_open",
+  "list",
+  "glob",
+  "grep",
+  "read",
   "terminal_session",
   "github_repository",
   "github_pull_request",
