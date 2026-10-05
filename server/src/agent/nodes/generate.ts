@@ -216,15 +216,6 @@ export const generateNode = async (
       blockedReason: errorMessage,
     };
   }
-  if (materializedEvidence.unavailableImageRefs.length > 0) {
-    const errorMessage =
-      `Generate cannot use image Evidence whose pixel payload is no longer available: ${materializedEvidence.unavailableImageRefs.join(", ")}. Re-read the image before finalizing.`;
-    return {
-      errorMessage,
-      errorSourceNodeId: "agent-generate",
-      blockedReason: errorMessage,
-    };
-  }
 
   const invocationResolution = providerProxyService.describeChatInvocation(
     "default",
