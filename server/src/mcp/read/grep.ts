@@ -10,7 +10,7 @@ import type {
 } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { resolveTerminalRuntimeExecutable } from "../terminal/dev-runtime.js";
-import { getWorkspaceRoot, resolveWorkspaceDirectoryPath } from "../workspace.js";
+import { resolveWorkspaceDirectoryPath } from "../workspace.js";
 import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 import {
   escapeGlobPath,
@@ -683,7 +683,7 @@ export const executeGrep = async (
     parseOptionalBoolean(args.includeIgnored, "includeIgnored") ?? false;
   const providerLimit = offset + limit + 1;
 
-  const workspaceRoot = getWorkspaceRoot();
+  const workspaceRoot = resolveWorkspaceDirectoryPath(".");
   const targetPath = resolveWorkspaceDirectoryPath(inputPath);
 
   const relativePath =
