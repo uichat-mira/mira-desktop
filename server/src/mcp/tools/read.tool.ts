@@ -70,6 +70,7 @@ const executeSkillResourceRead = async (input: {
 
   return {
     contents,
+    content: undefined,
     artifacts: [
       createArtifact({
         kind: "markdown",
@@ -149,9 +150,8 @@ export const readTool: ToolImplementation = {
         });
 
     emitArtifacts(context, result.artifacts);
-    const content = "content" in result ? result.content : undefined;
     return {
-      ...(content?.length ? { content } : {}),
+      ...(result.content?.length ? { content: result.content } : {}),
       structuredContent: result.contents,
     };
   },
