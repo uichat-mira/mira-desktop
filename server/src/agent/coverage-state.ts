@@ -55,6 +55,7 @@ const WORKSPACE_READ_TOOL_IDS = new Set([
   "read",
   "list",
   "glob",
+  "grep",
   "read_list",
   "read_open",
   "read_locate",
@@ -131,6 +132,9 @@ const markCompletedSummary = (
       addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
     case "glob":
+      addLocateMatchTargets(map, summary.data.matchedPaths);
+      return;
+    case "grep":
       addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
     case "read_open": {
