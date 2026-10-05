@@ -215,6 +215,15 @@ export interface AgentReadOpenEvidenceData {
   };
 }
 
+export interface AgentGlobEvidenceData {
+  kind: "glob";
+  pattern: string;
+  root: string;
+  matchCount: number;
+  matchesPreview: string[];
+  truncated: boolean;
+}
+
 export interface AgentReadLocateEvidenceData {
   kind: "read_locate";
   scope: string;
@@ -315,6 +324,7 @@ export type AgentEvidenceSummaryData =
   | AgentReadDiscoverEvidenceData
   | AgentReadListEvidenceData
   | AgentReadOpenEvidenceData
+  | AgentGlobEvidenceData
   | AgentReadLocateEvidenceData
   | AgentWebSearchEvidenceData
   | AgentTerminalSessionEvidenceData
