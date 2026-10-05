@@ -259,6 +259,47 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       },
     });
   }
+  if (toolId === "glob") {
+    const pattern = typeof result.pattern === "string" ? result.pattern : "";
+    const root = typeof result.root === "string" ? result.root : ".";
+    const matches = Array.isArray(result.matches)
+      ? result.matches.filter((value): value is string => typeof value === "string")
+      : [];
+    const returnedCount =
+      typeof result.returnedCount === "number" ? result.returnedCount : matches.length;
+    const totalCount =
+      typeof result.totalCount === "number" ? result.totalCount : returnedCount;
+    const truncated =
+      result.truncated === true ||
+      result.hasMore === true ||
+      returnedCount < totalCount;
+    const matchesPreview = matches.slice(0, 5);
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Matched workspace files with glob ${pattern || "(empty)"}.`,
+      facts: [
+        `pattern=${pattern}`,
+        `root=${root}`,
+        `matchCount=${totalCount}`,
+        ...matchesPreview.map((match) => `matchedPath=${match}`),
+      ],
+      gaps: truncated
+        ? ["Glob results are truncated."]
+        : matches.length === 0
+          ? ["Glob pattern matched no files."]
+          : undefined,
+      status: truncated ? "truncated" : undefined,
+      data: {
+        kind: "glob",
+        pattern,
+        root,
+        matchCount: totalCount,
+        matchesPreview,
+        truncated,
+      },
+    });
+  }
   if (toolId === "read_discover") {
     const operation = typeof result.operation === "string" ? result.operation : "list";
     const entries = Array.isArray(result.entries) ? result.entries : Array.isArray(result.matches) ? result.matches : [];
