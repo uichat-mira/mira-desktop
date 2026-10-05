@@ -198,7 +198,7 @@ describe("canonical grep runtime", () => {
     const completeLine = JSON.stringify({ type: "match", data: { value: 1 } });
     const partialLine = '{"type":"match"';
     const script = `process.stdout.write(${JSON.stringify(
-      `${completeLine}\\n${partialLine}`,
+      `${completeLine}\n${partialLine}`,
     )}); setTimeout(() => {}, 5000);`;
     let seen = "";
 
