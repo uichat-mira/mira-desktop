@@ -2,7 +2,7 @@ import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessExposurePolicyInput } from "./types.js";
 
 const INTERNAL_READ_PRIMITIVE_TOOL_IDS = new Set([
-  "read",
+  "read_open",
   "read_list",
   "read_locate",
   "read_extract",
