@@ -84,6 +84,10 @@ export const getToolTraceTargetPreview = (
     return getTraceValuePreview(args.path);
   }
 
+  if (toolId === "glob" && typeof args.pattern === "string") {
+    return getTraceValuePreview(args.pattern);
+  }
+
   if (toolId === "terminal_session" && typeof args.command === "string") {
     return getTraceValuePreview(args.command);
   }
