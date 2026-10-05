@@ -306,7 +306,7 @@ describe("ToolResult B-prime normalization", () => {
     expect(opened?.status).toBe("truncated");
     expect(opened?.facts).toContain("nextStartLine=5");
     expect(opened?.data).toMatchObject({
-      kind: "read_open",
+      kind: "read",
       keySections: ["Intro", "Details"],
       window: {
         startLine: 1,
