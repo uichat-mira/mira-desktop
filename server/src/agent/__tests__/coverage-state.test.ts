@@ -11,6 +11,33 @@ test("coverage reducer asks for canonical list when directory evidence is missin
   assert.equal(state.taskCompletable, false);
 });
 
+test("coverage reducer keeps broad list pending while canonical list has another page", () => {
+  const state = reduceAgentCoverageState({
+    question: "列出当前目录有哪些文件",
+    latestSummary: {
+      source: "tool",
+      status: "truncated",
+      toolId: "list",
+      actionTaken: "Listed current directory.",
+      keyFindings: ["entryCount=300", "nextOffset=200"],
+      data: {
+        kind: "list",
+        path: ".",
+        entryCount: 300,
+        fileCount: 180,
+        directoryCount: 20,
+        entriesPreview: ["README.md", "src"],
+        offset: 0,
+        nextOffset: 200,
+        truncated: true,
+      },
+    },
+  });
+
+  assert.equal(state.taskCompletable, false);
+  assert.deepEqual(state.globalPendingActions, ["list"]);
+});
+
 test("coverage reducer completes list task from canonical list evidence", () => {
   const state = reduceAgentCoverageState({
     question: "列出当前目录有哪些文件",
@@ -85,6 +112,60 @@ test("coverage reducer completes list task from read_list evidence", () => {
           finishedAt: "2026-07-09T00:00:01.000Z",
         },
       ],
+    },
+  });
+
+  assert.equal(state.taskCompletable, true);
+  assert.deepEqual(state.globalPendingActions, []);
+});
+
+test("coverage reducer keeps broad locate pending while canonical glob has another page", () => {
+  const state = reduceAgentCoverageState({
+    question: "项目里的配置文件在哪里？",
+    latestSummary: {
+      source: "tool",
+      status: "truncated",
+      toolId: "glob",
+      actionTaken: "Matched workspace files.",
+      keyFindings: ["nextOffset=200"],
+      data: {
+        kind: "glob",
+        pattern: "**/*config*",
+        path: ".",
+        matchCount: 350,
+        matchedPaths: ["src/config.ts"],
+        matchesPreview: ["src/config.ts"],
+        offset: 0,
+        nextOffset: 200,
+        truncated: true,
+      },
+    },
+  });
+
+  assert.equal(state.taskCompletable, false);
+  assert.deepEqual(state.globalPendingActions, ["glob"]);
+});
+
+test("coverage reducer may stop a truncated glob once an explicit target was found", () => {
+  const state = reduceAgentCoverageState({
+    question: "README.md 在哪里？",
+    latestSummary: {
+      source: "tool",
+      status: "truncated",
+      toolId: "glob",
+      actionTaken: "Matched workspace files.",
+      keyFindings: ["matchedPath=README.md", "nextOffset=200"],
+      data: {
+        kind: "glob",
+        pattern: "**/README.md",
+        path: ".",
+        matchCount: 250,
+        matchedPaths: ["README.md"],
+        matchesPreview: ["README.md"],
+        offset: 0,
+        nextOffset: 200,
+        truncated: true,
+      },
     },
   });
 
