@@ -273,7 +273,8 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       result.truncated === true ||
       result.hasMore === true ||
       returnedCount < totalCount;
-    const matchesPreview = matches.slice(0, 5);
+    const matchedPaths = matches.slice(0, 20);
+    const matchesPreview = matchedPaths.slice(0, 5);
     return baseEvidence({
       result,
       isError,
@@ -295,6 +296,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
         pattern,
         root,
         matchCount: totalCount,
+        matchedPaths,
         matchesPreview,
         truncated,
       },
