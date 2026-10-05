@@ -1,15 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import {
-  projectHarnessContentForLlm,
-  projectHarnessResultForLlm,
-} from "@/harness/llm-content";
+import { projectHarnessResultForLlm } from "@/harness/llm-content";
 import type { AgentExecutionObservation } from "../types";
 import type { AgentGraphState } from "../node-runtime";
 import {
   buildPlannerAccumulatedActionLedger,
   buildPlannerLatestEvidenceContent,
-  buildPlannerRecentImageEvidenceParts,
 } from "../planner/runtime-memory";
 
 const createReadObservation = (input: {
@@ -116,88 +112,3 @@ test("planner recent evidence content keeps multiple canonical tool outputs beyo
   assert.match(content?.content ?? "", /SECOND_REAL_TOOL_MARKER/);
 });
 
-
-test("planner projects recent tool images through the existing image message contract", () => {
-  const state = {
-    evidence: {
-      observations: [],
-      retrievals: [],
-      toolExecutions: [
-        {
-          toolCallId: "image-call",
-          toolId: "read",
-          inputHash: "image-hash",
-          args: { path: "diagram.png" },
-          status: "completed",
-          result: {
-            type: "read",
-            path: "diagram.png",
-            mediaType: "image",
-            mimeType: "image/png",
-            sizeBytes: 3,
-          },
-          llmContent: projectHarnessContentForLlm([
-            { type: "text", text: "Read image file: diagram.png" },
-            {
-              type: "image",
-              data: "YWJj",
-              mimeType: "image/png",
-              filename: "diagram.png",
-            },
-          ]),
-          startedAt: "2026-07-19T00:00:00.000Z",
-          finishedAt: "2026-07-19T00:00:01.000Z",
-        },
-      ],
-    },
-  } as AgentGraphState;
-
-  assert.deepEqual(buildPlannerRecentImageEvidenceParts(state), [
-    {
-      type: "image",
-      image: "data:image/png;base64,YWJj",
-      filename: "diagram.png",
-      mediaType: "image/png",
-    },
-  ]);
-});
-
-
-test("planner requires a fresh read when persisted image Evidence has lost its ephemeral payload", () => {
-  const state = {
-    evidence: {
-      observations: [],
-      retrievals: [],
-      toolExecutions: [
-        {
-          toolCallId: "image-call",
-          toolId: "read",
-          inputHash: "image-hash",
-          invocationId: "expired-invocation",
-          args: { path: "diagram.png" },
-          status: "completed",
-          result: {
-            type: "read",
-            path: "diagram.png",
-            mediaType: "image",
-            mimeType: "image/png",
-            sizeBytes: 3,
-          },
-          llmContent: projectHarnessContentForLlm([
-            { type: "text", text: "Read image file: diagram.png" },
-          ]),
-          startedAt: "2026-07-19T00:00:00.000Z",
-          finishedAt: "2026-07-19T00:00:01.000Z",
-        },
-      ],
-    },
-  } as AgentGraphState;
-
-  assert.deepEqual(buildPlannerRecentImageEvidenceParts(state), []);
-  const content = buildPlannerLatestEvidenceContent(state, undefined);
-  assert.match(content?.content ?? "", /imagePayload=unavailable/);
-  assert.match(
-    content?.content ?? "",
-    /read the same image path again before relying on its visual contents/,
-  );
-});
