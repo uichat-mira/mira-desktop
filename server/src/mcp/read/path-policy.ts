@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { mcpInternalError } from "../core/errors.js";
+import { resolveTerminalRuntimeExecutable } from "../terminal/dev-runtime.js";
 
 export const DEFAULT_WORKSPACE_IGNORE_PATTERNS = [
   ".git",
@@ -74,6 +75,11 @@ export const filterGitIgnoredPaths = async (
     return relativePaths;
   }
 
+  const gitRuntime = resolveTerminalRuntimeExecutable("git");
+  if (!gitRuntime.executablePath) {
+    return relativePaths;
+  }
+
   const input = `${relativePaths.join("\0")}\0`;
   const timeoutMs = Math.max(
     1,
@@ -86,7 +92,7 @@ export const filterGitIgnoredPaths = async (
 
   return await new Promise<string[]>((resolve, reject) => {
     const child = spawn(
-      "git",
+      gitRuntime.executablePath,
       ["check-ignore", "--no-index", "--stdin", "-z"],
       {
         cwd: workspaceRoot,
