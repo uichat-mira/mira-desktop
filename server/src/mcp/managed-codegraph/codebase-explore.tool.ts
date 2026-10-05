@@ -95,7 +95,7 @@ const createCodebaseExploreRetrievalSummary = (input: {
       : []),
     ...(input.verification.unverifiable.length > 0
       ? [
-          `${input.verification.unverifiable.length} CodeGraph candidate(s) lacked a stable verifiable range; targeted read_open is appropriate only for those specific unresolved targets.`,
+          `${input.verification.unverifiable.length} CodeGraph candidate(s) lacked a stable verifiable range; targeted read is appropriate only for those specific unresolved targets.`,
         ]
       : []),
     ...(input.exploreTrace.fallbackReason
@@ -169,7 +169,7 @@ export const codebaseExploreTool: ToolImplementation = {
     id: "codebase_explore",
     title: "Codebase Explore",
     description:
-      "Primary local code-understanding tool for architecture, symbols, relationships, and impact. Candidates are re-read from the workspace before Evidence. Successful results include bounded verified source excerpts with paths and line ranges; treat those verified excerpts as source-body evidence and do not mechanically read_open the same files unless a specific unresolved line/context gap remains.",
+      "Primary local code-understanding tool for architecture, symbols, relationships, and impact. Candidates are re-read from the workspace before Evidence. Successful results include bounded verified source excerpts with paths and line ranges; treat those verified excerpts as source-body evidence and do not mechanically read the same files unless a specific unresolved line/context gap remains.",
     domain: "read",
     source: "internal",
     mode: "sync",
