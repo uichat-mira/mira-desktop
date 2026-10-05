@@ -155,7 +155,7 @@ Exposure schema 必须：
 使用短、稳定、领域无歧义的 id，例如：
 
 ```text
-read_open
+read
 grep
 write_file
 web_search
@@ -163,6 +163,8 @@ terminal_session
 browser_observe
 github_repository
 ```
+
+当前 Universal Read 的公开 known-target reader 是 `read`。历史 `read_open` 仅作为迁移期兼容入口保留，不进入新的 Agent exposure；待已验证的 persisted/runtime consumer 迁移完成后删除。
 
 ### External MCP Projected Tool
 
