@@ -94,6 +94,7 @@ test("Generate materializes only Evidence references frozen by Planner", () => {
   const rendered = result.messages.map((message) => message.content).join("\n");
 
   assert.deepEqual(result.missingRefs, []);
+  assert.deepEqual(result.unavailableImageRefs, []);
   assert.match(rendered, /EVIDENCE REF tool:1/);
   assert.match(rendered, /cited\.txt/);
   assert.match(rendered, /EVIDENCE REF observation:0/);
@@ -219,4 +220,46 @@ test("Generate materializes only Planner-selected image Evidence", () => {
     result.imageParts.some((part) => part.image.includes("T0xE")),
     false,
   );
+});
+
+
+test("Generate refuses Planner-selected image Evidence after its pixel payload is gone", () => {
+  const expiredImageEvidence: AgentEvidencePayload = {
+    observations: [],
+    retrievals: [],
+    toolExecutions: [
+      {
+        toolId: "read",
+        invocationId: "expired-image-invocation",
+        args: { path: "expired.png" },
+        status: "completed",
+        result: {
+          type: "read",
+          path: "expired.png",
+          mediaType: "image",
+          mimeType: "image/png",
+          sizeBytes: 3,
+        },
+        startedAt: "2026-07-22T00:00:00.000Z",
+        finishedAt: "2026-07-22T00:00:01.000Z",
+      },
+    ],
+  };
+
+  const result = materializeFinalizationEvidence({
+    packet: {
+      type: "answer",
+      reason: "The image was inspected.",
+      completionProof: [
+        { criterion: "inspect image pixels", evidenceRefs: ["tool:0"] },
+      ],
+      unresolvedGaps: [],
+    },
+    evidence: expiredImageEvidence,
+  });
+
+  assert.deepEqual(result.missingRefs, []);
+  assert.deepEqual(result.unavailableImageRefs, ["tool:0"]);
+  assert.deepEqual(result.imageParts, []);
+  assert.deepEqual(result.messages, []);
 });
