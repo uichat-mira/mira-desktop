@@ -26,7 +26,7 @@ describe("grep tool", () => {
     clearWorkspaceSelection();
   });
 
-  it("searches workspace content through the read locate runtime", async () => {
+  it("searches workspace content through the canonical grep runtime", async () => {
     const artifactMetadata: Array<Record<string, unknown> | undefined> = [];
     const result = await grepTool.execute({
       invocationId: "grep-1",
@@ -37,19 +37,7 @@ describe("grep tool", () => {
         maxResults: 10,
       },
       signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot({
-        read: {
-          capabilities: [
-            {
-              id: "node-content-scan-locate",
-              kind: "locate",
-              provider: "node-fs",
-              available: true,
-              priority: 100,
-            },
-          ],
-        },
-      }),
+      environment: createHarnessEnvironmentSnapshot(),
       pushEvent() {},
       addArtifact(artifact) {
         artifactMetadata.push(artifact.metadata);
@@ -59,22 +47,24 @@ describe("grep tool", () => {
 
     const output = result.structuredContent as {
       type: string;
-      searchMode: string;
-      matches: Array<{ path: string; matchType: string }>;
+      pattern: string;
+      matches: Array<{ path: string; line: number; column: number }>;
     };
 
-    expect(output.type).toBe("locate");
-    expect(output.searchMode).toBe("content");
+    expect(output.type).toBe("grep");
+    expect(output.pattern).toBe("answerReadiness");
     expect(output.matches).toEqual([
       expect.objectContaining({
         path: "src/planner.ts",
-        matchType: "content",
+        line: 1,
+        column: 7,
       }),
     ]);
     expect(artifactMetadata[0]).toEqual(
       expect.objectContaining({
-        provider: "node-content-scan",
-        providers: ["node-content-scan"],
+        pattern: "answerReadiness",
+        root: "src",
+        provider: expect.stringMatching(/ripgrep|node-content-scan/),
       }),
     );
   });
