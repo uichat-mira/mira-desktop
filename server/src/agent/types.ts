@@ -181,6 +181,8 @@ export interface AgentReadListEvidenceData {
   directoryCount: number;
   symlinkCount?: number;
   entriesPreview: string[];
+  offset?: number;
+  nextOffset?: number;
   truncated: boolean;
 }
 
