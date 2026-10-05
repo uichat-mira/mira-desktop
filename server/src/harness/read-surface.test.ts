@@ -18,7 +18,7 @@ describe("public read tool surface", () => {
     clearHarnessRegistry();
   });
 
-  it("exposes canonical read and list while keeping legacy primitives internal during migration", () => {
+  it("exposes canonical read list glob grep while keeping compatibility primitives internal", () => {
     [
       readTool,
       listTool,
