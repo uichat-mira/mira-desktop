@@ -150,6 +150,7 @@ export const readTool: ToolImplementation = {
 
     emitArtifacts(context, result.artifacts);
     return {
+      ...(result.content?.length ? { content: result.content } : {}),
       structuredContent: result.contents,
     };
   },
