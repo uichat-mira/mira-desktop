@@ -88,11 +88,11 @@ glob
 grep
 ```
 
-当前迁移期真实 exposure 还保留：
+当前真实 Agent exposure 中：
 
-- `read_discover`：过渡期兼容 discovery umbrella，待 canonical `list/glob` 消费者迁移后删除；
+- canonical Universal Read 只暴露 `read / list / glob / grep`；
 - `codebase_explore`：独立 Code / Work Context 能力，不属于 Universal Read；
-- `read_open / read_list / read_locate / read_extract / read_slice`：兼容实现，当前不进入新的 Agent exposure。
+- `read_discover / read_open / read_list / read_locate / read_extract / read_slice`：兼容实现，当前不进入新的 Agent exposure；是否删除取决于已验证的 Skill / runtime / persisted consumer。
 
 ### `read`
 
@@ -158,7 +158,7 @@ grep   content query   -> matching content locations
 
 ### `read_discover`
 
-当前只作为迁移期兼容 surface 保留。新 Planner/consumer 不应继续把目录观察或路径 pattern discovery 建在它上面；对应新语义分别使用 `list` / `glob`。
+当前仅作为兼容实现保留，已退出新的 Agent exposure。新 Planner / Skill / consumer 不再以它承载目录观察或路径发现；对应新语义分别使用 `list` / `glob` / `grep`。
 
 ### `codebase_explore`
 
