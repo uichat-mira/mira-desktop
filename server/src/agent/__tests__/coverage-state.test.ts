@@ -104,7 +104,7 @@ test("coverage reducer completes locate-only task from canonical glob evidence",
       data: {
         kind: "glob",
         pattern: "**/README.md",
-        root: ".",
+        path: ".",
         matchCount: 1,
         matchedPaths: ["README.md"],
         matchesPreview: ["README.md"],
