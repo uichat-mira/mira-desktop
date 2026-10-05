@@ -59,13 +59,13 @@ describe("read tool", () => {
       offset: 0,
       limit: 400,
       returnedCount: 400,
-      totalLines: 450,
       startLine: 1,
       endLine: 400,
       hasMore: true,
       truncated: true,
       nextOffset: 400,
     });
+    expect(result.structuredContent).not.toHaveProperty("totalLines");
     const text = (result.structuredContent as { source: { text: string } }).source.text;
     expect(text).toContain("line-400");
     expect(text).not.toContain("line-401");
