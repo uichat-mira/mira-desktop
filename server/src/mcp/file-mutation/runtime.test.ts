@@ -83,6 +83,20 @@ describe("file mutation runtime", () => {
     expect(next.subarray(3).toString("utf8")).toBe("new\r\nvalue\r\n");
   });
 
+  it("does not mis-detect UTF-8 when the format probe ends mid-character", async () => {
+    const target = path.join(tempRoot, "probe-boundary.txt");
+    const prefix = "a".repeat(64 * 1024 - 1);
+    fs.writeFileSync(target, prefix + "😀\\n", "utf8");
+
+    await executeWriteMutation({
+      path: "probe-boundary.txt",
+      content: "你好\\nMira\\n",
+      overwrite: true,
+    });
+
+    expect(fs.readFileSync(target, "utf8")).toBe("你好\\nMira\\n");
+  });
+
   it("validates all exact edits before committing", async () => {
     const target = path.join(tempRoot, "edit.txt");
     fs.writeFileSync(target, "alpha\nbeta\ngamma\n", "utf8");

@@ -66,7 +66,10 @@ const decodeWithBom = (
   text: iconv.decode(buffer.subarray(input.bom.length), input.iconvEncoding),
 });
 
-const detectText = (buffer: Buffer): DetectedText => {
+const detectText = (
+  buffer: Buffer,
+  options: { allowTrailingIncompleteUtf8?: boolean } = {},
+): DetectedText => {
   if (buffer.subarray(0, UTF8_BOM.length).equals(UTF8_BOM)) {
     return decodeWithBom(buffer, {
       encoding: "utf-8-bom",
@@ -94,7 +97,10 @@ const detectText = (buffer: Buffer): DetectedText => {
   }
 
   try {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    const text = options.allowTrailingIncompleteUtf8
+      ? decoder.decode(buffer, { stream: true })
+      : decoder.decode(buffer);
     return {
       kind: "text",
       encoding: "utf-8",
@@ -213,7 +219,9 @@ export const readMutationTextFile = (targetPath: string): MutationTextFile => {
 export const inspectMutationTextFormat = (
   targetPath: string,
 ): MutationTextFormat | null => {
-  const detected = detectText(readProbe(targetPath));
+  const detected = detectText(readProbe(targetPath), {
+    allowTrailingIncompleteUtf8: true,
+  });
   if (detected.kind !== "text") {
     return null;
   }
