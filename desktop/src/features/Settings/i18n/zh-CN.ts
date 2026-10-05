@@ -2477,6 +2477,7 @@ const settingsPending = {
           collapseResult: "收起本次结果",
           resizeResult: "调整本次结果面板高度",
           details: "详情",
+          toolDetails: "工具详情",
           running: "运行中…",
           settings: "前往设置",
           manual: "在手动运行中打开",

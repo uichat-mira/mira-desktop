@@ -2518,6 +2518,7 @@ const settingsPending = {
           collapseResult: "Collapse result",
           resizeResult: "Resize result pane",
           details: "Details",
+          toolDetails: "Tool details",
           running: "Running…",
           settings: "Open settings",
           manual: "Open in manual run",

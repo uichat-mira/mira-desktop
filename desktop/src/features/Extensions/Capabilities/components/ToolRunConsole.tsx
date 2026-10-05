@@ -451,7 +451,7 @@ function InteractionView({
       ) : null}
 
       {approval ? (
-        <div className="border-b border-border/60 py-2">
+        <div className="py-2">
           <div className="text-warning">
             <span className="mr-2 text-text-tertiary">?</span>
             {t("settings.development.capabilities.approvalTui.required")}
@@ -616,7 +616,7 @@ function ConsoleLine({
           : "text-text-primary";
 
   return (
-    <div className={`border-b border-border/60 py-1.5 ${toneClass}`}>
+    <div className={`py-1.5 ${toneClass}`}>
       <span className="mr-2 text-text-tertiary">{marker}</span>
       {children}
     </div>

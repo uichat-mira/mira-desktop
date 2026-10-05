@@ -125,6 +125,7 @@ vi.mock("react-i18next", () => ({
       "settings.development.capabilities.console.scope": "scope",
       "settings.development.capabilities.consoleTabs.trace": "Trace",
       "settings.development.capabilities.consoleTabs.source": "Source",
+      "settings.development.capabilities.actions.toolDetails": "工具详情",
       "settings.development.capabilities.catalogKind.native": "Native",
       "settings.development.capabilities.catalogKind.extension": "Extension",
       "settings.development.capabilities.caseGroups.extension": "External MCP",
@@ -420,7 +421,7 @@ describe("CapabilitiesPage", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: "settings.development.capabilities.actions.details",
+        name: "工具详情",
       }),
     );
 
@@ -525,5 +526,62 @@ describe("CapabilitiesPage", () => {
     expect(runCase).toHaveBeenCalledOnce();
     expect(runCase).toHaveBeenCalledWith("core-approval-boundary");
     expect(runSelectedCase).not.toHaveBeenCalled();
+  });
+
+  it("removes row separators from the main TUI output", () => {
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    const interactionRegion = screen.getByRole("region", {
+      name: "settings.development.capabilities.consoleTabs.interaction",
+    });
+    expect(interactionRegion.querySelectorAll('[class*="border-b"]').length).toBe(0);
+  });
+
+  it("does not render the acceptance cases heading", () => {
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByText("settings.development.capabilities.cases"),
+    ).not.toBeInTheDocument();
+    const casesSection = screen.getByText("写入审批边界").closest("section");
+    expect(casesSection?.firstElementChild).not.toHaveClass("items-center");
+  });
+
+  it("keeps the tool tabs visible while scrolling and uses three case columns from medium widths", () => {
+    const additionalCases = [
+      {
+        ...capabilities.selectedCase,
+        id: "case-two",
+        title: "第二个验收用例",
+      },
+      {
+        ...capabilities.selectedCase,
+        id: "case-three",
+        title: "第三个验收用例",
+      },
+    ];
+    capabilities.toolCases = [capabilities.selectedCase, ...additionalCases];
+
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("tablist").parentElement?.parentElement?.parentElement).toHaveClass(
+      "sticky",
+      "top-0",
+    );
+    expect(screen.getByText("写入审批边界").closest('[class*="grid"]')).toHaveClass(
+      "md:grid-cols-3",
+    );
   });
 });

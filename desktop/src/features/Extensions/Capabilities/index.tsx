@@ -4,6 +4,7 @@ import {
   Eye,
   FileOutput,
   FileText,
+  Info,
   LoaderCircle,
   Play,
   RefreshCw,
@@ -196,7 +197,7 @@ export default function CapabilitiesPage() {
           <>
           <div className="stable-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto pb-4 pl-4 pr-5 sm:pr-6 xl:pr-8">
             {activeGroup ? (
-              <div className="flex items-end gap-3">
+              <div className="sticky top-0 z-20 flex items-end gap-3 bg-surface-primary py-1">
                 <div className="min-w-0 flex-1">
                   <NavigationCardTabs
                     tabs={activeGroupTools.map((tool) => {
@@ -229,9 +230,15 @@ export default function CapabilitiesPage() {
                 <Button
                   size="sm"
                   variant="ghost"
+                  aria-label={t("settings.development.capabilities.actions.toolDetails")}
+                  title={t("settings.development.capabilities.actions.toolDetails")}
+                  className="shrink-0 px-2 sm:px-3"
                   onClick={() => openToolDetails(selectedTool)}
                 >
-                  {t("settings.development.capabilities.actions.details")}
+                  <Info className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">
+                    {t("settings.development.capabilities.actions.toolDetails")}
+                  </span>
                 </Button>
               </div>
             ) : null}
@@ -246,12 +253,7 @@ export default function CapabilitiesPage() {
             ) : null}
 
             <section className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
-                <FileText className="h-4 w-4" />
-                {t("settings.development.capabilities.cases")}
-              </div>
-
-              <div className="flex flex-wrap items-start gap-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 {capabilities.toolCases.map((caseDefinition) => {
                   const caseReadiness = resolveCapabilityReadiness({
                     caseDefinition,
@@ -267,7 +269,7 @@ export default function CapabilitiesPage() {
                       key={caseDefinition.id}
                       interactive
                       padding="none"
-                      className="h-[92px] w-[276px] max-w-full overflow-hidden"
+                      className="h-[92px] w-full min-w-0 max-w-full overflow-hidden"
                     >
                       <div className="flex h-full flex-col gap-2 p-3">
                         <div className="flex items-center gap-2.5">
