@@ -52,7 +52,7 @@ export const executeHarnessInvocation = async (
       ? {
           ...projected,
           blocks: projected.blocks.map((block, index) =>
-            index === 0
+            index === 0 && block.type === "text"
               ? { ...block, text: `toolOutcome=error\n${block.text}` }
               : block,
           ),
