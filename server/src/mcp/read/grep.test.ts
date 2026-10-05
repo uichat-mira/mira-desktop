@@ -171,7 +171,7 @@ describe("canonical grep runtime", () => {
                   submatches: [{ start: 0 }],
                 },
               }),
-            ].join("\\n"),
+            ].join("\n"),
             stderr: "",
           };
         },

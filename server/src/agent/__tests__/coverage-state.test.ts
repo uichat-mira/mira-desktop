@@ -64,10 +64,10 @@ test("coverage reducer keeps a truncated canonical read opened but not verified"
     },
   });
 
-  const target = state.targets.find((item) => item.target === "README.md");
-  assert.equal(target?.progress.opened, true);
-  assert.equal(target?.progress.verified, false);
+  const target = state.targets.find((item) => item.target === "readme.md");
   assert.equal(target?.status, "opened");
+  assert.ok(target?.completedActions.includes("read"));
+  assert.ok(target?.pendingActions.includes("verify"));
 });
 
 test("coverage reducer completes list task from canonical list evidence", () => {

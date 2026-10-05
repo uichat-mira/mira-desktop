@@ -166,7 +166,6 @@ export const sliceGenericText = (
 
   return {
     text: selected.join("\n"),
-    offset,
     limit,
     totalLines: lines.length,
     startLine,
@@ -278,8 +277,11 @@ const readTextWindow = async (
   });
   const sizeBytes = fs.statSync(targetPath).size;
   const detected = detectTextEncoding(readEncodingProbe(targetPath));
-  if (detected.kind !== "text") {
-    return { kind: detected.kind } as const;
+  if (detected.kind === "binary") {
+    return { kind: "binary" } as const;
+  }
+  if (detected.kind === "unknown_encoding") {
+    return { kind: "unknown_encoding" } as const;
   }
 
   const source = fs.createReadStream(targetPath, {
@@ -311,7 +313,7 @@ const readTextWindow = async (
   } finally {
     lines.close();
     source.destroy();
-    decoder.destroy();
+    decoder.end();
   }
 
   const returnedCount = selected.length;

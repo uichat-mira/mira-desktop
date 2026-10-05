@@ -33,6 +33,7 @@ describe("Tool Lab fixture registry", () => {
       "platform-read-success",
       "platform-read-missing",
       "platform-approval-boundary",
+      "universal-read",
     ]);
   });
 
@@ -68,6 +69,30 @@ describe("Tool Lab fixture registry", () => {
     expect(fs.existsSync(path.join(reset.fixtureRoot, "missing.txt"))).toBe(
       false,
     );
+  });
+
+  it("prepares deterministic Universal Read text, image, binary and discovery inputs", async () => {
+    process.env.UI_CHAT_DATABASE_DIR = appDataRoot;
+
+    const reset = await resetToolLabFixture("universal-read");
+
+    expect(
+      fs.readFileSync(path.join(reset.fixtureRoot, "text", "notes.txt"), "utf8"),
+    ).toContain("line three");
+    expect(
+      fs
+        .readFileSync(path.join(reset.fixtureRoot, "image", "pixel.png"))
+        .subarray(0, 4),
+    ).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    expect(
+      fs.readFileSync(path.join(reset.fixtureRoot, "image", "icon.svg"), "utf8"),
+    ).toContain("<svg");
+    expect(
+      fs.readFileSync(path.join(reset.fixtureRoot, "binary", "blob.bin")),
+    ).toEqual(Buffer.from([0, 255, 1, 254, 2, 253, 3, 252]));
+    expect(
+      fs.readFileSync(path.join(reset.fixtureRoot, "tree", "nested", "gamma.ts"), "utf8"),
+    ).toContain("MIRA_NEEDLE");
   });
 
   it("always prepares fixtures inside managed workspace, never selected user workspace", async () => {

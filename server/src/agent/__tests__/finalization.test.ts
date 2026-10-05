@@ -1,5 +1,18 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { test } from "vitest";
+import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
+import {
+  clearHarnessInvocations,
+  executeHarnessInvocation,
+} from "../../harness/invocations.js";
+import {
+  clearHarnessRegistry,
+  registerTool,
+} from "../../harness/registry.js";
+import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
+import { readTool } from "../../mcp/tools/read.tool.js";
 import {
   buildPlannerEvidenceCatalog,
   materializeFinalizationEvidence,
@@ -97,6 +110,87 @@ test("Generate materializes only Evidence references frozen by Planner", () => {
   assert.match(rendered, /EVIDENCE REF observation:0/);
   assert.doesNotMatch(rendered, /tool:0|uncited\.txt|UNREFERENCED/);
   assert.doesNotMatch(rendered, /retrieval:0|RETRIEVAL/);
+});
+
+test("Generate materializes selected raster read evidence through Mira's image message contract", async () => {
+  const workspaceRoot = createTimestampedTestArtifactPath(
+    "workspace",
+    "finalization-image-evidence",
+  );
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(workspaceRoot, "pixel.png"),
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlE7h8AAAAASUVORK5CYII=",
+      "base64",
+    ),
+  );
+
+  clearHarnessRegistry();
+  clearHarnessInvocations();
+  registerTool(readTool);
+
+  try {
+    const invocation = await executeHarnessInvocation({
+      toolId: "read",
+      args: { path: "pixel.png" },
+      environment: createHarnessEnvironmentSnapshot({
+        workspace: {
+          rootPath: workspaceRoot,
+          source: "configured",
+        },
+      }),
+    });
+
+    assert.equal(invocation.status, "completed");
+    assert.doesNotMatch(JSON.stringify(invocation.result), /base64|iVBORw0KGgo/);
+
+    const imageEvidence: AgentEvidencePayload = {
+      observations: [],
+      retrievals: [],
+      toolExecutions: [
+        {
+          toolId: "read",
+          args: { path: "pixel.png" },
+          invocationId: invocation.id,
+          status: "completed",
+          result: invocation.result,
+          startedAt: "2026-10-06T00:00:00.000Z",
+          finishedAt: "2026-10-06T00:00:01.000Z",
+        },
+      ],
+    };
+    const packet: AgentFinalizationPacket = {
+      type: "answer",
+      reason: "The image evidence covers the task.",
+      completionProof: [
+        {
+          criterion: "inspect the image",
+          evidenceRefs: ["tool:0"],
+        },
+      ],
+      unresolvedGaps: [],
+    };
+
+    const result = materializeFinalizationEvidence({
+      packet,
+      evidence: imageEvidence,
+    });
+
+    assert.deepEqual(result.missingRefs, []);
+    assert.equal(result.imageParts.length, 1);
+    assert.equal(result.imageParts[0]?.type, "image");
+    assert.equal(result.imageParts[0]?.filename, "pixel.png");
+    assert.equal(result.imageParts[0]?.mediaType, "image/png");
+    assert.match(
+      result.imageParts[0]?.image ?? "",
+      /^data:image\/png;base64,/,
+    );
+  } finally {
+    clearHarnessInvocations();
+    clearHarnessRegistry();
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  }
 });
 
 test("Planner freezes the finalization packet before Generate receives it", () => {

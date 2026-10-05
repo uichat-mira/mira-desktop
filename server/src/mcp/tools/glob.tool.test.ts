@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
@@ -21,6 +22,8 @@ const context = (args: Record<string, unknown>) => ({
 
 describe("glob tool", () => {
   beforeEach(() => {
+    fs.mkdirSync(tempRoot, { recursive: true });
+    spawnSync("git", ["init", "-q"], { cwd: tempRoot, windowsHide: true });
     fs.mkdirSync(path.join(tempRoot, "src", "nested"), { recursive: true });
     fs.mkdirSync(path.join(tempRoot, "node_modules", "pkg"), { recursive: true });
     fs.writeFileSync(path.join(tempRoot, "src", "b.ts"), "b");
