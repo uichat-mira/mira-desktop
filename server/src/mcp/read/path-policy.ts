@@ -83,3 +83,9 @@ export const normalizeWorkspaceRelativePath = (value: string) =>
 
 export const escapeGlobPath = (value: string) =>
   normalizeWorkspaceRelativePath(value).replace(/([*?[\]{}()!+@])/g, "\\$1");
+
+
+export const resolveWorkspaceIgnorePatterns = (
+  workspaceRoot: string,
+  includeIgnored: boolean,
+) => (includeIgnored ? [] : loadWorkspaceIgnorePatterns(workspaceRoot));
