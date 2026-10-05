@@ -3,10 +3,10 @@ import {
   projectHarnessResultForLlm,
   type HarnessLlmContent,
 } from "@/harness/llm-content";
-import { getHarnessInvocationModelContent } from "@/harness/invocations";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
 import {
-  projectHarnessImagesToMessageParts,
+  isToolImagePayloadUnavailable,
+  resolveToolExecutionImageParts,
   type NormalizedImageMessagePart,
 } from "./harness-multimodal";
 import type {
@@ -192,14 +192,12 @@ export const materializeFinalizationEvidence = (input: {
         missingRefs.push(ref);
         continue;
       }
+      if (isToolImagePayloadUnavailable(execution)) {
+        missingRefs.push(ref);
+        continue;
+      }
       messages.push(toSystemMessage(renderToolEvidence(ref, execution)));
-      imageParts.push(
-        ...projectHarnessImagesToMessageParts(
-          execution.invocationId
-            ? getHarnessInvocationModelContent(execution.invocationId)
-            : (execution as ToolExecutionWithLlmContent).llmContent,
-        ),
-      );
+      imageParts.push(...resolveToolExecutionImageParts(execution));
       continue;
     }
 
