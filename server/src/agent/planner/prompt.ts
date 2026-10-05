@@ -24,6 +24,8 @@ const summarizeToolSchemas = (toolExposure: AgentToolExposureState) =>
     const plannerDescription =
       tool.toolId === GENERIC_TASK_DELEGATE_TOOL_ID
         ? "Planner-only protocol: delegate one bounded, independently verifiable work package when it has a clear boundary, requires multiple sequential tool calls, execution-time verification, or local recovery. The child owns that package's tool loop and returns structured evidence; do not split the same package into Main Planner tool-by-tool turns."
+        : tool.toolId === "glob"
+        ? "Discover files by an explicit glob path pattern under an optional workspace root. Use it for path-pattern discovery, not text search or file-body reading."
         : tool.toolId === "list"
         ? "List direct children of one known workspace directory. Use it for directory observation only; it does not recurse, search file contents, or open file bodies."
         : tool.toolId === "read_discover"
