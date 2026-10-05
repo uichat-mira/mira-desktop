@@ -7,7 +7,18 @@ import { clearWorkspaceSelection } from "../workspace.js";
 import { readTool } from "./read.tool.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 
-const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-read-tool");
+const tempRoot = createTimestampedTestArtifactPath("workspace", "universal-read-tool");
+
+const context = (args: Record<string, unknown>) => ({
+  invocationId: "read-test",
+  args,
+  signal: new AbortController().signal,
+  environment: createHarnessEnvironmentSnapshot(),
+  pushEvent() {},
+  addArtifact(artifact: any) {
+    return { id: "artifact-1", ...artifact };
+  },
+});
 
 describe("read tool", () => {
   beforeEach(() => {
@@ -24,108 +35,67 @@ describe("read tool", () => {
     clearWorkspaceSelection();
   });
 
-  it("reads a workspace file with path-only input", async () => {
-    fs.writeFileSync(path.join(tempRoot, "notes.log"), "hello read tool");
-
-    const artifacts: unknown[] = [];
-    const events: string[] = [];
-    const result = await readTool.execute({
-      invocationId: "read-1",
-      args: {
-        path: "notes.log",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent(event) {
-        events.push(event.type);
-      },
-      addArtifact(artifact) {
-        artifacts.push(artifact);
-        return { id: "artifact-1", ...artifact };
-      },
-    });
-
-    expect((result.structuredContent as { type: string }).type).toBe("read");
-    expect((result.structuredContent as { source: { text: string } }).source.text).toContain("hello read tool");
-    expect(artifacts).toHaveLength(1);
-    expect(events).toContain("invocation:progress");
-  });
-
-  it("rejects empty path input", async () => {
-    await expect(
-      readTool.execute({
-        invocationId: "read-2",
-        args: {},
-        signal: new AbortController().signal,
-        environment: createHarnessEnvironmentSnapshot(),
-        pushEvent() {},
-        addArtifact(artifact) {
-          return { id: "artifact-1", ...artifact };
-        },
-      }),
-    ).rejects.toThrow("path is required");
-  });
-
-  it("is the canonical read tool rather than a compatibility alias", () => {
+  it("uses a small model-facing contract", () => {
     expect(readTool.definition.id).toBe("read");
-    expect(readTool.definition.description).not.toContain("Compatibility alias");
-    expect(readTool.definition.tags).not.toContain("alias");
+    expect(readTool.definition.description).toContain("known file");
+    expect(Object.keys(readTool.definition.inputSchema.properties ?? {})).toEqual([
+      "path",
+      "offset",
+      "limit",
+    ]);
   });
 
-  it("bounds implicit full reads and reports line continuation metadata", async () => {
+  it("reads a known file and reports continuation metadata", async () => {
     fs.writeFileSync(
       path.join(tempRoot, "large.txt"),
       Array.from({ length: 450 }, (_, index) => `line-${index + 1}`).join("\n"),
     );
 
-    const result = await readTool.execute({
-      invocationId: "read-bounded-1",
-      args: { path: "large.txt" },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "artifact-1", ...artifact };
-      },
-    });
-
-    const contents = result.structuredContent as {
-      source: { text: string };
-      window: {
-        startLine: number;
-        endLine: number;
-        totalLines: number;
-        truncated: boolean;
-        nextStartLine?: number;
-      };
-    };
-    expect(contents.source.text).toContain("line-400");
-    expect(contents.source.text).not.toContain("line-401");
-    expect(contents.window).toEqual({
+    const result = await readTool.execute(context({ path: "large.txt" }));
+    expect(result.structuredContent).toMatchObject({
+      type: "read",
+      path: "large.txt",
+      offset: 0,
+      limit: 400,
+      returnedCount: 400,
+      totalLines: 450,
       startLine: 1,
       endLine: 400,
-      totalLines: 450,
+      hasMore: true,
       truncated: true,
-      nextStartLine: 401,
+      nextOffset: 400,
     });
+    const text = (result.structuredContent as { source: { text: string } }).source.text;
+    expect(text).toContain("line-400");
+    expect(text).not.toContain("line-401");
+  });
+
+  it("continues from offset without imposing a permanent result ceiling", async () => {
+    fs.writeFileSync(
+      path.join(tempRoot, "large.txt"),
+      Array.from({ length: 450 }, (_, index) => `line-${index + 1}`).join("\n"),
+    );
+
+    const result = await readTool.execute(
+      context({ path: "large.txt", offset: 400, limit: 100 }),
+    );
+    expect(result.structuredContent).toMatchObject({
+      offset: 400,
+      returnedCount: 50,
+      totalLines: 450,
+      startLine: 401,
+      endLine: 450,
+      hasMore: false,
+      truncated: false,
+    });
+    const text = (result.structuredContent as { source: { text: string } }).source.text;
+    expect(text).toContain("line-401");
+    expect(text).toContain("line-450");
   });
 
   it("routes Office-native files out of generic read without parsing them", async () => {
     fs.writeFileSync(path.join(tempRoot, "sample.docx"), Buffer.from([0x50, 0x4b, 0x03, 0x04]));
-
-    const artifacts: unknown[] = [];
-    const result = await readTool.execute({
-      invocationId: "read-office-1",
-      args: { path: "sample.docx" },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent() {},
-      addArtifact(artifact) {
-        artifacts.push(artifact);
-        return { id: "artifact-1", ...artifact };
-      },
-    });
-
+    const result = await readTool.execute(context({ path: "sample.docx" }));
     expect(result.structuredContent).toMatchObject({
       type: "unsupported",
       path: "sample.docx",
@@ -133,10 +103,9 @@ describe("read tool", () => {
       fileType: "docx",
       suggestedSkill: "docx",
     });
-    expect(artifacts).toHaveLength(0);
   });
 
-  it("decodes UTF-8 BOM and UTF-16LE text in canonical read", async () => {
+  it("decodes UTF-8 BOM and UTF-16LE text", async () => {
     fs.writeFileSync(
       path.join(tempRoot, "utf8-bom.txt"),
       Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("hello bom", "utf8")]),
@@ -146,24 +115,12 @@ describe("read tool", () => {
       Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("你好 Mira", "utf16le")]),
     );
 
-    const execute = async (filePath: string) =>
-      await readTool.execute({
-        invocationId: `read-${filePath}`,
-        args: { path: filePath },
-        signal: new AbortController().signal,
-        environment: createHarnessEnvironmentSnapshot(),
-        pushEvent() {},
-        addArtifact(artifact) {
-          return { id: "artifact-1", ...artifact };
-        },
-      });
-
-    const utf8 = await execute("utf8-bom.txt");
+    const utf8 = await readTool.execute(context({ path: "utf8-bom.txt" }));
     expect(utf8.structuredContent).toMatchObject({
       source: { text: "hello bom", metadata: { encoding: "utf-8-bom" } },
     });
 
-    const utf16 = await execute("utf16.txt");
+    const utf16 = await readTool.execute(context({ path: "utf16.txt" }));
     expect(utf16.structuredContent).toMatchObject({
       source: { text: "你好 Mira", metadata: { encoding: "utf-16le" } },
     });
@@ -171,18 +128,7 @@ describe("read tool", () => {
 
   it("returns a structured unsupported outcome for generic binary files", async () => {
     fs.writeFileSync(path.join(tempRoot, "blob.bin"), Buffer.from([0x00, 0x01, 0x02, 0x03]));
-
-    const result = await readTool.execute({
-      invocationId: "read-binary-1",
-      args: { path: "blob.bin" },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "artifact-1", ...artifact };
-      },
-    });
-
+    const result = await readTool.execute(context({ path: "blob.bin" }));
     expect(result.structuredContent).toMatchObject({
       type: "unsupported",
       path: "blob.bin",
@@ -190,21 +136,10 @@ describe("read tool", () => {
     });
   });
 
-  it("rejects execution without harness environment", async () => {
-    fs.writeFileSync(path.join(tempRoot, "notes.log"), "hello read tool");
-
-    await expect(
-      readTool.execute({
-        invocationId: "read-4",
-        args: {
-          path: "notes.log",
-        },
-        signal: new AbortController().signal,
-        pushEvent() {},
-        addArtifact(artifact) {
-          return { id: "artifact-1", ...artifact };
-        },
-      }),
-    ).rejects.toThrow("Read execution requires a harness environment snapshot");
+  it("rejects invalid offset without nested selection protocol", async () => {
+    fs.writeFileSync(path.join(tempRoot, "notes.txt"), "hello");
+    await expect(readTool.execute(context({ path: "notes.txt", offset: -1 }))).rejects.toThrow(
+      "offset must be a non-negative integer",
+    );
   });
 });
