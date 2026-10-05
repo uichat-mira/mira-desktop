@@ -3,7 +3,11 @@ import { createArtifact } from "../core/artifacts.js";
 import type { ToolInvocationEventInput, ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { sliceExtractedText } from "../document-readers.js";
-import { executeReadOpen } from "../read/runtime.js";
+import {
+  createReadWindow,
+  DEFAULT_READ_MAX_LINES,
+  executeReadOpen,
+} from "../read/runtime.js";
 import type { ReadOpenResult, ReadSelection } from "../read/types.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
@@ -56,12 +60,13 @@ const executeSkillResourceRead = async (input: {
   const skillId = parseSkillId(input.uri);
   const loaded = await loadSkillResource({ skillId, uri: input.uri });
   const selection = parseSelection(input.selection);
-  const selectedText = selection
-    ? sliceExtractedText(loaded.content, {
-        startLine: selection.start,
-        endLine: selection.end,
-      }).text
-    : loaded.content;
+  const slice = sliceExtractedText(loaded.content, {
+    startLine: selection?.start ?? 1,
+    endLine: selection?.end,
+    maxLines: DEFAULT_READ_MAX_LINES,
+  });
+  const requestedEndLine = selection?.end ?? slice.totalLines;
+  const window = createReadWindow(slice, requestedEndLine);
 
   input.pushEvent?.({
     type: "invocation:progress",
@@ -73,10 +78,11 @@ const executeSkillResourceRead = async (input: {
     path: input.uri,
     operation: selection ? "extract" : "open",
     ...(selection ? { selection } : {}),
+    window,
     source: {
       kind: "text",
       mimeType: "text/markdown",
-      text: selectedText,
+      text: slice.text,
       metadata: {
         scheme: "skill",
         skillId,
@@ -94,13 +100,14 @@ const executeSkillResourceRead = async (input: {
         kind: "text",
         title: `Read ${input.uri}`,
         mimeType: "text/markdown",
-        data: selectedText,
+        data: slice.text,
         metadata: {
           scheme: "skill",
           skillId,
           resourceKind: loaded.kind,
           uri: loaded.uri,
           ...(selection ? { selection } : {}),
+          window,
         },
       }),
     ],
