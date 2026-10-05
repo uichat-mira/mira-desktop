@@ -53,6 +53,7 @@ type TargetProgress = {
 const WORKSPACE_MUTATION_TOOL_IDS = new Set(["workspace_mutation", "edit_file"]);
 const WORKSPACE_READ_TOOL_IDS = new Set([
   "read",
+  "list",
   "read_list",
   "read_open",
   "read_locate",
@@ -272,7 +273,7 @@ const hasListEvidence = (input: {
 
   return summaries.some(
     (summary) =>
-      summary?.data?.kind === "read_list" &&
+      (summary?.data?.kind === "list" || summary?.data?.kind === "read_list") &&
       (summary.status === "completed" || summary.status === "truncated"),
   );
 };
@@ -459,7 +460,7 @@ export const reduceAgentCoverageState = (input: {
     requiredWork.requiredActions.includes("list") &&
     !hasListEvidence(input)
   ) {
-    globalPendingActions.push("read_list");
+    globalPendingActions.push("list");
   }
   if (
     requiredWork.requiredActions.includes("search") &&
