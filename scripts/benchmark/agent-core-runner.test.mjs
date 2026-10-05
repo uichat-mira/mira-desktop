@@ -414,14 +414,7 @@ test("Core v0.1 Batch 2-5 fixture ids are registered", () => {
 
 test("fixture reset is deterministic for representative static fixtures", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-fixtures-"));
-  t.after(() =>
-    fs.rmSync(root, {
-      recursive: true,
-      force: true,
-      maxRetries: 5,
-      retryDelay: 100,
-    }),
-  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const fixtureId of ["i02-v1", "i04-v1", "i06-v1", "adv01-v1", "adv06-v1"]) {
     const workspace = path.join(root, fixtureId, "workspace");
     const external = path.join(root, fixtureId, "external");
@@ -609,7 +602,14 @@ test("selection validates initialPrompt and accepts B08 completed follow-up shap
 
 test("adv05 cleanup hook terminates a live fixture worker", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-adv05-cleanup-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() =>
+    fs.rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    }),
+  );
   const workspace = path.join(root, "workspace");
   const spec = materializeFixture({ fixtureId: "adv05-v1", destDir: workspace, externalDir: path.join(root, "external") });
 
