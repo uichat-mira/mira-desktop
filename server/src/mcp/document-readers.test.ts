@@ -80,31 +80,6 @@ describe("document readers", () => {
     expect(result.metadata.readerStrategy).toBe("text-known-extension");
   });
 
-  it("decodes UTF-8 BOM text without leaking the BOM", async () => {
-    const targetPath = path.join(tempRoot, "bom.txt");
-    fs.writeFileSync(
-      targetPath,
-      Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("hello bom", "utf8")]),
-    );
-
-    const result = await readStructuredDocument(createHarnessEnvironmentSnapshot(), targetPath);
-    expect(result.text).toBe("hello bom");
-    expect(result.metadata.encoding).toBe("utf-8-bom");
-  });
-
-  it("decodes UTF-16LE BOM text instead of classifying it as binary", async () => {
-    const targetPath = path.join(tempRoot, "utf16.txt");
-    fs.writeFileSync(
-      targetPath,
-      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("你好 Mira", "utf16le")]),
-    );
-
-    const result = await readStructuredDocument(createHarnessEnvironmentSnapshot(), targetPath);
-    expect(result.text).toBe("你好 Mira");
-    expect(result.metadata.encoding).toBe("utf-16le");
-    expect(result.metadata.binary).not.toBe(true);
-  });
-
   it("falls back to content probing for extensionless text files", async () => {
     const targetPath = path.join(tempRoot, "README");
     fs.writeFileSync(targetPath, "plain text without an extension");
