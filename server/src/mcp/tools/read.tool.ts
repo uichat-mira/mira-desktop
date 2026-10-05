@@ -98,7 +98,7 @@ export const readTool: ToolImplementation = {
     id: "read",
     title: "Read",
     description:
-      "Read contents of a known file. Use glob when you do not know the path; use grep to search file contents.",
+      "Read a known file. Returns text for text files and image content for supported images. Use glob when you do not know the path; use grep to search text contents.",
     domain: "read",
     source: "internal",
     mode: "sync",
