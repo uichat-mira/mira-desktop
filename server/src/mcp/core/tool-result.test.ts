@@ -220,6 +220,30 @@ describe("ToolResult B-prime normalization", () => {
       },
     });
 
+    const officeRouted = projectToolEvidence(
+      definition("read"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "unsupported",
+          path: "proposal.docx",
+          reason: "office_owned",
+          fileType: "docx",
+          suggestedSkill: "docx",
+        },
+      }),
+    );
+    expect(officeRouted?.status).toBe("partial");
+    expect(officeRouted?.facts).toContain("suggestedSkill=docx");
+    expect(officeRouted?.data).toMatchObject({
+      kind: "generic_structured",
+      unsupported: true,
+      preview: {
+        path: "proposal.docx",
+        reason: "office_owned",
+        suggestedSkill: "docx",
+      },
+    });
+
     const search = projectToolEvidence(
       definition("web_search", "internal", "web_search"),
       normalizeToolResult({
