@@ -66,13 +66,14 @@ export const executeHarnessInvocation = async (
   return llmContent ? { ...record, llmContent } : record;
 };
 
-export const getHarnessInvocation = (
+export const getHarnessInvocation = (invocationId: string) =>
+  getInvocation(invocationId);
+
+export const getHarnessInvocationModelContent = (
   invocationId: string,
-): HarnessInvocationRecord | undefined => {
+): HarnessLlmContent | undefined => {
   const record = getInvocation(invocationId);
-  if (!record) return undefined;
-  const llmContent = modelContentByInvocation.get(record);
-  return llmContent ? { ...record, llmContent } : record;
+  return record ? modelContentByInvocation.get(record) : undefined;
 };
 
 export const listHarnessInvocationEvents = (
