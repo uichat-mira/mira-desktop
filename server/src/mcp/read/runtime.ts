@@ -16,7 +16,7 @@ import {
 } from "../document-readers.js";
 import { executeReadLocateWithDiagnostics, describeLocatePlan } from "./locate.js";
 import { resolveWorkspacePath } from "../workspace.js";
-import type { ReadListResult, ReadOpenResult, ReadSelection } from "./types.js";
+import type { ReadListResult, ReadOpenResult, ReadSelection, ReadWindow } from "./types.js";
 
 type ReadExecutionContext = {
   args: Record<string, unknown>;
@@ -27,6 +27,23 @@ type ReadExecutionContext = {
 type ReadExecutionResult = {
   contents: unknown;
   artifacts: ToolArtifact[];
+};
+
+const DEFAULT_READ_MAX_LINES = 400;
+
+const toReadWindow = (
+  slice: { startLine: number; endLine: number; totalLines: number },
+  requestedEndLine: number,
+): ReadWindow => {
+  const boundedRequestedEnd = Math.min(requestedEndLine, slice.totalLines);
+  const truncated = slice.endLine < boundedRequestedEnd;
+  return {
+    startLine: slice.startLine,
+    endLine: slice.endLine,
+    totalLines: slice.totalLines,
+    truncated,
+    ...(truncated ? { nextStartLine: slice.endLine + 1 } : {}),
+  };
 };
 
 export const executeReadList = async ({
@@ -89,7 +106,7 @@ export const executeReadOpen = async ({
 
   const stat = fs.statSync(targetPath);
   if (!stat.isFile()) {
-    throw mcpBadRequest("read_open requires a file path");
+    throw mcpBadRequest("read requires a file path");
   }
 
   const plan = describeReadPlan(harnessEnvironment, targetPath);
@@ -100,18 +117,20 @@ export const executeReadOpen = async ({
 
   const result = await readStructuredDocument(harnessEnvironment, targetPath);
   const selection = parseReadSelection(args.selection);
-  const selectedText = selection
-    ? sliceExtractedText(result.text, {
-        startLine: selection.start,
-        endLine: selection.end,
-      }).text
-    : result.text;
+  const slice = sliceExtractedText(result.text, {
+    startLine: selection?.start ?? 1,
+    endLine: selection?.end,
+    maxLines: DEFAULT_READ_MAX_LINES,
+  });
+  const requestedEndLine = selection?.end ?? slice.totalLines;
+  const window = toReadWindow(slice, requestedEndLine);
   const contents: ReadOpenResult = {
     type: "open",
     path: String(args.path),
     operation: selection ? "extract" : "open",
     ...(selection ? { selection } : {}),
-    source: { ...result, text: selectedText },
+    window,
+    source: { ...result, text: slice.text },
   };
   return {
     contents,
@@ -120,8 +139,8 @@ export const executeReadOpen = async ({
         kind: result.kind,
         title: `Read ${String(args.path)}`,
         mimeType: result.mimeType,
-        data: selectedText,
-        metadata: { ...result.metadata, ...(selection ? { selection } : {}) },
+        data: slice.text,
+        metadata: { ...result.metadata, ...(selection ? { selection } : {}), window },
       }),
     ],
   };
