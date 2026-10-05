@@ -220,6 +220,7 @@ export interface AgentGlobEvidenceData {
   pattern: string;
   root: string;
   matchCount: number;
+  matchedPaths: string[];
   matchesPreview: string[];
   truncated: boolean;
 }
