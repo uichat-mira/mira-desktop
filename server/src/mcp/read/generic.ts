@@ -5,6 +5,7 @@ import iconv from "iconv-lite";
 import { createArtifact } from "../core/artifacts.js";
 import type {
   ToolArtifact,
+  ToolContentBlock,
   ToolExecutionEnvironment,
   ToolInvocationEventInput,
 } from "../core/definitions.js";
@@ -14,6 +15,7 @@ import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 
 export const DEFAULT_GENERIC_READ_LIMIT = 400;
 export const MAX_GENERIC_READ_LIMIT = 2_000;
+export const MAX_GENERIC_IMAGE_BYTES = 20 * 1024 * 1024;
 
 const OFFICE_SKILLS = new Map<string, "docx" | "xlsx" | "pptx" | "pdf">([
   [".docx", "docx"],
@@ -29,7 +31,7 @@ const IMAGE_MIME_TYPES = new Map<string, string>([
   [".gif", "image/gif"],
   [".webp", "image/webp"],
   [".bmp", "image/bmp"],
-  [".svg", "image/svg+xml"],
+  [".avif", "image/avif"],
 ]);
 
 const CODE_EXTENSIONS = new Set([
@@ -76,6 +78,14 @@ export type GenericReadTextResult = {
   };
 };
 
+export type GenericReadImageResult = {
+  type: "read";
+  path: string;
+  mediaType: "image";
+  mimeType: string;
+  sizeBytes: number;
+};
+
 export type GenericReadUnsupportedResult = {
   type: "unsupported";
   path: string;
@@ -83,18 +93,22 @@ export type GenericReadUnsupportedResult = {
     | "office_owned"
     | "binary"
     | "unknown_encoding"
-    | "multimodal_projection_unavailable";
+    | "file_too_large";
   fileType?: string;
   mimeType?: string;
   suggestedSkill?: "docx" | "xlsx" | "pptx" | "pdf";
+  sizeBytes?: number;
+  maxBytes?: number;
 };
 
 export type GenericReadResult =
   | GenericReadTextResult
+  | GenericReadImageResult
   | GenericReadUnsupportedResult;
 
 type GenericReadExecutionResult = {
   contents: GenericReadResult;
+  content?: ToolContentBlock[];
   artifacts: ToolArtifact[];
 };
 
@@ -376,18 +390,46 @@ export const executeGenericRead = async ({
 
   const imageMimeType = IMAGE_MIME_TYPES.get(extension);
   if (imageMimeType) {
+    if (stat.size > MAX_GENERIC_IMAGE_BYTES) {
+      return {
+        contents: {
+          type: "unsupported",
+          path: inputPath,
+          reason: "file_too_large",
+          fileType: extension.slice(1),
+          mimeType: imageMimeType,
+          sizeBytes: stat.size,
+          maxBytes: MAX_GENERIC_IMAGE_BYTES,
+        },
+        artifacts: [],
+      };
+    }
+
+    const data = (await fs.promises.readFile(targetPath)).toString("base64");
     pushEvent?.({
       type: "invocation:progress",
-      message: "Generic read routing: image requires shared multimodal ToolResult projection",
+      message: `Generic read plan: image-inline-data (${imageMimeType})`,
     });
     return {
       contents: {
-        type: "unsupported",
+        type: "read",
         path: inputPath,
-        reason: "multimodal_projection_unavailable",
-        fileType: extension.slice(1),
+        mediaType: "image",
         mimeType: imageMimeType,
+        sizeBytes: stat.size,
       },
+      content: [
+        {
+          type: "text",
+          text: `Read image file: ${inputPath}`,
+        },
+        {
+          type: "image",
+          data,
+          mimeType: imageMimeType,
+          filename: path.basename(targetPath),
+        },
+      ],
       artifacts: [],
     };
   }
