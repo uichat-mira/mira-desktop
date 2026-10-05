@@ -17,7 +17,7 @@ describe("public read tool surface", () => {
     clearHarnessRegistry();
   });
 
-  it("exposes exactly four read actions to the Agent while keeping legacy primitives internal", () => {
+  it("exposes canonical read and list while keeping legacy primitives internal during migration", () => {
     [
       readTool,
       listTool,
