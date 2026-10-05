@@ -226,6 +226,7 @@ export const runBoundedProcess = (input: {
   signal: AbortSignal;
   timeoutMs: number;
   maxBufferBytes: number;
+  shouldStopAfterStdoutChunk?: (chunk: string) => boolean;
 }): Promise<BoundedProcessResult> =>
   new Promise((resolve) => {
     let settled = false;
@@ -340,8 +341,20 @@ export const runBoundedProcess = (input: {
         });
         return;
       }
-      if (stream === "stdout") stdout += chunk;
-      else stderr += chunk;
+      if (stream === "stdout") {
+        stdout += chunk;
+        if (input.shouldStopAfterStdoutChunk?.(chunk)) {
+          terminate();
+          finish({
+            status: "completed",
+            exitCode: activeChild.exitCode,
+            stdout,
+            stderr,
+          });
+        }
+      } else {
+        stderr += chunk;
+      }
     };
 
     stdoutStream.on("data", (chunk: string) => append("stdout", chunk));
@@ -380,6 +393,8 @@ const buildRipgrepArgs = (input: {
   "--column",
   "--hidden",
   "--no-messages",
+  "--sort",
+  "path",
   "--max-count",
   String(input.providerLimit),
   ...(input.literal ? ["--fixed-strings"] : []),
@@ -389,10 +404,10 @@ const buildRipgrepArgs = (input: {
       ? ["--ignore-case"]
       : ["--smart-case"]),
   ...(input.includeIgnored ? ["--no-ignore"] : []),
+  ...(input.include ? ["--glob", input.include] : []),
   ...(!input.includeIgnored
     ? input.ignorePatterns.flatMap((pattern) => ["--glob", `!${pattern}`])
     : []),
-  ...(input.include ? ["--glob", input.include] : []),
   "--",
   input.pattern,
   input.relativePath,
@@ -694,6 +709,29 @@ export const executeGrep = async (
   const deadlineAt = Date.now() + timeoutMs;
   const candidates = toRipgrepCandidates(resolution);
 
+  const createGlobalMatchStopper = () => {
+    let pending = "";
+    let matchCount = 0;
+    return (chunk: string) => {
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const payload = JSON.parse(line) as { type?: string };
+          if (payload.type === "match") {
+            matchCount += 1;
+            if (matchCount >= providerLimit) return true;
+          }
+        } catch {
+          // Let the normal parser report invalid JSON after the process stops.
+        }
+      }
+      return false;
+    };
+  };
+
   if (candidates.length === 0) {
     attempts.push({
       provider: "system-ripgrep",
@@ -726,6 +764,7 @@ export const executeGrep = async (
       signal,
       timeoutMs: Math.max(1, deadlineAt - Date.now()),
       maxBufferBytes: GREP_MAX_BUFFER_BYTES,
+      shouldStopAfterStdoutChunk: createGlobalMatchStopper(),
     });
 
     if (processResult.status === "cancelled") {
