@@ -26,8 +26,8 @@ const summarizeToolSchemas = (toolExposure: AgentToolExposureState) =>
         ? "Planner-only protocol: delegate one bounded, independently verifiable work package when it has a clear boundary, requires multiple sequential tool calls, execution-time verification, or local recovery. The child owns that package's tool loop and returns structured evidence; do not split the same package into Main Planner tool-by-tool turns."
         : tool.toolId === "read_discover"
         ? "Discover candidate files, directories, symbols, or keyword locations without opening file bodies."
-        : tool.toolId === "read"
-          ? "Open one known target when that single read completes the requested action. If the unfinished package requires another source, cross-source comparison, later mutation, or verification after this read, delegate the whole package instead of starting with read. Do not use it for fuzzy discovery or to mechanically reopen CodeGraph-verified source excerpts."
+        : (tool.toolId === "read" || tool.toolId === "read_open")
+          ? "Open one known target when that single read completes the requested action. If the unfinished package requires another source, cross-source comparison, later mutation, or verification after this read, delegate the whole package instead of starting with read. Legacy read_open has the same compatibility semantics. Do not use it for fuzzy discovery or to mechanically reopen CodeGraph-verified source excerpts."
           : tool.toolId === "codebase_explore"
             ? "Primary local code-understanding tool. Successful results include bounded workspace-verified source excerpts with paths and line ranges. Those verified excerpts already count as source-body evidence; use read only for a specific unresolved target or missing surrounding context."
             : tool.description;
