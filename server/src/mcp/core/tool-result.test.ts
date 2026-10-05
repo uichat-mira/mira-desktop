@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { clearHarnessRegistry, registerTool } from "@/harness/registry.js";
 import { clearHarnessInvocations, executeHarnessInvocation } from "@/harness/invocations.js";
+import { getHarnessLlmContentText } from "@/harness/llm-content.js";
 import type { ToolImplementation, ToolDefinition } from "./definitions.js";
 import { normalizeToolResult, projectToolEvidence } from "./tool-result.js";
 
@@ -37,7 +38,7 @@ describe("ToolResult B-prime normalization", () => {
 
     expect(record.status).toBe("completed");
     expect(record.result).toEqual({ ok: true });
-    expect(record.llmContent?.blocks[0]?.text).toContain("model-facing answer");
+    expect(getHarnessLlmContentText(record.llmContent)).toContain("model-facing answer");
   });
 
   it("ordinary Harness invocation reads do not expose cached image payloads", async () => {
