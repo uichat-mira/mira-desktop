@@ -42,6 +42,7 @@ type GlobExecutionResult = {
 type GlobExecutionContext = {
   args: Record<string, unknown>;
   environment?: ToolExecutionEnvironment;
+  signal?: AbortSignal;
   pushEvent?: (event: ToolInvocationEventInput) => void;
 };
 
@@ -80,6 +81,7 @@ const parseIncludeIgnored = (value: unknown) => {
 export const executeGlob = async ({
   args,
   environment,
+  signal,
   pushEvent,
 }: GlobExecutionContext): Promise<GlobExecutionResult> => {
   assertHarnessEnvironment(environment);
@@ -128,13 +130,16 @@ export const executeGlob = async ({
     });
   }
 
-  const allMatches = filterGitIgnoredPaths(
-    workspaceRoot,
-    discovered.map(normalizeWorkspaceRelativePath),
-    includeIgnored,
+  const allMatches = (
+    await filterGitIgnoredPaths(
+      workspaceRoot,
+      discovered.map(normalizeWorkspaceRelativePath),
+      includeIgnored,
+      { signal },
+    )
   ).sort((left, right) =>
-      left.localeCompare(right, undefined, { numeric: true }),
-    );
+    left.localeCompare(right, undefined, { numeric: true }),
+  );
   const visibleMatches = allMatches.slice(offset, offset + limit);
   const continuation = buildContinuation({
     offset,
