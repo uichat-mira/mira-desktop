@@ -174,11 +174,12 @@ export interface AgentFinalizationPacket {
 }
 
 export interface AgentReadListEvidenceData {
-  kind: "read_list";
+  kind: "list" | "read_list";
   path: string;
   entryCount: number;
   fileCount: number;
   directoryCount: number;
+  symlinkCount?: number;
   entriesPreview: string[];
   truncated: boolean;
 }
