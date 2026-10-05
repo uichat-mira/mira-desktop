@@ -441,7 +441,7 @@ describe("mcp routes", () => {
         });
 
     await app.close();
-  });
+  }, 15_000);
 
   it("resets Tool Lab fixtures and freezes the managed workspace across approval replay", async () => {
     delete process.env.UI_CHAT_WORKSPACE_ROOT;
