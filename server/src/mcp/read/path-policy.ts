@@ -76,7 +76,8 @@ export const filterGitIgnoredPaths = async (
   }
 
   const gitRuntime = resolveTerminalRuntimeExecutable("git");
-  if (!gitRuntime.executablePath) {
+  const gitExecutablePath = gitRuntime.executablePath;
+  if (!gitExecutablePath) {
     return relativePaths;
   }
 
@@ -92,12 +93,12 @@ export const filterGitIgnoredPaths = async (
 
   return await new Promise<string[]>((resolve, reject) => {
     const child = spawn(
-      gitRuntime.executablePath,
+      gitExecutablePath,
       ["check-ignore", "--no-index", "--stdin", "-z"],
       {
         cwd: workspaceRoot,
         windowsHide: true,
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: "pipe",
       },
     );
     let settled = false;
@@ -188,7 +189,7 @@ export const filterGitIgnoredPaths = async (
         }),
       );
     });
-    child.on("close", (code) => {
+    child.on("close", (code: number | null) => {
       if (settled) return;
       if (code === 0 || code === 1) {
         const ignored = new Set(
@@ -217,7 +218,7 @@ export const filterGitIgnoredPaths = async (
         ),
       );
     });
-    child.stdin.on("error", (error) => {
+    child.stdin.on("error", (error: Error) => {
       if (!settled) {
         fail(
           mcpInternalError("git check-ignore stdin failed", {
