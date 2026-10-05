@@ -5,8 +5,7 @@ import {
 } from "@/harness/llm-content";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
 import {
-  isToolImagePayloadUnavailable,
-  resolveToolExecutionImageParts,
+  getInvocationImageMessageParts,
   type NormalizedImageMessagePart,
 } from "./harness-multimodal";
 import type {
@@ -178,7 +177,6 @@ export const materializeFinalizationEvidence = (input: {
   const messages: NormalizedChatMessage[] = [];
   const imageParts: NormalizedImageMessagePart[] = [];
   const missingRefs: AgentEvidenceReference[] = [];
-  const unavailableImageRefs: AgentEvidenceReference[] = [];
 
   for (const ref of orderedRefs) {
     const parsed = parseEvidenceReference(ref);
@@ -193,12 +191,8 @@ export const materializeFinalizationEvidence = (input: {
         missingRefs.push(ref);
         continue;
       }
-      if (isToolImagePayloadUnavailable(execution)) {
-        unavailableImageRefs.push(ref);
-        continue;
-      }
       messages.push(toSystemMessage(renderToolEvidence(ref, execution)));
-      imageParts.push(...resolveToolExecutionImageParts(execution));
+      imageParts.push(...getInvocationImageMessageParts(execution.invocationId));
       continue;
     }
 
@@ -246,5 +240,5 @@ export const materializeFinalizationEvidence = (input: {
     );
   }
 
-  return { messages, imageParts, missingRefs, unavailableImageRefs };
+  return { messages, imageParts, missingRefs };
 };
