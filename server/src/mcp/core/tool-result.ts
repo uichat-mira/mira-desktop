@@ -150,6 +150,34 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       },
     });
   }
+  if (toolId === "read" && result.mediaType === "image") {
+    const path = typeof result.path === "string" ? result.path : "unknown";
+    const mimeType =
+      typeof result.mimeType === "string" ? result.mimeType : "image/*";
+    const sizeBytes =
+      typeof result.sizeBytes === "number" ? result.sizeBytes : undefined;
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Read image file ${path}.`,
+      facts: [
+        `path=${path}`,
+        "mediaType=image",
+        `mimeType=${mimeType}`,
+        ...(sizeBytes === undefined ? [] : [`sizeBytes=${sizeBytes}`]),
+      ],
+      data: {
+        kind: "read",
+        path,
+        contentPreview: `[image ${mimeType}]`,
+        contentLength: 0,
+        truncated: false,
+        mediaType: "image",
+        mimeType,
+        ...(sizeBytes === undefined ? {} : { sizeBytes }),
+      },
+    });
+  }
   if (toolId === "read") {
     const path = typeof result.path === "string" ? result.path : "unknown";
     const source = asRecord(result.source);
