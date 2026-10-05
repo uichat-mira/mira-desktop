@@ -368,6 +368,7 @@ export const executeGenericRead = async ({
   }
 
   const targetPath = resolveWorkspaceFilePath(inputPath);
+  const stat = fs.statSync(targetPath);
 
   const extension = path.extname(targetPath).toLowerCase();
   const officeSkill = OFFICE_SKILLS.get(extension);
