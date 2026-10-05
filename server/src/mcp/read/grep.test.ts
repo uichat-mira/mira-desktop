@@ -194,6 +194,62 @@ describe("canonical grep runtime", () => {
     });
   });
 
+  it("treats a deliberate stdout paging stop as a successful complete JSONL result", async () => {
+    const completeLine = JSON.stringify({ type: "match", data: { value: 1 } });
+    const partialLine = '{"type":"match"';
+    const script = `process.stdout.write(${JSON.stringify(
+      `${completeLine}\\n${partialLine}`,
+    )}); setTimeout(() => {}, 5000);`;
+    let seen = "";
+
+    const result = await runBoundedProcess({
+      executablePath: process.execPath,
+      args: ["-e", script],
+      cwd: tempRoot,
+      signal: new AbortController().signal,
+      timeoutMs: 5_000,
+      maxBufferBytes: 1024 * 1024,
+      shouldStopAfterStdoutChunk(chunk) {
+        seen += chunk;
+        return seen.includes("\n");
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      exitCode: 0,
+      stoppedByLimit: true,
+      stdout: `${completeLine}\n`,
+    });
+    expect(() =>
+      result.stdout
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .forEach((line) => JSON.parse(line)),
+    ).not.toThrow();
+  });
+
+  it("bounds large files in the Node fallback instead of reading them into memory", async () => {
+    const target = path.join(tempRoot, "src", "huge.txt");
+    const handle = fs.openSync(target, "w");
+    fs.ftruncateSync(handle, 8 * 1024 * 1024 + 1);
+    fs.closeSync(handle);
+
+    const result = await executeNode({
+      pattern: "needle",
+      literal: true,
+      caseSensitive: false,
+    });
+
+    expect(result.contents.skippedLargeFiles).toContain("src/huge.txt");
+  });
+
+  it("reports invalid fallback regexes without executing them on the main thread", async () => {
+    await expect(executeNode({ pattern: "(" })).rejects.toThrow(
+      "Invalid grep regular expression",
+    );
+  });
+
   it("cancels a spawned process through AbortSignal", async () => {
     const controller = new AbortController();
     const pending = runBoundedProcess({
