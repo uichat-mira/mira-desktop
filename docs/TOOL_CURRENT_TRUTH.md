@@ -104,7 +104,10 @@ grep
 - 常见 UTF BOM / UTF-16 文本按明确编码读取；
 - 二进制返回 structured unsupported；
 - DOCX / XLSX / PPTX / PDF 不由 generic `read` 解析，返回 Office/WenShu Skill routing outcome；
-- 图片最终仍应通过 `read`，但当前等待共享 multimodal ToolResult/Harness projection，不新增 `read_image`。
+- 图片通过同一个 `read` 返回，不新增 `read_image`；
+- 图片实现以 Gemini CLI `read_file` 为单一参考基线：SVG 继续按文本读取，其他 `image/*` 文件在 20 MB 单文件上限内以 MIME + base64 的 model-facing image block 进入 Harness；
+- base64 不进入 structured result、Evidence、普通 invocation 读取或日志；Harness 只在进程内模型内容缓存中保留图片 payload；
+- Planner 与 Generate 把需要的 Tool 图片投影到 Mira 已有的 latest-user image message path，Provider 继续使用既有图片适配，不由 `read` 了解 provider wire format。
 
 ### `list`
 
