@@ -5,6 +5,7 @@ import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
 import { readListTool } from "../mcp/tools/read-list.tool.js";
+import { readDiscoverTool } from "../mcp/tools/read-discover.tool.js";
 import { readOpenTool } from "../mcp/tools/read-open.tool.js";
 import { readSliceTool } from "../mcp/tools/read-slice.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
@@ -132,6 +133,7 @@ describe("resolveHarnessToolExposure", () => {
     registerTool(readTool);
     registerTool(listTool);
     registerTool(readListTool);
+    registerTool(readDiscoverTool);
     registerTool(readSliceTool);
     registerTool(readOpenTool);
 
@@ -142,6 +144,7 @@ describe("resolveHarnessToolExposure", () => {
 
     expect(decision.exposedToolIds).toContain("read");
     expect(decision.exposedToolIds).toContain("list");
+    expect(decision.exposedToolIds).not.toContain("read_discover");
     expect(decision.exposedToolIds).not.toContain("read_open");
     expect(decision.exposedToolIds).not.toContain("read_list");
     expect(decision.exposedToolIds).not.toContain("read_slice");
