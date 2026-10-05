@@ -40,6 +40,52 @@ describe("ToolResult B-prime normalization", () => {
     expect(record.llmContent?.blocks[0]?.text).toContain("model-facing answer");
   });
 
+  it("ordinary Harness invocation reads do not expose cached image payloads", async () => {
+    registerTool({
+      definition: {
+        id: "test_tool_result_image_content",
+        title: "Test image",
+        description: "Test image",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: [],
+        capabilities: { sideEffect: "none", requiresApproval: false },
+      },
+      execute: () => ({
+        content: [
+          { type: "text", text: "Read image file: test.png" },
+          {
+            type: "image",
+            data: "SECRET_IMAGE_BASE64",
+            mimeType: "image/png",
+            filename: "test.png",
+          },
+        ],
+        structuredContent: {
+          type: "read",
+          path: "test.png",
+          mediaType: "image",
+          mimeType: "image/png",
+          sizeBytes: 10,
+        },
+      }),
+    });
+
+    const executed = await executeHarnessInvocation({
+      toolId: "test_tool_result_image_content",
+    });
+    expect(
+      executed.llmContent?.blocks.some((block) => block.type === "image"),
+    ).toBe(true);
+
+    const { getHarnessInvocation } = await import("@/harness/invocations.js");
+    const ordinary = getHarnessInvocation(executed.id);
+    expect(ordinary).not.toHaveProperty("llmContent");
+    expect(JSON.stringify(ordinary)).not.toContain("SECRET_IMAGE_BASE64");
+  });
+
   it("keeps Tool isError on a completed invocation and projects failed evidence", async () => {
     registerTool({
       definition: {
