@@ -25,13 +25,17 @@ const summarizeToolSchemas = (toolExposure: AgentToolExposureState) =>
       tool.toolId === GENERIC_TASK_DELEGATE_TOOL_ID
         ? "Planner-only protocol: delegate one bounded, independently verifiable work package when it has a clear boundary, requires multiple sequential tool calls, execution-time verification, or local recovery. The child owns that package's tool loop and returns structured evidence; do not split the same package into Main Planner tool-by-tool turns."
         : tool.toolId === "glob"
-        ? "Discover files by an explicit glob path pattern under an optional workspace root. Use it for path-pattern discovery, not text search or file-body reading."
+        ? "Find file paths matching a glob pattern. Does not search file contents."
         : tool.toolId === "list"
-        ? "List direct children of one known workspace directory. Use it for directory observation only; it does not recurse, search file contents, or open file bodies."
+        ? "List the direct children of a known directory. Does not recurse."
+        : tool.toolId === "read"
+        ? "Read contents of a known file. Use glob when the path is unknown; use grep to search file contents."
+        : tool.toolId === "grep"
+        ? "Search file contents by regex or literal text. Returns paths and line locations; use glob to search filenames."
         : tool.toolId === "read_discover"
         ? "Discover candidate files, directories, symbols, or keyword locations without opening file bodies."
-        : (tool.toolId === "read" || tool.toolId === "read_open")
-          ? "Open one known target when that single read completes the requested action. If the unfinished package requires another source, cross-source comparison, later mutation, or verification after this read, delegate the whole package instead of starting with read. Legacy read_open has the same compatibility semantics. Do not use it for fuzzy discovery or to mechanically reopen CodeGraph-verified source excerpts."
+        : tool.toolId === "read_open"
+          ? "Legacy known-target read compatibility tool."
           : tool.toolId === "codebase_explore"
             ? "Primary local code-understanding tool. Successful results include bounded workspace-verified source excerpts with paths and line ranges. Those verified excerpts already count as source-body evidence; use read only for a specific unresolved target or missing surrounding context."
             : tool.description;
