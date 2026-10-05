@@ -529,6 +529,9 @@ export const executeGrep = async (
 
   for (const candidate of candidates) {
     if (signal.aborted) throw new Error("Grep cancelled");
+    if (Date.now() >= deadlineAt) {
+      throw mcpInternalError(`grep timed out after ${timeoutMs}ms`);
+    }
 
     pushEvent?.({
       type: "invocation:progress",
@@ -615,6 +618,11 @@ export const executeGrep = async (
         }),
       ],
     };
+  }
+
+  if (signal.aborted) throw new Error("Grep cancelled");
+  if (Date.now() >= deadlineAt) {
+    throw mcpInternalError(`grep timed out after ${timeoutMs}ms`);
   }
 
   pushEvent?.({
