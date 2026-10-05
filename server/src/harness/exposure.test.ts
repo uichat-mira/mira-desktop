@@ -61,7 +61,7 @@ describe("resolveHarnessToolExposure", () => {
     "run pnpm check",
   ])("does not use user wording to hide terminal_session: %s", (query) => {
     registerTool(terminalSessionTool);
-    registerTool(readOpenTool);
+    registerTool(readTool);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -69,7 +69,7 @@ describe("resolveHarnessToolExposure", () => {
     });
 
     expect(decision.exposedToolIds).toContain("terminal_session");
-    expect(decision.exposedToolIds).toContain("read_open");
+    expect(decision.exposedToolIds).toContain("read");
   });
 
   it("does not use sandbox profile state to hide registered public tools", () => {
@@ -89,7 +89,7 @@ describe("resolveHarnessToolExposure", () => {
 
   it("does not use chat_surface domain heuristics to hide registered public tools", () => {
     registerTool(terminalSessionTool);
-    registerTool(readOpenTool);
+    registerTool(readTool);
     registerTool(webSearchTool);
 
     const decision = resolveHarnessToolExposure({
@@ -98,7 +98,7 @@ describe("resolveHarnessToolExposure", () => {
     });
 
     expect(decision.exposedToolIds).toEqual(
-      expect.arrayContaining(["terminal_session", "read_open", "web_search"]),
+      expect.arrayContaining(["terminal_session", "read", "web_search"]),
     );
   });
 
@@ -136,8 +136,8 @@ describe("resolveHarnessToolExposure", () => {
       query: "open README.md",
     });
 
-    expect(decision.exposedToolIds).toContain("read_open");
-    expect(decision.exposedToolIds).not.toContain("read");
+    expect(decision.exposedToolIds).toContain("read");
+    expect(decision.exposedToolIds).not.toContain("read_open");
     expect(decision.exposedToolIds).not.toContain("read_slice");
   });
 
@@ -160,7 +160,7 @@ describe("resolveHarnessToolExposure", () => {
   });
 
   it("does not create semantic or runtime policy reasons for public built-in tools", () => {
-    registerTool(readOpenTool);
+    registerTool(readTool);
     registerTool(webSearchTool);
     registerTool(terminalSessionTool);
 
