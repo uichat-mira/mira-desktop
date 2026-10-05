@@ -310,7 +310,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
   }
   if (toolId === "glob") {
     const pattern = typeof result.pattern === "string" ? result.pattern : "";
-    const root = typeof result.root === "string" ? result.root : ".";
+    const path = typeof result.path === "string" ? result.path : ".";
     const matches = Array.isArray(result.matches)
       ? result.matches.filter((value): value is string => typeof value === "string")
       : [];
@@ -330,7 +330,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       actionTaken: `Matched workspace files with glob ${pattern || "(empty)"}.`,
       facts: [
         `pattern=${pattern}`,
-        `root=${root}`,
+        `path=${path}`,
         `matchCount=${totalCount}`,
         ...matchesPreview.map((match) => `matchedPath=${match}`),
       ],
@@ -343,8 +343,10 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       data: {
         kind: "glob",
         pattern,
-        root,
+        path,
         matchCount: totalCount,
+        offset: typeof result.offset === "number" ? result.offset : 0,
+        ...(typeof result.nextOffset === "number" ? { nextOffset: result.nextOffset } : {}),
         matchedPaths,
         matchesPreview,
         truncated,
@@ -373,7 +375,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       facts: [
         `operation=${operation}`,
         ...(path ? [`path=${path}`] : []),
-        ...(root ? [`root=${root}`] : []),
+        ...(root ? [`path=${path}`] : []),
         ...(query ? [`query=${query}`] : []),
         `candidateCount=${returnedCount}`,
         `returnedCount=${returnedCount}`,
@@ -402,7 +404,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
   }
   if (toolId === "grep") {
     const pattern = typeof result.pattern === "string" ? result.pattern : "";
-    const root = typeof result.root === "string" ? result.root : ".";
+    const path = typeof result.path === "string" ? result.path : ".";
     const provider = typeof result.provider === "string" ? result.provider : "unknown";
     const matches = Array.isArray(result.matches)
       ? result.matches.filter(asRecord).map((match) => ({
@@ -426,7 +428,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       actionTaken: `Searched workspace text for "${pattern}".`,
       facts: [
         `pattern=${pattern}`,
-        `root=${root}`,
+        `path=${path}`,
         `provider=${provider}`,
         `matchCount=${matches.length}`,
         ...matchesPreview,
@@ -439,8 +441,10 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       data: {
         kind: "grep",
         pattern,
-        root,
+        path,
         matchCount: matches.length,
+        offset: typeof result.offset === "number" ? result.offset : 0,
+        ...(typeof result.nextOffset === "number" ? { nextOffset: result.nextOffset } : {}),
         matchedPaths,
         matchesPreview,
         provider,
