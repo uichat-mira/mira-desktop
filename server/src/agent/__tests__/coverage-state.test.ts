@@ -2,6 +2,53 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { reduceAgentCoverageState } from "../coverage-state";
 
+test("coverage reducer asks for canonical list when directory evidence is missing", () => {
+  const state = reduceAgentCoverageState({
+    question: "列出当前目录有哪些文件",
+  });
+
+  assert.deepEqual(state.globalPendingActions, ["list"]);
+  assert.equal(state.taskCompletable, false);
+});
+
+test("coverage reducer completes list task from canonical list evidence", () => {
+  const state = reduceAgentCoverageState({
+    question: "列出当前目录有哪些文件",
+    evidence: {
+      observations: [],
+      retrievals: [],
+      toolExecutions: [
+        {
+          toolId: "list",
+          args: { path: "." },
+          status: "completed",
+          summary: {
+            source: "tool",
+            status: "completed",
+            toolId: "list",
+            actionTaken: "Listed current directory.",
+            keyFindings: ["entryCount=3"],
+            data: {
+              kind: "list",
+              path: ".",
+              entryCount: 3,
+              fileCount: 2,
+              directoryCount: 1,
+              entriesPreview: ["README.md", "AGENTS.md", "docs"],
+              truncated: false,
+            },
+          },
+          startedAt: "2026-10-05T00:00:00.000Z",
+          finishedAt: "2026-10-05T00:00:01.000Z",
+        },
+      ],
+    },
+  });
+
+  assert.equal(state.taskCompletable, true);
+  assert.deepEqual(state.globalPendingActions, []);
+});
+
 test("coverage reducer completes list task from read_list evidence", () => {
   const state = reduceAgentCoverageState({
     question: "列出当前目录有哪些文件",
