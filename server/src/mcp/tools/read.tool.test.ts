@@ -123,6 +123,24 @@ describe("read tool", () => {
     ]);
   });
 
+  it("rejects image transport above Gemini's 20 MB baseline without reading it into model content", async () => {
+    const target = path.join(tempRoot, "oversized.png");
+    const fd = fs.openSync(target, "w");
+    fs.ftruncateSync(fd, 20 * 1024 * 1024 + 1);
+    fs.closeSync(fd);
+
+    const result = await readTool.execute(context({ path: "oversized.png" }));
+    expect(result.structuredContent).toMatchObject({
+      type: "unsupported",
+      path: "oversized.png",
+      reason: "file_too_large",
+      mimeType: "image/png",
+      sizeBytes: 20 * 1024 * 1024 + 1,
+      maxBytes: 20 * 1024 * 1024,
+    });
+    expect(result.content).toBeUndefined();
+  });
+
   it("keeps SVG on the text read path like Gemini CLI", async () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>Mira</text></svg>';
     fs.writeFileSync(path.join(tempRoot, "diagram.svg"), svg, "utf8");
