@@ -238,7 +238,7 @@ try {
     }
     if (buffer.includes(0)) continue;
 
-    const lines = buffer.toString("utf8").split(/\\r?\\n/);
+    const lines = buffer.toString("utf8").split(/\r?\n/);
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const line = lines[lineIndex] || "";
       const match = matcher.exec(line);
