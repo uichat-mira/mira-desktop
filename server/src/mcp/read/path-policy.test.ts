@@ -24,23 +24,23 @@ afterEach(() => {
 });
 
 describe("read ignore policy", () => {
-  it("delegates gitignore negation to Git instead of hand-parsing it", () => {
-    expect(
+  it("delegates gitignore negation to Git instead of hand-parsing it", async () => {
+    await expect(
       filterGitIgnoredPaths(
         tempRoot,
         ["ignored/drop.txt", "ignored/keep.txt"],
         false,
       ),
-    ).toEqual(["ignored/keep.txt"]);
+    ).resolves.toEqual(["ignored/keep.txt"]);
   });
 
-  it("lets includeIgnored expose the full candidate set", () => {
-    expect(
+  it("lets includeIgnored expose the full candidate set", async () => {
+    await expect(
       filterGitIgnoredPaths(
         tempRoot,
         ["ignored/drop.txt", "ignored/keep.txt"],
         true,
       ),
-    ).toEqual(["ignored/drop.txt", "ignored/keep.txt"]);
+    ).resolves.toEqual(["ignored/drop.txt", "ignored/keep.txt"]);
   });
 });
