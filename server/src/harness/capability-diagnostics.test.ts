@@ -3,7 +3,7 @@ import * as embedding from "@/services/internal-capabilities/local-embedding.js"
 import * as rerank from "@/services/internal-capabilities/local-rerank.js";
 import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessCapabilityDiagnostics } from "./capability-diagnostics.js";
-import { readOpenTool } from "../mcp/tools/read-open.tool.js";
+import { readTool } from "../mcp/tools/read.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
 import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 import { resolveAgentEligibleExternalMcpCapabilities } from "@/mcp/external";
@@ -92,8 +92,8 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
     });
     registerTool({
       definition: {
-        id: "read_open",
-        title: "Read Open",
+        id: "read",
+        title: "Read",
         description: "open workspace files",
         domain: "read",
         source: "internal",
@@ -140,11 +140,11 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
     expect(result).not.toHaveProperty("selectedToolIds");
     expect(result.candidates).toHaveLength(2);
     expect(result.candidates[0]).toMatchObject({ toolId: "read_discover" });
-    expect(result.candidates[1]).toMatchObject({ toolId: "read_open" });
+    expect(result.candidates[1]).toMatchObject({ toolId: "read" });
     expect(result.toolCandidates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ toolId: "read_discover" }),
-        expect.objectContaining({ toolId: "read_open" }),
+        expect.objectContaining({ toolId: "read" }),
       ]),
     );
     expect(result.retrievalModel).toBeUndefined();
@@ -152,7 +152,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
   });
 
   it("keeps eligible workspace candidates when local embedding is unavailable", async () => {
-    registerTool(readOpenTool);
+    registerTool(readTool);
     registerTool({
       definition: {
         id: "read_discover",
@@ -191,7 +191,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
 
     expect(result.candidates).toHaveLength(2);
     expect(result.toolExposure.exposedToolIds).toEqual([
-      "read_open",
+      "read",
       "read_discover",
     ]);
     expect(result.retrievalError).toBeUndefined();
@@ -249,7 +249,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
   });
 
   it("keeps exposure reasons and candidate facts for workspace diagnostics", async () => {
-    registerTool(readOpenTool);
+    registerTool(readTool);
     registerTool(webSearchTool);
 
     vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
@@ -280,14 +280,14 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
     });
 
     expect(result.toolExposure.exposedToolIds).toEqual([
-      "read_open",
+      "read",
       "web_search",
     ]);
     expect(result.blockedCapabilityIds).not.toContain("web_search");
     expect(result.exposureReasons).toContain(
       "All public tools are exposed because the tool set is at most 20 tools.",
     );
-    expect(result.toolCandidates[0]).toMatchObject({ toolId: "read_open" });
+    expect(result.toolCandidates[0]).toMatchObject({ toolId: "read" });
   });
 
   it.each([
@@ -295,25 +295,25 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
       label: "workspace-local README query keeps all eligible tools visible",
       query: "请打开 README.md 看看 Runtime 部分",
       source: "agent_intent" as const,
-      tools: [readOpenTool, webSearchTool, externalFakeTool],
-      rerankOrder: ["read_open"],
-      expectedExposedToolIds: ["read_open", "web_search"],
+      tools: [readTool, webSearchTool, externalFakeTool],
+      rerankOrder: ["read"],
+      expectedExposedToolIds: ["read", "web_search"],
       expectedBlockedCapabilityIds: ["external_fake_tool"],
       expectedReason:
       "All public tools are exposed because the tool set is at most 20 tools.",
-      expectedTopToolId: "read_open",
+      expectedTopToolId: "read",
     },
     {
       label: "chat surface keeps safe built-in domains only",
       query: "今天最新新闻是什么",
       source: "chat_surface" as const,
-      tools: [readOpenTool, webSearchTool, terminalSessionTool, externalFakeTool],
-      rerankOrder: ["web_research", "read_open"],
-      expectedExposedToolIds: ["read_open", "web_search", "terminal_session"],
+      tools: [readTool, webSearchTool, terminalSessionTool, externalFakeTool],
+      rerankOrder: ["web_research", "read"],
+      expectedExposedToolIds: ["read", "web_search", "terminal_session"],
       expectedBlockedCapabilityIds: ["external_fake_tool"],
       expectedReason:
         "All public tools are exposed because the tool set is at most 20 tools.",
-      expectedTopToolId: "read_open",
+      expectedTopToolId: "read",
     },
     {
       label: "non-command turn keeps terminal visible in diagnostics",
