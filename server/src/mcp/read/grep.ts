@@ -202,12 +202,13 @@ export const runBoundedProcess = (input: {
     let stdout = "";
     let stderr = "";
     let outputBytes = 0;
-    let child: ReturnType<typeof spawn>;
+    let child: ReturnType<typeof spawn> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     const finish = (result: BoundedProcessResult) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       input.signal.removeEventListener("abort", abort);
       resolve(result);
     };
@@ -230,7 +231,7 @@ export const runBoundedProcess = (input: {
       });
     };
 
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       terminate();
       finish({
         status: "timed_out",
@@ -263,16 +264,23 @@ export const runBoundedProcess = (input: {
     }
 
     input.signal.addEventListener("abort", abort, { once: true });
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
+    if (input.signal.aborted) {
+      abort();
+      return;
+    }
+
+    const activeChild = child;
+    activeChild.stdout.setEncoding("utf8");
+    activeChild.stderr.setEncoding("utf8");
 
     const append = (stream: "stdout" | "stderr", chunk: string) => {
+      if (settled) return;
       outputBytes += Buffer.byteLength(chunk, "utf8");
       if (outputBytes > input.maxBufferBytes) {
         terminate();
         finish({
           status: "failed",
-          exitCode: child.exitCode,
+          exitCode: activeChild.exitCode,
           stdout,
           stderr,
           reason: "output-limit",
@@ -283,18 +291,18 @@ export const runBoundedProcess = (input: {
       else stderr += chunk;
     };
 
-    child.stdout.on("data", (chunk: string) => append("stdout", chunk));
-    child.stderr.on("data", (chunk: string) => append("stderr", chunk));
-    child.on("error", () => {
+    activeChild.stdout.on("data", (chunk: string) => append("stdout", chunk));
+    activeChild.stderr.on("data", (chunk: string) => append("stderr", chunk));
+    activeChild.on("error", () => {
       finish({
         status: "failed",
-        exitCode: child.exitCode,
+        exitCode: activeChild.exitCode,
         stdout,
         stderr,
         reason: "spawn-error",
       });
     });
-    child.on("close", (code) => {
+    activeChild.on("close", (code) => {
       finish({
         status: "completed",
         exitCode: code,
@@ -371,6 +379,8 @@ const executeNodeFallback = async (input: {
   extensions: string[];
   providerLimit: number;
   signal: AbortSignal;
+  deadlineAt: number;
+  timeoutMs: number;
 }): Promise<GrepMatch[]> => {
   const filePattern =
     input.relativeRoot === "."
@@ -387,13 +397,19 @@ const executeNodeFallback = async (input: {
   });
   const matcher = buildMatcher(input.pattern);
   const matches: GrepMatch[] = [];
+  const assertActive = () => {
+    if (input.signal.aborted) {
+      throw new Error("Grep cancelled");
+    }
+    if (Date.now() >= input.deadlineAt) {
+      throw mcpInternalError(`grep timed out after ${input.timeoutMs}ms`);
+    }
+  };
 
   for (const filePath of files.sort((left, right) =>
     left.localeCompare(right, undefined, { numeric: true }),
   )) {
-    if (input.signal.aborted) {
-      throw new Error("Grep cancelled");
-    }
+    assertActive();
 
     const normalizedPath = normalizeWorkspaceRelativePath(filePath);
     if (!matchesExtension(normalizedPath, input.extensions)) continue;
@@ -408,9 +424,7 @@ const executeNodeFallback = async (input: {
 
     const lines = buffer.toString("utf8").split(/\r?\n/);
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-      if (input.signal.aborted) {
-        throw new Error("Grep cancelled");
-      }
+      assertActive();
       const line = lines[lineIndex] ?? "";
       const match = matcher.exec(line);
       if (!match) continue;
@@ -503,8 +517,17 @@ export const executeGrep = async (
   const attempts: GrepProviderAttempt[] = [];
   const runProcess = dependencies.runProcess ?? runBoundedProcess;
   const timeoutMs = dependencies.timeoutMs ?? DEFAULT_GREP_TIMEOUT_MS;
+  const deadlineAt = Date.now() + timeoutMs;
+  const candidates = toRipgrepCandidates(resolution);
+  if (candidates.length === 0) {
+    attempts.push({
+      provider: "system-ripgrep",
+      status: "unavailable",
+      reason: "runtime-unavailable",
+    });
+  }
 
-  for (const candidate of toRipgrepCandidates(resolution)) {
+  for (const candidate of candidates) {
     if (signal.aborted) throw new Error("Grep cancelled");
 
     pushEvent?.({
@@ -523,7 +546,7 @@ export const executeGrep = async (
       }),
       cwd: workspaceRoot,
       signal,
-      timeoutMs,
+      timeoutMs: Math.max(1, deadlineAt - Date.now()),
       maxBufferBytes: GREP_MAX_BUFFER_BYTES,
     });
 
@@ -605,6 +628,8 @@ export const executeGrep = async (
     extensions,
     providerLimit,
     signal,
+    deadlineAt,
+    timeoutMs,
   });
   attempts.push({ provider: "node-content-scan", status: "success" });
   const contents = finalizeResult({
