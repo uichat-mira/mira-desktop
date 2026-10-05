@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
@@ -10,6 +11,7 @@ const tempRoot = createTimestampedTestArtifactPath("workspace", "canonical-grep-
 
 beforeEach(() => {
   fs.mkdirSync(path.join(tempRoot, "src"), { recursive: true });
+  spawnSync("git", ["init", "-q"], { cwd: tempRoot, windowsHide: true });
   fs.mkdirSync(path.join(tempRoot, "ignored"), { recursive: true });
   fs.writeFileSync(path.join(tempRoot, ".gitignore"), "ignored/\n", "utf8");
   fs.writeFileSync(
