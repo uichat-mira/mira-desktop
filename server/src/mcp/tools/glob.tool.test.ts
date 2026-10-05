@@ -38,56 +38,79 @@ describe("glob tool", () => {
     clearWorkspaceSelection();
   });
 
-  it("uses true glob semantics with deterministic workspace-relative results", async () => {
+  it("matches arbitrary file-path glob patterns", async () => {
     const result = await globTool.execute(
-      context({ pattern: "**/*.ts", root: "src" }),
+      context({ pattern: "**/*.ts", path: "src" }),
     );
-
     expect(result.structuredContent).toMatchObject({
       type: "glob",
       pattern: "**/*.ts",
-      root: "src",
+      path: "src",
       matches: ["src/a.ts", "src/b.ts", "src/nested/c.ts"],
+      offset: 0,
       returnedCount: 3,
       totalCount: 3,
       hasMore: false,
-      truncated: false,
     });
   });
 
-  it("applies shared ignore policy", async () => {
-    const result = await globTool.execute(context({ pattern: "**/*.ts", root: "." }));
-    const matches = (result.structuredContent as { matches: string[] }).matches;
-    expect(matches).not.toContain("node_modules/pkg/hidden.ts");
+  it("paginates path matches with nextOffset", async () => {
+    const first = await globTool.execute(
+      context({ pattern: "**/*.ts", path: "src", limit: 2 }),
+    );
+    expect(first.structuredContent).toMatchObject({
+      matches: ["src/a.ts", "src/b.ts"],
+      offset: 0,
+      returnedCount: 2,
+      totalCount: 3,
+      hasMore: true,
+      nextOffset: 2,
+    });
+
+    const second = await globTool.execute(
+      context({ pattern: "**/*.ts", path: "src", offset: 2, limit: 2 }),
+    );
+    expect(second.structuredContent).toMatchObject({
+      matches: ["src/nested/c.ts"],
+      offset: 2,
+      returnedCount: 1,
+      totalCount: 3,
+      hasMore: false,
+    });
+  });
+
+  it("uses ignore defaults but allows explicit visibility override", async () => {
+    const hidden = await globTool.execute(context({ pattern: "**/*.ts" }));
+    expect((hidden.structuredContent as { matches: string[] }).matches).not.toContain(
+      "node_modules/pkg/hidden.ts",
+    );
+
+    const visible = await globTool.execute(
+      context({ pattern: "**/*.ts", includeIgnored: true }),
+    );
+    expect((visible.structuredContent as { matches: string[] }).matches).toContain(
+      "node_modules/pkg/hidden.ts",
+    );
   });
 
   it("returns an explicit empty success for no matches", async () => {
-    const result = await globTool.execute(context({ pattern: "**/*.tsx", root: "src" }));
+    const result = await globTool.execute(context({ pattern: "**/*.tsx", path: "src" }));
     expect(result.structuredContent).toMatchObject({
       matches: [],
       returnedCount: 0,
       totalCount: 0,
       hasMore: false,
-      truncated: false,
     });
   });
 
-  it("bounds results and exposes truncation metadata", async () => {
-    const result = await globTool.execute(
-      context({ pattern: "**/*.ts", root: "src", maxResults: 2 }),
-    );
-    expect(result.structuredContent).toMatchObject({
-      matches: ["src/a.ts", "src/b.ts"],
-      returnedCount: 2,
-      totalCount: 3,
-      hasMore: true,
-      truncated: true,
-    });
-  });
-
-  it("rejects patterns that escape the selected root", async () => {
-    await expect(
-      globTool.execute(context({ pattern: "../**/*.ts", root: "src" })),
-    ).rejects.toThrow("pattern must stay inside the selected root");
+  it("has a path-search contract rather than a content-search contract", () => {
+    expect(globTool.definition.description).toContain("Does not search file contents");
+    expect(Object.keys(globTool.definition.inputSchema.properties ?? {})).toEqual([
+      "pattern",
+      "path",
+      "offset",
+      "limit",
+      "includeIgnored",
+    ]);
   });
 });
