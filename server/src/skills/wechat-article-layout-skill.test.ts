@@ -29,7 +29,7 @@ describe("WeChat article layout Skill", () => {
       execution: {
         context: "fork",
         agent: "subAgent",
-        allowedTools: ["read_open", "terminal_session"],
+        allowedTools: ["read", "terminal_session"],
         runtimeBindings: [],
         workspaceBound: true,
       },
