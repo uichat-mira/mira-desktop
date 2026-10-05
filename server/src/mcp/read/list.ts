@@ -9,14 +9,15 @@ import type {
 } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { getWorkspaceRoot, resolveWorkspacePath } from "../workspace.js";
+import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 import {
   escapeGlobPath,
-  loadWorkspaceIgnorePatterns,
   normalizeWorkspaceRelativePath,
+  resolveWorkspaceIgnorePatterns,
 } from "./path-policy.js";
 
-export const DEFAULT_LIST_MAX_RESULTS = 100;
-export const MAX_LIST_RESULTS = 200;
+export const DEFAULT_LIST_LIMIT = 200;
+export const MAX_LIST_LIMIT = 1_000;
 
 export type ListEntry = {
   name: string;
@@ -29,10 +30,13 @@ export type ListResult = {
   type: "list";
   path: string;
   entries: ListEntry[];
+  offset: number;
+  limit: number;
   returnedCount: number;
   totalCount: number;
   hasMore: boolean;
   truncated: boolean;
+  nextOffset?: number;
 };
 
 type ListExecutionResult = {
@@ -55,12 +59,12 @@ const assertHarnessEnvironment = (
   return environment;
 };
 
-const parseMaxResults = (value: unknown) => {
-  if (value === undefined) return DEFAULT_LIST_MAX_RESULTS;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    throw mcpBadRequest("maxResults must be a positive integer");
+const parseIncludeIgnored = (value: unknown) => {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") {
+    throw mcpBadRequest("includeIgnored must be a boolean");
   }
-  return Math.min(value, MAX_LIST_RESULTS);
+  return value;
 };
 
 const entryType = (stat: fs.Stats): ListEntry["type"] => {
@@ -79,10 +83,14 @@ export const executeList = async ({
 }: ListExecutionContext): Promise<ListExecutionResult> => {
   assertHarnessEnvironment(environment);
 
-  const inputPath = args.path;
-  if (typeof inputPath !== "string" || !inputPath.trim()) {
-    throw mcpBadRequest("path is required");
-  }
+  const inputPath =
+    typeof args.path === "string" && args.path.trim() ? args.path.trim() : ".";
+  const offset = parseOffset(args.offset);
+  const limit = parseBoundedLimit(args.limit, {
+    defaultValue: DEFAULT_LIST_LIMIT,
+    maxValue: MAX_LIST_LIMIT,
+  });
+  const includeIgnored = parseIncludeIgnored(args.includeIgnored);
 
   const workspaceRoot = getWorkspaceRoot();
   const targetPath = resolveWorkspacePath(inputPath);
@@ -93,7 +101,6 @@ export const executeList = async ({
     throw mcpBadRequest("list requires a directory path");
   }
 
-  const maxResults = parseMaxResults(args.maxResults);
   const relativeBase =
     normalizeWorkspaceRelativePath(path.relative(workspaceRoot, targetPath)) || ".";
   const pattern =
@@ -103,7 +110,9 @@ export const executeList = async ({
 
   pushEvent?.({
     type: "invocation:progress",
-    message: "List plan: direct-directory -> shared-ignore-policy",
+    message: includeIgnored
+      ? "List plan: direct-directory including ignored paths"
+      : "List plan: direct-directory with default ignores",
   });
 
   let matches: string[];
@@ -115,7 +124,7 @@ export const executeList = async ({
       unique: true,
       suppressErrors: false,
       followSymbolicLinks: false,
-      ignore: loadWorkspaceIgnorePatterns(workspaceRoot),
+      ignore: resolveWorkspaceIgnorePatterns(workspaceRoot, includeIgnored),
     });
   } catch (error) {
     throw mcpInternalError(`Failed to list directory: ${inputPath}`, {
@@ -142,17 +151,25 @@ export const executeList = async ({
         left.path.localeCompare(right.path, undefined, { numeric: true }),
     );
 
-  const totalCount = entries.length;
-  const visibleEntries = entries.slice(0, maxResults);
-  const truncated = visibleEntries.length < totalCount;
+  const visibleEntries = entries.slice(offset, offset + limit);
+  const continuation = buildContinuation({
+    offset,
+    returnedCount: visibleEntries.length,
+    totalCount: entries.length,
+  });
   const contents: ListResult = {
     type: "list",
     path: inputPath,
     entries: visibleEntries,
-    returnedCount: visibleEntries.length,
-    totalCount,
-    hasMore: truncated,
-    truncated,
+    offset,
+    limit,
+    returnedCount: continuation.returnedCount,
+    totalCount: entries.length,
+    hasMore: continuation.hasMore,
+    truncated: continuation.truncated,
+    ...(continuation.nextOffset === undefined
+      ? {}
+      : { nextOffset: continuation.nextOffset }),
   };
 
   return {
@@ -164,9 +181,15 @@ export const executeList = async ({
         data: visibleEntries,
         metadata: {
           path: inputPath,
+          offset,
+          limit,
           returnedCount: visibleEntries.length,
-          totalCount,
-          truncated,
+          totalCount: entries.length,
+          hasMore: continuation.hasMore,
+          includeIgnored,
+          ...(continuation.nextOffset === undefined
+            ? {}
+            : { nextOffset: continuation.nextOffset }),
         },
       }),
     ],
