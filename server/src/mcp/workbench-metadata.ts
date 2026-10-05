@@ -47,6 +47,7 @@ const DOMAIN_METADATA: Record<string, WorkbenchPresentation> = {
 };
 
 const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
+  read: { path: "" },
   read_discover: { mode: "list", path: "" },
   read_open: { path: "" },
   read_list: { path: "" },
