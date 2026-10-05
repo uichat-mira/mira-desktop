@@ -84,7 +84,10 @@ export const getToolTraceTargetPreview = (
     return getTraceValuePreview(args.path);
   }
 
-  if (toolId === "glob" && typeof args.pattern === "string") {
+  if (
+    (toolId === "glob" || toolId === "grep") &&
+    typeof args.pattern === "string"
+  ) {
     return getTraceValuePreview(args.pattern);
   }
 
