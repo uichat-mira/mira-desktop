@@ -12,19 +12,19 @@ import { useTranslation } from "react-i18next";
 import Badge from "@/shared/ui/Badge";
 import Tooltip from "@/shared/ui/Tooltip";
 import { UChatOverflowTooltip } from "@/shared/uchat/ui/UChatOverflowTooltip";
-import type { ToolLabTool } from "../types";
+import type { CapabilityTool } from "../types";
 
-export type ToolCatalogKind = "core" | "extension";
-export type ToolCatalogFilter = "all" | ToolCatalogKind;
+export type CapabilityGroupKind = "native" | "extension";
+export type CapabilityGroupFilter = "all" | CapabilityGroupKind;
 
-export type ToolCatalogGroup = {
+export type CapabilityGroup = {
   id: string;
   label: string;
   description: string;
   icon: string;
-  kind: ToolCatalogKind;
+  kind: CapabilityGroupKind;
   order: number;
-  tools: ToolLabTool[];
+  tools: CapabilityTool[];
 };
 
 const groupIcons: Record<string, LucideIcon> = {
@@ -39,9 +39,9 @@ const groupIcons: Record<string, LucideIcon> = {
   external_mcp: Blocks,
 };
 
-const fallbackCoreGroups: Record<
+const fallbackNativeGroups: Record<
   string,
-  Pick<ToolCatalogGroup, "id" | "label" | "description" | "icon" | "order">
+  Pick<CapabilityGroup, "id" | "label" | "description" | "icon" | "order">
 > = {
   read: {
     id: "read",
@@ -73,30 +73,54 @@ const fallbackCoreGroups: Record<
   },
 };
 
-const getCoreGroup = (tool: ToolLabTool) => {
-  if (tool.workbench) {
-    return {
-      id: tool.workbench.groupId,
-      label: tool.workbench.groupLabel,
-      description: tool.workbench.groupDescription,
-      icon: tool.workbench.icon,
-      order: tool.workbench.groupOrder,
-    };
-  }
-
-  return (
-    fallbackCoreGroups[tool.domain] ?? {
-      id: tool.domain || "other",
-      label: tool.domain || "Other",
-      description: tool.description,
-      icon: tool.domain || "wrench",
-      order: Number.MAX_SAFE_INTEGER,
-    }
-  );
+const nativeGroupTranslationKeys: Record<string, string> = {
+  read: "read",
+  mutation: "mutation",
+  edit: "mutation",
+  terminal: "terminal",
+  web: "webSearch",
+  web_search: "webSearch",
 };
 
-export function buildAcceptanceToolGroups(tools: ToolLabTool[]): ToolCatalogGroup[] {
-  const groups = new Map<string, ToolCatalogGroup>();
+type CapabilityGroupTranslator = (key: string) => string;
+
+const getNativeGroup = (
+  tool: CapabilityTool,
+  translate?: CapabilityGroupTranslator,
+) => {
+  const group = tool.workbench
+    ? {
+        id: tool.workbench.groupId,
+        label: tool.workbench.groupLabel,
+        description: tool.workbench.groupDescription,
+        icon: tool.workbench.icon,
+        order: tool.workbench.groupOrder,
+      }
+    : fallbackNativeGroups[tool.domain] ?? {
+        id: tool.domain || "other",
+        label: tool.domain || "Other",
+        description: tool.description,
+        icon: tool.domain || "wrench",
+        order: Number.MAX_SAFE_INTEGER,
+      };
+
+  const translationKey = nativeGroupTranslationKeys[group.id];
+  if (!translate || !translationKey) return group;
+
+  return {
+    ...group,
+    label: translate(`settings.development.capabilities.groups.${translationKey}.label`),
+    description: translate(
+      `settings.development.capabilities.groups.${translationKey}.description`,
+    ),
+  };
+};
+
+export function buildCapabilityGroups(
+  tools: CapabilityTool[],
+  translate?: CapabilityGroupTranslator,
+): CapabilityGroup[] {
+  const groups = new Map<string, CapabilityGroup>();
 
   tools.forEach((tool) => {
     if (tool.source === "external") {
@@ -122,8 +146,8 @@ export function buildAcceptanceToolGroups(tools: ToolLabTool[]): ToolCatalogGrou
       return;
     }
 
-    const core = getCoreGroup(tool);
-    const id = `core:${core.id}`;
+    const native = getNativeGroup(tool, translate);
+    const id = `native:${native.id}`;
     const existing = groups.get(id);
 
     if (existing) {
@@ -132,9 +156,9 @@ export function buildAcceptanceToolGroups(tools: ToolLabTool[]): ToolCatalogGrou
     }
 
     groups.set(id, {
-      ...core,
+      ...native,
       id,
-      kind: "core",
+      kind: "native",
       tools: [tool],
     });
   });
@@ -143,37 +167,37 @@ export function buildAcceptanceToolGroups(tools: ToolLabTool[]): ToolCatalogGrou
     if (left.kind === right.kind) {
       return left.order - right.order || left.label.localeCompare(right.label);
     }
-    return left.kind === "core" ? -1 : 1;
+    return left.kind === "native" ? -1 : 1;
   });
 }
 
-export function filterAcceptanceToolGroups(
-  groups: ToolCatalogGroup[],
-  filter: ToolCatalogFilter,
+export function filterCapabilityGroups(
+  groups: CapabilityGroup[],
+  filter: CapabilityGroupFilter,
 ) {
   return filter === "all"
     ? groups
     : groups.filter((group) => group.kind === filter);
 }
 
-type AcceptanceToolsSidebarProps = {
-  groups: ToolCatalogGroup[];
+type CapabilitiesSidebarProps = {
+  groups: CapabilityGroup[];
   selectedGroupId: string | null;
   onSelectGroup: (groupId: string) => void;
   emptyLabel: string;
 };
 
-export default function AcceptanceToolsSidebar({
+export default function CapabilitiesSidebar({
   groups,
   selectedGroupId,
   onSelectGroup,
   emptyLabel,
-}: AcceptanceToolsSidebarProps) {
+}: CapabilitiesSidebarProps) {
   const { t } = useTranslation();
 
   return (
     <nav
-      aria-label="Tool groups"
+      aria-label={t("settings.development.capabilities.labels.toolGroups")}
       className="stable-scrollbar flex min-h-0 flex-col overflow-y-auto border-r border-border pr-3"
     >
       {groups.length > 0 ? (
@@ -217,7 +241,7 @@ export default function AcceptanceToolsSidebar({
                   </div>
                   {group.kind === "extension" ? (
                     <Badge variant="primary" className="justify-self-end">
-                      {t("settings.development.toolLab.catalogKind.extension")}
+                      {t("settings.development.capabilities.catalogKind.extension")}
                     </Badge>
                   ) : null}
                 </button>

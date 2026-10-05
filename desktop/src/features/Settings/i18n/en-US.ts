@@ -1360,7 +1360,7 @@ const settingsPending = {
       miniTitle: "Tools",
       title: "Tools",
       description:
-        "Organize internal core Tools by product capability group and inspect their invocation stream.",
+        "Organize Native Tools by product capability group and inspect their invocation stream.",
       domains: {
         read: {
           label: "Read",
@@ -1384,7 +1384,7 @@ const settingsPending = {
       },
       workbench: {
         description:
-          "Run internal core Tools directly and inspect results with the event stream.",
+          "Run Native Tools directly and inspect results with the event stream.",
         execute: "Run",
         workspaceRoot: "Workspace Root",
         workspaceDescription:
@@ -1441,7 +1441,7 @@ const settingsPending = {
       miniTitle: "MCP Marketplace",
       title: "MCP Marketplace",
       description:
-        "Manage MCP marketplace discovery, third-party MCP servers, and future non-core built-in MCP packages.",
+        "Manage MCP marketplace discovery, third-party MCP servers, and future built-in MCP packages.",
       tabs: {
         marketplace: "Marketplace",
         installed: "Installed",
@@ -1536,7 +1536,7 @@ const settingsPending = {
       installDialog: {
         title: "Install third-party MCP server",
         description:
-          'You are about to attach "{{name}}" to the local MCP runtime. Third-party MCP servers are not internal core Tools, so the source, behavior, and risk must be acknowledged before enablement.',
+          'You are about to attach "{{name}}" to the local MCP runtime. Third-party MCP servers are not Native Tools, so the source, behavior, and risk must be acknowledged before enablement.',
         confirm: "Acknowledge and install",
       },
       guide: {
@@ -1620,7 +1620,7 @@ const settingsPending = {
           "MCP capabilities are hosted by the backend harness. The renderer only browses, configures, and inspects state. Chat is not wired into this flow yet.",
         disclaimerTitle: "Install disclaimer",
         disclaimerDescription:
-          "User-installed or user-connected third-party MCP servers will require one enable-time disclaimer. Internal core Tools do not use this flow; future non-core built-in MCP packages are governed by the MCP product policy.",
+          "User-installed or user-connected third-party MCP servers will require one enable-time disclaimer. Native Tools do not use this flow; future built-in MCP packages are governed by the MCP product policy.",
       },
       messages: {
         marketplaceLoadFailed: "Failed to load MCP marketplace",
@@ -2389,29 +2389,51 @@ const settingsPending = {
         clientTests: "Client Tests",
         serverTests: "Server Tests",
       },
-      toolLab: {
+      capabilities: {
         loading: "Loading tool runtime…",
         loadFailed: "Failed to load tools",
         tools: "Tools",
         toolsHint: "Shows tools with registered acceptance cases.",
         catalogFilter: {
           all: "All",
-          core: "Core",
+          native: "Native",
           extension: "Extensions",
         },
         catalogKind: {
-          core: "Core",
+          native: "Native",
           extension: "Extension",
+        },
+        groups: {
+          read: {
+            label: "Read",
+            description: "Read and inspect workspace content.",
+          },
+          mutation: {
+            label: "Edit",
+            description: "Create and modify workspace content.",
+          },
+          terminal: {
+            label: "Terminal",
+            description: "Run governed terminal operations.",
+          },
+          webSearch: {
+            label: "Web Search",
+            description: "Search and fetch web content.",
+          },
         },
         detailTabs: {
           input: "Input",
           output: "Output",
           capabilities: "Capabilities",
         },
+        caseGroups: {
+          extension: "External MCP",
+        },
         cases: "Acceptance cases",
         result: "Current result",
         diagnostics: "Diagnostics",
         diagnosticsHint: "Inspect Structured Result, Evidence, Trace, and runtime events when needed.",
+        noMatchingTools: "No matching tools",
         noCases: "No runnable acceptance cases",
         noCasesHint: "Tests are not auto-generated for tools without registered acceptance cases.",
         unavailableTitle: "This case is not ready to run",
@@ -2431,6 +2453,28 @@ const settingsPending = {
         },
         consoleTabs: {
           interaction: "Main",
+          artifacts: "Artifacts",
+          result: "Result",
+          error: "Error",
+          evidence: "Evidence",
+          trace: "Trace",
+          events: "Events",
+          source: "Source",
+        },
+        console: {
+          toolRun: "tool run",
+          status: "status",
+          scope: "scope",
+        },
+        summary: {
+          notRun: "This case has not run yet.",
+          awaitingApproval: "Execution is waiting at the approval boundary.",
+          failed: "Tool execution failed.",
+          cancelled: "Tool execution was cancelled.",
+          running: "The real Invocation is running.",
+          completedArtifacts: "Completed with {{count}} Artifact(s).",
+          completedResult: "Completed with a structured result.",
+          completed: "Completed.",
         },
         transportError: "Failed to read the invocation chain",
         readiness: {
@@ -2459,6 +2503,9 @@ const settingsPending = {
           sourceDetails: "Source Details",
           description: "Description",
           source: "Source",
+          toolGroups: "Tool groups",
+          artifactNoPreview: "Artifact has no directly previewable data or URI.",
+          toolId: "Tool ID",
           inputSchema: "Input Schema",
           outputSchema: "Output Schema",
           capabilities: "Capabilities",

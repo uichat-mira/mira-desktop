@@ -5,29 +5,29 @@ import {
   getMcpInvocation,
   getMcpInvocationEvents,
   getMcpInvocationTrace,
-  getMcpManagedToolLabWorkspaceSelection,
+  getMcpManagedCapabilityWorkspaceSelection,
   getMcpRegisteredTools,
   getMcpTools,
-  resetMcpToolLabFixture,
+  resetMcpCapabilityFixture,
   resolveMcpInvocationApproval,
   type ExternalMcpServerRecord,
   type HarnessToolDefinition,
   type McpWorkspaceSelection,
 } from "@/shared/api/tools";
-import { buildToolLabCases } from "../cases";
+import { buildCapabilityAcceptanceCases } from "../cases";
 import type {
-  ToolLabCaseDefinition,
-  ToolLabRunState,
-  ToolLabTool,
+  CapabilityAcceptanceCase,
+  CapabilityRunState,
+  CapabilityTool,
 } from "../types";
 import {
-  resolveToolLabReadiness,
-  toExternalToolLabTools,
-  toNativeToolLabTool,
-  toUnavailableNativeToolLabTool,
+  resolveCapabilityReadiness,
+  toExternalCapabilityTools,
+  toNativeCapabilityTool,
+  toUnavailableNativeCapabilityTool,
 } from "../utils";
 
-const emptyRunState: ToolLabRunState = {
+const emptyRunState: CapabilityRunState = {
   isRunning: false,
   invocationId: null,
   invocation: null,
@@ -37,7 +37,7 @@ const emptyRunState: ToolLabRunState = {
   transportError: null,
 };
 
-export function useToolLab() {
+export function useCapabilities() {
   const [internalTools, setInternalTools] = useState<HarnessToolDefinition[]>([]);
   const [externalServers, setExternalServers] = useState<ExternalMcpServerRecord[]>([]);
   const [manualToolIds, setManualToolIds] = useState<Set<string>>(new Set());
@@ -47,7 +47,7 @@ export function useToolLab() {
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [runState, setRunState] = useState<ToolLabRunState>(emptyRunState);
+  const [runState, setRunState] = useState<CapabilityRunState>(emptyRunState);
   const [isPreparingCase, setIsPreparingCase] = useState(false);
   const [isResolvingApproval, setIsResolvingApproval] = useState(false);
   const runGenerationRef = useRef(0);
@@ -60,7 +60,7 @@ export function useToolLab() {
       const [toolDefinitions, manualTools, workspace, servers] = await Promise.all([
         getMcpRegisteredTools(),
         getMcpTools(),
-        getMcpManagedToolLabWorkspaceSelection(),
+        getMcpManagedCapabilityWorkspaceSelection(),
         getExternalMcpServers(),
       ]);
       setInternalTools(toolDefinitions);
@@ -79,14 +79,14 @@ export function useToolLab() {
   }, [load]);
 
   const cases = useMemo(
-    () => buildToolLabCases(externalServers),
+    () => buildCapabilityAcceptanceCases(externalServers),
     [externalServers],
   );
 
-  const allTools = useMemo<ToolLabTool[]>(
+  const allTools = useMemo<CapabilityTool[]>(
     () => [
-      ...internalTools.map(toNativeToolLabTool),
-      ...toExternalToolLabTools(externalServers),
+      ...internalTools.map(toNativeCapabilityTool),
+      ...toExternalCapabilityTools(externalServers),
     ],
     [externalServers, internalTools],
   );
@@ -98,7 +98,7 @@ export function useToolLab() {
       const registered = allTools.find((tool) => tool.id === toolId);
       if (registered) return [registered];
       if (toolId.startsWith("mcp:")) return [];
-      return [toUnavailableNativeToolLabTool(toolId)];
+      return [toUnavailableNativeCapabilityTool(toolId)];
     });
   }, [allTools, cases]);
 
@@ -153,7 +153,7 @@ export function useToolLab() {
 
   const readiness = useMemo(
     () =>
-      resolveToolLabReadiness({
+      resolveCapabilityReadiness({
         caseDefinition: selectedCase,
         tool: selectedTool,
         workspaceRoot: workspaceSelection?.rootPath ?? null,
@@ -207,7 +207,7 @@ export function useToolLab() {
     const nextTool = nextCase
       ? tools.find((tool) => tool.id === nextCase.toolId) ?? null
       : null;
-    const nextReadiness = resolveToolLabReadiness({
+    const nextReadiness = resolveCapabilityReadiness({
       caseDefinition: nextCase ?? null,
       tool: nextTool,
       workspaceRoot: workspaceSelection?.rootPath ?? null,
@@ -227,7 +227,7 @@ export function useToolLab() {
       setRunState({
         ...emptyRunState,
         transportError:
-          "Tool Lab fixture configuration requires workspace=managed.",
+          "Capability fixture configuration requires workspace=managed.",
       });
       return;
     }
@@ -248,7 +248,7 @@ export function useToolLab() {
     if (nextCase.fixture) {
       setIsPreparingCase(true);
       try {
-        const reset = await resetMcpToolLabFixture(nextCase.fixture);
+        const reset = await resetMcpCapabilityFixture(nextCase.fixture);
         if (!isCurrentRun()) return;
         setWorkspaceSelection(reset.workspace);
       } catch (error) {
@@ -489,5 +489,5 @@ export function useToolLab() {
   };
 }
 
-export type UseToolLabReturn = ReturnType<typeof useToolLab>;
-export type ToolLabCase = ToolLabCaseDefinition;
+export type UseCapabilityReturn = ReturnType<typeof useCapabilities>;
+export type CapabilityCase = CapabilityAcceptanceCase;

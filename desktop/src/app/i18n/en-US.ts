@@ -7,7 +7,7 @@ const app = {
       remoteAccess: "Remote connection",
       dashboard: "Workbench",
       extensions: "Extensions",
-      tools: "Tools",
+      capabilities: "Capabilities",
       mcp: "MCP",
       skills: "Skills",
       settings: "Settings",

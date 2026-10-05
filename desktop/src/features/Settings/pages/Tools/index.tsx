@@ -17,7 +17,7 @@ const getToolWorkbenchHandoff = (state: unknown): ToolWorkbenchHandoff | null =>
     return null;
   }
 
-  const value = (state as { toolLabHandoff?: unknown }).toolLabHandoff;
+  const value = (state as { capabilitiesHandoff?: unknown }).capabilitiesHandoff;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }

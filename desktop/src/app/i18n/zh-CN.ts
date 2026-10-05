@@ -7,7 +7,7 @@ const app = {
       remoteAccess: "远程连接",
       dashboard: "工作台",
       extensions: "扩展",
-      tools: "工具",
+      capabilities: "能力",
       mcp: "MCP",
       skills: "技能",
       settings: "设置",

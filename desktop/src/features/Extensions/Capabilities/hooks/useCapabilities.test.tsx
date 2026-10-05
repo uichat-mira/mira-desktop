@@ -4,20 +4,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getMcpRegisteredToolsMock = vi.fn();
 const getMcpToolsMock = vi.fn();
-const getMcpManagedToolLabWorkspaceSelectionMock = vi.fn();
+const getMcpManagedCapabilityWorkspaceSelectionMock = vi.fn();
 const getExternalMcpServersMock = vi.fn();
 const executeMcpInvocationStreamMock = vi.fn();
 const getMcpInvocationMock = vi.fn();
 const getMcpInvocationEventsMock = vi.fn();
 const getMcpInvocationTraceMock = vi.fn();
-const resetMcpToolLabFixtureMock = vi.fn();
+const resetMcpCapabilityFixtureMock = vi.fn();
 const resolveMcpInvocationApprovalMock = vi.fn();
 
 vi.mock("@/shared/api/tools", () => ({
   getMcpRegisteredTools: () => getMcpRegisteredToolsMock(),
   getMcpTools: () => getMcpToolsMock(),
-  getMcpManagedToolLabWorkspaceSelection: () =>
-    getMcpManagedToolLabWorkspaceSelectionMock(),
+  getMcpManagedCapabilityWorkspaceSelection: () =>
+    getMcpManagedCapabilityWorkspaceSelectionMock(),
   getExternalMcpServers: () => getExternalMcpServersMock(),
   executeMcpInvocationStream: (...args: unknown[]) =>
     executeMcpInvocationStreamMock(...args),
@@ -26,8 +26,8 @@ vi.mock("@/shared/api/tools", () => ({
     getMcpInvocationEventsMock(...args),
   getMcpInvocationTrace: (...args: unknown[]) =>
     getMcpInvocationTraceMock(...args),
-  resetMcpToolLabFixture: (...args: unknown[]) =>
-    resetMcpToolLabFixtureMock(...args),
+  resetMcpCapabilityFixture: (...args: unknown[]) =>
+    resetMcpCapabilityFixtureMock(...args),
   resolveMcpInvocationApproval: (...args: unknown[]) =>
     resolveMcpInvocationApprovalMock(...args),
 }));
@@ -65,22 +65,22 @@ const writeTool = {
 };
 
 async function importHook() {
-  const { useToolLab } =
-    await vi.importActual<typeof import("./useToolLab")>("./useToolLab");
-  return useToolLab;
+  const { useCapabilities } =
+    await vi.importActual<typeof import("./useCapabilities")>("./useCapabilities");
+  return useCapabilities;
 }
 
-describe("useToolLab", () => {
+describe("useCapabilities", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     getMcpRegisteredToolsMock.mockResolvedValue([readTool, writeTool]);
     getMcpToolsMock.mockResolvedValue([writeTool]);
-    getMcpManagedToolLabWorkspaceSelectionMock.mockResolvedValue({
+    getMcpManagedCapabilityWorkspaceSelectionMock.mockResolvedValue({
       rootPath: "/workspace",
       source: "selected",
     });
     getExternalMcpServersMock.mockResolvedValue([]);
-    resetMcpToolLabFixtureMock.mockResolvedValue({
+    resetMcpCapabilityFixtureMock.mockResolvedValue({
       fixtureId: "fixture",
       workspace: {
         rootPath: "/managed/tool-lab/workspace",
@@ -128,8 +128,8 @@ describe("useToolLab", () => {
       finishedAt: "2026-10-05T00:00:00.010Z",
     });
 
-    const useToolLab = await importHook();
-    const { result } = renderHook(() => useToolLab());
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
 
     await waitFor(() => expect(result.current.selectedCase?.id).toBe("core-read-success"));
 
@@ -147,10 +147,10 @@ describe("useToolLab", () => {
       },
       expect.any(Function),
     );
-    expect(resetMcpToolLabFixtureMock).toHaveBeenCalledWith(
+    expect(resetMcpCapabilityFixtureMock).toHaveBeenCalledWith(
       "platform-read-success",
     );
-    expect(resetMcpToolLabFixtureMock.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(resetMcpCapabilityFixtureMock.mock.invocationCallOrder[0]).toBeLessThan(
       executeMcpInvocationStreamMock.mock.invocationCallOrder[0]!,
     );
     expect(getMcpInvocationMock).toHaveBeenCalledWith("inv-1");
@@ -161,13 +161,13 @@ describe("useToolLab", () => {
       await result.current.runSelectedCase();
     });
 
-    expect(resetMcpToolLabFixtureMock).toHaveBeenCalledTimes(2);
+    expect(resetMcpCapabilityFixtureMock).toHaveBeenCalledTimes(2);
     expect(executeMcpInvocationStreamMock).toHaveBeenCalledTimes(2);
   });
 
   it("prevents overlapping case runs before React state updates can disable the controls", async () => {
     let releaseReset: (() => void) | undefined;
-    resetMcpToolLabFixtureMock.mockImplementationOnce(
+    resetMcpCapabilityFixtureMock.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           releaseReset = () =>
@@ -209,8 +209,8 @@ describe("useToolLab", () => {
       artifacts: [],
     });
 
-    const useToolLab = await importHook();
-    const { result } = renderHook(() => useToolLab());
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
 
     await waitFor(() =>
       expect(result.current.selectedCase?.id).toBe("core-read-success"),
@@ -223,7 +223,7 @@ describe("useToolLab", () => {
       secondRun = result.current.runSelectedCase();
     });
 
-    expect(resetMcpToolLabFixtureMock).toHaveBeenCalledTimes(1);
+    expect(resetMcpCapabilityFixtureMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       releaseReset?.();
@@ -234,12 +234,12 @@ describe("useToolLab", () => {
   });
 
   it("fails closed when fixture reset fails before invocation", async () => {
-    resetMcpToolLabFixtureMock.mockRejectedValueOnce(
+    resetMcpCapabilityFixtureMock.mockRejectedValueOnce(
       new Error("fixture reset exploded"),
     );
 
-    const useToolLab = await importHook();
-    const { result } = renderHook(() => useToolLab());
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
 
     await waitFor(() =>
       expect(result.current.selectedCase?.id).toBe("core-read-success"),
@@ -257,8 +257,8 @@ describe("useToolLab", () => {
   });
 
   it("only offers manual handoff when the selected Tool exists in the current Tools workbench", async () => {
-    const useToolLab = await importHook();
-    const { result } = renderHook(() => useToolLab());
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
 
     await waitFor(() => expect(result.current.selectedTool?.id).toBe("read"));
     expect(result.current.canOpenManual).toBe(false);
@@ -274,8 +274,8 @@ describe("useToolLab", () => {
   it("keeps a registered case visible as Unavailable when its native Tool is missing", async () => {
     getMcpRegisteredToolsMock.mockResolvedValueOnce([writeTool]);
 
-    const useToolLab = await importHook();
-    const { result } = renderHook(() => useToolLab());
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
 
     await waitFor(() =>
       expect(result.current.selectedCase?.id).toBe("core-read-success"),
@@ -287,13 +287,13 @@ describe("useToolLab", () => {
   });
 
   it("does not start an invocation when the Workspace prerequisite is unavailable", async () => {
-    getMcpManagedToolLabWorkspaceSelectionMock.mockResolvedValueOnce({
+    getMcpManagedCapabilityWorkspaceSelectionMock.mockResolvedValueOnce({
       rootPath: null,
       source: "unset",
     });
 
-    const useToolLab = await importHook();
-    const { result } = renderHook(() => useToolLab());
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
 
     await waitFor(() => expect(result.current.selectedCase).not.toBeNull());
 
@@ -336,7 +336,7 @@ describe("useToolLab", () => {
       status: "awaiting_approval",
       args: {
         path: ".tool-lab-fixtures/platform-approval-boundary/approval-probe.txt",
-        content: "tool-lab-approval-probe",
+        content: "capabilities-approval-probe",
         dryRun: true,
       },
       approval: {
@@ -354,8 +354,8 @@ describe("useToolLab", () => {
       spans: [],
     });
 
-    const useToolLab = await importHook();
-    const { result } = renderHook(() => useToolLab());
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
 
     await waitFor(() => expect(result.current.tools).toHaveLength(2));
 
@@ -448,7 +448,7 @@ describe("useToolLab", () => {
         toolId: "write_file",
         args: {
           path: ".tool-lab-fixtures/platform-approval-boundary/approval-probe.txt",
-          content: "tool-lab-approval-probe",
+          content: "capabilities-approval-probe",
           dryRun: true,
         },
       },

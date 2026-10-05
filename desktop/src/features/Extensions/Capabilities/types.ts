@@ -5,15 +5,15 @@ import type {
   ToolTrace,
 } from "@/shared/api/tools";
 
-export type ToolLabReadinessState = "ready" | "degraded" | "unavailable";
+export type CapabilityReadinessState = "ready" | "degraded" | "unavailable";
 
-export type ToolLabReadiness = {
-  state: ToolLabReadinessState;
+export type CapabilityReadiness = {
+  state: CapabilityReadinessState;
   reason: string;
   settingsPath?: string;
 };
 
-export type ToolLabCaseDefinition = {
+export type CapabilityAcceptanceCase = {
   id: string;
   toolId: string;
   title: string;
@@ -25,14 +25,14 @@ export type ToolLabCaseDefinition = {
   fixture?: string;
 };
 
-export type ToolLabSource = {
+export type CapabilityToolSource = {
   kind: "native" | "external_mcp";
   label: string;
   detail?: string;
   settingsPath: string;
 };
 
-export type ToolLabTool = Omit<
+export type CapabilityTool = Omit<
   Pick<
     HarnessToolDefinition,
     | "id"
@@ -50,13 +50,13 @@ export type ToolLabTool = Omit<
   "capabilities"
 > & {
   capabilities?: HarnessToolDefinition["capabilities"];
-  sourceInfo: ToolLabSource;
-  runtimeReadiness?: ToolLabReadiness;
+  sourceInfo: CapabilityToolSource;
+  runtimeReadiness?: CapabilityReadiness;
   externalServerId?: string;
   agentAccessEnabled?: boolean;
 };
 
-export type ToolLabRunState = {
+export type CapabilityRunState = {
   isRunning: boolean;
   invocationId: string | null;
   invocation: ToolInvocation | null;
@@ -66,10 +66,10 @@ export type ToolLabRunState = {
   transportError: string | null;
 };
 
-export type ToolLabViewModel = {
-  tools: ToolLabTool[];
-  cases: ToolLabCaseDefinition[];
-  selectedTool: ToolLabTool | null;
-  selectedCase: ToolLabCaseDefinition | null;
-  readiness: ToolLabReadiness;
+export type CapabilityViewModel = {
+  tools: CapabilityTool[];
+  cases: CapabilityAcceptanceCase[];
+  selectedTool: CapabilityTool | null;
+  selectedCase: CapabilityAcceptanceCase | null;
+  readiness: CapabilityReadiness;
 };

@@ -166,7 +166,7 @@ describe("useToolsWorkbench", () => {
     });
   });
 
-  it("opens a Tool Lab handoff as an editable copy without changing normal workbench defaults", async () => {
+  it("opens a Capability handoff as an editable copy without changing normal workbench defaults", async () => {
     getMcpToolsMock.mockResolvedValueOnce([
       {
         id: "web_search",

@@ -4,23 +4,23 @@ import type {
   HarnessToolDefinition,
   ToolInvocation,
 } from "@/shared/api/tools";
-import type { ToolLabCaseDefinition } from "./types";
+import type { CapabilityAcceptanceCase } from "./types";
 import {
-  formatToolLabDuration,
-  resolveToolLabReadiness,
-  summarizeToolLabInvocation,
-  toExternalToolLabTools,
-  toNativeToolLabTool,
+  formatCapabilityDuration,
+  resolveCapabilityReadiness,
+  summarizeCapabilityInvocation,
+  toExternalCapabilityTools,
+  toNativeCapabilityTool,
 } from "./utils";
 
-const caseDefinition: ToolLabCaseDefinition = {
+const caseDefinition: CapabilityAcceptanceCase = {
   id: "read",
   toolId: "read",
   title: "Read",
   purpose: "Read a file",
   expectedObservation: "Completed",
   args: { path: "README.md" },
-  group: "Core",
+  group: "Native",
 };
 
 const readTool: HarnessToolDefinition = {
@@ -52,12 +52,12 @@ const invocation = (
   ...overrides,
 });
 
-describe("Tool Lab view helpers", () => {
+describe("Capability view helpers", () => {
   it("keeps readiness separate from invocation failure", () => {
-    const tool = toNativeToolLabTool(readTool);
+    const tool = toNativeCapabilityTool(readTool);
 
     expect(
-      resolveToolLabReadiness({
+      resolveCapabilityReadiness({
         caseDefinition,
         tool,
         workspaceRoot: null,
@@ -68,7 +68,7 @@ describe("Tool Lab view helpers", () => {
     });
 
     expect(
-      resolveToolLabReadiness({
+      resolveCapabilityReadiness({
         caseDefinition,
         tool,
         workspaceRoot: "/workspace",
@@ -98,7 +98,7 @@ describe("Tool Lab view helpers", () => {
       ],
     } as ExternalMcpServerRecord;
 
-    const [tool] = toExternalToolLabTools([server]);
+    const [tool] = toExternalCapabilityTools([server]);
 
     expect(tool).toMatchObject({
       source: "external",
@@ -112,7 +112,7 @@ describe("Tool Lab view helpers", () => {
     });
   });
 
-  it("does not confuse Agent exposure with explicit Tool Lab runtime readiness", () => {
+  it("does not confuse Agent exposure with explicit Capability runtime readiness", () => {
     const server = {
       id: "server-1",
       source: "manual",
@@ -134,7 +134,7 @@ describe("Tool Lab view helpers", () => {
       ],
     } as ExternalMcpServerRecord;
 
-    const [tool] = toExternalToolLabTools([server]);
+    const [tool] = toExternalCapabilityTools([server]);
 
     expect(tool.runtimeReadiness?.state).toBe("ready");
     expect(tool.agentAccessEnabled).toBe(false);
@@ -142,7 +142,7 @@ describe("Tool Lab view helpers", () => {
 
   it("summarizes approval and structured success without Tool-family shape guessing", () => {
     expect(
-      summarizeToolLabInvocation(
+      summarizeCapabilityInvocation(
         invocation({
           status: "awaiting_approval",
           approval: {
@@ -155,7 +155,7 @@ describe("Tool Lab view helpers", () => {
     ).toBe("Approval required");
 
     expect(
-      summarizeToolLabInvocation(
+      summarizeCapabilityInvocation(
         invocation({
           result: { arbitrary: { future: "shape" } },
         }),
@@ -163,7 +163,7 @@ describe("Tool Lab view helpers", () => {
     ).toBe("执行完成，已返回结构化结果。");
 
     expect(
-      summarizeToolLabInvocation(
+      summarizeCapabilityInvocation(
         invocation({
           evidence: {
             actionTaken: "Opened file README.md.",
@@ -176,6 +176,6 @@ describe("Tool Lab view helpers", () => {
   });
 
   it("formats invocation duration from the record timestamps", () => {
-    expect(formatToolLabDuration(invocation())).toBe("125ms");
+    expect(formatCapabilityDuration(invocation())).toBe("125ms");
   });
 });

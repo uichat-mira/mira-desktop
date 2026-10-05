@@ -1,10 +1,10 @@
 import type { ExternalMcpServerRecord } from "@/shared/api/tools";
-import type { ToolLabCaseDefinition } from "./types";
+import type { CapabilityAcceptanceCase } from "./types";
 
 const fixturePath = (fixtureId: string, relativePath: string) =>
   `.tool-lab-fixtures/${fixtureId}/${relativePath}`;
 
-export const coreToolLabCases: ToolLabCaseDefinition[] = [
+export const nativeCapabilityAcceptanceCases: CapabilityAcceptanceCase[] = [
   {
     id: "core-read-success",
     toolId: "read",
@@ -14,7 +14,7 @@ export const coreToolLabCases: ToolLabCaseDefinition[] = [
     args: {
       path: fixturePath("platform-read-success", "input.txt"),
     },
-    group: "Core",
+    group: "Native",
     workspace: "managed",
     fixture: "platform-read-success",
   },
@@ -27,7 +27,7 @@ export const coreToolLabCases: ToolLabCaseDefinition[] = [
     args: {
       path: fixturePath("platform-read-missing", "missing.txt"),
     },
-    group: "Core",
+    group: "Native",
     workspace: "managed",
     fixture: "platform-read-missing",
   },
@@ -39,10 +39,10 @@ export const coreToolLabCases: ToolLabCaseDefinition[] = [
     expectedObservation: "Awaiting Approval，并显示审批原因与范围；不会写入文件。",
     args: {
       path: fixturePath("platform-approval-boundary", "approval-probe.txt"),
-      content: "tool-lab-approval-probe",
+      content: "capabilities-approval-probe",
       dryRun: true,
     },
-    group: "Core",
+    group: "Native",
     workspace: "managed",
     fixture: "platform-approval-boundary",
   },
@@ -53,9 +53,9 @@ const hasNoRequiredInput = (inputSchema: Record<string, unknown>) => {
   return !Array.isArray(required) || required.length === 0;
 };
 
-export function buildExternalMcpToolLabCases(
+export function buildExternalMcpCapabilityAcceptanceCases(
   servers: ExternalMcpServerRecord[],
-): ToolLabCaseDefinition[] {
+): CapabilityAcceptanceCase[] {
   return servers.flatMap((server) =>
     server.discoveredTools
       .filter((tool) => hasNoRequiredInput(tool.inputSchema))
@@ -75,6 +75,6 @@ export function buildExternalMcpToolLabCases(
   );
 }
 
-export function buildToolLabCases(servers: ExternalMcpServerRecord[]) {
-  return [...coreToolLabCases, ...buildExternalMcpToolLabCases(servers)];
+export function buildCapabilityAcceptanceCases(servers: ExternalMcpServerRecord[]) {
+  return [...nativeCapabilityAcceptanceCases, ...buildExternalMcpCapabilityAcceptanceCases(servers)];
 }

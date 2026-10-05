@@ -10,6 +10,9 @@ const saveWebSearchConfig = vi.fn();
 const selectGroup = vi.fn();
 const selectTool = vi.fn();
 const setArgsDraft = vi.fn();
+const hookCapture = vi.hoisted(() => ({
+  initialHandoff: undefined as unknown,
+}));
 
 const workbench = {
   activeGroupId: "web_search",
@@ -47,7 +50,12 @@ const workbench = {
 };
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock("./hooks/useToolsWorkbench", () => ({ useToolsWorkbench: () => workbench }));
+vi.mock("./hooks/useToolsWorkbench", () => ({
+  useToolsWorkbench: (initialHandoff: unknown) => {
+    hookCapture.initialHandoff = initialHandoff;
+    return workbench;
+  },
+}));
 vi.mock("../../components/SettingsPageLayout", () => ({ default: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }));
 vi.mock("./components/ToolsSidebar", () => ({ default: ({ onSelectGroup }: { onSelectGroup: (id: string) => void }) => <button onClick={() => onSelectGroup("web_search")}>sidebar</button> }));
 vi.mock("./components/ToolsWorkbenchPanel", () => ({ default: () => <div>workspace panel</div> }));
@@ -58,16 +66,19 @@ vi.mock("./components/ToolsPackagePanel", () => ({
   ),
 }));
 
-function renderToolsSettings() {
+function renderToolsSettings(state?: unknown) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[{ pathname: "/settings/tools", state }]}>
       <ToolsSettings />
     </MemoryRouter>,
   );
 }
 
 describe("ToolsSettings", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    hookCapture.initialHandoff = undefined;
+  });
 
   it("wires sidebar, tool selection, and execution", async () => {
     const user = userEvent.setup();
@@ -78,6 +89,31 @@ describe("ToolsSettings", () => {
     expect(selectGroup).toHaveBeenCalledWith("web_search");
     expect(selectTool).toHaveBeenCalledWith("web_search");
     expect(runSelectedTool).toHaveBeenCalledOnce();
+  });
+
+  it("passes a valid Capability handoff into the existing workbench", () => {
+    const handoff = {
+      toolId: "read_open",
+      args: { path: "README.md" },
+    };
+
+    renderToolsSettings({ capabilitiesHandoff: handoff });
+
+    expect(hookCapture.initialHandoff).toEqual(handoff);
+  });
+
+  it.each([
+    null,
+    [],
+    {},
+    { capabilitiesHandoff: [] },
+    { capabilitiesHandoff: { toolId: 7, args: {} } },
+    { capabilitiesHandoff: { toolId: "read_open", args: null } },
+    { capabilitiesHandoff: { toolId: "read_open", args: [] } },
+  ])("rejects malformed Capability handoff state %#", (state) => {
+    renderToolsSettings(state);
+
+    expect(hookCapture.initialHandoff).toBeNull();
   });
 
   it("opens web-search configuration and saves it on confirmation", async () => {

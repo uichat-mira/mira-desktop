@@ -20,40 +20,40 @@ import CodeBlock from "@/shared/ui/CodeBlock";
 import { ModalShell } from "@/shared/ui/Modal";
 import NavigationCardTabs from "@/shared/ui/NavigationCardTabs";
 import Select from "@/shared/ui/Select";
-import type { ToolLabCaseDefinition, ToolLabTool } from "./types";
+import type { CapabilityAcceptanceCase, CapabilityTool } from "./types";
 import ToolRunConsole from "./components/ToolRunConsole";
-import AcceptanceToolsSidebar, {
-  buildAcceptanceToolGroups,
-  filterAcceptanceToolGroups,
-  type ToolCatalogFilter,
-} from "./components/AcceptanceToolsSidebar";
-import { useToolLab } from "./hooks/useToolLab";
+import CapabilitiesSidebar, {
+  buildCapabilityGroups,
+  filterCapabilityGroups,
+  type CapabilityGroupFilter,
+} from "./components/CapabilitiesSidebar";
+import { useCapabilities } from "./hooks/useCapabilities";
 import {
-  resolveToolLabReadiness,
-  stringifyToolLabValue,
+  resolveCapabilityReadiness,
+  stringifyCapabilityValue,
 } from "./utils";
 
-export default function ExtensionsToolsPage() {
+export default function CapabilitiesPage() {
   const { t } = useTranslation();
-  const toolLab = useToolLab();
-  const invocation = toolLab.runState.invocation;
-  const invocationStatus = toolLab.runState.isRunning
+  const capabilities = useCapabilities();
+  const invocation = capabilities.runState.invocation;
+  const invocationStatus = capabilities.runState.isRunning
     ? "running"
-    : toolLab.runState.resolutionInvocation?.status ?? invocation?.status ?? "idle";
-  const selectedTool = toolLab.selectedTool;
-  const selectedCase = toolLab.selectedCase;
-  const [catalogFilter, setCatalogFilter] = useState<ToolCatalogFilter>("all");
+    : capabilities.runState.resolutionInvocation?.status ?? invocation?.status ?? "idle";
+  const selectedTool = capabilities.selectedTool;
+  const selectedCase = capabilities.selectedCase;
+  const [catalogFilter, setCatalogFilter] = useState<CapabilityGroupFilter>("all");
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  const [detailTool, setDetailTool] = useState<ToolLabTool | null>(null);
+  const [detailTool, setDetailTool] = useState<CapabilityTool | null>(null);
   const [detailTab, setDetailTab] = useState<"input" | "output" | "capabilities">("input");
-  const [detailCase, setDetailCase] = useState<ToolLabCaseDefinition | null>(null);
+  const [detailCase, setDetailCase] = useState<CapabilityAcceptanceCase | null>(null);
   const [resultConsoleOpen, setResultConsoleOpen] = useState(Boolean(invocation));
   const toolGroups = useMemo(
-    () => buildAcceptanceToolGroups(toolLab.tools),
-    [toolLab.tools],
+    () => buildCapabilityGroups(capabilities.tools, t),
+    [capabilities.tools],
   );
   const visibleGroups = useMemo(
-    () => filterAcceptanceToolGroups(toolGroups, catalogFilter),
+    () => filterCapabilityGroups(toolGroups, catalogFilter),
     [catalogFilter, toolGroups],
   );
   const selectedToolGroup = toolGroups.find((group) =>
@@ -65,36 +65,42 @@ export default function ExtensionsToolsPage() {
       ? selectedToolGroup
       : visibleGroups[0] ?? null);
   const activeGroupTools = activeGroup?.tools ?? [];
+  const hasVisibleSelection = Boolean(
+    activeGroup &&
+      selectedTool &&
+      selectedCase &&
+      activeGroup.tools.some((tool) => tool.id === selectedTool.id),
+  );
 
-  const getToolReadiness = (tool: ToolLabTool) => {
+  const getToolReadiness = (tool: CapabilityTool) => {
     if (tool.runtimeReadiness?.state) return tool.runtimeReadiness.state;
-    if (tool.capabilities?.workspaceBound && !toolLab.workspaceSelection?.rootPath) {
+    if (tool.capabilities?.workspaceBound && !capabilities.workspaceSelection?.rootPath) {
       return "unavailable" as const;
     }
     return "ready" as const;
   };
 
-  const openToolDetails = (tool: ToolLabTool) => {
+  const openToolDetails = (tool: CapabilityTool) => {
     setDetailTool(tool);
     setDetailTab("input");
   };
 
   const selectGroup = (groupId: string) => {
-    if (toolLab.isSelectionLocked) return;
+    if (capabilities.isSelectionLocked) return;
     const group = toolGroups.find((candidate) => candidate.id === groupId);
     if (!group) return;
     setActiveGroupId(group.id);
     if (!selectedTool || !group.tools.some((tool) => tool.id === selectedTool.id)) {
       const firstTool = group.tools[0];
-      if (firstTool) toolLab.selectTool(firstTool.id);
+      if (firstTool) capabilities.selectTool(firstTool.id);
     }
   };
 
   const changeCatalogFilter = (nextFilter: string) => {
-    if (toolLab.isSelectionLocked) return;
-    const filter = nextFilter as ToolCatalogFilter;
+    if (capabilities.isSelectionLocked) return;
+    const filter = nextFilter as CapabilityGroupFilter;
     setCatalogFilter(filter);
-    const nextGroups = filterAcceptanceToolGroups(toolGroups, filter);
+    const nextGroups = filterCapabilityGroups(toolGroups, filter);
     const keepCurrent = activeGroup && nextGroups.some((group) => group.id === activeGroup.id);
     if (keepCurrent) return;
     const nextGroup = nextGroups.find((group) =>
@@ -103,44 +109,44 @@ export default function ExtensionsToolsPage() {
     setActiveGroupId(nextGroup?.id ?? null);
     const nextTool = nextGroup?.tools[0];
     if (nextTool && nextTool.id !== selectedTool?.id) {
-      toolLab.selectTool(nextTool.id);
+      capabilities.selectTool(nextTool.id);
     }
   };
 
-  if (toolLab.isLoading) {
+  if (capabilities.isLoading) {
     return (
       <AppPageLayout
         miniTitle={t("app.navigation.extensions")}
-        title={t("app.navigation.tools")}
+        title={t("app.navigation.capabilities")}
         contentClassName="pt-6"
       >
         <div className="flex h-full items-center justify-center text-sm text-text-secondary">
           <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-          {t("settings.development.toolLab.loading")}
+          {t("settings.development.capabilities.loading")}
         </div>
       </AppPageLayout>
     );
   }
 
-  if (toolLab.loadError) {
+  if (capabilities.loadError) {
     return (
       <AppPageLayout
         miniTitle={t("app.navigation.extensions")}
-        title={t("app.navigation.tools")}
+        title={t("app.navigation.capabilities")}
         contentClassName="pt-6"
       >
         <div className="h-full overflow-y-auto">
           <Alert
             variant="danger"
-            title={t("settings.development.toolLab.loadFailed")}
+            title={t("settings.development.capabilities.loadFailed")}
             action={
-              <Button size="sm" variant="secondary" onClick={() => void toolLab.refresh()}>
+              <Button size="sm" variant="secondary" onClick={() => void capabilities.refresh()}>
                 <RefreshCw className="h-4 w-4" />
-                {t("settings.development.toolLab.actions.refresh")}
+                {t("settings.development.capabilities.actions.refresh")}
               </Button>
             }
           >
-            {toolLab.loadError}
+            {capabilities.loadError}
           </Alert>
         </div>
       </AppPageLayout>
@@ -150,7 +156,7 @@ export default function ExtensionsToolsPage() {
   return (
     <AppPageLayout
       miniTitle={t("app.navigation.extensions")}
-      title={t("app.navigation.tools")}
+      title={t("app.navigation.capabilities")}
       slot={
         <div className="w-32">
           <Select
@@ -160,11 +166,15 @@ export default function ExtensionsToolsPage() {
             options={[
               {
                 value: "all",
-                label: t("settings.development.toolLab.catalogFilter.all"),
+                label: t("settings.development.capabilities.catalogFilter.all"),
+              },
+              {
+                value: "native",
+                label: t("settings.development.capabilities.catalogFilter.native"),
               },
               {
                 value: "extension",
-                label: t("settings.development.toolLab.catalogFilter.extension"),
+                label: t("settings.development.capabilities.catalogFilter.extension"),
               },
             ]}
           />
@@ -174,15 +184,15 @@ export default function ExtensionsToolsPage() {
       contentClassName="pt-6 !pb-0 !pr-0"
     >
       <div className="grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] gap-0 overflow-hidden">
-        <AcceptanceToolsSidebar
+        <CapabilitiesSidebar
           groups={visibleGroups}
           selectedGroupId={activeGroup?.id ?? null}
           onSelectGroup={selectGroup}
-          emptyLabel={t("settings.development.toolLab.noCases")}
+          emptyLabel={t("settings.development.capabilities.noMatchingTools")}
         />
 
         <main className="flex min-h-0 flex-col overflow-hidden">
-        {selectedTool && selectedCase ? (
+        {hasVisibleSelection && selectedTool && selectedCase ? (
           <>
           <div className="stable-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto pb-4 pl-4 pr-5 sm:pr-6 xl:pr-8">
             {activeGroup ? (
@@ -197,7 +207,7 @@ export default function ExtensionsToolsPage() {
                           <span className="inline-flex min-w-0 items-center gap-2">
                             <span
                               aria-label={t(
-                                `settings.development.toolLab.readiness.${readiness}`,
+                                `settings.development.capabilities.readiness.${readiness}`,
                               )}
                               className={`h-2 w-2 shrink-0 rounded-full ${
                                 readiness === "ready"
@@ -213,7 +223,7 @@ export default function ExtensionsToolsPage() {
                       };
                     })}
                     value={selectedTool.id}
-                    onChange={toolLab.selectTool}
+                    onChange={capabilities.selectTool}
                   />
                 </div>
                 <Button
@@ -221,35 +231,35 @@ export default function ExtensionsToolsPage() {
                   variant="ghost"
                   onClick={() => openToolDetails(selectedTool)}
                 >
-                  {t("settings.development.toolLab.actions.details")}
+                  {t("settings.development.capabilities.actions.details")}
                 </Button>
               </div>
             ) : null}
 
-            {toolLab.readiness.state === "unavailable" ? (
+            {capabilities.readiness.state === "unavailable" ? (
               <Alert
                 variant="warning"
-                title={t("settings.development.toolLab.unavailableTitle")}
+                title={t("settings.development.capabilities.unavailableTitle")}
               >
-                {toolLab.readiness.reason}
+                {capabilities.readiness.reason}
               </Alert>
             ) : null}
 
             <section className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
                 <FileText className="h-4 w-4" />
-                {t("settings.development.toolLab.cases")}
+                {t("settings.development.capabilities.cases")}
               </div>
 
               <div className="flex flex-wrap items-start gap-3">
-                {toolLab.toolCases.map((caseDefinition) => {
-                  const caseReadiness = resolveToolLabReadiness({
+                {capabilities.toolCases.map((caseDefinition) => {
+                  const caseReadiness = resolveCapabilityReadiness({
                     caseDefinition,
                     tool: selectedTool,
-                    workspaceRoot: toolLab.workspaceSelection?.rootPath ?? null,
+                    workspaceRoot: capabilities.workspaceSelection?.rootPath ?? null,
                   });
                   const runningThisCase =
-                    (toolLab.isPreparingCase || toolLab.runState.isRunning) &&
+                    (capabilities.isPreparingCase || capabilities.runState.isRunning) &&
                     selectedCase.id === caseDefinition.id;
 
                   return (
@@ -269,9 +279,11 @@ export default function ExtensionsToolsPage() {
                               <h3 className="truncate text-sm font-semibold text-text-primary">
                                 {caseDefinition.title}
                               </h3>
-                              {caseDefinition.group !== "Core" ? (
+                              {caseDefinition.group !== "Native" ? (
                                 <span className="shrink-0 text-[10px] text-text-tertiary">
-                                  {caseDefinition.group}
+                                  {caseDefinition.group === "External MCP"
+                                    ? t("settings.development.capabilities.caseGroups.extension")
+                                    : caseDefinition.group}
                                 </span>
                               ) : null}
                             </div>
@@ -279,7 +291,7 @@ export default function ExtensionsToolsPage() {
                           <div className="flex shrink-0 items-center gap-0.5">
                           <IconButton
                             size="sm"
-                            ariaLabel={t("settings.development.toolLab.actions.viewCase")}
+                            ariaLabel={t("settings.development.capabilities.actions.viewCase")}
                             onClick={() => setDetailCase(caseDefinition)}
                           >
                             <Eye className="h-4 w-4" />
@@ -287,18 +299,18 @@ export default function ExtensionsToolsPage() {
                           <IconButton
                             size="sm"
                             tone="primary"
-                            ariaLabel={t("settings.development.toolLab.actions.run")}
+                            ariaLabel={t("settings.development.capabilities.actions.run")}
                             disabled={
-                              toolLab.isPreparingCase ||
-                              toolLab.runState.isRunning ||
-                              (toolLab.runState.invocation?.status ===
+                              capabilities.isPreparingCase ||
+                              capabilities.runState.isRunning ||
+                              (capabilities.runState.invocation?.status ===
                                 "awaiting_approval" &&
-                                !toolLab.runState.invocation.approval?.resolution) ||
+                                !capabilities.runState.invocation.approval?.resolution) ||
                               caseReadiness.state === "unavailable"
                             }
                             onClick={() => {
                               setResultConsoleOpen(true);
-                              void toolLab.runCase(caseDefinition.id);
+                              void capabilities.runCase(caseDefinition.id);
                             }}
                           >
                             {runningThisCase ? (
@@ -325,24 +337,24 @@ export default function ExtensionsToolsPage() {
             open={resultConsoleOpen}
             onToggle={() => setResultConsoleOpen((open) => !open)}
             status={invocationStatus}
-            runState={toolLab.runState}
+            runState={capabilities.runState}
             selectedTool={selectedTool}
-            isResolvingApproval={toolLab.isResolvingApproval}
-            onResolveApproval={toolLab.resolveApproval}
+            isResolvingApproval={capabilities.isResolvingApproval}
+            onResolveApproval={capabilities.resolveApproval}
           />
           </>
         ) : (
-          <Card variant="dashed" className="flex h-full min-h-64 items-center justify-center">
-            <div className="max-w-md text-center">
+          <div className="flex h-full min-h-64 items-center justify-center">
+            <div className="max-w-md text-center text-text-secondary">
               <Braces className="mx-auto h-6 w-6 text-text-tertiary" />
-              <div className="mt-3 text-sm font-medium text-text-primary">
-                {t("settings.development.toolLab.noCases")}
+              <div className="mt-3 text-sm font-medium text-text-secondary">
+                {t("settings.development.capabilities.noCases")}
               </div>
-              <div className="mt-1 text-sm text-text-secondary">
-                {t("settings.development.toolLab.noCasesHint")}
+              <div className="mt-1 text-sm text-text-tertiary">
+                {t("settings.development.capabilities.noCasesHint")}
               </div>
             </div>
-          </Card>
+          </div>
         )}
       </main>
       </div>
@@ -355,9 +367,11 @@ export default function ExtensionsToolsPage() {
         header={
           detailCase ? (
             <div className="space-y-1">
-              {detailCase.group !== "Core" ? (
+              {detailCase.group !== "Native" ? (
                 <div className="text-xs font-semibold uppercase tracking-[0.1em] text-text-tertiary">
-                  {detailCase.group}
+                  {detailCase.group === "External MCP"
+                    ? t("settings.development.capabilities.caseGroups.extension")
+                    : detailCase.group}
                 </div>
               ) : null}
               <div className="text-base font-semibold text-text-primary">
@@ -372,7 +386,7 @@ export default function ExtensionsToolsPage() {
           <>
             <section>
               <div className="text-xs font-medium text-text-tertiary">
-                {t("settings.development.toolLab.labels.purpose")}
+                {t("settings.development.capabilities.labels.purpose")}
               </div>
               <p className="mt-1 text-sm leading-6 text-text-primary">
                 {detailCase.purpose}
@@ -381,7 +395,7 @@ export default function ExtensionsToolsPage() {
 
             <section>
               <div className="text-xs font-medium text-text-tertiary">
-                {t("settings.development.toolLab.labels.expected")}
+                {t("settings.development.capabilities.labels.expected")}
               </div>
               <p className="mt-1 text-sm leading-6 text-text-secondary">
                 {detailCase.expectedObservation}
@@ -390,13 +404,13 @@ export default function ExtensionsToolsPage() {
 
             <section>
               <div className="mb-2 text-xs font-medium text-text-tertiary">
-                {t("settings.development.toolLab.labels.fixedInput")}
+                {t("settings.development.capabilities.labels.fixedInput")}
               </div>
               <CodeBlock className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words">
-                {stringifyToolLabValue(detailCase.args)}
+                {stringifyCapabilityValue(detailCase.args)}
               </CodeBlock>
               <div className="mt-2 text-xs leading-5 text-text-tertiary">
-                {t("settings.development.toolLab.fixedInputHint")}
+                {t("settings.development.capabilities.fixedInputHint")}
               </div>
             </section>
           </>
@@ -416,7 +430,7 @@ export default function ExtensionsToolsPage() {
           <div className="flex h-full min-h-0 flex-col gap-4">
             <div>
               <div className="text-xs font-medium text-text-tertiary">
-                {t("settings.development.toolLab.labels.description")}
+                {t("settings.development.capabilities.labels.description")}
               </div>
               <p className="mt-1 text-sm leading-6 text-text-primary">
                 {detailTool.description}
@@ -424,17 +438,19 @@ export default function ExtensionsToolsPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <div className="text-xs font-medium text-text-tertiary">Tool ID</div>
+                <div className="text-xs font-medium text-text-tertiary">{t("settings.development.capabilities.labels.toolId")}</div>
                 <div className="mt-1 break-all text-sm text-text-primary">
                   {detailTool.id}
                 </div>
               </div>
               <div>
                 <div className="text-xs font-medium text-text-tertiary">
-                  {t("settings.development.toolLab.labels.source")}
+                  {t("settings.development.capabilities.labels.source")}
                 </div>
                 <div className="mt-1 text-sm text-text-primary">
-                  {detailTool.sourceInfo.label}
+                  {detailTool.sourceInfo.kind === "native"
+                    ? t("settings.development.capabilities.catalogKind.native")
+                    : `${t("settings.development.capabilities.catalogKind.extension")} · ${detailTool.sourceLabel ?? detailTool.sourceInfo.label}`}
                 </div>
               </div>
             </div>
@@ -442,17 +458,17 @@ export default function ExtensionsToolsPage() {
               tabs={[
                 {
                   value: "input",
-                  label: t("settings.development.toolLab.detailTabs.input"),
+                  label: t("settings.development.capabilities.detailTabs.input"),
                   icon: <FileInput className="h-4 w-4" />,
                 },
                 {
                   value: "output",
-                  label: t("settings.development.toolLab.detailTabs.output"),
+                  label: t("settings.development.capabilities.detailTabs.output"),
                   icon: <FileOutput className="h-4 w-4" />,
                 },
                 {
                   value: "capabilities",
-                  label: t("settings.development.toolLab.detailTabs.capabilities"),
+                  label: t("settings.development.capabilities.detailTabs.capabilities"),
                   icon: <ShieldCheck className="h-4 w-4" />,
                 },
               ]}
@@ -461,7 +477,7 @@ export default function ExtensionsToolsPage() {
             />
 
             <CodeBlock className="min-h-0 flex-1 !overflow-auto whitespace-pre-wrap break-words">
-              {stringifyToolLabValue(
+              {stringifyCapabilityValue(
                 detailTab === "input"
                   ? detailTool.inputSchema
                   : detailTab === "output"

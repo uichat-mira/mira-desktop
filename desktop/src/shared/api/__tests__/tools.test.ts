@@ -31,9 +31,9 @@ import {
   getExternalMcpServerConfig,
   updateExternalMcpServerConfig,
   getMcpWorkspaceSelection,
-  getMcpToolLabWorkspaceSelection,
-  getMcpManagedToolLabWorkspaceSelection,
-  resetMcpToolLabFixture,
+  getMcpCapabilityWorkspaceSelection,
+  getMcpManagedCapabilityWorkspaceSelection,
+  resetMcpCapabilityFixture,
   getMcpWebSearchConfig,
   saveMcpWebSearchConfig,
   selectMcpWorkspaceRoot,
@@ -335,13 +335,13 @@ describe("tools api", () => {
     expect(result).toBe(sampleWorkspaceSelection);
   });
 
-  it("getMcpToolLabWorkspaceSelection 获取 Tool Lab 有效工作区", async () => {
+  it("getMcpCapabilityWorkspaceSelection 获取能力验收有效工作区", async () => {
     vi.mocked(get).mockResolvedValueOnce({
       rootPath: "/managed/tool-lab/workspace",
       source: "managed",
     });
 
-    const result = await getMcpToolLabWorkspaceSelection();
+    const result = await getMcpCapabilityWorkspaceSelection();
 
     expect(get).toHaveBeenCalledWith("/mcp/tool-lab/workspace");
     expect(result).toEqual({
@@ -350,13 +350,13 @@ describe("tools api", () => {
     });
   });
 
-  it("getMcpManagedToolLabWorkspaceSelection 获取隔离验收工作区", async () => {
+  it("getMcpManagedCapabilityWorkspaceSelection 获取隔离验收工作区", async () => {
     vi.mocked(get).mockResolvedValueOnce({
       rootPath: "/managed/tool-lab/workspace",
       source: "managed",
     });
 
-    const result = await getMcpManagedToolLabWorkspaceSelection();
+    const result = await getMcpManagedCapabilityWorkspaceSelection();
 
     expect(get).toHaveBeenCalledWith("/mcp/tool-lab/workspace/managed");
     expect(result).toEqual({
@@ -365,7 +365,7 @@ describe("tools api", () => {
     });
   });
 
-  it("resetMcpToolLabFixture 只提交注册 fixture id", async () => {
+  it("resetMcpCapabilityFixture 只提交注册 fixture id", async () => {
     const resetResult = {
       fixtureId: "platform-read-success",
       workspace: {
@@ -378,7 +378,7 @@ describe("tools api", () => {
     };
     vi.mocked(post).mockResolvedValueOnce(resetResult);
 
-    const result = await resetMcpToolLabFixture("platform-read-success");
+    const result = await resetMcpCapabilityFixture("platform-read-success");
 
     expect(post).toHaveBeenCalledWith(
       "/mcp/tool-lab/fixtures/platform-read-success/reset",
@@ -425,7 +425,7 @@ describe("tools api", () => {
     expect(result).toEqual([sampleMcpTool]);
   });
 
-  it("getMcpRegisteredTools 获取 Tool Lab 使用的已注册内部 Tool", async () => {
+  it("getMcpRegisteredTools 获取能力验收使用的已注册内部 Tool", async () => {
     vi.mocked(get).mockResolvedValueOnce([sampleMcpTool]);
 
     const result = await getMcpRegisteredTools();

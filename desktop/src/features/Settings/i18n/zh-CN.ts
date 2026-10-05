@@ -1357,7 +1357,7 @@ const settingsPending = {
       miniTitle: "Tools",
       title: "工具",
       description:
-        "按产品能力组组织内部核心 Tool 工作台，用于调试和观察 Tool 调用流。",
+        "按产品能力组组织原生 Tool 工作台，用于调试和观察 Tool 调用流。",
       domains: {
         read: {
           label: "阅读",
@@ -1377,7 +1377,7 @@ const settingsPending = {
         },
       },
       workbench: {
-        description: "直接执行内部核心 Tool，并查看结果与事件流。",
+        description: "直接执行原生 Tool，并查看结果与事件流。",
         execute: "执行",
         workspaceRoot: "Workspace Root",
         workspaceDescription:
@@ -1434,7 +1434,7 @@ const settingsPending = {
       miniTitle: "MCP Marketplace",
       title: "MCP 市场",
       description:
-        "管理 MCP 市场、第三方 MCP server，以及后续非核心内置 MCP 包。",
+        "管理 MCP 市场、第三方 MCP server，以及后续内置 MCP 包。",
       tabs: {
         marketplace: "市场",
         installed: "已安装",
@@ -1528,7 +1528,7 @@ const settingsPending = {
       installDialog: {
         title: "安装第三方 MCP Server",
         description:
-          "你将把“{{name}}”接入到本地 MCP runtime。第三方 MCP server 不属于内部核心 Tool，启用前需要自行确认来源、行为和风险。",
+          "你将把“{{name}}”接入到本地 MCP runtime。第三方 MCP server 不属于原生 Tool，启用前需要自行确认来源、行为和风险。",
         confirm: "我已知晓并安装",
       },
       guide: {
@@ -1605,7 +1605,7 @@ const settingsPending = {
           "MCP 能力由后端 harness 托管，renderer 只负责浏览、配置和查看状态。chat 暂不介入。",
         disclaimerTitle: "安装免责",
         disclaimerDescription:
-          "用户自行安装或连接的第三方 MCP server 后续会在启用时弹出一次免责确认；内部核心 Tool 不走这个流程，未来非核心内置 MCP 包按 MCP 产品策略管理。",
+          "用户自行安装或连接的第三方 MCP server 后续会在启用时弹出一次免责确认；原生 Tool 不走这个流程，未来内置 MCP 包按 MCP 产品策略管理。",
       },
       messages: {
         marketplaceLoadFailed: "加载 MCP 市场失败",
@@ -2348,29 +2348,51 @@ const settingsPending = {
         clientTests: "客户端测试",
         serverTests: "服务端测试",
       },
-      toolLab: {
+      capabilities: {
         loading: "正在读取工具运行时…",
         loadFailed: "工具加载失败",
         tools: "工具",
         toolsHint: "显示已注册验收用例的工具。",
         catalogFilter: {
           all: "全部",
-          core: "核心",
+          native: "原生",
           extension: "扩展",
         },
         catalogKind: {
-          core: "核心",
+          native: "原生",
           extension: "扩展",
+        },
+        groups: {
+          read: {
+            label: "阅读",
+            description: "读取和检查工作区内容。",
+          },
+          mutation: {
+            label: "编辑",
+            description: "创建和修改工作区内容。",
+          },
+          terminal: {
+            label: "终端",
+            description: "执行受控的终端操作。",
+          },
+          webSearch: {
+            label: "网络搜索",
+            description: "搜索并获取网络内容。",
+          },
         },
         detailTabs: {
           input: "输入",
           output: "输出",
           capabilities: "能力",
         },
+        caseGroups: {
+          extension: "扩展 MCP",
+        },
         cases: "验收用例",
         result: "本次结果",
         diagnostics: "Diagnostics",
         diagnosticsHint: "按需查看 Structured Result、Evidence、Trace 与运行事件。",
+        noMatchingTools: "暂无匹配的工具",
         noCases: "暂无可运行的验收用例",
         noCasesHint: "不会为未注册验收用例的工具自动生成测试。",
         unavailableTitle: "当前用例还不能运行",
@@ -2389,7 +2411,29 @@ const settingsPending = {
           keyboardHint: "键盘 Y / N",
         },
         consoleTabs: {
-          interaction: "Main",
+          interaction: "主界面",
+          artifacts: "产物",
+          result: "结果",
+          error: "错误",
+          evidence: "证据",
+          trace: "Trace",
+          events: "事件",
+          source: "来源",
+        },
+        console: {
+          toolRun: "工具执行",
+          status: "状态",
+          scope: "范围",
+        },
+        summary: {
+          notRun: "此用例尚未运行。",
+          awaitingApproval: "执行已停在审批边界，等待审批。",
+          failed: "Tool 执行失败。",
+          cancelled: "Tool 执行已取消。",
+          running: "真实 Invocation 正在执行。",
+          completedArtifacts: "执行完成，返回 {{count}} 个 Artifact。",
+          completedResult: "执行完成，已返回结构化结果。",
+          completed: "执行完成。",
         },
         transportError: "执行链路读取失败",
         readiness: {
@@ -2418,6 +2462,9 @@ const settingsPending = {
           sourceDetails: "Source Details",
           description: "说明",
           source: "来源",
+          toolGroups: "工具分组",
+          artifactNoPreview: "Artifact 没有可直接预览的 data / uri。",
+          toolId: "Tool ID",
           inputSchema: "Input Schema",
           outputSchema: "Output Schema",
           capabilities: "Capabilities",

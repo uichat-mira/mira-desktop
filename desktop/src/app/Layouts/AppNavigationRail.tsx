@@ -116,8 +116,8 @@ function isDevelopmentRoute(pathname: string) {
   return matchesRoute(pathname, "/development");
 }
 
-function isExtensionToolsRoute(pathname: string) {
-  return matchesRoute(pathname, "/extensions/tools");
+function isExtensionCapabilitiesRoute(pathname: string) {
+  return matchesRoute(pathname, "/extensions/capabilities");
 }
 
 function isExtensionMcpRoute(pathname: string) {
@@ -199,7 +199,7 @@ function UserMenu() {
       ]}
       onSelect={(item) => {
         if (item.id === "settings") {
-          navigate("/settings/general");
+          void navigate("/settings/general");
           return;
         }
 
@@ -247,10 +247,10 @@ function ExtensionsMenu({
       }
       items={[
         {
-          id: "tools",
-          label: t("app.navigation.tools"),
+          id: "capabilities",
+          label: t("app.navigation.capabilities"),
           leadingIcon: <Wrench className="h-4 w-4" />,
-          selected: isExtensionToolsRoute(pathname),
+          selected: isExtensionCapabilitiesRoute(pathname),
         },
         {
           id: "mcp",
@@ -266,12 +266,12 @@ function ExtensionsMenu({
         },
       ]}
       onSelect={(item) => {
-        if (item.id === "tools") {
-          navigate("/extensions/tools");
+        if (item.id === "capabilities") {
+          void navigate("/extensions/capabilities");
         } else if (item.id === "mcp") {
-          navigate("/settings/mcp");
+          void navigate("/settings/mcp");
         } else if (item.id === "skills") {
-          navigate("/settings/skills");
+          void navigate("/settings/skills");
         }
       }}
     />
@@ -332,9 +332,9 @@ function ResourceMenu({
       ]}
       onSelect={(item) => {
         if (item.id === "about") {
-          navigate("/about");
+          void navigate("/about");
         } else if (item.id === "development") {
-          navigate("/development/logs");
+          void navigate("/development/logs");
         } else if (item.id === "help") {
           void openExternalUrl("https://mira.tomz.io").catch(() => {
             message.error(t("app.navigation.helpOpenFailed"));
@@ -394,7 +394,7 @@ function LibraryMenu({
         },
       ]}
       onSelect={(item) => {
-        navigate(
+        void navigate(
           item.id === "knowledge-base"
             ? "/knowledge-base"
             : "/evaluation/center",

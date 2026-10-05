@@ -528,23 +528,23 @@ export function getMcpWorkspaceSelection() {
   return get<McpWorkspaceSelection>("/mcp/workspace");
 }
 
-export type McpToolLabFixtureResetResult = {
+export type McpCapabilityFixtureResetResult = {
   fixtureId: string;
   workspace: McpWorkspaceSelection;
   fixtureRoot: string;
   resetAt: string;
 };
 
-export function getMcpToolLabWorkspaceSelection() {
+export function getMcpCapabilityWorkspaceSelection() {
   return get<McpWorkspaceSelection>("/mcp/tool-lab/workspace");
 }
 
-export function getMcpManagedToolLabWorkspaceSelection() {
+export function getMcpManagedCapabilityWorkspaceSelection() {
   return get<McpWorkspaceSelection>("/mcp/tool-lab/workspace/managed");
 }
 
-export function resetMcpToolLabFixture(fixtureId: string) {
-  return post<McpToolLabFixtureResetResult>(
+export function resetMcpCapabilityFixture(fixtureId: string) {
+  return post<McpCapabilityFixtureResetResult>(
     `/mcp/tool-lab/fixtures/${encodeURIComponent(fixtureId)}/reset`,
   );
 }

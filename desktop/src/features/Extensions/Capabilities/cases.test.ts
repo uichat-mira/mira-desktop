@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ExternalMcpServerRecord } from "@/shared/api/tools";
 import {
-  buildExternalMcpToolLabCases,
-  buildToolLabCases,
-  coreToolLabCases,
+  buildExternalMcpCapabilityAcceptanceCases,
+  buildCapabilityAcceptanceCases,
+  nativeCapabilityAcceptanceCases,
 } from "./cases";
 
 const createServer = (
@@ -42,16 +42,16 @@ const createServer = (
     ...overrides,
   }) as ExternalMcpServerRecord;
 
-describe("Tool Lab acceptance cases", () => {
-  it("keeps the Phase 2 surface on fixed canonical core cases", () => {
-    expect(coreToolLabCases.map((caseDefinition) => caseDefinition.id)).toEqual([
+describe("Capability acceptance cases", () => {
+  it("keeps the Phase 2 surface on fixed canonical native cases", () => {
+    expect(nativeCapabilityAcceptanceCases.map((caseDefinition) => caseDefinition.id)).toEqual([
       "core-read-success",
       "core-read-controlled-failure",
       "core-approval-boundary",
     ]);
 
     expect(
-      coreToolLabCases.find((item) => item.id === "core-read-success"),
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "core-read-success"),
     ).toMatchObject({
       args: {
         path: ".tool-lab-fixtures/platform-read-success/input.txt",
@@ -60,7 +60,7 @@ describe("Tool Lab acceptance cases", () => {
       fixture: "platform-read-success",
     });
     expect(
-      coreToolLabCases.find((item) => item.id === "core-read-controlled-failure"),
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "core-read-controlled-failure"),
     ).toMatchObject({
       args: {
         path: ".tool-lab-fixtures/platform-read-missing/missing.txt",
@@ -69,7 +69,7 @@ describe("Tool Lab acceptance cases", () => {
       fixture: "platform-read-missing",
     });
     expect(
-      coreToolLabCases.find((item) => item.id === "core-approval-boundary"),
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "core-approval-boundary"),
     ).toMatchObject({
       args: expect.objectContaining({
         path: ".tool-lab-fixtures/platform-approval-boundary/approval-probe.txt",
@@ -81,7 +81,7 @@ describe("Tool Lab acceptance cases", () => {
   });
 
   it("registers only deterministic zero-input External MCP cases", () => {
-    const cases = buildExternalMcpToolLabCases([createServer()]);
+    const cases = buildExternalMcpCapabilityAcceptanceCases([createServer()]);
 
     expect(cases).toHaveLength(1);
     expect(cases[0]).toMatchObject({
@@ -92,18 +92,18 @@ describe("Tool Lab acceptance cases", () => {
     });
   });
 
-  it("keeps explicit Tool Lab cases independent from the Agent exposure switch", () => {
-    const cases = buildExternalMcpToolLabCases([
+  it("keeps explicit Capability cases independent from the Agent exposure switch", () => {
+    const cases = buildExternalMcpCapabilityAcceptanceCases([
       createServer({ agentEnabled: false }),
     ]);
 
     expect(cases[0]?.expectedObservation).toContain("Awaiting Approval");
   });
 
-  it("combines core and eligible External MCP cases without custom UI contracts", () => {
-    const cases = buildToolLabCases([createServer()]);
+  it("combines native and eligible External MCP cases without custom UI contracts", () => {
+    const cases = buildCapabilityAcceptanceCases([createServer()]);
 
-    expect(cases).toHaveLength(coreToolLabCases.length + 1);
+    expect(cases).toHaveLength(nativeCapabilityAcceptanceCases.length + 1);
     expect(cases.some((item) => item.toolId === "mcp:server-1:tool:ping")).toBe(true);
   });
 });

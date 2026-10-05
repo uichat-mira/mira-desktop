@@ -5,18 +5,18 @@ import type {
   ToolInvocation,
 } from "@/shared/api/tools";
 import type {
-  ToolLabCaseDefinition,
-  ToolLabReadiness,
-  ToolLabTool,
+  CapabilityAcceptanceCase,
+  CapabilityReadiness,
+  CapabilityTool,
 } from "./types";
 
-const unavailable = (reason: string, settingsPath?: string): ToolLabReadiness => ({
+const unavailable = (reason: string, settingsPath?: string): CapabilityReadiness => ({
   state: "unavailable",
   reason,
   ...(settingsPath ? { settingsPath } : {}),
 });
 
-export function toNativeToolLabTool(definition: HarnessToolDefinition): ToolLabTool {
+export function toNativeCapabilityTool(definition: HarnessToolDefinition): CapabilityTool {
   return {
     ...definition,
     sourceInfo: {
@@ -28,7 +28,7 @@ export function toNativeToolLabTool(definition: HarnessToolDefinition): ToolLabT
   };
 }
 
-export function toUnavailableNativeToolLabTool(toolId: string): ToolLabTool {
+export function toUnavailableNativeCapabilityTool(toolId: string): CapabilityTool {
   return {
     id: toolId,
     title: toolId,
@@ -50,11 +50,11 @@ export function toUnavailableNativeToolLabTool(toolId: string): ToolLabTool {
   };
 }
 
-export function toExternalToolLabTools(
+export function toExternalCapabilityTools(
   servers: ExternalMcpServerRecord[],
-): ToolLabTool[] {
+): CapabilityTool[] {
   return servers.flatMap((server) => {
-    const runtimeReadiness: ToolLabReadiness =
+    const runtimeReadiness: CapabilityReadiness =
       !server.enabled
         ? unavailable("External MCP 已停用。", "/settings/mcp")
         : server.status !== "connected"
@@ -85,15 +85,15 @@ export function toExternalToolLabTools(
       runtimeReadiness,
       externalServerId: server.id,
       agentAccessEnabled: server.agentEnabled,
-    } satisfies ToolLabTool));
+    } satisfies CapabilityTool));
   });
 }
 
-export function resolveToolLabReadiness(input: {
-  caseDefinition: ToolLabCaseDefinition | null;
-  tool: ToolLabTool | null;
+export function resolveCapabilityReadiness(input: {
+  caseDefinition: CapabilityAcceptanceCase | null;
+  tool: CapabilityTool | null;
   workspaceRoot: string | null;
-}): ToolLabReadiness {
+}): CapabilityReadiness {
   if (!input.caseDefinition) {
     return unavailable("请选择一个验收用例。");
   }
@@ -118,7 +118,7 @@ export function resolveToolLabReadiness(input: {
   };
 }
 
-export function formatToolLabDuration(invocation: ToolInvocation | null) {
+export function formatCapabilityDuration(invocation: ToolInvocation | null) {
   if (!invocation?.startedAt || !invocation.finishedAt) {
     return "—";
   }
@@ -131,21 +131,40 @@ export function formatToolLabDuration(invocation: ToolInvocation | null) {
   return duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(2)}s`;
 }
 
-export function summarizeToolLabInvocation(invocation: ToolInvocation | null) {
+type CapabilitySummaryTranslator = (key: string) => string;
+
+const defaultSummaryText: Record<string, string> = {
+  notRun: "尚未运行此用例。",
+  awaitingApproval: "执行已停在审批边界，等待审批。",
+  failed: "Tool 执行失败。",
+  cancelled: "Tool 执行已取消。",
+  running: "真实 Invocation 正在执行。",
+  completedArtifacts: "执行完成，返回 {{count}} 个 Artifact。",
+  completedResult: "执行完成，已返回结构化结果。",
+  completed: "执行完成。",
+};
+
+export function summarizeCapabilityInvocation(
+  invocation: ToolInvocation | null,
+  translate?: CapabilitySummaryTranslator,
+) {
+  const text = (key: string) =>
+    translate?.(`settings.development.capabilities.summary.${key}`) ??
+    defaultSummaryText[key]!;
   if (!invocation) {
-    return "尚未运行此用例。";
+    return text("notRun");
   }
   if (invocation.status === "awaiting_approval") {
-    return invocation.approval?.reason ?? "执行已停在审批边界，等待审批。";
+    return invocation.approval?.reason ?? text("awaitingApproval");
   }
   if (invocation.status === "failed") {
-    return invocation.error?.message ?? "Tool 执行失败。";
+    return invocation.error?.message ?? text("failed");
   }
   if (invocation.status === "cancelled") {
-    return invocation.error?.message ?? "Tool 执行已取消。";
+    return invocation.error?.message ?? text("cancelled");
   }
   if (invocation.status === "running" || invocation.status === "queued") {
-    return "真实 Invocation 正在执行。";
+    return text("running");
   }
   if (invocation.evidence?.actionTaken) {
     return invocation.evidence.status && invocation.evidence.status !== "completed"
@@ -153,15 +172,15 @@ export function summarizeToolLabInvocation(invocation: ToolInvocation | null) {
       : invocation.evidence.actionTaken;
   }
   if (invocation.artifacts.length > 0) {
-    return `执行完成，返回 ${invocation.artifacts.length} 个 Artifact。`;
+    return text("completedArtifacts").replace("{{count}}", String(invocation.artifacts.length));
   }
   if (invocation.result !== undefined) {
-    return "执行完成，已返回结构化结果。";
+    return text("completedResult");
   }
-  return "执行完成。";
+  return text("completed");
 }
 
-export function stringifyToolLabValue(value: unknown) {
+export function stringifyCapabilityValue(value: unknown) {
   if (value === undefined) return "—";
   if (typeof value === "string") return value;
   try {
@@ -173,7 +192,7 @@ export function stringifyToolLabValue(value: unknown) {
 
 export function previewToolArtifact(artifact: ToolArtifact) {
   if (artifact.data !== undefined) {
-    return stringifyToolLabValue(artifact.data);
+    return stringifyCapabilityValue(artifact.data);
   }
   if (artifact.uri) {
     return artifact.uri;

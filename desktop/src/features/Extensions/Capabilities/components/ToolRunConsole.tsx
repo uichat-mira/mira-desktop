@@ -7,17 +7,18 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { ChevronDown, ChevronUp, SquareTerminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { IconButton } from "@/shared/ui/Button";
 import TerminalPanel from "@/shared/ui/TerminalPanel";
 import type { ToolInvocation, ToolInvocationStatus } from "@/shared/api/tools";
-import type { ToolLabRunState, ToolLabTool } from "../types";
+import type { CapabilityRunState, CapabilityTool } from "../types";
 import {
-  formatToolLabDuration,
-  stringifyToolLabValue,
-  summarizeToolLabInvocation,
+  formatCapabilityDuration,
+  stringifyCapabilityValue,
+  summarizeCapabilityInvocation,
 } from "../utils";
 
 type ConsoleStatus = ToolInvocationStatus | "idle";
@@ -35,8 +36,8 @@ type ToolRunConsoleProps = {
   open: boolean;
   onToggle: () => void;
   status: ConsoleStatus;
-  runState: ToolLabRunState;
-  selectedTool: ToolLabTool;
+  runState: CapabilityRunState;
+  selectedTool: CapabilityTool;
   isResolvingApproval: boolean;
   onResolveApproval: (decision: "approved" | "rejected") => void | Promise<void>;
 };
@@ -82,7 +83,7 @@ export default function ToolRunConsole({
     clampPaneBodyHeight(DEFAULT_PANE_BODY_HEIGHT),
   );
   const [isResizing, setIsResizing] = useState(false);
-  const interactionRef = useRef<HTMLDivElement>(null);
+  const approvalFocusRef = useRef<HTMLButtonElement>(null);
   const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(
     null,
   );
@@ -111,42 +112,42 @@ export default function ToolRunConsole({
       [
         {
           id: "interaction" as const,
-          label: t("settings.development.toolLab.consoleTabs.interaction"),
+          label: t("settings.development.capabilities.consoleTabs.interaction"),
           visible: true,
         },
         {
           id: "artifacts" as const,
-          label: "Artifacts",
+          label: t("settings.development.capabilities.consoleTabs.artifacts"),
           visible: Boolean(displayInvocation?.artifacts.length),
         },
         {
           id: "result" as const,
-          label: "Result",
+          label: t("settings.development.capabilities.consoleTabs.result"),
           visible: displayInvocation?.result !== undefined,
         },
         {
           id: "error" as const,
-          label: "Error",
+          label: t("settings.development.capabilities.consoleTabs.error"),
           visible: Boolean(displayInvocation?.error || runState.transportError),
         },
         {
           id: "evidence" as const,
-          label: "Evidence",
+          label: t("settings.development.capabilities.consoleTabs.evidence"),
           visible: displayInvocation?.evidence !== undefined,
         },
         {
           id: "trace" as const,
-          label: "Trace",
+          label: t("settings.development.capabilities.consoleTabs.trace"),
           visible: Boolean(runState.trace),
         },
         {
           id: "events" as const,
-          label: "Events",
+          label: t("settings.development.capabilities.consoleTabs.events"),
           visible: runState.events.length > 0,
         },
         {
           id: "source" as const,
-          label: "Source",
+          label: t("settings.development.capabilities.consoleTabs.source"),
           visible: true,
         },
       ].filter((tab) => tab.visible),
@@ -175,7 +176,7 @@ export default function ToolRunConsole({
   useEffect(() => {
     if (!open || !approvalPending) return;
     setActiveTab("interaction");
-    requestAnimationFrame(() => interactionRef.current?.focus());
+    requestAnimationFrame(() => approvalFocusRef.current?.focus());
   }, [approvalPending, open]);
 
   useEffect(() => {
@@ -250,7 +251,7 @@ export default function ToolRunConsole({
     setPaneBodyHeight((height) => clampPaneBodyHeight(height + delta));
   };
 
-  const handleApprovalKey = (event: KeyboardEvent<HTMLDivElement>) => {
+  const handleApprovalKey = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (
       activeTab !== "interaction" ||
       !approvalPending ||
@@ -273,9 +274,9 @@ export default function ToolRunConsole({
     <section className="relative shrink-0 border-t border-border bg-surface-primary">
       {open ? (
         <div
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label={t("settings.development.toolLab.actions.resizeResult")}
+          role="slider"
+          aria-orientation="vertical"
+          aria-label={t("settings.development.capabilities.actions.resizeResult")}
           aria-valuemin={MIN_PANE_BODY_HEIGHT}
           aria-valuemax={getMaxPaneBodyHeight()}
           aria-valuenow={paneBodyHeight}
@@ -291,7 +292,7 @@ export default function ToolRunConsole({
         <div className="flex shrink-0 items-center gap-2 px-3">
           <SquareTerminal className="h-4 w-4 text-text-secondary" />
           <span className="text-xs font-medium text-text-secondary">
-            {t("settings.development.toolLab.result")}
+            {t("settings.development.capabilities.result")}
           </span>
         </div>
 
@@ -318,17 +319,17 @@ export default function ToolRunConsole({
         <div className="flex shrink-0 items-center gap-3 px-3 font-mono text-[11px]">
           <span className={statusTone[status]}>
             <span aria-hidden="true">● </span>
-            <span>{t(`settings.development.toolLab.invocation.${status}`)}</span>
+            <span>{t(`settings.development.capabilities.invocation.${status}`)}</span>
           </span>
           <span className="text-text-tertiary">
-            {formatToolLabDuration(displayInvocation)}
+            {formatCapabilityDuration(displayInvocation)}
           </span>
           <IconButton
             size="sm"
             ariaLabel={
               open
-                ? t("settings.development.toolLab.actions.collapseResult")
-                : t("settings.development.toolLab.actions.expandResult")
+                ? t("settings.development.capabilities.actions.collapseResult")
+                : t("settings.development.capabilities.actions.expandResult")
             }
             onClick={onToggle}
           >
@@ -355,11 +356,9 @@ export default function ToolRunConsole({
       >
         {open ? (
           <div
-            ref={interactionRef}
-            aria-label={t("settings.development.toolLab.consoleTabs.interaction")}
-            tabIndex={activeTab === "interaction" ? 0 : -1}
-            onKeyDown={handleApprovalKey}
-            className="h-full min-h-0 focus-visible:outline-none"
+            role="region"
+            aria-label={t("settings.development.capabilities.consoleTabs.interaction")}
+            className="h-full min-h-0"
           >
             <TerminalPanel variant="plain" className="h-full">
               {activeTab === "interaction" ? (
@@ -370,10 +369,12 @@ export default function ToolRunConsole({
                   displayInvocation={displayInvocation}
                   transportError={runState.transportError}
                   isResolvingApproval={isResolvingApproval}
+                  approvalFocusRef={approvalFocusRef}
+                  onApprovalKeyDown={handleApprovalKey}
                   onResolveApproval={onResolveApproval}
                 />
               ) : activeTab === "artifacts" ? (
-                <ArtifactsView invocation={displayInvocation} />
+                <ArtifactsView invocation={displayInvocation} emptyArtifactLabel={t("settings.development.capabilities.labels.artifactNoPreview")} />
               ) : activeTab === "result" ? (
                 <TerminalValue value={displayInvocation?.result} />
               ) : activeTab === "error" ? (
@@ -409,14 +410,18 @@ function InteractionView({
   displayInvocation,
   transportError,
   isResolvingApproval,
+  approvalFocusRef,
+  onApprovalKeyDown,
   onResolveApproval,
 }: {
   status: ConsoleStatus;
-  selectedTool: ToolLabTool;
+  selectedTool: CapabilityTool;
   originalInvocation: ToolInvocation | null;
   displayInvocation: ToolInvocation | null;
   transportError: string | null;
   isResolvingApproval: boolean;
+  approvalFocusRef: RefObject<HTMLButtonElement>;
+  onApprovalKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   onResolveApproval: (decision: "approved" | "rejected") => void | Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -428,14 +433,14 @@ function InteractionView({
   return (
     <>
       <ConsoleLine marker="$">
-        <span className="text-text-secondary">tool run :: </span>
+        <span className="text-text-secondary">{t("settings.development.capabilities.console.toolRun")} :: </span>
         <span className="text-info-text">{selectedTool.title}</span>
       </ConsoleLine>
 
       <ConsoleLine marker="›">
-        <span className="text-text-secondary">status :: </span>
+        <span className="text-text-secondary">{t("settings.development.capabilities.console.status")} :: </span>
         <span className={statusTone[status]}>
-          {t(`settings.development.toolLab.invocation.${status}`)}
+          {t(`settings.development.capabilities.invocation.${status}`)}
         </span>
       </ConsoleLine>
 
@@ -449,19 +454,19 @@ function InteractionView({
         <div className="border-b border-border/60 py-2">
           <div className="text-warning">
             <span className="mr-2 text-text-tertiary">?</span>
-            {t("settings.development.toolLab.approvalTui.required")}
+            {t("settings.development.capabilities.approvalTui.required")}
           </div>
           <div className="pl-4 text-text-primary">{approval.reason}</div>
           {approval.scope ? (
             <div className="pl-4 text-text-tertiary">
-              scope :: {approval.scope}
+              {t("settings.development.capabilities.console.scope")} :: {approval.scope}
             </div>
           ) : null}
 
           {approval.resolution ? (
             <>
               <div className="pl-4">
-                {t("settings.development.toolLab.approvalTui.continue")}{" "}
+                {t("settings.development.capabilities.approvalTui.continue")}{" "}
                 <span
                   className={
                     approval.resolution.decision === "approved"
@@ -469,7 +474,7 @@ function InteractionView({
                       : "text-text-tertiary"
                   }
                 >
-                  [Y] {t("settings.development.toolLab.approvalTui.approve")}
+                  [Y] {t("settings.development.capabilities.approvalTui.approve")}
                 </span>{" "}
                 /{" "}
                 <span
@@ -479,7 +484,7 @@ function InteractionView({
                       : "text-text-tertiary"
                   }
                 >
-                  [N] {t("settings.development.toolLab.approvalTui.reject")}
+                  [N] {t("settings.development.capabilities.approvalTui.reject")}
                 </span>
               </div>
               <div
@@ -494,31 +499,34 @@ function InteractionView({
             </>
           ) : (
             <div className="flex flex-wrap items-center gap-x-2 pl-4">
-              <span>{t("settings.development.toolLab.approvalTui.continue")}</span>
+              <span>{t("settings.development.capabilities.approvalTui.continue")}</span>
               <button
+                ref={approvalFocusRef}
                 type="button"
                 disabled={!approvalPending || isResolvingApproval}
+                onKeyDown={onApprovalKeyDown}
                 onClick={() => void onResolveApproval("approved")}
                 className="text-success underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
               >
-                [Y] {t("settings.development.toolLab.approvalTui.approve")}
+                [Y] {t("settings.development.capabilities.approvalTui.approve")}
               </button>
               <span className="text-text-tertiary">/</span>
               <button
                 type="button"
                 disabled={!approvalPending || isResolvingApproval}
+                onKeyDown={onApprovalKeyDown}
                 onClick={() => void onResolveApproval("rejected")}
                 className="text-danger underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
               >
-                [N] {t("settings.development.toolLab.approvalTui.reject")}
+                [N] {t("settings.development.capabilities.approvalTui.reject")}
               </button>
               {isResolvingApproval ? (
                 <span className="text-warning">
-                  {t("settings.development.toolLab.approvalTui.resolving")}
+                  {t("settings.development.capabilities.approvalTui.resolving")}
                 </span>
               ) : (
                 <span className="text-text-tertiary">
-                  {t("settings.development.toolLab.approvalTui.keyboardHint")}
+                  {t("settings.development.capabilities.approvalTui.keyboardHint")}
                 </span>
               )}
             </div>
@@ -542,13 +550,19 @@ function InteractionView({
               : undefined
         }
       >
-        {summarizeToolLabInvocation(displayInvocation)}
+        {summarizeCapabilityInvocation(displayInvocation, t)}
       </ConsoleLine>
     </>
   );
 }
 
-function ArtifactsView({ invocation }: { invocation: ToolInvocation | null }) {
+function ArtifactsView({
+  invocation,
+  emptyArtifactLabel,
+}: {
+  invocation: ToolInvocation | null;
+  emptyArtifactLabel: string;
+}) {
   if (!invocation?.artifacts.length) {
     return <TerminalValue value={undefined} />;
   }
@@ -573,7 +587,7 @@ function ArtifactsView({ invocation }: { invocation: ToolInvocation | null }) {
               value={
                 artifact.data !== undefined
                   ? artifact.data
-                  : artifact.uri ?? "Artifact 没有可直接预览的 data / uri。"
+                  : artifact.uri ?? emptyArtifactLabel
               }
             />
           </div>
@@ -610,7 +624,7 @@ function ConsoleLine({
 }
 
 function TerminalValue({ value }: { value: unknown }) {
-  const source = stringifyToolLabValue(value);
+  const source = stringifyCapabilityValue(value);
   const lines = source.split("\n");
 
   return (
