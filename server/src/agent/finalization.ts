@@ -178,6 +178,7 @@ export const materializeFinalizationEvidence = (input: {
   const messages: NormalizedChatMessage[] = [];
   const imageParts: NormalizedImageMessagePart[] = [];
   const missingRefs: AgentEvidenceReference[] = [];
+  const unavailableImageRefs: AgentEvidenceReference[] = [];
 
   for (const ref of orderedRefs) {
     const parsed = parseEvidenceReference(ref);
@@ -193,7 +194,7 @@ export const materializeFinalizationEvidence = (input: {
         continue;
       }
       if (isToolImagePayloadUnavailable(execution)) {
-        missingRefs.push(ref);
+        unavailableImageRefs.push(ref);
         continue;
       }
       messages.push(toSystemMessage(renderToolEvidence(ref, execution)));
@@ -245,5 +246,5 @@ export const materializeFinalizationEvidence = (input: {
     );
   }
 
-  return { messages, imageParts, missingRefs };
+  return { messages, imageParts, missingRefs, unavailableImageRefs };
 };
