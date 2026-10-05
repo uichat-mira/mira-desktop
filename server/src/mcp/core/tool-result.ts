@@ -375,7 +375,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       facts: [
         `operation=${operation}`,
         ...(path ? [`path=${path}`] : []),
-        ...(root ? [`path=${path}`] : []),
+        ...(root ? [`root=${root}`] : []),
         ...(query ? [`query=${query}`] : []),
         `candidateCount=${returnedCount}`,
         `returnedCount=${returnedCount}`,
