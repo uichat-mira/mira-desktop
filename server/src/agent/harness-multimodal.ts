@@ -43,18 +43,15 @@ export const appendHarnessImagesToLatestUserMessage = (
     if (index !== latestUserIndex) {
       return message;
     }
-    const textParts =
-      message.parts?.filter((part) => part.type === "text") ?? [];
+    const existingParts =
+      message.parts && message.parts.length > 0
+        ? message.parts
+        : message.content.trim()
+          ? [{ type: "text" as const, text: message.content }]
+          : [];
     return {
       ...message,
-      parts: [
-        ...(textParts.length > 0
-          ? textParts
-          : message.content.trim()
-            ? [{ type: "text" as const, text: message.content }]
-            : []),
-        ...imageParts,
-      ],
+      parts: [...existingParts, ...imageParts],
     };
   });
 };
