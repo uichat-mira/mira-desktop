@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import iconv from "iconv-lite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { clearWorkspaceSelection } from "../workspace.js";
@@ -15,7 +16,7 @@ const tempRoot = createTimestampedTestArtifactPath(
   "file-mutation-runtime-phase-1",
 );
 
-describe("file mutation runtime phase 1", () => {
+describe("file mutation runtime", () => {
   beforeEach(() => {
     fs.mkdirSync(tempRoot, { recursive: true });
     process.env.UI_CHAT_WORKSPACE_ROOT = tempRoot;
@@ -61,6 +62,27 @@ describe("file mutation runtime phase 1", () => {
     );
   });
 
+  it("preserves UTF-8 BOM and CRLF style on whole-file overwrite", async () => {
+    const target = path.join(tempRoot, "bom-crlf.txt");
+    fs.writeFileSync(
+      target,
+      Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        Buffer.from("old\r\nvalue\r\n", "utf8"),
+      ]),
+    );
+
+    await executeWriteMutation({
+      path: "bom-crlf.txt",
+      content: "new\nvalue\n",
+      overwrite: true,
+    });
+
+    const next = fs.readFileSync(target);
+    expect(next.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
+    expect(next.subarray(3).toString("utf8")).toBe("new\r\nvalue\r\n");
+  });
+
   it("validates all exact edits before committing", async () => {
     const target = path.join(tempRoot, "edit.txt");
     fs.writeFileSync(target, "alpha\nbeta\ngamma\n", "utf8");
@@ -85,6 +107,98 @@ describe("file mutation runtime phase 1", () => {
     ).rejects.toThrow("was not found");
 
     expect(fs.readFileSync(target, "utf8")).toBe("ALPHA\nbeta\nGAMMA\n");
+  });
+
+  it("uses finite deterministic tolerance for line endings, whitespace and common Unicode punctuation", async () => {
+    const target = path.join(tempRoot, "tolerant.txt");
+    fs.writeFileSync(
+      target,
+      'const label = “Mira”;\r\n\treturn   label;\r\n// Mira\u00a0— stable\r\n',
+      "utf8",
+    );
+
+    await executeEditMutation({
+      path: "tolerant.txt",
+      edits: [
+        {
+          oldText:
+            'const label = "Mira";\n  return label;\n// Mira - stable',
+          newText:
+            'const label = "Mira Next";\nreturn label;\n// Mira - stable',
+        },
+      ],
+    });
+
+    expect(fs.readFileSync(target, "utf8")).toBe(
+      'const label = "Mira Next";\r\nreturn label;\r\n// Mira - stable\r\n',
+    );
+  });
+
+  it("fails tolerant matching when normalization leaves more than one candidate", async () => {
+    const target = path.join(tempRoot, "ambiguous.txt");
+    fs.writeFileSync(target, "foo   bar\nfoo\tbar\n", "utf8");
+
+    await expect(
+      executeEditMutation({
+        path: "ambiguous.txt",
+        edits: [{ oldText: "foo bar", newText: "changed" }],
+      }),
+    ).rejects.toThrow("ambiguous");
+
+    expect(fs.readFileSync(target, "utf8")).toBe("foo   bar\nfoo\tbar\n");
+  });
+
+  it("treats overlapping duplicate matches as ambiguous", async () => {
+    const target = path.join(tempRoot, "overlapping-match.txt");
+    fs.writeFileSync(target, "aaa", "utf8");
+
+    await expect(
+      executeEditMutation({
+        path: "overlapping-match.txt",
+        edits: [{ oldText: "aa", newText: "x" }],
+      }),
+    ).rejects.toThrow("ambiguous");
+
+    expect(fs.readFileSync(target, "utf8")).toBe("aaa");
+  });
+
+  it("rejects overlapping edits without mutating the file", async () => {
+    const target = path.join(tempRoot, "overlap.txt");
+    fs.writeFileSync(target, "abc def ghi", "utf8");
+
+    await expect(
+      executeEditMutation({
+        path: "overlap.txt",
+        edits: [
+          { oldText: "abc def", newText: "one" },
+          { oldText: "def ghi", newText: "two" },
+        ],
+      }),
+    ).rejects.toThrow("must not overlap");
+
+    expect(fs.readFileSync(target, "utf8")).toBe("abc def ghi");
+  });
+
+  it("preserves UTF-16LE BOM and CRLF while editing", async () => {
+    const target = path.join(tempRoot, "utf16.txt");
+    fs.writeFileSync(
+      target,
+      Buffer.concat([
+        Buffer.from([0xff, 0xfe]),
+        iconv.encode("alpha\r\nbeta\r\n", "utf16-le"),
+      ]),
+    );
+
+    await executeEditMutation({
+      path: "utf16.txt",
+      edits: [{ oldText: "beta", newText: "BETA" }],
+    });
+
+    const next = fs.readFileSync(target);
+    expect(next.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xfe]));
+    expect(iconv.decode(next.subarray(2), "utf16-le")).toBe(
+      "alpha\r\nBETA\r\n",
+    );
   });
 
   it("moves only when the destination does not already exist", async () => {

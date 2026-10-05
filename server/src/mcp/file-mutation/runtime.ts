@@ -9,6 +9,13 @@ import {
   resolveWorkspacePath,
   resolveWorkspaceWritePath,
 } from "../workspace.js";
+import {
+  adaptLineEndings,
+  encodeMutationText,
+  inspectMutationTextFormat,
+  readMutationTextFile,
+  type MutationLineEnding,
+} from "./text.js";
 
 export type FileMutationRuntimeContext = {
   signal?: AbortSignal;
@@ -107,9 +114,9 @@ const resolveExistingMutationPath = (inputPath: string) => {
   throw mcpBadRequest(`unsupported filesystem target: ${inputPath}`);
 };
 
-const writeUtf8File = (targetPath: string, content: string) => {
+const writeBuffer = (targetPath: string, content: Buffer) => {
   try {
-    fs.writeFileSync(targetPath, content, "utf8");
+    fs.writeFileSync(targetPath, content);
   } catch (error) {
     throw mcpInternalError(`Failed to write workspace file: ${targetPath}`, {
       cause: error,
@@ -132,6 +139,11 @@ export const executeWriteMutation = async (
     throw mcpBadRequest("path already exists; set overwrite=true to replace it");
   }
 
+  const existingFormat = exists ? inspectMutationTextFormat(targetPath) : null;
+  const encoded = existingFormat
+    ? encodeMutationText(input.content, existingFormat)
+    : Buffer.from(input.content, "utf8");
+
   context.pushEvent?.({
     type: "invocation:progress",
     message: exists ? "Prepared whole-file overwrite" : "Prepared file create",
@@ -145,41 +157,186 @@ export const executeWriteMutation = async (
       cause: error,
     });
   }
-  writeUtf8File(targetPath, input.content);
+  writeBuffer(targetPath, encoded);
 
   return {
     operation: "write",
     path: inputPath,
     created: !exists,
     overwritten: exists,
-    bytes: Buffer.byteLength(input.content, "utf8"),
+    bytes: encoded.byteLength,
   };
 };
 
 type LocatedEdit = EditMutation & {
   start: number;
   end: number;
+  match: "exact" | "tolerant";
 };
 
-const locateExactEdit = (content: string, edit: EditMutation, index: number): LocatedEdit => {
+type MatchMapEntry = {
+  start: number;
+  end: number;
+};
+
+const HORIZONTAL_WHITESPACE = /[\t \f\v\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/u;
+
+const canonicalizeMatchCharacter = (value: string) => {
+  if ("‘’‚‛".includes(value)) return "'";
+  if ("“”„‟".includes(value)) return '"';
+  if ("‐‑‒–—―−".includes(value)) return "-";
+  return value;
+};
+
+const normalizeLineForMatch = (
+  line: string,
+  baseOffset: number,
+): { text: string; map: MatchMapEntry[] } => {
+  let text = "";
+  const map: MatchMapEntry[] = [];
+  let pendingWhitespaceStart: number | null = null;
+  let pendingWhitespaceEnd = -1;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (HORIZONTAL_WHITESPACE.test(character)) {
+      if (text.length > 0) {
+        pendingWhitespaceStart ??= baseOffset + index;
+        pendingWhitespaceEnd = baseOffset + index + 1;
+      }
+      continue;
+    }
+
+    if (pendingWhitespaceStart !== null) {
+      text += " ";
+      map.push({
+        start: pendingWhitespaceStart,
+        end: pendingWhitespaceEnd,
+      });
+      pendingWhitespaceStart = null;
+      pendingWhitespaceEnd = -1;
+    }
+
+    text += canonicalizeMatchCharacter(character);
+    map.push({
+      start: baseOffset + index,
+      end: baseOffset + index + 1,
+    });
+  }
+
+  return { text, map };
+};
+
+const normalizeForMatch = (value: string) => {
+  let text = "";
+  const map: MatchMapEntry[] = [];
+  let cursor = 0;
+
+  while (cursor <= value.length) {
+    let lineEnd = cursor;
+    while (
+      lineEnd < value.length &&
+      value[lineEnd] !== "\r" &&
+      value[lineEnd] !== "\n"
+    ) {
+      lineEnd += 1;
+    }
+
+    const normalizedLine = normalizeLineForMatch(
+      value.slice(cursor, lineEnd),
+      cursor,
+    );
+    text += normalizedLine.text;
+    map.push(...normalizedLine.map);
+
+    if (lineEnd >= value.length) {
+      break;
+    }
+
+    const newlineEnd =
+      value[lineEnd] === "\r" && value[lineEnd + 1] === "\n"
+        ? lineEnd + 2
+        : lineEnd + 1;
+    text += "\n";
+    map.push({
+      start: lineEnd,
+      end: newlineEnd,
+    });
+    cursor = newlineEnd;
+  }
+
+  return { text, map };
+};
+
+const findAllMatches = (haystack: string, needle: string) => {
+  const matches: number[] = [];
+  let offset = 0;
+
+  while (offset <= haystack.length - needle.length) {
+    const found = haystack.indexOf(needle, offset);
+    if (found < 0) {
+      break;
+    }
+    matches.push(found);
+    offset = found + 1;
+  }
+
+  return matches;
+};
+
+const locateExactEdit = (
+  content: string,
+  edit: EditMutation,
+  index: number,
+): LocatedEdit => {
   if (!edit.oldText.length) {
     throw mcpBadRequest(`edits[${index}].oldText must not be empty`);
   }
 
-  const start = content.indexOf(edit.oldText);
-  if (start < 0) {
-    throw mcpBadRequest(`edits[${index}] target was not found`);
+  const exactMatches = findAllMatches(content, edit.oldText);
+  if (exactMatches.length > 1) {
+    throw mcpBadRequest(`edits[${index}] target is ambiguous`);
+  }
+  if (exactMatches.length === 1) {
+    const start = exactMatches[0];
+    return {
+      ...edit,
+      start,
+      end: start + edit.oldText.length,
+      match: "exact",
+    };
   }
 
-  const duplicate = content.indexOf(edit.oldText, start + edit.oldText.length);
-  if (duplicate >= 0) {
+  const normalizedContent = normalizeForMatch(content);
+  const normalizedTarget = normalizeForMatch(edit.oldText).text;
+  if (!normalizedTarget.length) {
+    throw mcpBadRequest(`edits[${index}].oldText must contain visible text`);
+  }
+
+  const tolerantMatches = findAllMatches(
+    normalizedContent.text,
+    normalizedTarget,
+  );
+  if (tolerantMatches.length === 0) {
+    throw mcpBadRequest(`edits[${index}] target was not found`);
+  }
+  if (tolerantMatches.length > 1) {
     throw mcpBadRequest(`edits[${index}] target is ambiguous`);
+  }
+
+  const normalizedStart = tolerantMatches[0];
+  const normalizedEnd = normalizedStart + normalizedTarget.length - 1;
+  const startEntry = normalizedContent.map[normalizedStart];
+  const endEntry = normalizedContent.map[normalizedEnd];
+  if (!startEntry || !endEntry) {
+    throw mcpBadRequest(`edits[${index}] target was not found`);
   }
 
   return {
     ...edit,
-    start,
-    end: start + edit.oldText.length,
+    start: startEntry.start,
+    end: endEntry.end,
+    match: "tolerant",
   };
 };
 
@@ -193,13 +350,17 @@ const validateNonOverlappingEdits = (edits: LocatedEdit[]) => {
   return ordered;
 };
 
-const applyLocatedEdits = (content: string, edits: LocatedEdit[]) => {
+const applyLocatedEdits = (
+  content: string,
+  edits: LocatedEdit[],
+  lineEnding: MutationLineEnding | null,
+) => {
   let cursor = 0;
   let output = "";
 
   for (const edit of edits) {
     output += content.slice(cursor, edit.start);
-    output += edit.newText;
+    output += adaptLineEndings(edit.newText, lineEnding);
     cursor = edit.end;
   }
 
@@ -216,24 +377,38 @@ export const executeEditMutation = async (
   }
 
   const targetPath = resolveWorkspaceFilePath(inputPath);
-  const current = fs.readFileSync(targetPath, "utf8");
+  const currentFile = readMutationTextFile(targetPath);
   const located = validateNonOverlappingEdits(
-    input.edits.map((edit, index) => locateExactEdit(current, edit, index)),
+    input.edits.map((edit, index) =>
+      locateExactEdit(currentFile.text, edit, index),
+    ),
   );
-  const next = applyLocatedEdits(current, located);
+  const next = applyLocatedEdits(
+    currentFile.text,
+    located,
+    currentFile.lineEnding,
+  );
 
+  const tolerantCount = located.filter(
+    (edit) => edit.match === "tolerant",
+  ).length;
   context.pushEvent?.({
     type: "invocation:progress",
-    message: `Validated ${located.length} exact file edit(s)`,
+    message:
+      tolerantCount > 0
+        ? `Validated ${located.length} file edit(s), including ${tolerantCount} deterministic tolerant match(es)`
+        : `Validated ${located.length} exact file edit(s)`,
   });
   assertNotAborted(context.signal);
-  writeUtf8File(targetPath, next);
+
+  const encoded = encodeMutationText(next, currentFile);
+  writeBuffer(targetPath, encoded);
 
   return {
     operation: "edit",
     path: inputPath,
     editsApplied: located.length,
-    bytes: Buffer.byteLength(next, "utf8"),
+    bytes: encoded.byteLength,
   };
 };
 
@@ -242,7 +417,10 @@ export const executeMoveMutation = async (
   context: FileMutationRuntimeContext = {},
 ): Promise<MoveMutationResult> => {
   const sourcePath = requireNonEmptyPath(input.path, "path");
-  const destinationPath = requireNonEmptyPath(input.destinationPath, "destinationPath");
+  const destinationPath = requireNonEmptyPath(
+    input.destinationPath,
+    "destinationPath",
+  );
   const source = resolveExistingMutationPath(sourcePath);
   const destination = resolveWorkspaceWritePath(destinationPath);
 
