@@ -54,6 +54,7 @@ const WORKSPACE_MUTATION_TOOL_IDS = new Set(["workspace_mutation", "edit_file"])
 const WORKSPACE_READ_TOOL_IDS = new Set([
   "read",
   "list",
+  "glob",
   "read_list",
   "read_open",
   "read_locate",
@@ -128,6 +129,9 @@ const markCompletedSummary = (
   switch (summary.data.kind) {
     case "read_locate":
       addLocateMatchTargets(map, summary.data.matchedPaths);
+      return;
+    case "glob":
+      addLocateMatchTargets(map, summary.data.matchesPreview);
       return;
     case "read_open": {
       const target = normalizeTaskTargetPath(summary.data.path);
@@ -274,6 +278,22 @@ const hasListEvidence = (input: {
   return summaries.some(
     (summary) =>
       (summary?.data?.kind === "list" || summary?.data?.kind === "read_list") &&
+      (summary.status === "completed" || summary.status === "truncated"),
+  );
+};
+
+const hasGlobEvidence = (input: {
+  evidence?: AgentEvidencePayload;
+  latestSummary?: AgentEvidenceSummary;
+}) => {
+  const summaries = [
+    ...(input.evidence?.toolExecutions.map((item) => item.summary) ?? []),
+    input.latestSummary,
+  ];
+
+  return summaries.some(
+    (summary) =>
+      summary?.data?.kind === "glob" &&
       (summary.status === "completed" || summary.status === "truncated"),
   );
 };
@@ -477,9 +497,10 @@ export const reduceAgentCoverageState = (input: {
   if (
     requiredWork.requiredActions.includes("locate") &&
     requiredWork.requiredTargets.length === 0 &&
-    !hasListEvidence(input)
+    !hasListEvidence(input) &&
+    !hasGlobEvidence(input)
   ) {
-    globalPendingActions.push("read_locate");
+    globalPendingActions.push("glob");
   }
   if (
     requiredWork.requiredActions.includes("read_content") &&
