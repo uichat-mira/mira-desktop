@@ -189,6 +189,34 @@ describe("ToolResult B-prime normalization", () => {
       truncated: true,
     });
 
+    const canonicalList = projectToolEvidence(
+      definition("list"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "list",
+          path: "docs",
+          entries: [
+            { name: "guides", type: "directory" },
+            { name: "README.md", type: "file" },
+            { name: "latest", type: "symlink" },
+          ],
+          returnedCount: 3,
+          totalCount: 5,
+          hasMore: true,
+          truncated: true,
+        },
+      }),
+    );
+    expect(canonicalList?.data).toMatchObject({
+      kind: "list",
+      path: "docs",
+      fileCount: 1,
+      directoryCount: 1,
+      symlinkCount: 1,
+      entriesPreview: ["[D] guides", "[F] README.md", "[L] latest"],
+      truncated: true,
+    });
+
     const opened = projectToolEvidence(
       definition("read"),
       normalizeToolResult({
