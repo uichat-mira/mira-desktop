@@ -2,11 +2,7 @@ import { loadSkillResource } from "@/skills/context/index.js";
 import { createArtifact } from "../core/artifacts.js";
 import type { ToolInvocationEventInput, ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
-import {
-  executeGenericRead,
-  parseGenericReadSelection,
-  sliceGenericText,
-} from "../read/generic.js";
+import { executeGenericRead, sliceGenericText } from "../read/generic.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
 const SKILL_RESOURCE_PREFIX = "skill://";
@@ -28,13 +24,16 @@ const parseSkillId = (uri: string) => {
 
 const executeSkillResourceRead = async (input: {
   uri: string;
-  selection?: unknown;
+  offset?: unknown;
+  limit?: unknown;
   pushEvent?: (event: ToolInvocationEventInput) => void;
 }) => {
   const skillId = parseSkillId(input.uri);
   const loaded = await loadSkillResource({ skillId, uri: input.uri });
-  const selection = parseGenericReadSelection(input.selection);
-  const sliced = sliceGenericText(loaded.content, selection);
+  const sliced = sliceGenericText(loaded.content, {
+    offset: input.offset,
+    limit: input.limit,
+  });
 
   input.pushEvent?.({
     type: "invocation:progress",
@@ -44,9 +43,15 @@ const executeSkillResourceRead = async (input: {
   const contents = {
     type: "read" as const,
     path: input.uri,
-    operation: selection ? ("range" as const) : ("read" as const),
-    ...(selection ? { selection } : {}),
-    window: sliced.window,
+    offset: sliced.offset,
+    limit: sliced.limit,
+    returnedCount: sliced.returnedCount,
+    totalLines: sliced.totalLines,
+    startLine: sliced.startLine,
+    endLine: sliced.endLine,
+    hasMore: sliced.hasMore,
+    truncated: sliced.truncated,
+    ...(sliced.nextOffset === undefined ? {} : { nextOffset: sliced.nextOffset }),
     source: {
       kind: "text" as const,
       mimeType: "text/markdown",
@@ -76,8 +81,12 @@ const executeSkillResourceRead = async (input: {
           skillId,
           resourceKind: loaded.kind,
           uri: loaded.uri,
-          ...(selection ? { selection } : {}),
-          window: sliced.window,
+          offset: sliced.offset,
+          limit: sliced.limit,
+          returnedCount: sliced.returnedCount,
+          totalLines: sliced.totalLines,
+          hasMore: sliced.hasMore,
+          ...(sliced.nextOffset === undefined ? {} : { nextOffset: sliced.nextOffset }),
         },
       }),
     ],
@@ -89,7 +98,7 @@ export const readTool: ToolImplementation = {
     id: "read",
     title: "Read",
     description:
-      "Read a known generic workspace file or read-only skill:// text resource with bounded output. Office-native DOCX/XLSX/PPTX/PDF content is owned by the Office/WenShu Skill domain rather than parsed by this Tool.",
+      "Read contents of a known file. Use glob when you do not know the path; use grep to search file contents.",
     domain: "read",
     source: "internal",
     mode: "sync",
@@ -99,22 +108,12 @@ export const readTool: ToolImplementation = {
       additionalProperties: false,
       properties: {
         path: { type: "string" },
-        selection: {
-          type: "object",
-          additionalProperties: false,
-          required: ["kind", "start", "end"],
-          properties: {
-            kind: { type: "string", enum: ["lines", "range"] },
-            start: { type: "integer" },
-            end: { type: "integer" },
-          },
-        },
+        offset: { type: "integer", minimum: 0 },
+        limit: { type: "integer", minimum: 1 },
       },
     },
-    outputSchema: {
-      type: "object",
-    },
-    tags: ["read", "workspace", "file", "text", "skill-resource"],
+    outputSchema: { type: "object" },
+    tags: ["read", "file", "content"],
     capabilities: {
       sideEffect: "none",
       requiresApproval: false,
@@ -135,15 +134,15 @@ export const readTool: ToolImplementation = {
     const result = skillResourceUri
       ? await executeSkillResourceRead({
           uri: skillResourceUri,
-          selection: context.args.selection,
+          offset: context.args.offset,
+          limit: context.args.limit,
           pushEvent: context.pushEvent,
         })
       : await executeGenericRead({
           args: {
             path: normalizedPath,
-            ...(context.args.selection !== undefined
-              ? { selection: context.args.selection }
-              : {}),
+            ...(context.args.offset !== undefined ? { offset: context.args.offset } : {}),
+            ...(context.args.limit !== undefined ? { limit: context.args.limit } : {}),
           },
           environment: context.environment,
           pushEvent: context.pushEvent,
