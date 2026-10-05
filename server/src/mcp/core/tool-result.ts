@@ -287,6 +287,12 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
         `entryCount=${totalCount}`,
         `fileCount=${fileCount}`,
         `directoryCount=${directoryCount}`,
+        ...(toolId === "list" && typeof result.offset === "number"
+          ? [`offset=${result.offset}`]
+          : []),
+        ...(toolId === "list" && typeof result.nextOffset === "number"
+          ? [`nextOffset=${result.nextOffset}`]
+          : []),
         ...(symlinkCount > 0 ? [`symlinkCount=${symlinkCount}`] : []),
         ...entriesPreview,
       ],
@@ -338,6 +344,10 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
         `pattern=${pattern}`,
         `path=${path}`,
         `matchCount=${totalCount}`,
+        ...(typeof result.offset === "number" ? [`offset=${result.offset}`] : []),
+        ...(typeof result.nextOffset === "number"
+          ? [`nextOffset=${result.nextOffset}`]
+          : []),
         ...matchesPreview.map((match) => `matchedPath=${match}`),
       ],
       gaps: truncated
@@ -437,6 +447,10 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
         `path=${path}`,
         `provider=${provider}`,
         `matchCount=${matches.length}`,
+        ...(typeof result.offset === "number" ? [`offset=${result.offset}`] : []),
+        ...(typeof result.nextOffset === "number"
+          ? [`nextOffset=${result.nextOffset}`]
+          : []),
         ...matchesPreview,
       ],
       gaps: [
