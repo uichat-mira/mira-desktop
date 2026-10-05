@@ -12,6 +12,7 @@ import { getWorkspaceRoot, resolveWorkspacePath } from "../workspace.js";
 import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 import {
   escapeGlobPath,
+  filterGitIgnoredPaths,
   normalizeWorkspaceRelativePath,
   resolveWorkspaceIgnorePatterns,
 } from "./path-policy.js";
@@ -132,7 +133,13 @@ export const executeList = async ({
     });
   }
 
-  const entries = matches
+  const visibleMatches = filterGitIgnoredPaths(
+    workspaceRoot,
+    matches.map(normalizeWorkspaceRelativePath),
+    includeIgnored,
+  );
+
+  const entries = visibleMatches
     .map((relativePath) => {
       const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
       const absolutePath = path.resolve(workspaceRoot, relativePath);
