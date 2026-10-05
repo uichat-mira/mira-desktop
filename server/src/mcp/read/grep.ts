@@ -11,17 +11,19 @@ import type {
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { resolveTerminalRuntimeExecutable } from "../terminal/dev-runtime.js";
 import { getWorkspaceRoot, resolveWorkspacePath } from "../workspace.js";
+import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
 import {
   escapeGlobPath,
-  loadWorkspaceIgnorePatterns,
   normalizeWorkspaceRelativePath,
+  resolveWorkspaceIgnorePatterns,
 } from "./path-policy.js";
 
-export const DEFAULT_GREP_MAX_RESULTS = 20;
-export const MAX_GREP_RESULTS = 100;
+export const DEFAULT_GREP_LIMIT = 100;
+export const MAX_GREP_LIMIT = 500;
+export const MAX_GREP_CONTEXT = 20;
 export const DEFAULT_GREP_TIMEOUT_MS = 30_000;
 const GREP_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
-const PREVIEW_MAX_LENGTH = 120;
+const PREVIEW_MAX_LENGTH = 160;
 
 export type GrepProvider =
   | "bundled-ripgrep"
@@ -33,6 +35,8 @@ export type GrepMatch = {
   line: number;
   column: number;
   preview: string;
+  before?: string[];
+  after?: string[];
 };
 
 export type GrepProviderAttempt = {
@@ -44,11 +48,18 @@ export type GrepProviderAttempt = {
 export type GrepResult = {
   type: "grep";
   pattern: string;
-  root: string;
+  path: string;
+  include?: string;
+  literal: boolean;
+  caseSensitive?: boolean;
+  context: number;
   matches: GrepMatch[];
+  offset: number;
+  limit: number;
   returnedCount: number;
   hasMore: boolean;
   truncated: boolean;
+  nextOffset?: number;
   provider: GrepProvider;
   providerAttempts: GrepProviderAttempt[];
 };
@@ -128,38 +139,6 @@ const readJsonText = (value: unknown) => {
   return "";
 };
 
-const normalizeExtensions = (value: unknown) => {
-  if (value === undefined) return [];
-  if (
-    !Array.isArray(value) ||
-    value.some((extension) => typeof extension !== "string" || !extension.trim())
-  ) {
-    throw mcpBadRequest("extensions must be a non-empty string array when provided");
-  }
-
-  return [
-    ...new Set(
-      value.map((extension) => {
-        const normalized = extension.trim().toLowerCase();
-        return normalized.startsWith(".") ? normalized : `.${normalized}`;
-      }),
-    ),
-  ];
-};
-
-const parseMaxResults = (value: unknown) => {
-  if (value === undefined) return DEFAULT_GREP_MAX_RESULTS;
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < 1 ||
-    value > MAX_GREP_RESULTS
-  ) {
-    throw mcpBadRequest("maxResults must be an integer between 1 and 100");
-  }
-  return value;
-};
-
 const parsePattern = (value: unknown) => {
   if (typeof value !== "string" || !value.trim()) {
     throw mcpBadRequest("pattern is required");
@@ -167,19 +146,56 @@ const parsePattern = (value: unknown) => {
   return value.trim();
 };
 
-const buildMatcher = (pattern: string) => {
-  const flags = pattern.toLocaleLowerCase() === pattern ? "iu" : "u";
-  try {
-    return new RegExp(pattern, flags);
-  } catch {
-    const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(escaped, flags);
+const parseOptionalBoolean = (value: unknown, name: string) => {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") {
+    throw mcpBadRequest(`${name} must be a boolean`);
   }
+  return value;
 };
 
-const matchesExtension = (filePath: string, extensions: string[]) =>
-  extensions.length === 0 ||
-  extensions.includes(path.extname(filePath).toLowerCase());
+const parseInclude = (value: unknown) => {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) {
+    throw mcpBadRequest("include must be a non-empty glob string");
+  }
+  const normalized = normalizeWorkspaceRelativePath(value.trim());
+  if (
+    path.posix.isAbsolute(normalized) ||
+    /^[A-Za-z]:\//u.test(normalized) ||
+    normalized.split("/").some((segment) => segment === "..")
+  ) {
+    throw mcpBadRequest("include must stay inside the selected path");
+  }
+  return normalized;
+};
+
+const parseContext = (value: unknown) => {
+  if (value === undefined) return 0;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw mcpBadRequest("context must be a non-negative integer");
+  }
+  return Math.min(value, MAX_GREP_CONTEXT);
+};
+
+const regexEscape = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildMatcher = (input: {
+  pattern: string;
+  literal: boolean;
+  caseSensitive?: boolean;
+}) => {
+  const source = input.literal ? regexEscape(input.pattern) : input.pattern;
+  const caseSensitive =
+    input.caseSensitive ??
+    (input.pattern.toLocaleLowerCase() !== input.pattern);
+  try {
+    return new RegExp(source, caseSensitive ? "u" : "iu");
+  } catch {
+    throw mcpBadRequest(`Invalid grep regular expression: ${input.pattern}`);
+  }
+};
 
 const sortMatches = (matches: GrepMatch[]) =>
   [...matches].sort(
@@ -188,6 +204,19 @@ const sortMatches = (matches: GrepMatch[]) =>
       left.line - right.line ||
       left.column - right.column,
   );
+
+const assertActive = (input: {
+  signal: AbortSignal;
+  deadlineAt: number;
+  timeoutMs: number;
+}) => {
+  if (input.signal.aborted) {
+    throw new Error("Grep cancelled");
+  }
+  if (Date.now() >= input.deadlineAt) {
+    throw mcpInternalError(`grep timed out after ${input.timeoutMs}ms`);
+  }
+};
 
 export const runBoundedProcess = (input: {
   executablePath: string;
@@ -268,7 +297,6 @@ export const runBoundedProcess = (input: {
       abort();
       return;
     }
-
     if (!child) {
       finish({
         status: "failed",
@@ -279,6 +307,7 @@ export const runBoundedProcess = (input: {
       });
       return;
     }
+
     const activeChild = child;
     activeChild.stdout.setEncoding("utf8");
     activeChild.stderr.setEncoding("utf8");
@@ -324,24 +353,35 @@ export const runBoundedProcess = (input: {
 
 const buildRipgrepArgs = (input: {
   pattern: string;
-  relativeRoot: string;
-  extensions: string[];
+  relativePath: string;
+  include?: string;
+  literal: boolean;
+  caseSensitive?: boolean;
+  includeIgnored: boolean;
   ignorePatterns: string[];
   providerLimit: number;
 }) => [
   "--json",
   "--line-number",
   "--column",
-  "--smart-case",
   "--hidden",
   "--no-messages",
   "--max-count",
   String(input.providerLimit),
-  ...input.ignorePatterns.flatMap((pattern) => ["--glob", `!${pattern}`]),
-  ...input.extensions.flatMap((extension) => ["--glob", `*${extension}`]),
+  ...(input.literal ? ["--fixed-strings"] : []),
+  ...(input.caseSensitive === true
+    ? ["--case-sensitive"]
+    : input.caseSensitive === false
+      ? ["--ignore-case"]
+      : ["--smart-case"]),
+  ...(input.includeIgnored ? ["--no-ignore"] : []),
+  ...(!input.includeIgnored
+    ? input.ignorePatterns.flatMap((pattern) => ["--glob", `!${pattern}`])
+    : []),
+  ...(input.include ? ["--glob", input.include] : []),
   "--",
   input.pattern,
-  input.relativeRoot,
+  input.relativePath,
 ];
 
 const parseRipgrepOutput = (input: {
@@ -384,23 +424,24 @@ const parseRipgrepOutput = (input: {
 
 const executeNodeFallback = async (input: {
   workspaceRoot: string;
-  relativeRoot: string;
+  relativePath: string;
   pattern: string;
-  extensions: string[];
+  include?: string;
+  literal: boolean;
+  caseSensitive?: boolean;
+  includeIgnored: boolean;
   providerLimit: number;
   signal: AbortSignal;
   deadlineAt: number;
   timeoutMs: number;
 }): Promise<GrepMatch[]> => {
-  const filePattern =
-    input.relativeRoot === "."
-      ? "**/*"
-      : `${escapeGlobPath(input.relativeRoot)}/**/*`;
-  if (input.signal.aborted) throw new Error("Grep cancelled");
-  if (Date.now() >= input.deadlineAt) {
-    throw mcpInternalError(`grep timed out after ${input.timeoutMs}ms`);
-  }
+  assertActive(input);
 
+  const localPattern = input.include ?? "**/*";
+  const filePattern =
+    input.relativePath === "."
+      ? localPattern
+      : `${escapeGlobPath(input.relativePath)}/${localPattern}`;
   const files = await fg(filePattern, {
     cwd: input.workspaceRoot,
     onlyFiles: true,
@@ -408,35 +449,31 @@ const executeNodeFallback = async (input: {
     unique: true,
     suppressErrors: true,
     followSymbolicLinks: false,
-    ignore: loadWorkspaceIgnorePatterns(input.workspaceRoot),
+    ignore: resolveWorkspaceIgnorePatterns(
+      input.workspaceRoot,
+      input.includeIgnored,
+    ),
   });
-  if (input.signal.aborted) throw new Error("Grep cancelled");
-  if (Date.now() >= input.deadlineAt) {
-    throw mcpInternalError(`grep timed out after ${input.timeoutMs}ms`);
-  }
 
-  const matcher = buildMatcher(input.pattern);
+  assertActive(input);
+  const matcher = buildMatcher({
+    pattern: input.pattern,
+    literal: input.literal,
+    caseSensitive: input.caseSensitive,
+  });
   const matches: GrepMatch[] = [];
-  const assertActive = () => {
-    if (input.signal.aborted) {
-      throw new Error("Grep cancelled");
-    }
-    if (Date.now() >= input.deadlineAt) {
-      throw mcpInternalError(`grep timed out after ${input.timeoutMs}ms`);
-    }
-  };
 
   for (const filePath of files.sort((left, right) =>
     left.localeCompare(right, undefined, { numeric: true }),
   )) {
-    assertActive();
+    assertActive(input);
 
     const normalizedPath = normalizeWorkspaceRelativePath(filePath);
-    if (!matchesExtension(normalizedPath, input.extensions)) continue;
-
     let buffer: Buffer;
     try {
-      buffer = await fs.promises.readFile(path.resolve(input.workspaceRoot, filePath));
+      buffer = await fs.promises.readFile(
+        path.resolve(input.workspaceRoot, filePath),
+      );
     } catch {
       continue;
     }
@@ -444,7 +481,7 @@ const executeNodeFallback = async (input: {
 
     const lines = buffer.toString("utf8").split(/\r?\n/);
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-      assertActive();
+      assertActive(input);
       const line = lines[lineIndex] ?? "";
       const match = matcher.exec(line);
       if (!match) continue;
@@ -466,7 +503,10 @@ const executeNodeFallback = async (input: {
 
 const toRipgrepCandidates = (
   resolution: RipgrepResolution,
-): Array<{ provider: Exclude<GrepProvider, "node-content-scan">; executablePath: string }> => {
+): Array<{
+  provider: Exclude<GrepProvider, "node-content-scan">;
+  executablePath: string;
+}> => {
   if (resolution.source === "system" && resolution.executablePath) {
     return [{ provider: "system-ripgrep", executablePath: resolution.executablePath }];
   }
@@ -482,24 +522,98 @@ const toRipgrepCandidates = (
   return [];
 };
 
-const finalizeResult = (input: {
-  pattern: string;
-  root: string;
+const enrichContext = async (input: {
+  workspaceRoot: string;
   matches: GrepMatch[];
-  maxResults: number;
+  context: number;
+  signal: AbortSignal;
+  deadlineAt: number;
+  timeoutMs: number;
+}) => {
+  if (input.context <= 0 || input.matches.length === 0) {
+    return input.matches;
+  }
+
+  const cache = new Map<string, string[]>();
+  const result: GrepMatch[] = [];
+  for (const match of input.matches) {
+    assertActive(input);
+    let lines = cache.get(match.path);
+    if (!lines) {
+      try {
+        const content = await fs.promises.readFile(
+          path.resolve(input.workspaceRoot, match.path),
+          "utf8",
+        );
+        lines = content.split(/\r?\n/);
+        cache.set(match.path, lines);
+      } catch {
+        result.push(match);
+        continue;
+      }
+    }
+
+    const lineIndex = Math.max(0, match.line - 1);
+    result.push({
+      ...match,
+      before: lines.slice(Math.max(0, lineIndex - input.context), lineIndex),
+      after: lines.slice(lineIndex + 1, lineIndex + 1 + input.context),
+    });
+  }
+  return result;
+};
+
+const finalizeResult = async (input: {
+  workspaceRoot: string;
+  pattern: string;
+  path: string;
+  include?: string;
+  literal: boolean;
+  caseSensitive?: boolean;
+  context: number;
+  matches: GrepMatch[];
+  offset: number;
+  limit: number;
   provider: GrepProvider;
   attempts: GrepProviderAttempt[];
-}): GrepResult => {
-  const visibleMatches = input.matches.slice(0, input.maxResults);
-  const truncated = input.matches.length > input.maxResults;
+  signal: AbortSignal;
+  deadlineAt: number;
+  timeoutMs: number;
+}): Promise<GrepResult> => {
+  const visible = input.matches.slice(input.offset, input.offset + input.limit);
+  const continuation = buildContinuation({
+    offset: input.offset,
+    returnedCount: visible.length,
+    hasMore: input.matches.length > input.offset + visible.length,
+  });
+  const matches = await enrichContext({
+    workspaceRoot: input.workspaceRoot,
+    matches: visible,
+    context: input.context,
+    signal: input.signal,
+    deadlineAt: input.deadlineAt,
+    timeoutMs: input.timeoutMs,
+  });
+
   return {
     type: "grep",
     pattern: input.pattern,
-    root: input.root,
-    matches: visibleMatches,
-    returnedCount: visibleMatches.length,
-    hasMore: truncated,
-    truncated,
+    path: input.path,
+    ...(input.include ? { include: input.include } : {}),
+    literal: input.literal,
+    ...(input.caseSensitive === undefined
+      ? {}
+      : { caseSensitive: input.caseSensitive }),
+    context: input.context,
+    matches,
+    offset: input.offset,
+    limit: input.limit,
+    returnedCount: continuation.returnedCount,
+    hasMore: continuation.hasMore,
+    truncated: continuation.truncated,
+    ...(continuation.nextOffset === undefined
+      ? {}
+      : { nextOffset: continuation.nextOffset }),
     provider: input.provider,
     providerAttempts: input.attempts,
   };
@@ -517,28 +631,50 @@ export const executeGrep = async (
   assertHarnessEnvironment(environment);
 
   const pattern = parsePattern(args.pattern);
-  const root = typeof args.root === "string" && args.root.trim() ? args.root.trim() : ".";
-  const extensions = normalizeExtensions(args.extensions);
-  const maxResults = parseMaxResults(args.maxResults);
-  const providerLimit = maxResults + 1;
+  const inputPath =
+    typeof args.path === "string" && args.path.trim() ? args.path.trim() : ".";
+  const include = parseInclude(args.include);
+  const literal = parseOptionalBoolean(args.literal, "literal") ?? false;
+  const caseSensitive = parseOptionalBoolean(
+    args.caseSensitive,
+    "caseSensitive",
+  );
+  const context = parseContext(args.context);
+  const offset = parseOffset(args.offset);
+  const limit = parseBoundedLimit(args.limit, {
+    defaultValue: DEFAULT_GREP_LIMIT,
+    maxValue: MAX_GREP_LIMIT,
+  });
+  const includeIgnored =
+    parseOptionalBoolean(args.includeIgnored, "includeIgnored") ?? false;
+  const providerLimit = offset + limit + 1;
+
   const workspaceRoot = getWorkspaceRoot();
-  const rootPath = resolveWorkspacePath(root);
-  if (!fs.existsSync(rootPath)) {
-    throw mcpBadRequest(`Path does not exist: ${rootPath}`);
+  const targetPath = resolveWorkspacePath(inputPath);
+  if (!fs.existsSync(targetPath)) {
+    throw mcpBadRequest(`Path does not exist: ${targetPath}`);
   }
-  if (!fs.statSync(rootPath).isDirectory()) {
-    throw mcpBadRequest("grep root must be a directory path");
+  if (!fs.statSync(targetPath).isDirectory()) {
+    throw mcpBadRequest("grep path must be a directory");
   }
-  const relativeRoot =
-    normalizeWorkspaceRelativePath(path.relative(workspaceRoot, rootPath)) || ".";
-  const ignorePatterns = loadWorkspaceIgnorePatterns(workspaceRoot);
+
+  const relativePath =
+    normalizeWorkspaceRelativePath(path.relative(workspaceRoot, targetPath)) || ".";
+  const ignorePatterns = resolveWorkspaceIgnorePatterns(
+    workspaceRoot,
+    includeIgnored,
+  );
   const resolution =
     dependencies.resolveExecutable?.() ?? resolveTerminalRuntimeExecutable("ripgrep");
   const attempts: GrepProviderAttempt[] = [];
   const runProcess = dependencies.runProcess ?? runBoundedProcess;
-  const timeoutMs = Math.max(1, dependencies.timeoutMs ?? DEFAULT_GREP_TIMEOUT_MS);
+  const timeoutMs = Math.max(
+    1,
+    dependencies.timeoutMs ?? DEFAULT_GREP_TIMEOUT_MS,
+  );
   const deadlineAt = Date.now() + timeoutMs;
   const candidates = toRipgrepCandidates(resolution);
+
   if (candidates.length === 0) {
     attempts.push({
       provider: "system-ripgrep",
@@ -548,10 +684,7 @@ export const executeGrep = async (
   }
 
   for (const candidate of candidates) {
-    if (signal.aborted) throw new Error("Grep cancelled");
-    if (Date.now() >= deadlineAt) {
-      throw mcpInternalError(`grep timed out after ${timeoutMs}ms`);
-    }
+    assertActive({ signal, deadlineAt, timeoutMs });
 
     pushEvent?.({
       type: "invocation:progress",
@@ -562,8 +695,11 @@ export const executeGrep = async (
       executablePath: candidate.executablePath,
       args: buildRipgrepArgs({
         pattern,
-        relativeRoot,
-        extensions,
+        relativePath,
+        include,
+        literal,
+        caseSensitive,
+        includeIgnored,
         ignorePatterns,
         providerLimit,
       }),
@@ -612,13 +748,22 @@ export const executeGrep = async (
     }
 
     attempts.push({ provider: candidate.provider, status: "success" });
-    const contents = finalizeResult({
+    const contents = await finalizeResult({
+      workspaceRoot,
       pattern,
-      root,
+      path: inputPath,
+      include,
+      literal,
+      caseSensitive,
+      context,
       matches,
-      maxResults,
+      offset,
+      limit,
       provider: candidate.provider,
       attempts,
+      signal,
+      deadlineAt,
+      timeoutMs,
     });
     return {
       contents,
@@ -629,44 +774,64 @@ export const executeGrep = async (
           data: contents.matches,
           metadata: {
             pattern,
-            root,
+            path: inputPath,
+            include,
+            literal,
+            caseSensitive,
+            context,
+            offset,
+            limit,
             provider: candidate.provider,
             providerAttempts: attempts,
             returnedCount: contents.returnedCount,
-            truncated: contents.truncated,
+            hasMore: contents.hasMore,
+            includeIgnored,
+            ...(contents.nextOffset === undefined
+              ? {}
+              : { nextOffset: contents.nextOffset }),
           },
         }),
       ],
     };
   }
 
-  if (signal.aborted) throw new Error("Grep cancelled");
-  if (Date.now() >= deadlineAt) {
-    throw mcpInternalError(`grep timed out after ${timeoutMs}ms`);
-  }
-
+  assertActive({ signal, deadlineAt, timeoutMs });
   pushEvent?.({
     type: "invocation:progress",
     message: "Grep provider: node-content-scan fallback",
   });
+
   const nodeMatches = await executeNodeFallback({
     workspaceRoot,
-    relativeRoot,
+    relativePath,
     pattern,
-    extensions,
+    include,
+    literal,
+    caseSensitive,
+    includeIgnored,
     providerLimit,
     signal,
     deadlineAt,
     timeoutMs,
   });
   attempts.push({ provider: "node-content-scan", status: "success" });
-  const contents = finalizeResult({
+
+  const contents = await finalizeResult({
+    workspaceRoot,
     pattern,
-    root,
+    path: inputPath,
+    include,
+    literal,
+    caseSensitive,
+    context,
     matches: nodeMatches,
-    maxResults,
+    offset,
+    limit,
     provider: "node-content-scan",
     attempts,
+    signal,
+    deadlineAt,
+    timeoutMs,
   });
 
   return {
@@ -678,11 +843,21 @@ export const executeGrep = async (
         data: contents.matches,
         metadata: {
           pattern,
-          root,
+          path: inputPath,
+          include,
+          literal,
+          caseSensitive,
+          context,
+          offset,
+          limit,
           provider: "node-content-scan",
           providerAttempts: attempts,
           returnedCount: contents.returnedCount,
-          truncated: contents.truncated,
+          hasMore: contents.hasMore,
+          includeIgnored,
+          ...(contents.nextOffset === undefined
+            ? {}
+            : { nextOffset: contents.nextOffset }),
         },
       }),
     ],
