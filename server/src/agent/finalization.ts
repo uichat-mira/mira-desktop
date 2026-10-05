@@ -197,7 +197,7 @@ export const materializeFinalizationEvidence = (input: {
         ...projectHarnessImagesToMessageParts(
           execution.invocationId
             ? getHarnessInvocation(execution.invocationId)?.llmContent
-            : undefined,
+            : (execution as ToolExecutionWithLlmContent).llmContent,
         ),
       );
       continue;
