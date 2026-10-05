@@ -351,7 +351,55 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       },
     });
   }
-  if (toolId === "read_locate" || toolId === "grep") {
+  if (toolId === "grep") {
+    const pattern = typeof result.pattern === "string" ? result.pattern : "";
+    const root = typeof result.root === "string" ? result.root : ".";
+    const provider = typeof result.provider === "string" ? result.provider : "unknown";
+    const matches = Array.isArray(result.matches)
+      ? result.matches.filter(asRecord).map((match) => ({
+          path: typeof match.path === "string" ? match.path : "unknown",
+          line: typeof match.line === "number" ? match.line : 0,
+          column: typeof match.column === "number" ? match.column : 0,
+          preview:
+            typeof match.preview === "string"
+              ? textPreview(match.preview, 120)
+              : "",
+        }))
+      : [];
+    const truncated = result.truncated === true || result.hasMore === true;
+    const matchedPaths = [...new Set(matches.map((match) => match.path))].slice(0, 20);
+    const matchesPreview = matches.slice(0, 5).map((match) =>
+      `${match.path}:${match.line}:${match.column}${match.preview ? `: ${match.preview}` : ""}`,
+    );
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Searched workspace text for "${pattern}".`,
+      facts: [
+        `pattern=${pattern}`,
+        `root=${root}`,
+        `provider=${provider}`,
+        `matchCount=${matches.length}`,
+        ...matchesPreview,
+      ],
+      gaps: [
+        ...(matches.length === 0 ? ["No workspace content matches were returned."] : []),
+        ...(truncated ? ["Grep results are truncated."] : []),
+      ],
+      status: truncated ? "truncated" : undefined,
+      data: {
+        kind: "grep",
+        pattern,
+        root,
+        matchCount: matches.length,
+        matchedPaths,
+        matchesPreview,
+        provider,
+        truncated,
+      },
+    });
+  }
+  if (toolId === "read_locate") {
     const query = typeof result.query === "string" ? result.query : "";
     const matches = Array.isArray(result.matches) ? result.matches : [];
     const sortedMatches = matches.filter(asRecord).map((match) => ({
