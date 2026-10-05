@@ -29,7 +29,7 @@ const summarizeToolSchemas = (toolExposure: AgentToolExposureState) =>
         : tool.toolId === "list"
         ? "List the direct children of a known directory. Does not recurse."
         : tool.toolId === "read"
-        ? "Read contents of a known file. Use glob when the path is unknown; use grep to search file contents."
+        ? "Read a known file. Returns text for text files and image content for supported images. Use glob when the path is unknown; use grep to search text contents."
         : tool.toolId === "grep"
         ? "Search file contents by regex or literal text. Returns paths and line locations; use glob to search filenames."
         : tool.toolId === "read_discover"
@@ -284,10 +284,10 @@ export const buildNextActionPlannerMessages = (input: {
         "如果任务有多个目标，只完成一部分时不要提前 answer。",
         "读到一个文件只证明该读取动作完成；如果用户还要求比较、修改、发送、运行或验证，必须继续。",
         "如果最新 evidence 仍有 gaps、missing、truncated、timed_out 或明确 error，不要只因为拿到结果就 answer。",
-        "read_discover 只负责发现对象；需要正文时应继续选择 read。",
+        "本地文件工具按意图选择：read 读取已知文件，list 查看已知目录的直接子项，glob 按路径模式找文件，grep 按正文查匹配位置。",
         "codebase_explore 不属于普通 discover：其 verifiedSource[...] 是经过 workspace 原文件复读验证的正文证据，已覆盖的文件和行范围不得机械再次 read。",
         "只有当 CodeGraph 明确留下 gap、unverifiable/rejected candidate、缺少所需行范围、excerpt 被截断，或当前任务必须展开一个具体函数的相邻上下文时，才对那个具体目标执行 targeted read。",
-        "如果 discover 的结构化结果已经足够支撑完整目标，可以直接 answer，不要机械追加 open。",
+        "如果 list / glob / grep 的结构化结果已经足够支撑完整目标，可以直接 answer，不要机械追加 read。",
         "只有关键目标或关键参数确实无法从当前请求、有限历史和证据中推断时，才 ask_user。",
         "如果相同 toolId 和 args 已经有成功 evidence 且没有新 gap，通常应复用证据而不是重复调用。",
         "任何 answer 都必须基于累计 Evidence，不能编造工具执行、检索结果或文件事实。",
