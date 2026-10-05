@@ -207,6 +207,9 @@ export interface AgentReadEvidenceData {
   contentPreview: string;
   contentLength: number;
   truncated: boolean;
+  mediaType?: "text" | "image";
+  mimeType?: string;
+  sizeBytes?: number;
   keySections?: string[];
   pagination?: {
     offset: number;
