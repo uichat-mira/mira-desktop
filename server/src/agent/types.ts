@@ -205,6 +205,13 @@ export interface AgentReadOpenEvidenceData {
   contentLength: number;
   truncated: boolean;
   keySections?: string[];
+  window?: {
+    startLine: number;
+    endLine: number;
+    totalLines: number;
+    truncated: boolean;
+    nextStartLine?: number;
+  };
 }
 
 export interface AgentReadLocateEvidenceData {
