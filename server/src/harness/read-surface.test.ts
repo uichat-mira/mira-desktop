@@ -38,7 +38,7 @@ describe("public read tool surface", () => {
       .sort();
 
     expect(readToolIds).toEqual(
-      ["codebase_explore", "grep", "read_discover", "read_open"].sort(),
+      ["codebase_explore", "grep", "read", "read_discover"].sort(),
     );
   });
 });
