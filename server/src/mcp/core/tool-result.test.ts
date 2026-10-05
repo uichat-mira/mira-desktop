@@ -190,16 +190,35 @@ describe("ToolResult B-prime normalization", () => {
     });
 
     const opened = projectToolEvidence(
-      definition("read_open"),
+      definition("read"),
       normalizeToolResult({
         structuredContent: {
           type: "open",
           path: "README.md",
           source: { text: "# Intro\nbody\n## Details\nmore", metadata: {} },
+          window: {
+            startLine: 1,
+            endLine: 4,
+            totalLines: 10,
+            truncated: true,
+            nextStartLine: 5,
+          },
         },
       }),
     );
-    expect(opened?.data).toMatchObject({ kind: "read_open", keySections: ["Intro", "Details"] });
+    expect(opened?.status).toBe("truncated");
+    expect(opened?.facts).toContain("nextStartLine=5");
+    expect(opened?.data).toMatchObject({
+      kind: "read_open",
+      keySections: ["Intro", "Details"],
+      window: {
+        startLine: 1,
+        endLine: 4,
+        totalLines: 10,
+        truncated: true,
+        nextStartLine: 5,
+      },
+    });
 
     const search = projectToolEvidence(
       definition("web_search", "internal", "web_search"),
