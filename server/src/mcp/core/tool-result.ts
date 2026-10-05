@@ -177,7 +177,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
         : undefined,
       status: truncated ? "truncated" : undefined,
       data: {
-        kind: "read_open",
+        kind: toolId === "read" ? "read" : "read_open",
         path,
         contentPreview,
         contentLength: text.length,
