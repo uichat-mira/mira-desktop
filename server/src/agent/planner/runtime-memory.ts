@@ -2,8 +2,10 @@ import {
   getHarnessLlmContentText,
   type HarnessLlmContent,
 } from "@/harness/llm-content";
-import { projectHarnessImagesToMessageParts } from "../harness-multimodal";
-import { getHarnessInvocationModelContent } from "@/harness/invocations";
+import {
+  isToolImagePayloadUnavailable,
+  resolveToolExecutionImageParts,
+} from "../harness-multimodal";
 import type {
   AgentExecutionObservation,
   AgentToolExecutionResult,
@@ -197,13 +199,7 @@ export const buildPlannerRecentImageEvidenceParts = (
   (state.evidence?.toolExecutions ?? [])
     .filter((execution) => execution.status === "completed")
     .slice(-PLANNER_RECENT_EVIDENCE_ITEM_LIMIT)
-    .flatMap((execution) =>
-      projectHarnessImagesToMessageParts(
-        execution.invocationId
-          ? getHarnessInvocationModelContent(execution.invocationId)
-          : (execution as AgentToolExecutionWithLlmContent).llmContent,
-      ),
-    );
+    .flatMap((execution) => resolveToolExecutionImageParts(execution));
 
 const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
   const items: CanonicalEvidenceItem[] = [];
@@ -214,9 +210,21 @@ const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
     }
     const llmContent = (execution as AgentToolExecutionWithLlmContent).llmContent;
     const text = getHarnessLlmContentText(llmContent).trim();
-    if (!llmContent || !text) {
+    const imagePayloadUnavailable = isToolImagePayloadUnavailable(execution);
+    if ((!llmContent || !text) && !imagePayloadUnavailable) {
       continue;
     }
+    const content = [
+      text,
+      ...(imagePayloadUnavailable
+        ? [
+            "imagePayload=unavailable",
+            "requiredNextAction=read the same image path again before relying on its visual contents",
+          ]
+        : []),
+    ]
+      .filter(Boolean)
+      .join("\n");
     items.push({
       createdAt: execution.finishedAt || execution.startedAt,
       header: [
@@ -225,7 +233,7 @@ const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
         `args=${JSON.stringify(execution.args)}`,
         ...(execution.inputHash ? [`inputHash=${execution.inputHash}`] : []),
       ].join("\n"),
-      content: clipEvidenceText(text, PLANNER_SINGLE_EVIDENCE_CONTENT_CHAR_LIMIT),
+      content: clipEvidenceText(content, PLANNER_SINGLE_EVIDENCE_CONTENT_CHAR_LIMIT),
     });
   }
 
