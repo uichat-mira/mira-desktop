@@ -150,47 +150,96 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       },
     });
   }
-  if (toolId === "read_open" || toolId === "read") {
+  if (toolId === "read") {
     const path = typeof result.path === "string" ? result.path : "unknown";
     const source = asRecord(result.source);
-    const window = asRecord(result.window);
     const text = typeof source?.text === "string" ? source.text : "";
     const contentPreview = textPreview(text);
     const previewTruncated = contentPreview.length < text.length;
-    const windowTruncated = window?.truncated === true;
-    const truncated = previewTruncated || windowTruncated;
-    const nextStartLine = typeof window?.nextStartLine === "number" ? window.nextStartLine : undefined;
+    const resultTruncated = result.truncated === true || result.hasMore === true;
+    const truncated = previewTruncated || resultTruncated;
+    const offset = typeof result.offset === "number" ? result.offset : 0;
+    const limit = typeof result.limit === "number" ? result.limit : undefined;
+    const returnedCount =
+      typeof result.returnedCount === "number" ? result.returnedCount : undefined;
+    const totalLines =
+      typeof result.totalLines === "number" ? result.totalLines : undefined;
+    const startLine =
+      typeof result.startLine === "number" ? result.startLine : undefined;
+    const endLine =
+      typeof result.endLine === "number" ? result.endLine : undefined;
+    const nextOffset =
+      typeof result.nextOffset === "number" ? result.nextOffset : undefined;
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Read file ${path}.`,
+      facts: [
+        `path=${path}`,
+        `contentLength=${text.length}`,
+        `offset=${offset}`,
+        ...(limit === undefined ? [] : [`limit=${limit}`]),
+        ...(returnedCount === undefined ? [] : [`returnedCount=${returnedCount}`]),
+        ...(totalLines === undefined ? [] : [`totalLines=${totalLines}`]),
+        ...(startLine === undefined ? [] : [`startLine=${startLine}`]),
+        ...(endLine === undefined ? [] : [`endLine=${endLine}`]),
+        ...(nextOffset === undefined ? [] : [`nextOffset=${nextOffset}`]),
+        ...(contentPreview ? [contentPreview] : []),
+      ],
+      gaps: truncated
+        ? [
+            resultTruncated
+              ? "File read is paged; continuation is available."
+              : "File content preview is truncated.",
+          ]
+        : undefined,
+      status: truncated ? "truncated" : undefined,
+      data: {
+        kind: "read",
+        path,
+        contentPreview,
+        contentLength: text.length,
+        truncated,
+        pagination: {
+          offset,
+          ...(limit === undefined ? {} : { limit }),
+          ...(returnedCount === undefined ? {} : { returnedCount }),
+          ...(totalLines === undefined ? {} : { totalLines }),
+          ...(startLine === undefined ? {} : { startLine }),
+          ...(endLine === undefined ? {} : { endLine }),
+          ...(nextOffset === undefined ? {} : { nextOffset }),
+        },
+        keySections: text
+          .split(/\r?\n+/)
+          .map((line) => line.trim())
+          .filter((line) => /^#{1,6}\s+/.test(line))
+          .slice(0, 5)
+          .map((line) => line.replace(/^#{1,6}\s+/, "")),
+      },
+    });
+  }
+  if (toolId === "read_open") {
+    const path = typeof result.path === "string" ? result.path : "unknown";
+    const source = asRecord(result.source);
+    const text = typeof source?.text === "string" ? source.text : "";
+    const contentPreview = textPreview(text);
+    const truncated = contentPreview.length < text.length;
     return baseEvidence({
       result,
       isError,
       actionTaken: `Opened file ${path}.`,
       facts: [
         `contentLength=${text.length}`,
-        ...(typeof window?.startLine === "number" ? [`startLine=${window.startLine}`] : []),
-        ...(typeof window?.endLine === "number" ? [`endLine=${window.endLine}`] : []),
-        ...(typeof window?.totalLines === "number" ? [`totalLines=${window.totalLines}`] : []),
-        ...(nextStartLine === undefined ? [] : [`nextStartLine=${nextStartLine}`]),
         ...(contentPreview ? [contentPreview] : []),
       ],
-      gaps: truncated
-        ? [windowTruncated ? "File read window is truncated; continuation is available." : "File content preview is truncated."]
-        : undefined,
+      gaps: truncated ? ["File content preview is truncated."] : undefined,
       status: truncated ? "truncated" : undefined,
       data: {
-        kind: toolId === "read" ? "read" : "read_open",
+        kind: "read_open",
         path,
         contentPreview,
         contentLength: text.length,
         truncated,
-        ...(window ? {
-          window: {
-            ...(typeof window.startLine === "number" ? { startLine: window.startLine } : {}),
-            ...(typeof window.endLine === "number" ? { endLine: window.endLine } : {}),
-            ...(typeof window.totalLines === "number" ? { totalLines: window.totalLines } : {}),
-            truncated: windowTruncated,
-            ...(nextStartLine === undefined ? {} : { nextStartLine }),
-          },
-        } : {}),
         keySections: text
           .split(/\r?\n+/)
           .map((line) => line.trim())
