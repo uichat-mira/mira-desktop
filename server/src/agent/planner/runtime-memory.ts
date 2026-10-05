@@ -2,6 +2,7 @@ import {
   getHarnessLlmContentText,
   type HarnessLlmContent,
 } from "@/harness/llm-content";
+import { projectHarnessImagesToMessageParts } from "../harness-multimodal";
 import type {
   AgentExecutionObservation,
   AgentToolExecutionResult,
@@ -188,6 +189,18 @@ type CanonicalEvidenceItem = {
   header: string;
   content: string;
 };
+
+export const buildPlannerRecentImageEvidenceParts = (
+  state: AgentGraphState,
+) =>
+  (state.evidence?.toolExecutions ?? [])
+    .filter((execution) => execution.status === "completed")
+    .slice(-PLANNER_RECENT_EVIDENCE_ITEM_LIMIT)
+    .flatMap((execution) =>
+      projectHarnessImagesToMessageParts(
+        (execution as AgentToolExecutionWithLlmContent).llmContent,
+      ),
+    );
 
 const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
   const items: CanonicalEvidenceItem[] = [];
