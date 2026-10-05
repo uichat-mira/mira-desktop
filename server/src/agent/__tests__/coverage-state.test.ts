@@ -111,7 +111,7 @@ test("coverage reducer keeps read_content pending after locate-only evidence", (
   });
 
   assert.equal(state.taskCompletable, false);
-  assert.deepEqual(state.pendingActions, ["read_open"]);
+  assert.deepEqual(state.pendingActions, ["read"]);
   assert.equal(state.targets[0]?.status, "located");
 });
 
@@ -353,7 +353,7 @@ test("coverage reducer completes mutation verification after read_open evidence"
   assert.equal(state.taskCompletable, true);
   assert.deepEqual(state.targets[0]?.completedActions, [
     "locate",
-    "read_open",
+    "read",
     "mutation_execution",
     "mutation_verification",
   ]);
