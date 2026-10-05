@@ -114,15 +114,28 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
   if (toolId === "read_open" || toolId === "read") {
     const path = typeof result.path === "string" ? result.path : "unknown";
     const source = asRecord(result.source);
+    const window = asRecord(result.window);
     const text = typeof source?.text === "string" ? source.text : "";
     const contentPreview = textPreview(text);
-    const truncated = contentPreview.length < text.length;
+    const previewTruncated = contentPreview.length < text.length;
+    const windowTruncated = window?.truncated === true;
+    const truncated = previewTruncated || windowTruncated;
+    const nextStartLine = typeof window?.nextStartLine === "number" ? window.nextStartLine : undefined;
     return baseEvidence({
       result,
       isError,
       actionTaken: `Opened file ${path}.`,
-      facts: [`contentLength=${text.length}`, ...(contentPreview ? [contentPreview] : [])],
-      gaps: truncated ? ["File content is truncated."] : undefined,
+      facts: [
+        `contentLength=${text.length}`,
+        ...(typeof window?.startLine === "number" ? [`startLine=${window.startLine}`] : []),
+        ...(typeof window?.endLine === "number" ? [`endLine=${window.endLine}`] : []),
+        ...(typeof window?.totalLines === "number" ? [`totalLines=${window.totalLines}`] : []),
+        ...(nextStartLine === undefined ? [] : [`nextStartLine=${nextStartLine}`]),
+        ...(contentPreview ? [contentPreview] : []),
+      ],
+      gaps: truncated
+        ? [windowTruncated ? "File read window is truncated; continuation is available." : "File content preview is truncated."]
+        : undefined,
       status: truncated ? "truncated" : undefined,
       data: {
         kind: "read_open",
@@ -130,6 +143,15 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
         contentPreview,
         contentLength: text.length,
         truncated,
+        ...(window ? {
+          window: {
+            ...(typeof window.startLine === "number" ? { startLine: window.startLine } : {}),
+            ...(typeof window.endLine === "number" ? { endLine: window.endLine } : {}),
+            ...(typeof window.totalLines === "number" ? { totalLines: window.totalLines } : {}),
+            truncated: windowTruncated,
+            ...(nextStartLine === undefined ? {} : { nextStartLine }),
+          },
+        } : {}),
         keySections: text
           .split(/\r?\n+/)
           .map((line) => line.trim())
