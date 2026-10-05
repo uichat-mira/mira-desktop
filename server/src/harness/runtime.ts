@@ -10,6 +10,7 @@ import {
 } from "../mcp/tools/edit-actions.tool.js";
 import { editFileTool } from "../mcp/tools/edit-file.tool.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
+import { globTool } from "../mcp/tools/glob.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
 import {
   githubActionsTool,
@@ -49,6 +50,7 @@ export const initializeHarnessRuntime = () => {
 
   registerReadableResource(workspaceResource);
   registerTool(listTool);
+  registerTool(globTool);
   registerTool(readListTool);
   registerTool(readLocateTool);
   registerTool(readOpenTool);
