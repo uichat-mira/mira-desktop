@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { createRequire } from "node:module";
 import iconv from "iconv-lite";
-import { lookup as lookupMimeType } from "mime-types";
 import { createArtifact } from "../core/artifacts.js";
 import type {
   ToolArtifact,
@@ -13,6 +13,11 @@ import type {
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { resolveWorkspaceFilePath } from "../workspace.js";
 import { buildContinuation, parseBoundedLimit, parseOffset } from "./paging.js";
+
+const requireModule = createRequire(import.meta.url);
+const { lookup: lookupMimeType } = requireModule("mime-types") as {
+  lookup: (filenameOrExtension: string) => string | false;
+};
 
 export const DEFAULT_GENERIC_READ_LIMIT = 400;
 export const MAX_GENERIC_READ_LIMIT = 2_000;
