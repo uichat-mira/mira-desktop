@@ -64,7 +64,7 @@ Registry 中存在不代表：
 当前会隐藏内部 / 兼容工具：
 
 ```text
-read
+read_open
 read_list
 read_locate
 read_extract
@@ -164,7 +164,20 @@ browser_observe
 github_repository
 ```
 
-当前 Universal Read 的公开 known-target reader 是 `read`。历史 `read_open` 仅作为迁移期兼容入口保留，不进入新的 Agent exposure；待已验证的 persisted/runtime consumer 迁移完成后删除。
+当前 Universal Read 的公开 known-target reader 是 `read`。
+
+Canonical Universal Read 的模型选择语义保持简单：
+
+```text
+read   known file      -> contents
+list   known directory -> direct children
+glob   path pattern    -> matching file paths
+grep   content query   -> matching content locations
+```
+
+Canonical Tool 的 `offset / limit / nextOffset` 是单次上下文预算与 continuation，不是最终能力上限。默认 ignore 规则允许通过显式 `includeIgnored` 覆盖，但 workspace/symlink authority 不因此放宽。
+
+历史 `read_open` 仅作为迁移期兼容入口保留，不进入新的 Agent exposure；待已验证的 persisted/runtime consumer 迁移完成后删除。
 
 ### External MCP Projected Tool
 
