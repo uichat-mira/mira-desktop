@@ -280,11 +280,15 @@ const hasListEvidence = (input: {
     input.latestSummary,
   ];
 
-  return summaries.some(
-    (summary) =>
-      (summary?.data?.kind === "list" || summary?.data?.kind === "read_list") &&
-      (summary.status === "completed" || summary.status === "truncated"),
-  );
+  return summaries.some((summary) => {
+    if (summary?.data?.kind === "list") {
+      return summary.status === "completed";
+    }
+    if (summary?.data?.kind === "read_list") {
+      return summary.status === "completed" || summary.status === "truncated";
+    }
+    return false;
+  });
 };
 
 const hasGlobEvidence = (input: {
@@ -299,7 +303,7 @@ const hasGlobEvidence = (input: {
   return summaries.some(
     (summary) =>
       summary?.data?.kind === "glob" &&
-      (summary.status === "completed" || summary.status === "truncated"),
+      summary.status === "completed",
   );
 };
 
