@@ -1,6 +1,10 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { clearHarnessRegistry, registerTool } from "@/harness/registry.js";
-import { clearHarnessInvocations, executeHarnessInvocation } from "@/harness/invocations.js";
+import {
+  clearHarnessInvocations,
+  executeHarnessInvocation,
+  getHarnessInvocationModelContent,
+} from "@/harness/invocations.js";
 import { getHarnessLlmContentText } from "@/harness/llm-content.js";
 import type { ToolImplementation, ToolDefinition } from "./definitions.js";
 import { normalizeToolResult, projectToolEvidence } from "./tool-result.js";
@@ -79,6 +83,13 @@ describe("ToolResult B-prime normalization", () => {
     });
     expect(
       executed.llmContent?.blocks.some((block) => block.type === "image"),
+    ).not.toBe(true);
+    expect(JSON.stringify(executed)).not.toContain("SECRET_IMAGE_BASE64");
+
+    expect(
+      getHarnessInvocationModelContent(executed.id)?.blocks.some(
+        (block) => block.type === "image" && block.data === "SECRET_IMAGE_BASE64",
+      ),
     ).toBe(true);
 
     const { getHarnessInvocation } = await import("@/harness/invocations.js");
