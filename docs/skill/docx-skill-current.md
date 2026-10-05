@@ -57,7 +57,7 @@ Mira 没有复制任何第三方私有 Skill 实现；这份内容只描述 Mira
 1. 激活 `docx` semantic context；
 2. 在 Harness 已注册能力中确保以下公开能力进入唯一 `toolExposure`：
    - `read_discover`
-   - `read`
+   - `read_open`
    - `office_document`
 3. 不重新暴露 `read_locate` / `read_extract` 等当前 Harness 内部 Read primitive；
 4. 把 DOCX Skill 的路由、硬规则和完成标准注入 `office_document` 的 Planner-visible metadata；
