@@ -3,6 +3,8 @@ import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessToolExposure } from "./exposure.js";
 import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
+import { listTool } from "../mcp/tools/list.tool.js";
+import { readListTool } from "../mcp/tools/read-list.tool.js";
 import { readOpenTool } from "../mcp/tools/read-open.tool.js";
 import { readSliceTool } from "../mcp/tools/read-slice.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
@@ -128,6 +130,8 @@ describe("resolveHarnessToolExposure", () => {
 
   it("keeps implementation primitives out of the public tool contract", () => {
     registerTool(readTool);
+    registerTool(listTool);
+    registerTool(readListTool);
     registerTool(readSliceTool);
     registerTool(readOpenTool);
 
@@ -137,7 +141,9 @@ describe("resolveHarnessToolExposure", () => {
     });
 
     expect(decision.exposedToolIds).toContain("read");
+    expect(decision.exposedToolIds).toContain("list");
     expect(decision.exposedToolIds).not.toContain("read_open");
+    expect(decision.exposedToolIds).not.toContain("read_list");
     expect(decision.exposedToolIds).not.toContain("read_slice");
   });
 
