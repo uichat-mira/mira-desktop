@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import readline from "node:readline";
 import iconv from "iconv-lite";
 import { createArtifact } from "../core/artifacts.js";
 import type {
@@ -58,7 +59,7 @@ export type GenericReadTextResult = {
   offset: number;
   limit: number;
   returnedCount: number;
-  totalLines: number;
+  totalLines?: number;
   startLine: number;
   endLine: number;
   hasMore: boolean;
@@ -103,11 +104,16 @@ type GenericReadExecutionContext = {
   pushEvent?: (event: ToolInvocationEventInput) => void;
 };
 
-type DecodedText = {
-  text: string;
-  encoding: GenericReadTextResult["source"]["metadata"]["encoding"];
-  sizeBytes: number;
-};
+type DetectedTextEncoding =
+  | {
+      kind: "text";
+      encoding: GenericReadTextResult["source"]["metadata"]["encoding"];
+      iconvEncoding: string;
+      bomBytes: number;
+    }
+  | { kind: "binary" }
+  | { kind: "unknown_encoding" };
+
 
 const assertHarnessEnvironment = (
   environment?: ToolExecutionEnvironment,
@@ -162,11 +168,26 @@ const isLikelyBinary = (buffer: Buffer) => {
   return controlBytes / buffer.length > 0.1;
 };
 
-const decodeText = (
-  buffer: Buffer,
-): DecodedText | { unsupportedEncoding: true } | null => {
-  const sizeBytes = buffer.byteLength;
+const READ_ENCODING_PROBE_BYTES = 64 * 1024;
 
+const readEncodingProbe = (targetPath: string) => {
+  const handle = fs.openSync(targetPath, "r");
+  try {
+    const buffer = Buffer.alloc(READ_ENCODING_PROBE_BYTES);
+    const bytesRead = fs.readSync(
+      handle,
+      buffer,
+      0,
+      READ_ENCODING_PROBE_BYTES,
+      0,
+    );
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    fs.closeSync(handle);
+  }
+};
+
+const detectTextEncoding = (buffer: Buffer): DetectedTextEncoding => {
   if (
     buffer.length >= 3 &&
     buffer[0] === 0xef &&
@@ -174,56 +195,133 @@ const decodeText = (
     buffer[2] === 0xbf
   ) {
     return {
-      text: buffer.subarray(3).toString("utf8"),
+      kind: "text",
       encoding: "utf-8-bom",
-      sizeBytes,
+      iconvEncoding: "utf8",
+      bomBytes: 3,
     };
   }
 
   if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
     return {
-      text: buffer.subarray(2).toString("utf16le"),
+      kind: "text",
       encoding: "utf-16le",
-      sizeBytes,
+      iconvEncoding: "utf16-le",
+      bomBytes: 2,
     };
   }
 
   if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
-    const content = buffer.subarray(2);
-    const swapped = Buffer.alloc(content.length - (content.length % 2));
-    for (let index = 0; index + 1 < content.length; index += 2) {
-      swapped[index] = content[index + 1]!;
-      swapped[index + 1] = content[index]!;
-    }
     return {
-      text: swapped.toString("utf16le"),
+      kind: "text",
       encoding: "utf-16be",
-      sizeBytes,
+      iconvEncoding: "utf16-be",
+      bomBytes: 2,
     };
   }
 
-  if (isLikelyBinary(buffer)) return null;
+  if (isLikelyBinary(buffer)) {
+    return { kind: "binary" };
+  }
 
   try {
+    new TextDecoder("utf-8", { fatal: true }).decode(buffer);
     return {
-      text: new TextDecoder("utf-8", { fatal: true }).decode(buffer),
+      kind: "text",
       encoding: "utf-8",
-      sizeBytes,
+      iconvEncoding: "utf8",
+      bomBytes: 0,
     };
   } catch {
-    // GB18030 is a superset of GBK and is already a direct server dependency
-    // through iconv-lite. Only accept it when the decoded text round-trips to
-    // the exact original bytes so invalid UTF-8 never silently becomes mojibake.
     const decoded = iconv.decode(buffer, "gb18030");
     if (iconv.encode(decoded, "gb18030").equals(buffer)) {
       return {
-        text: decoded,
+        kind: "text",
         encoding: "gb18030",
-        sizeBytes,
+        iconvEncoding: "gb18030",
+        bomBytes: 0,
       };
     }
-    return { unsupportedEncoding: true };
+    return { kind: "unknown_encoding" };
   }
+};
+
+const readTextWindow = async (
+  targetPath: string,
+  input: { offset?: unknown; limit?: unknown },
+) => {
+  const offset = parseOffset(input.offset);
+  const limit = parseBoundedLimit(input.limit, {
+    defaultValue: DEFAULT_GENERIC_READ_LIMIT,
+    maxValue: MAX_GENERIC_READ_LIMIT,
+  });
+  const sizeBytes = fs.statSync(targetPath).size;
+  const detected = detectTextEncoding(readEncodingProbe(targetPath));
+  if (detected.kind !== "text") {
+    return { kind: detected.kind } as const;
+  }
+
+  const source = fs.createReadStream(targetPath, {
+    start: detected.bomBytes,
+  });
+  const decoder = iconv.decodeStream(detected.iconvEncoding);
+  source.pipe(decoder);
+  const lines = readline.createInterface({
+    input: decoder,
+    crlfDelay: Infinity,
+  });
+
+  const selected: string[] = [];
+  let lineIndex = 0;
+  let hasMore = false;
+  try {
+    for await (const line of lines) {
+      if (lineIndex < offset) {
+        lineIndex += 1;
+        continue;
+      }
+      if (selected.length >= limit) {
+        hasMore = true;
+        break;
+      }
+      selected.push(line);
+      lineIndex += 1;
+    }
+  } finally {
+    lines.close();
+    source.destroy();
+    decoder.destroy();
+  }
+
+  const returnedCount = selected.length;
+  const startLine =
+    returnedCount > 0 ? offset + 1 : Math.min(offset + 1, lineIndex + 1);
+  const endLine =
+    returnedCount > 0 ? offset + returnedCount : Math.min(offset, lineIndex);
+  const reachedEof = !hasMore;
+  const continuation = buildContinuation({
+    offset,
+    returnedCount,
+    hasMore,
+  });
+
+  return {
+    kind: "text" as const,
+    text: selected.join("\n"),
+    encoding: detected.encoding,
+    sizeBytes,
+    offset,
+    limit,
+    returnedCount,
+    startLine,
+    endLine,
+    hasMore: continuation.hasMore,
+    truncated: continuation.truncated,
+    ...(continuation.nextOffset === undefined
+      ? {}
+      : { nextOffset: continuation.nextOffset }),
+    ...(reachedEof ? { totalLines: lineIndex } : {}),
+  };
 };
 
 const mimeTypeForText = (extension: string) => {
@@ -241,16 +339,6 @@ const artifactKindForText = (
 ): "text" | "markdown" | "code" => {
   if (extension === ".md" || extension === ".markdown") return "markdown";
   return CODE_EXTENSIONS.has(extension) ? "code" : "text";
-};
-
-const readBuffer = (targetPath: string) => {
-  try {
-    return fs.readFileSync(targetPath);
-  } catch (error) {
-    throw mcpInternalError(`Failed to read file: ${targetPath}`, {
-      cause: error,
-    });
-  }
 };
 
 export const executeGenericRead = async ({
@@ -311,8 +399,11 @@ export const executeGenericRead = async ({
     };
   }
 
-  const decoded = decodeText(readBuffer(targetPath));
-  if (!decoded) {
+  const sliced = await readTextWindow(targetPath, {
+    offset: args.offset,
+    limit: args.limit,
+  });
+  if (sliced.kind === "binary") {
     pushEvent?.({
       type: "invocation:progress",
       message: "Generic read outcome: binary content is not decoded as text",
@@ -327,7 +418,7 @@ export const executeGenericRead = async ({
       artifacts: [],
     };
   }
-  if ("unsupportedEncoding" in decoded) {
+  if (sliced.kind === "unknown_encoding") {
     pushEvent?.({
       type: "invocation:progress",
       message: "Generic read outcome: text encoding could not be identified safely",
@@ -343,10 +434,6 @@ export const executeGenericRead = async ({
     };
   }
 
-  const sliced = sliceGenericText(decoded.text, {
-    offset: args.offset,
-    limit: args.limit,
-  });
   const mimeType = mimeTypeForText(extension);
   const contents: GenericReadTextResult = {
     type: "read",
@@ -354,7 +441,7 @@ export const executeGenericRead = async ({
     offset: sliced.offset,
     limit: sliced.limit,
     returnedCount: sliced.returnedCount,
-    totalLines: sliced.totalLines,
+    ...(sliced.totalLines === undefined ? {} : { totalLines: sliced.totalLines }),
     startLine: sliced.startLine,
     endLine: sliced.endLine,
     hasMore: sliced.hasMore,
@@ -365,15 +452,15 @@ export const executeGenericRead = async ({
       mimeType,
       text: sliced.text,
       metadata: {
-        encoding: decoded.encoding,
-        sizeBytes: decoded.sizeBytes,
+        encoding: sliced.encoding,
+        sizeBytes: sliced.sizeBytes,
       },
     },
   };
 
   pushEvent?.({
     type: "invocation:progress",
-    message: `Generic read plan: text-buffer (${decoded.encoding})`,
+    message: `Generic read plan: streamed-line-window (${sliced.encoding})`,
   });
 
   return {
@@ -386,8 +473,8 @@ export const executeGenericRead = async ({
         data: sliced.text,
         metadata: {
           path: inputPath,
-          encoding: decoded.encoding,
-          sizeBytes: decoded.sizeBytes,
+          encoding: sliced.encoding,
+          sizeBytes: sliced.sizeBytes,
           offset: sliced.offset,
           limit: sliced.limit,
           returnedCount: sliced.returnedCount,
