@@ -602,7 +602,14 @@ test("selection validates initialPrompt and accepts B08 completed follow-up shap
 
 test("adv05 cleanup hook terminates a live fixture worker", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mira-bench-adv05-cleanup-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() =>
+    fs.rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    }),
+  );
   const workspace = path.join(root, "workspace");
   const spec = materializeFixture({ fixtureId: "adv05-v1", destDir: workspace, externalDir: path.join(root, "external") });
 
