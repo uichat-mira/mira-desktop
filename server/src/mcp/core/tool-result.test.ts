@@ -217,6 +217,32 @@ describe("ToolResult B-prime normalization", () => {
       truncated: true,
     });
 
+    const glob = projectToolEvidence(
+      definition("glob"),
+      normalizeToolResult({
+        structuredContent: {
+          type: "glob",
+          pattern: "**/*.ts",
+          root: "src",
+          matches: ["src/a.ts", "src/b.ts", "src/c.ts"],
+          returnedCount: 3,
+          totalCount: 8,
+          hasMore: true,
+          truncated: true,
+        },
+      }),
+    );
+    expect(glob?.status).toBe("truncated");
+    expect(glob?.data).toMatchObject({
+      kind: "glob",
+      pattern: "**/*.ts",
+      root: "src",
+      matchCount: 8,
+      matchedPaths: ["src/a.ts", "src/b.ts", "src/c.ts"],
+      matchesPreview: ["src/a.ts", "src/b.ts", "src/c.ts"],
+      truncated: true,
+    });
+
     const opened = projectToolEvidence(
       definition("read"),
       normalizeToolResult({
