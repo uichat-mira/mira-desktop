@@ -4,6 +4,7 @@ import * as rerank from "@/services/internal-capabilities/local-rerank.js";
 import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessCapabilityDiagnostics } from "./capability-diagnostics.js";
 import { readTool } from "../mcp/tools/read.tool.js";
+import { listTool } from "../mcp/tools/list.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
 import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 import { resolveAgentEligibleExternalMcpCapabilities } from "@/mcp/external";
@@ -71,25 +72,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
   });
 
   it("returns grouped tool diagnostics without selecting tools", async () => {
-    registerTool({
-      definition: {
-        id: "read_discover",
-        title: "Read Discover",
-        description: "discover workspace",
-        domain: "read",
-        source: "internal",
-        mode: "sync",
-        inputSchema: {},
-        tags: ["workspace", "discover"],
-        capabilities: {
-          sideEffect: "none",
-          requiresApproval: false,
-        },
-      },
-      execute() {
-        return {};
-      },
-    });
+    registerTool(listTool);
     registerTool({
       definition: {
         id: "read",
@@ -139,11 +122,15 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
 
     expect(result).not.toHaveProperty("selectedToolIds");
     expect(result.candidates).toHaveLength(2);
-    expect(result.candidates[0]).toMatchObject({ toolId: "read_discover" });
-    expect(result.candidates[1]).toMatchObject({ toolId: "read" });
+    expect(result.candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ toolId: "list" }),
+        expect.objectContaining({ toolId: "read" }),
+      ]),
+    );
     expect(result.toolCandidates).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ toolId: "read_discover" }),
+        expect.objectContaining({ toolId: "list" }),
         expect.objectContaining({ toolId: "read" }),
       ]),
     );
@@ -153,25 +140,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
 
   it("keeps eligible workspace candidates when local embedding is unavailable", async () => {
     registerTool(readTool);
-    registerTool({
-      definition: {
-        id: "read_discover",
-        title: "Read Discover",
-        description: "discover workspace",
-        domain: "read",
-        source: "internal",
-        mode: "sync",
-        inputSchema: {},
-        tags: ["workspace", "discover"],
-        capabilities: {
-          sideEffect: "none",
-          requiresApproval: false,
-        },
-      },
-      execute() {
-        return {};
-      },
-    });
+    registerTool(listTool);
 
     vi.spyOn(embedding, "executeLocalEmbedding").mockRejectedValue(
       new Error("LOCAL_MODEL_RAW_ROOT is not set."),
@@ -192,7 +161,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
     expect(result.candidates).toHaveLength(2);
     expect(result.toolExposure.exposedToolIds).toEqual([
       "read",
-      "read_discover",
+      "list",
     ]);
     expect(result.retrievalError).toBeUndefined();
     expect(result.exposureReasons).toContain(
