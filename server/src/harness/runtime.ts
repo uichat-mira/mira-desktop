@@ -20,11 +20,7 @@ import {
 } from "../mcp/tools/github-domain.tool.js";
 import { newsSearchTool } from "../mcp/tools/news-search.tool.js";
 import { readExtractTool } from "../mcp/tools/read-extract.tool.js";
-import { readListTool } from "../mcp/tools/read-list.tool.js";
-import { readLocateTool } from "../mcp/tools/read-locate.tool.js";
 import { readOpenTool } from "../mcp/tools/read-open.tool.js";
-import { readDiscoverTool } from "../mcp/tools/read-discover.tool.js";
-import { readSliceTool } from "../mcp/tools/read-slice.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
@@ -51,14 +47,14 @@ export const initializeHarnessRuntime = () => {
   registerReadableResource(workspaceResource);
   registerTool(listTool);
   registerTool(globTool);
-  registerTool(readListTool);
-  registerTool(readLocateTool);
-  registerTool(readOpenTool);
-  registerTool(readDiscoverTool);
   registerTool(grepTool);
-  registerTool(readExtractTool);
-  registerTool(readSliceTool);
   registerTool(readTool);
+
+  // Office/WenShu subAgent profiles still declare these two compatibility
+  // readers. Keep them registered but hidden from the public Agent surface
+  // until those verified Skill consumers migrate.
+  registerTool(readOpenTool);
+  registerTool(readExtractTool);
 
   registerTool(writeFileTool);
   registerTool(replaceBlockTool);
