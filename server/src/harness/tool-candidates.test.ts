@@ -3,7 +3,7 @@ import * as embedding from "@/services/internal-capabilities/local-embedding.js"
 import * as rerank from "@/services/internal-capabilities/local-rerank.js";
 import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessToolCandidatesForTurn } from "./tool-candidates.js";
-import { readOpenTool } from "../mcp/tools/read-open.tool.js";
+import { readTool } from "../mcp/tools/read.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
 import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 
@@ -79,7 +79,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
   );
 
   it("does not let caller topK/maxTools/minScore shrink a <=20 public tool set", async () => {
-    registerTool(readOpenTool);
+    registerTool(readTool);
     registerTool(webSearchTool);
     registerTool(terminalSessionTool);
 
@@ -92,7 +92,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     });
 
     expect(result.toolExposure.exposedToolIds).toEqual(
-      expect.arrayContaining(["read_open", "web_search", "terminal_session"]),
+      expect.arrayContaining(["read", "web_search", "terminal_session"]),
     );
     expect(result.toolCandidates).toHaveLength(3);
   });
@@ -278,13 +278,13 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
 
   it("uses explicit Agent Access as the only external-MCP availability gate", async () => {
     registerTool(externalFakeTool);
-    registerTool(readOpenTool);
+    registerTool(readTool);
 
     const hidden = await resolveHarnessToolCandidatesForTurn({
       query: "use external system",
       source: "agent_intent",
     });
-    expect(hidden.toolExposure.exposedToolIds).toEqual(["read_open"]);
+    expect(hidden.toolExposure.exposedToolIds).toEqual(["read"]);
 
     const visible = await resolveHarnessToolCandidatesForTurn({
       query: "use external system",
@@ -293,7 +293,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
       allowedExternalToolIds: ["external_fake_tool"],
     });
     expect(visible.toolExposure.exposedToolIds).toEqual(
-      expect.arrayContaining(["read_open", "external_fake_tool"]),
+      expect.arrayContaining(["read", "external_fake_tool"]),
     );
   });
 });
