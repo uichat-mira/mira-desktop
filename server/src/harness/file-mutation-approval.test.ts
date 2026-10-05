@@ -179,4 +179,140 @@ describe("canonical file mutation Harness approval", () => {
     expect(fs.existsSync(path.join(tempRoot, "source.txt"))).toBe(true);
     expect(fs.existsSync(path.resolve(tempRoot, "../outside.txt"))).toBe(false);
   });
+
+  it("projects committed mutation results into linked artifacts and evidence", async () => {
+    const environment = createHarnessEnvironmentSnapshot();
+    const executeApproved = async (
+      toolId: "write" | "edit" | "move" | "delete",
+      args: Record<string, unknown>,
+    ) =>
+      await executeHarnessInvocation({
+        toolId,
+        args,
+        environment,
+        approvedInvocations: [
+          {
+            toolId,
+            inputHash: createInvocationInputHash(args),
+          },
+        ],
+      });
+
+    const writeRecord = await executeApproved("write", {
+      path: "evidence.txt",
+      content: "alpha\n",
+    });
+    expect(writeRecord.status).toBe("completed");
+    expect(writeRecord.artifacts).toHaveLength(1);
+    expect(writeRecord.artifacts[0]).toMatchObject({
+      kind: "diff",
+      metadata: {
+        operation: "write",
+        path: "evidence.txt",
+        changed: true,
+      },
+    });
+    expect(writeRecord.result).toMatchObject({
+      operation: "write",
+      path: "evidence.txt",
+      changed: true,
+      created: true,
+      bytesBefore: 0,
+      artifactId: writeRecord.artifacts[0].id,
+    });
+    expect(
+      String((writeRecord.result as Record<string, unknown>).diffPreview),
+    ).toContain("+alpha");
+    expect(writeRecord.result).not.toHaveProperty("diff");
+    expect(String(writeRecord.artifacts[0].data)).toContain("+alpha");
+    expect(writeRecord.evidence).toMatchObject({
+      actionTaken: "Created workspace file evidence.txt.",
+      data: {
+        kind: "file_mutation",
+        operation: "write",
+        targetPath: "evidence.txt",
+        changed: true,
+        artifactId: writeRecord.artifacts[0].id,
+      },
+    });
+
+    const editArgs = {
+      path: "evidence.txt",
+      edits: [{ oldText: "alpha", newText: "beta" }],
+    };
+    const editRecord = await executeApproved("edit", editArgs);
+    expect(editRecord.status).toBe("completed");
+    expect(editRecord.artifacts[0]).toMatchObject({
+      kind: "diff",
+      metadata: {
+        operation: "edit",
+        path: "evidence.txt",
+        editsApplied: 1,
+      },
+    });
+    expect(
+      String((editRecord.result as Record<string, unknown>).diffPreview),
+    ).toContain("-alpha");
+    expect(
+      String((editRecord.result as Record<string, unknown>).diffPreview),
+    ).toContain("+beta");
+    expect(editRecord.result).not.toHaveProperty("diff");
+    expect(String(editRecord.artifacts[0].data)).toContain("-alpha");
+    expect(String(editRecord.artifacts[0].data)).toContain("+beta");
+    expect(editRecord.evidence).toMatchObject({
+      data: {
+        kind: "file_mutation",
+        operation: "edit",
+        targetPath: "evidence.txt",
+        changed: true,
+        editsApplied: 1,
+      },
+    });
+
+    const moveRecord = await executeApproved("move", {
+      path: "evidence.txt",
+      destinationPath: "moved.txt",
+    });
+    expect(moveRecord.status).toBe("completed");
+    expect(moveRecord.artifacts[0]).toMatchObject({
+      kind: "text",
+      metadata: {
+        operation: "move",
+        path: "evidence.txt",
+        destinationPath: "moved.txt",
+        movedType: "file",
+      },
+    });
+    expect(moveRecord.evidence).toMatchObject({
+      data: {
+        kind: "file_mutation",
+        operation: "move",
+        targetPath: "evidence.txt",
+        destinationPath: "moved.txt",
+        changed: true,
+      },
+    });
+
+    const deleteRecord = await executeApproved("delete", {
+      path: "moved.txt",
+    });
+    expect(deleteRecord.status).toBe("completed");
+    expect(deleteRecord.artifacts[0]).toMatchObject({
+      kind: "text",
+      metadata: {
+        operation: "delete",
+        path: "moved.txt",
+        deletedType: "file",
+      },
+    });
+    expect(deleteRecord.evidence).toMatchObject({
+      data: {
+        kind: "file_mutation",
+        operation: "delete",
+        targetPath: "moved.txt",
+        changed: true,
+        deletedType: "file",
+      },
+    });
+  });
 });

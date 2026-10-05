@@ -336,6 +336,28 @@ export interface AgentWorkspaceMutationEvidenceData {
   actionProfileId?: string;
 }
 
+export interface AgentFileMutationEvidenceData {
+  kind: "file_mutation";
+  operation: "write" | "edit" | "move" | "delete";
+  targetPath: string;
+  destinationPath?: string;
+  changed: boolean;
+  artifactId?: string;
+  created?: boolean;
+  overwritten?: boolean;
+  editsApplied?: number;
+  tolerantEdits?: number;
+  movedType?: "file" | "directory";
+  deletedType?: "file" | "directory";
+  recursive?: boolean;
+  bytesBefore?: number;
+  bytesAfter?: number;
+  diffAvailable?: boolean;
+  diffPreview?: string;
+  diffTruncated?: boolean;
+  diffUnavailableReason?: string;
+}
+
 export interface AgentExternalMcpEvidenceData {
   kind: "external_mcp";
   serverId: string;
@@ -372,6 +394,7 @@ export type AgentEvidenceSummaryData =
   | AgentRetrievalEvidenceData
   | AgentObservationEvidenceData
   | AgentExternalMcpEvidenceData
+  | AgentFileMutationEvidenceData
   | AgentWorkspaceMutationEvidenceData
   | AgentEditFileEvidenceData;
 

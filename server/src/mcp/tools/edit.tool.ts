@@ -1,5 +1,9 @@
 import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
+import {
+  createFileMutationStructuredResult,
+  emitFileMutationArtifact,
+} from "./file-mutation-artifact.js";
 import { executeEditMutation, type EditMutation } from "../file-mutation/runtime.js";
 
 const parseEdits = (value: unknown): EditMutation[] => {
@@ -68,16 +72,22 @@ export const editTool: ToolImplementation = {
       throw mcpBadRequest("path is required");
     }
 
+    const result = await executeEditMutation(
+      {
+        path: context.args.path,
+        edits: parseEdits(context.args.edits),
+      },
+      {
+        signal: context.signal,
+        pushEvent: context.pushEvent,
+      },
+    );
+    const artifact = emitFileMutationArtifact(context, result);
+
     return {
-      structuredContent: await executeEditMutation(
-        {
-          path: context.args.path,
-          edits: parseEdits(context.args.edits),
-        },
-        {
-          signal: context.signal,
-          pushEvent: context.pushEvent,
-        },
+      structuredContent: createFileMutationStructuredResult(
+        result,
+        artifact.id,
       ),
     };
   },

@@ -50,7 +50,14 @@ type TargetProgress = {
   recoverableFailure?: string;
 };
 
-const WORKSPACE_MUTATION_TOOL_IDS = new Set(["workspace_mutation", "edit_file"]);
+const WORKSPACE_MUTATION_TOOL_IDS = new Set([
+  "write",
+  "edit",
+  "move",
+  "delete",
+  "workspace_mutation",
+  "edit_file",
+]);
 const WORKSPACE_READ_TOOL_IDS = new Set([
   "read",
   "list",
@@ -162,6 +169,28 @@ const markCompletedSummary = (
       progress.located = true;
       progress.opened = true;
       progress.verified = true;
+      return;
+    }
+    case "file_mutation": {
+      if (summary.data.changed !== true) {
+        return;
+      }
+
+      for (const candidate of [
+        summary.data.targetPath,
+        summary.data.destinationPath,
+      ]) {
+        if (typeof candidate !== "string") {
+          continue;
+        }
+        const target = normalizeTaskTargetPath(candidate);
+        if (!target) {
+          continue;
+        }
+        const progress = ensureTargetProgress(map, target);
+        progress.located = true;
+        progress.mutated = true;
+      }
       return;
     }
     case "workspace_mutation": {

@@ -1,5 +1,9 @@
 import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
+import {
+  createFileMutationStructuredResult,
+  emitFileMutationArtifact,
+} from "./file-mutation-artifact.js";
 import { executeWriteMutation } from "../file-mutation/runtime.js";
 
 export const writeTool: ToolImplementation = {
@@ -40,17 +44,23 @@ export const writeTool: ToolImplementation = {
       throw mcpBadRequest("content is required");
     }
 
+    const result = await executeWriteMutation(
+      {
+        path: context.args.path,
+        content: context.args.content,
+        overwrite: context.args.overwrite === true,
+      },
+      {
+        signal: context.signal,
+        pushEvent: context.pushEvent,
+      },
+    );
+    const artifact = emitFileMutationArtifact(context, result);
+
     return {
-      structuredContent: await executeWriteMutation(
-        {
-          path: context.args.path,
-          content: context.args.content,
-          overwrite: context.args.overwrite === true,
-        },
-        {
-          signal: context.signal,
-          pushEvent: context.pushEvent,
-        },
+      structuredContent: createFileMutationStructuredResult(
+        result,
+        artifact.id,
       ),
     };
   },

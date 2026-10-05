@@ -7,6 +7,11 @@ import {
   replaceDirectorySafely,
 } from "./commit.js";
 import {
+  createMutationDiff,
+  MAX_MUTATION_DIFF_SOURCE_BYTES,
+  type MutationDiffUnavailableReason,
+} from "./diff.js";
+import {
   nodeFileMutationFilesystem,
   type FileMutationFilesystem,
 } from "./filesystem.js";
@@ -61,26 +66,36 @@ export type DeleteMutationInput = {
   recursive?: boolean;
 };
 
-export type WriteMutationResult = {
+type ContentMutationEvidence = {
+  changed: true;
+  bytesBefore: number;
+  bytesAfter: number;
+  diff?: string;
+  diffTruncated: boolean;
+  diffUnavailableReason?: MutationDiffUnavailableReason;
+};
+
+export type WriteMutationResult = ContentMutationEvidence & {
   operation: "write";
   path: string;
   created: boolean;
   overwritten: boolean;
-  bytes: number;
 };
 
-export type EditMutationResult = {
+export type EditMutationResult = ContentMutationEvidence & {
   operation: "edit";
   path: string;
   editsApplied: number;
-  bytes: number;
+  tolerantEdits: number;
 };
 
 export type MoveMutationResult = {
   operation: "move";
   path: string;
   destinationPath: string;
+  movedType: "file" | "directory";
   overwritten: boolean;
+  changed: true;
 };
 
 export type DeleteMutationResult = {
@@ -88,6 +103,7 @@ export type DeleteMutationResult = {
   path: string;
   deletedType: "file" | "directory";
   recursive: boolean;
+  changed: true;
 };
 
 const assertNotAborted = (signal?: AbortSignal) => {
@@ -114,6 +130,35 @@ const preparePath = (
     expectedType?: "file" | "directory";
   } = {},
 ) => resolveMutationPath(inputPath, filesystem, options);
+
+const readTextSnapshotForDiff = (
+  targetPath: string,
+  filesystem: FileMutationFilesystem,
+): {
+  text?: string;
+  unavailableReason?: MutationDiffUnavailableReason;
+} => {
+  try {
+    if (
+      filesystem.stat(targetPath).size >
+      MAX_MUTATION_DIFF_SOURCE_BYTES
+    ) {
+      return { unavailableReason: "source_too_large" };
+    }
+
+    return {
+      text: readMutationTextFile(targetPath, filesystem).text,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      unavailableReason:
+        /text files|text encoding/iu.test(message)
+          ? "source_not_text"
+          : "source_unavailable",
+    };
+  }
+};
 
 const wrapMutationFailure = async <T>(
   message: string,
@@ -172,6 +217,15 @@ export const executeWriteMutation = async (
       let existingFormat:
         | ReturnType<typeof inspectMutationTextFormat>
         | null = null;
+      let beforeTextForDiff: string | undefined = current.exists
+        ? undefined
+        : "";
+      let diffUnavailableReason:
+        | MutationDiffUnavailableReason
+        | undefined;
+      const bytesBefore = current.exists
+        ? filesystem.stat(current.canonicalPath).size
+        : 0;
 
       if (current.exists) {
         existingVersion = captureMutationPathVersion(
@@ -182,6 +236,12 @@ export const executeWriteMutation = async (
           current.canonicalPath,
           filesystem,
         );
+        const diffSnapshot = readTextSnapshotForDiff(
+          current.canonicalPath,
+          filesystem,
+        );
+        beforeTextForDiff = diffSnapshot.text;
+        diffUnavailableReason = diffSnapshot.unavailableReason;
         assertMutationPathVersion(
           existingVersion,
           current.canonicalPath,
@@ -189,6 +249,9 @@ export const executeWriteMutation = async (
         );
       }
 
+      const afterTextForDiff = existingFormat
+        ? adaptLineEndings(input.content, existingFormat.lineEnding)
+        : input.content;
       const encoded = existingFormat
         ? encodeMutationText(input.content, existingFormat)
         : Buffer.from(input.content, "utf8");
@@ -226,12 +289,23 @@ export const executeWriteMutation = async (
           }),
       );
 
+      const diffResult = await createMutationDiff({
+        oldPath: beforeCommit.exists ? inputPath : "/dev/null",
+        newPath: inputPath,
+        beforeText: beforeTextForDiff,
+        afterText: afterTextForDiff,
+        unavailableReason: diffUnavailableReason,
+      });
+
       return {
         operation: "write",
         path: inputPath,
         created: !beforeCommit.exists,
         overwritten: beforeCommit.exists,
-        bytes: encoded.byteLength,
+        changed: true,
+        bytesBefore,
+        bytesAfter: encoded.byteLength,
+        ...diffResult,
       };
     },
   );
@@ -467,6 +541,7 @@ export const executeEditMutation = async (
         current.canonicalPath,
         filesystem,
       );
+      const bytesBefore = filesystem.stat(current.canonicalPath).size;
       const currentFile = readMutationTextFile(
         current.canonicalPath,
         filesystem,
@@ -485,6 +560,10 @@ export const executeEditMutation = async (
       const next = applyLocatedEdits(
         currentFile.text,
         located,
+        currentFile.lineEnding,
+      );
+      const afterTextForDiff = adaptLineEndings(
+        next,
         currentFile.lineEnding,
       );
       const encoded = encodeMutationText(next, currentFile);
@@ -523,11 +602,22 @@ export const executeEditMutation = async (
           }),
       );
 
+      const diffResult = await createMutationDiff({
+        oldPath: inputPath,
+        newPath: inputPath,
+        beforeText: currentFile.text,
+        afterText: afterTextForDiff,
+      });
+
       return {
         operation: "edit",
         path: inputPath,
         editsApplied: located.length,
-        bytes: encoded.byteLength,
+        tolerantEdits: tolerantCount,
+        changed: true,
+        bytesBefore,
+        bytesAfter: encoded.byteLength,
+        ...diffResult,
       };
     },
   );
@@ -691,7 +781,10 @@ export const executeMoveMutation = async (
         operation: "move",
         path: sourcePath,
         destinationPath,
+        movedType:
+          sourceBeforeCommit.type === "directory" ? "directory" : "file",
         overwritten: !caseOnlyRename && destinationBeforeCommit.exists,
+        changed: true,
       };
     },
   );
@@ -773,6 +866,7 @@ export const executeDeleteMutation = async (
           beforeCommit.type === "directory" ? "directory" : "file",
         recursive:
           beforeCommit.type === "directory" ? recursive : false,
+        changed: true,
       };
     },
   );

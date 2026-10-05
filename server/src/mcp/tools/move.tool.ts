@@ -1,5 +1,9 @@
 import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
+import {
+  createFileMutationStructuredResult,
+  emitFileMutationArtifact,
+} from "./file-mutation-artifact.js";
 import { executeMoveMutation } from "../file-mutation/runtime.js";
 
 export const moveTool: ToolImplementation = {
@@ -40,17 +44,23 @@ export const moveTool: ToolImplementation = {
       throw mcpBadRequest("destinationPath is required");
     }
 
+    const result = await executeMoveMutation(
+      {
+        path: context.args.path,
+        destinationPath: context.args.destinationPath,
+        overwrite: context.args.overwrite === true,
+      },
+      {
+        signal: context.signal,
+        pushEvent: context.pushEvent,
+      },
+    );
+    const artifact = emitFileMutationArtifact(context, result);
+
     return {
-      structuredContent: await executeMoveMutation(
-        {
-          path: context.args.path,
-          destinationPath: context.args.destinationPath,
-          overwrite: context.args.overwrite === true,
-        },
-        {
-          signal: context.signal,
-          pushEvent: context.pushEvent,
-        },
+      structuredContent: createFileMutationStructuredResult(
+        result,
+        artifact.id,
       ),
     };
   },

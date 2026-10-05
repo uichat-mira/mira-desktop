@@ -1,5 +1,9 @@
 import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
+import {
+  createFileMutationStructuredResult,
+  emitFileMutationArtifact,
+} from "./file-mutation-artifact.js";
 import { executeDeleteMutation } from "../file-mutation/runtime.js";
 
 export const deleteTool: ToolImplementation = {
@@ -36,16 +40,22 @@ export const deleteTool: ToolImplementation = {
       throw mcpBadRequest("path is required");
     }
 
+    const result = await executeDeleteMutation(
+      {
+        path: context.args.path,
+        recursive: context.args.recursive === true,
+      },
+      {
+        signal: context.signal,
+        pushEvent: context.pushEvent,
+      },
+    );
+    const artifact = emitFileMutationArtifact(context, result);
+
     return {
-      structuredContent: await executeDeleteMutation(
-        {
-          path: context.args.path,
-          recursive: context.args.recursive === true,
-        },
-        {
-          signal: context.signal,
-          pushEvent: context.pushEvent,
-        },
+      structuredContent: createFileMutationStructuredResult(
+        result,
+        artifact.id,
       ),
     };
   },
