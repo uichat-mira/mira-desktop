@@ -137,6 +137,7 @@ const markCompletedSummary = (
     case "grep":
       addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
+    case "read":
     case "read_open": {
       const target = normalizeTaskTargetPath(summary.data.path);
       if (!target) {
