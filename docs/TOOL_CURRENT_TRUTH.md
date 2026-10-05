@@ -106,7 +106,7 @@ grep
 - DOCX / XLSX / PPTX / PDF 不由 generic `read` 解析，返回 Office/WenShu Skill routing outcome；
 - 图片通过同一个 `read` 返回，不新增 `read_image`；
 - 图片实现以 Gemini CLI `read_file` 为单一参考基线：SVG 继续按文本读取，其他 `image/*` 文件在 20 MB 单文件上限内以 MIME + base64 的 model-facing image block 进入 Harness；
-- base64 不进入 structured result、Evidence、普通 invocation 读取或日志；Harness 只在进程内模型内容缓存中保留图片 payload；
+- base64 不进入 structured result、Evidence、普通 invocation 读取或日志；Harness 仅把图片作为当前模型调用所需的内容传递；
 - 图片 payload 不是 durable Evidence；若 backend 重启或 retention 后 payload 已不可用，Planner 必须重新 `read` 该图片，Generate 不允许仅凭旧的“已读图片”元数据完成回答；
 - Planner 与 Generate 把需要的 Tool 图片投影到 Mira 已有的 latest-user image message path，Provider 继续使用既有图片适配，不由 `read` 了解 provider wire format。
 
