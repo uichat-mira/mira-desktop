@@ -72,6 +72,44 @@ describe("read tool", () => {
     expect(readTool.definition.tags).not.toContain("alias");
   });
 
+  it("bounds implicit full reads and reports line continuation metadata", async () => {
+    fs.writeFileSync(
+      path.join(tempRoot, "large.txt"),
+      Array.from({ length: 450 }, (_, index) => `line-${index + 1}`).join("\n"),
+    );
+
+    const result = await readTool.execute({
+      invocationId: "read-bounded-1",
+      args: { path: "large.txt" },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "artifact-1", ...artifact };
+      },
+    });
+
+    const contents = result.structuredContent as {
+      source: { text: string };
+      window: {
+        startLine: number;
+        endLine: number;
+        totalLines: number;
+        truncated: boolean;
+        nextStartLine?: number;
+      };
+    };
+    expect(contents.source.text).toContain("line-400");
+    expect(contents.source.text).not.toContain("line-401");
+    expect(contents.window).toEqual({
+      startLine: 1,
+      endLine: 400,
+      totalLines: 450,
+      truncated: true,
+      nextStartLine: 401,
+    });
+  });
+
   it("rejects execution without harness environment", async () => {
     fs.writeFileSync(path.join(tempRoot, "notes.log"), "hello read tool");
 
