@@ -111,6 +111,45 @@ const baseEvidence = (input: {
 });
 
 const projectReadEvidence = (toolId: string, result: Record<string, unknown>, isError: boolean) => {
+  if (toolId === "read" && result.type === "unsupported") {
+    const path = typeof result.path === "string" ? result.path : "unknown";
+    const reason = typeof result.reason === "string" ? result.reason : "unsupported";
+    const fileType = typeof result.fileType === "string" ? result.fileType : undefined;
+    const suggestedSkill =
+      typeof result.suggestedSkill === "string" ? result.suggestedSkill : undefined;
+    const gap =
+      reason === "office_owned"
+        ? `Office-native file ${path} is owned by the ${suggestedSkill ?? fileType ?? "Office"} Skill domain.`
+        : reason === "multimodal_projection_unavailable"
+          ? `Generic image reading for ${path} requires the shared multimodal ToolResult projection.`
+          : `Generic read does not decode binary file ${path} as text.`;
+    return baseEvidence({
+      result,
+      isError,
+      actionTaken: `Generic read did not consume ${path} as text.`,
+      facts: [
+        `path=${path}`,
+        `reason=${reason}`,
+        ...(fileType ? [`fileType=${fileType}`] : []),
+        ...(suggestedSkill ? [`suggestedSkill=${suggestedSkill}`] : []),
+      ],
+      gaps: [gap],
+      status: "partial",
+      data: {
+        kind: "generic_structured",
+        preview: {
+          type: "unsupported",
+          path,
+          reason,
+          ...(fileType ? { fileType } : {}),
+          ...(suggestedSkill ? { suggestedSkill } : {}),
+        },
+        truncated: false,
+        redacted: false,
+        unsupported: true,
+      },
+    });
+  }
   if (toolId === "read_open" || toolId === "read") {
     const path = typeof result.path === "string" ? result.path : "unknown";
     const source = asRecord(result.source);
