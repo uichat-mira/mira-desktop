@@ -49,6 +49,7 @@ const DOMAIN_METADATA: Record<string, WorkbenchPresentation> = {
 const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
   read: { path: "" },
   list: { path: "" },
+  glob: { pattern: "**/*", root: "." },
   read_discover: { mode: "list", path: "" },
   read_open: { path: "" },
   read_list: { path: "" },
