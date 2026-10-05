@@ -9,10 +9,19 @@ export interface HarnessLlmTextBlock {
   text: string;
 }
 
+export interface HarnessLlmImageBlock {
+  type: "image";
+  data: string;
+  mimeType: string;
+  filename?: string;
+}
+
+export type HarnessLlmBlock = HarnessLlmTextBlock | HarnessLlmImageBlock;
+
 export interface HarnessLlmContent {
   version: 1;
   source: "harness_result";
-  blocks: HarnessLlmTextBlock[];
+  blocks: HarnessLlmBlock[];
   truncated: boolean;
   originalCharCount: number;
   includedCharCount: number;
@@ -390,25 +399,90 @@ export const projectHarnessContentForLlm = (
   charLimit = HARNESS_LLM_RESULT_CHAR_LIMIT,
 ): HarnessLlmContent | undefined => {
   if (!content?.length) return undefined;
-  if (content.every((block) => block.type === "text" && typeof block.text === "string")) {
-    return projectHarnessResultForLlm(
-      content.map((block) => block.text as string).join("\n\n"),
-      charLimit,
-    );
-  }
-  const modelValue = content.map((block) => {
-    if (block.type === "text" && typeof block.text === "string") return block.text;
-    if (block.type === "json" && "json" in block) return block.json;
-    const { data: _data, blob: _blob, ...rest } = block;
-    return rest;
+
+  const imageBlocks: HarnessLlmImageBlock[] = content.flatMap((block) => {
+    if (
+      block.type !== "image" ||
+      typeof block.data !== "string" ||
+      !block.data ||
+      typeof block.mimeType !== "string" ||
+      !block.mimeType
+    ) {
+      return [];
+    }
+    return [
+      {
+        type: "image" as const,
+        data: block.data,
+        mimeType: block.mimeType,
+        ...(typeof block.filename === "string" && block.filename
+          ? { filename: block.filename }
+          : {}),
+      },
+    ];
   });
-  return projectHarnessResultForLlm(modelValue, charLimit);
+
+  const textualBlocks = content.filter((block) => block.type !== "image");
+  const projectedText =
+    textualBlocks.length === 0
+      ? undefined
+      : textualBlocks.every(
+            (block) => block.type === "text" && typeof block.text === "string",
+          )
+        ? projectHarnessResultForLlm(
+            textualBlocks.map((block) => block.text as string).join("\n\n"),
+            charLimit,
+          )
+        : projectHarnessResultForLlm(
+            textualBlocks.map((block) => {
+              if (block.type === "text" && typeof block.text === "string") {
+                return block.text;
+              }
+              if (block.type === "json" && "json" in block) {
+                return block.json;
+              }
+              const { data: _data, blob: _blob, ...rest } = block;
+              return rest;
+            }),
+            charLimit,
+          );
+
+  if (!projectedText && imageBlocks.length === 0) {
+    return undefined;
+  }
+
+  return {
+    version: 1,
+    source: "harness_result",
+    blocks: [...(projectedText?.blocks ?? []), ...imageBlocks],
+    truncated: projectedText?.truncated ?? false,
+    originalCharCount: projectedText?.originalCharCount ?? 0,
+    includedCharCount: projectedText?.includedCharCount ?? 0,
+    omittedArrayItems: projectedText?.omittedArrayItems ?? 0,
+    omittedObjectKeys: projectedText?.omittedObjectKeys ?? 0,
+    ...(projectedText?.collectionPath
+      ? { collectionPath: projectedText.collectionPath }
+      : {}),
+    ...(typeof projectedText?.collectionItemCount === "number"
+      ? { collectionItemCount: projectedText.collectionItemCount }
+      : {}),
+  };
 };
 
 export const getHarnessLlmContentText = (
   content: HarnessLlmContent | undefined,
 ) =>
   content?.blocks
-    .filter((block) => block.type === "text" && block.text.trim())
+    .filter(
+      (block): block is HarnessLlmTextBlock =>
+        block.type === "text" && block.text.trim().length > 0,
+    )
     .map((block) => block.text)
     .join("\n\n") ?? "";
+
+export const getHarnessLlmContentImages = (
+  content: HarnessLlmContent | undefined,
+) =>
+  content?.blocks.filter(
+    (block): block is HarnessLlmImageBlock => block.type === "image",
+  ) ?? [];
