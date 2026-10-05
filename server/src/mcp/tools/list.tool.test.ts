@@ -21,7 +21,6 @@ const context = (args: Record<string, unknown>) => ({
 
 describe("list tool", () => {
   beforeEach(() => {
-    fs.mkdirSync(tempRoot, { recursive: true });
     fs.mkdirSync(path.join(tempRoot, "docs", "z-dir"), { recursive: true });
     fs.mkdirSync(path.join(tempRoot, "docs", "a-dir"), { recursive: true });
     fs.mkdirSync(path.join(tempRoot, "docs", "node_modules"), { recursive: true });
@@ -38,11 +37,12 @@ describe("list tool", () => {
     clearWorkspaceSelection();
   });
 
-  it("lists one directory level deterministically with shared ignores", async () => {
+  it("lists only direct children in deterministic order", async () => {
     const result = await listTool.execute(context({ path: "docs" }));
     expect(result.structuredContent).toMatchObject({
       type: "list",
       path: "docs",
+      offset: 0,
       returnedCount: 4,
       totalCount: 4,
       hasMore: false,
@@ -60,28 +60,45 @@ describe("list tool", () => {
     ]);
   });
 
-  it("bounds results and reports truncation metadata", async () => {
-    const result = await listTool.execute(context({ path: "docs", maxResults: 2 }));
-    expect(result.structuredContent).toMatchObject({
+  it("paginates instead of permanently capping the directory", async () => {
+    const first = await listTool.execute(context({ path: "docs", limit: 2 }));
+    expect(first.structuredContent).toMatchObject({
+      offset: 0,
       returnedCount: 2,
       totalCount: 4,
       hasMore: true,
-      truncated: true,
+      nextOffset: 2,
+    });
+
+    const second = await listTool.execute(context({ path: "docs", offset: 2, limit: 2 }));
+    expect(second.structuredContent).toMatchObject({
+      offset: 2,
+      returnedCount: 2,
+      totalCount: 4,
+      hasMore: false,
     });
   });
 
-  it("rejects non-directory targets", async () => {
-    await expect(listTool.execute(context({ path: "docs/a.txt" }))).rejects.toThrow(
-      "list requires a directory path",
+  it("lets an explicit request see default-ignored direct children", async () => {
+    const result = await listTool.execute(
+      context({ path: "docs", includeIgnored: true }),
     );
+    const names = (result.structuredContent as { entries: Array<{ name: string }> }).entries.map(
+      (entry) => entry.name,
+    );
+    expect(names).toContain("node_modules");
+    expect(names).toContain(".git");
   });
 
-  it("has a canonical public contract rather than a read_list alias", () => {
+  it("keeps the public contract small and allows workspace root by default", () => {
     expect(listTool.definition.id).toBe("list");
-    expect(listTool.definition.inputSchema).toMatchObject({
-      type: "object",
-      required: ["path"],
-      additionalProperties: false,
-    });
+    expect(listTool.definition.description).toContain("direct children");
+    expect(listTool.definition.inputSchema.required).toBeUndefined();
+    expect(Object.keys(listTool.definition.inputSchema.properties ?? {})).toEqual([
+      "path",
+      "offset",
+      "limit",
+      "includeIgnored",
+    ]);
   });
 });
