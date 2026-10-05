@@ -1,5 +1,4 @@
 import type { ToolImplementation } from "../core/definitions.js";
-import { mcpBadRequest } from "../core/errors.js";
 import { executeGrep } from "../read/grep.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
@@ -8,7 +7,7 @@ export const grepTool: ToolImplementation = {
     id: "grep",
     title: "Grep",
     description:
-      "Search workspace text with a bounded ripgrep-first runtime. Returns matching workspace-relative files, line/column locations, and previews; falls back deterministically when ripgrep is unavailable.",
+      "Search file contents by regex or literal text. Returns matching paths and line locations; use glob to search filenames.",
     domain: "read",
     source: "internal",
     mode: "sync",
@@ -18,48 +17,29 @@ export const grepTool: ToolImplementation = {
       additionalProperties: false,
       properties: {
         pattern: { type: "string" },
-        root: { type: "string" },
-        extensions: {
-          type: "array",
-          items: { type: "string" },
-        },
-        maxResults: {
-          type: "integer",
-          minimum: 1,
-          maximum: 100,
-        },
+        path: { type: "string" },
+        include: { type: "string" },
+        literal: { type: "boolean" },
+        caseSensitive: { type: "boolean" },
+        context: { type: "integer", minimum: 0 },
+        offset: { type: "integer", minimum: 0 },
+        limit: { type: "integer", minimum: 1 },
+        includeIgnored: { type: "boolean" },
       },
     },
-    outputSchema: {
-      type: "object",
-    },
-    tags: [
-      "read",
-      "workspace",
-      "grep",
-      "search",
-      "text",
-      "code",
-      "symbol",
-      "reference",
-      "regex",
-    ],
+    outputSchema: { type: "object" },
+    tags: ["grep", "content", "search"],
     capabilities: {
       sideEffect: "none",
       requiresApproval: false,
       workspaceBound: true,
       workspaceBoundary: {
-        argKeys: ["root"],
-        argTypes: { root: "directory" },
+        argKeys: ["path"],
+        argTypes: { path: "directory" },
       },
     },
   },
   execute: async (context) => {
-    const pattern = context.args.pattern;
-    if (typeof pattern !== "string" || !pattern.trim()) {
-      throw mcpBadRequest("pattern is required");
-    }
-
     const result = await executeGrep({
       args: context.args,
       environment: context.environment,
