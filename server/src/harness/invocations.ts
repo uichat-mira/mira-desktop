@@ -16,6 +16,7 @@ import { getHarnessEnvironmentSnapshot } from "./environment.js";
 import {
   projectHarnessResultForLlm,
   projectHarnessContentForLlm,
+  projectHarnessTextOnlyContent,
   type HarnessLlmContent,
 } from "./llm-content.js";
 
@@ -63,7 +64,10 @@ export const executeHarnessInvocation = async (
   if (llmContent) {
     modelContentByInvocation.set(record, llmContent);
   }
-  return llmContent ? { ...record, llmContent } : record;
+  const serializableLlmContent = projectHarnessTextOnlyContent(llmContent);
+  return serializableLlmContent
+    ? { ...record, llmContent: serializableLlmContent }
+    : record;
 };
 
 export const getHarnessInvocation = (invocationId: string) =>
