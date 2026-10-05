@@ -4,7 +4,10 @@ import {
   type HarnessLlmContent,
 } from "@/harness/llm-content";
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
-import { projectHarnessImagesToMessageParts } from "./harness-multimodal";
+import {
+  projectHarnessImagesToMessageParts,
+  type NormalizedImageMessagePart,
+} from "./harness-multimodal";
 import type {
   AgentEvidencePayload,
   AgentEvidenceReference,
@@ -172,7 +175,7 @@ export const materializeFinalizationEvidence = (input: {
     ...new Set(input.packet.completionProof.flatMap((proof) => proof.evidenceRefs)),
   ];
   const messages: NormalizedChatMessage[] = [];
-  const imageParts = [];
+  const imageParts: NormalizedImageMessagePart[] = [];
   const missingRefs: AgentEvidenceReference[] = [];
 
   for (const ref of orderedRefs) {
