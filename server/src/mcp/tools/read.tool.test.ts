@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import iconv from "iconv-lite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { clearHarnessRegistry } from "../../harness/registry.js";
@@ -123,6 +124,23 @@ describe("read tool", () => {
     const utf16 = await readTool.execute(context({ path: "utf16.txt" }));
     expect(utf16.structuredContent).toMatchObject({
       source: { text: "你好 Mira", metadata: { encoding: "utf-16le" } },
+    });
+  });
+
+  it("decodes GB18030 text without mojibake", async () => {
+    const expected = "这是 GBK/GB18030 编码内容，Mira 应该正确读取。";
+    fs.writeFileSync(
+      path.join(tempRoot, "gbk.txt"),
+      iconv.encode(expected, "gb18030"),
+    );
+
+    const result = await readTool.execute(context({ path: "gbk.txt" }));
+    expect(result.structuredContent).toMatchObject({
+      type: "read",
+      source: {
+        text: expected,
+        metadata: { encoding: "gb18030" },
+      },
     });
   });
 
