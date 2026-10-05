@@ -45,7 +45,7 @@ describe("read tool", () => {
       },
     });
 
-    expect((result.structuredContent as { type: string }).type).toBe("open");
+    expect((result.structuredContent as { type: string }).type).toBe("read");
     expect((result.structuredContent as { source: { text: string } }).source.text).toContain("hello read tool");
     expect(artifacts).toHaveLength(1);
     expect(events).toContain("invocation:progress");
@@ -107,6 +107,86 @@ describe("read tool", () => {
       totalLines: 450,
       truncated: true,
       nextStartLine: 401,
+    });
+  });
+
+  it("routes Office-native files out of generic read without parsing them", async () => {
+    fs.writeFileSync(path.join(tempRoot, "sample.docx"), Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+
+    const artifacts: unknown[] = [];
+    const result = await readTool.execute({
+      invocationId: "read-office-1",
+      args: { path: "sample.docx" },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        artifacts.push(artifact);
+        return { id: "artifact-1", ...artifact };
+      },
+    });
+
+    expect(result.structuredContent).toMatchObject({
+      type: "unsupported",
+      path: "sample.docx",
+      reason: "office_owned",
+      fileType: "docx",
+      suggestedSkill: "docx",
+    });
+    expect(artifacts).toHaveLength(0);
+  });
+
+  it("decodes UTF-8 BOM and UTF-16LE text in canonical read", async () => {
+    fs.writeFileSync(
+      path.join(tempRoot, "utf8-bom.txt"),
+      Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("hello bom", "utf8")]),
+    );
+    fs.writeFileSync(
+      path.join(tempRoot, "utf16.txt"),
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("你好 Mira", "utf16le")]),
+    );
+
+    const execute = async (filePath: string) =>
+      await readTool.execute({
+        invocationId: `read-${filePath}`,
+        args: { path: filePath },
+        signal: new AbortController().signal,
+        environment: createHarnessEnvironmentSnapshot(),
+        pushEvent() {},
+        addArtifact(artifact) {
+          return { id: "artifact-1", ...artifact };
+        },
+      });
+
+    const utf8 = await execute("utf8-bom.txt");
+    expect(utf8.structuredContent).toMatchObject({
+      source: { text: "hello bom", metadata: { encoding: "utf-8-bom" } },
+    });
+
+    const utf16 = await execute("utf16.txt");
+    expect(utf16.structuredContent).toMatchObject({
+      source: { text: "你好 Mira", metadata: { encoding: "utf-16le" } },
+    });
+  });
+
+  it("returns a structured unsupported outcome for generic binary files", async () => {
+    fs.writeFileSync(path.join(tempRoot, "blob.bin"), Buffer.from([0x00, 0x01, 0x02, 0x03]));
+
+    const result = await readTool.execute({
+      invocationId: "read-binary-1",
+      args: { path: "blob.bin" },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "artifact-1", ...artifact };
+      },
+    });
+
+    expect(result.structuredContent).toMatchObject({
+      type: "unsupported",
+      path: "blob.bin",
+      reason: "binary",
     });
   });
 
