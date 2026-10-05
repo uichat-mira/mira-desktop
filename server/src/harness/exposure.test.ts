@@ -171,7 +171,7 @@ describe("resolveHarnessToolExposure", () => {
     });
 
     expect(decision.exposedToolIds).toEqual(
-      expect.arrayContaining(["read_open", "web_search", "terminal_session"]),
+      expect.arrayContaining(["read", "web_search", "terminal_session"]),
     );
     expect(decision.reasons).toEqual([]);
   });
