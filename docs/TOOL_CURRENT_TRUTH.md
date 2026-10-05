@@ -79,59 +79,93 @@ Harness 是 concrete tool 的控制平面，不是 Planner、SubAgent 编排器�
 
 ## 3. 当前公共 Read 面
 
-Planner 当前看到的 Read 认知动作是：
+Phase 2 canonical Universal Read 已收敛为：
 
 ```text
-Read
-├─ read_discover
-├─ grep
-├─ read_open
-└─ codebase_explore
+read
+list
+glob
+grep
 ```
 
-### `read_discover`
+当前迁移期真实 exposure 还保留：
 
-只负责 workspace 的目录、路径、文件名和候选目标发现：
+- `read_discover`：过渡期兼容 discovery umbrella，待 canonical `list/glob` 消费者迁移后删除；
+- `codebase_explore`：独立 Code / Work Context 能力，不属于 Universal Read；
+- `read_open / read_list / read_locate / read_extract / read_slice`：兼容实现，当前不进入新的 Agent exposure。
 
-- `mode: list`：列出目录对象；
-- `mode: locate`：按路径或名称定位候选；
-- 返回有限 preview；
-- 不进行内容 grep；
-- 不打开正文。
+### `read`
+
+已知文件读取：
+
+- 输入保持简单：`path / offset? / limit?`；
+- `offset` 表示跳过多少行，返回的人类行号仍从 1 开始；
+- 单次输出有限，但通过 `nextOffset` 可以继续读取，不把单次上限当成文件能力上限；
+- 常见 UTF BOM / UTF-16 文本按明确编码读取；
+- 二进制返回 structured unsupported；
+- DOCX / XLSX / PPTX / PDF 不由 generic `read` 解析，返回 Office/WenShu Skill routing outcome；
+- 图片最终仍应通过 `read`，但当前等待共享 multimodal ToolResult/Harness projection，不新增 `read_image`。
+
+### `list`
+
+已知目录的直接子项观察：
+
+- 不递归；
+- 目录优先、稳定排序；
+- `offset / limit / nextOffset` 分页；
+- 默认应用 workspace ignore 规则；
+- `includeIgnored=true` 可显式查看默认忽略项，但不会扩大 workspace/symlink authority。
+
+### `glob`
+
+按文件路径 glob pattern 找文件：
+
+- 例如 `**/*.tsx`、`src/**/index.*`、`**/package.json`；
+- 不搜索文件正文；
+- `path` 只限定搜索起点，不改变 workspace authority；
+- `offset / limit / nextOffset` 分页；
+- 默认 ignore 可由 `includeIgnored=true` 显式覆盖；
+- 不跟随 symlink 目录越界。
 
 ### `grep`
 
-负责 deterministic workspace 内容搜索：
+按正文搜索并返回匹配位置：
 
-- 字面文本；
-- 代码符号；
-- 引用；
-- 配置键；
-- 文档正文；
-- 可选 root、扩展名和结果上限。
+- `pattern` 默认是正则；`literal=true` 时按字面文本；
+- omitted `caseSensitive` 使用 smart-case，显式 true/false 可覆盖；
+- `include` 使用 glob 筛选候选文件；
+- `context` 可返回有限上下文行；
+- `offset / limit / nextOffset` 支持继续取后续匹配；
+- `includeIgnored=true` 可显式搜索默认忽略项；
+- provider 顺序是 bundled ripgrep → system ripgrep → deterministic async Node fallback；
+- timeout / AbortSignal cancellation 适用于整个 provider/fallback deadline；
+- no-match 是成功空结果，不等于 runtime/provider failure。
 
-`grep` 是当前公开工具，不是 `read_locate` 的隐藏实现。
+四个 Tool 的选择原则是：
 
-### `read_open`
+```text
+read   known file      -> contents
+list   known directory -> direct children
+glob   path pattern    -> matching file paths
+grep   content query   -> matching content locations
+```
 
-打开已知目标：
+它们追求首选意图清晰，不追求为了“绝对互斥”而削弱能力。
 
-- workspace 文件；
-- 已披露的 `skill://` Resource；
-- 可选正数闭区间 line/range selection；
-- 结果可形成 text / code artifact。
+### `read_discover`
+
+当前只作为迁移期兼容 surface 保留。新 Planner/consumer 不应继续把目录观察或路径 pattern discovery 建在它上面；对应新语义分别使用 `list` / `glob`。
 
 ### `codebase_explore`
 
 用于代码架构、关系、调用链和影响面探索：
 
-- Planner 只看见 `codebase_explore`；
 - 原生 CodeGraph 命令留在 wrapper 内；
 - 候选会回到当前 workspace 做 source verification；
 - 已核验 excerpt 可以进入 retrieval Evidence；
 - provider 不可用时工具仍存在，并返回结构化 degraded / fallback signal。
 
-它不是第二个 Planner，也不是“只要 Studio ready 就算 E2E 成功”。
+它不是 Universal Read，也不是第二个 Planner。
 
 ## 4. 当前公共 Edit 面
 
