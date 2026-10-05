@@ -42,7 +42,7 @@ describe("public read tool surface", () => {
       .sort();
 
     expect(readToolIds).toEqual(
-      ["codebase_explore", "glob", "grep", "list", "read", "read_discover"].sort(),
+      ["codebase_explore", "glob", "grep", "list", "read"].sort(),
     );
   });
 });
