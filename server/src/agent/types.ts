@@ -225,6 +225,17 @@ export interface AgentGlobEvidenceData {
   truncated: boolean;
 }
 
+export interface AgentGrepEvidenceData {
+  kind: "grep";
+  pattern: string;
+  root: string;
+  matchCount: number;
+  matchedPaths: string[];
+  matchesPreview: string[];
+  provider: string;
+  truncated: boolean;
+}
+
 export interface AgentReadLocateEvidenceData {
   kind: "read_locate";
   scope: string;
@@ -326,6 +337,7 @@ export type AgentEvidenceSummaryData =
   | AgentReadListEvidenceData
   | AgentReadOpenEvidenceData
   | AgentGlobEvidenceData
+  | AgentGrepEvidenceData
   | AgentReadLocateEvidenceData
   | AgentWebSearchEvidenceData
   | AgentTerminalSessionEvidenceData
