@@ -38,6 +38,38 @@ test("coverage reducer keeps broad list pending while canonical list has another
   assert.deepEqual(state.globalPendingActions, ["list"]);
 });
 
+test("coverage reducer keeps a truncated canonical read opened but not verified", () => {
+  const state = reduceAgentCoverageState({
+    question: "检查 README.md 内容是否正确",
+    latestSummary: {
+      source: "tool",
+      status: "truncated",
+      toolId: "read",
+      actionTaken: "Read file README.md.",
+      keyFindings: ["nextOffset=400"],
+      data: {
+        kind: "read",
+        path: "README.md",
+        contentPreview: "# Intro",
+        contentLength: 1200,
+        truncated: true,
+        pagination: {
+          offset: 0,
+          limit: 400,
+          returnedCount: 400,
+          totalLines: 900,
+          nextOffset: 400,
+        },
+      },
+    },
+  });
+
+  const target = state.targets.find((item) => item.target === "README.md");
+  assert.equal(target?.progress.opened, true);
+  assert.equal(target?.progress.verified, false);
+  assert.equal(target?.status, "opened");
+});
+
 test("coverage reducer completes list task from canonical list evidence", () => {
   const state = reduceAgentCoverageState({
     question: "列出当前目录有哪些文件",
