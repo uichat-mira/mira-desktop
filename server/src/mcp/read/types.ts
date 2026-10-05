@@ -33,21 +33,12 @@ export type ReadListResult = {
   truncated: boolean;
 };
 
-export type ReadWindow = {
-  startLine: number;
-  endLine: number;
-  totalLines: number;
-  truncated: boolean;
-  nextStartLine?: number;
-};
-
 export type ReadOpenResult = {
   type: "open";
   path: string;
   source: ReadSource;
   operation?: "open" | "extract";
   selection?: ReadSelection;
-  window: ReadWindow;
 };
 
 export type ReadSelection =
