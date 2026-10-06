@@ -125,6 +125,7 @@ export const appendPersistentTerminalOutput = (
 
   record.writeChain = record.writeChain
     .then(async () => {
+      assertRecordHealthy(record);
       const handle = await record.handlePromise;
       await handle.write(bytes, 0, bytes.byteLength, null);
     })
@@ -165,8 +166,6 @@ export const completePersistentTerminalOutput = async (
 ) => {
   const record = getRecord(id);
   if (record.completed) return;
-  record.completed = true;
-  record.exitCode = exitCode;
   try {
     await flushRecord(record);
     const handle = await record.handlePromise;
@@ -174,6 +173,9 @@ export const completePersistentTerminalOutput = async (
   } catch (error) {
     record.error =
       error instanceof Error ? error : new Error(String(error));
+  } finally {
+    record.exitCode = exitCode;
+    record.completed = true;
   }
 };
 

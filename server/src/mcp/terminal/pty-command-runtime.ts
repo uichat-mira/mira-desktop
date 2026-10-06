@@ -191,9 +191,22 @@ export const runPersistentCommand = async (input: {
 
     const markerStart = pendingBuffer.indexOf(markerPrefix);
     if (markerStart >= 0) {
-      appendVisible(pendingBuffer.slice(0, markerStart));
-      pendingBuffer = pendingBuffer.slice(markerStart);
-      return;
+      const afterPrefix = pendingBuffer.slice(
+        markerStart + markerPrefix.length,
+      );
+      const plausibleIncompleteMarker =
+        afterPrefix === "" ||
+        afterPrefix === "-" ||
+        /^-?\d*$/.test(afterPrefix);
+      if (plausibleIncompleteMarker) {
+        appendVisible(pendingBuffer.slice(0, markerStart));
+        pendingBuffer = pendingBuffer.slice(markerStart);
+        return;
+      }
+
+      const flushThrough = markerStart + markerPrefix.length;
+      appendVisible(pendingBuffer.slice(0, flushThrough));
+      pendingBuffer = pendingBuffer.slice(flushThrough);
     }
 
     const retainedLength = longestMarkerPrefixSuffix(pendingBuffer);
