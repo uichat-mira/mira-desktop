@@ -34,6 +34,7 @@ describe("Tool Lab fixture registry", () => {
       "platform-read-missing",
       "platform-approval-boundary",
       "universal-read",
+      "file-mutation",
     ]);
   });
 
@@ -93,6 +94,51 @@ describe("Tool Lab fixture registry", () => {
     expect(
       fs.readFileSync(path.join(reset.fixtureRoot, "tree", "nested", "gamma.ts"), "utf8"),
     ).toContain("MIRA_NEEDLE");
+  });
+
+  it("restores deterministic File Mutation inputs before every case run", async () => {
+    process.env.UI_CHAT_DATABASE_DIR = appDataRoot;
+
+    const first = await resetToolLabFixture("file-mutation");
+    const overwritePath = path.join(first.fixtureRoot, "overwrite.txt");
+    const moveSourcePath = path.join(first.fixtureRoot, "move-source.txt");
+    const moveDestinationPath = path.join(first.fixtureRoot, "move-destination.txt");
+    const deleteFilePath = path.join(first.fixtureRoot, "delete-file.txt");
+    const recursiveDirPath = path.join(first.fixtureRoot, "recursive-dir");
+    const controlledDirPath = path.join(first.fixtureRoot, "controlled-dir");
+    const createdPath = path.join(first.fixtureRoot, "created.txt");
+
+    expect(fs.readFileSync(overwritePath, "utf8")).toBe("before overwrite\n");
+    expect(fs.readFileSync(moveSourcePath, "utf8")).toBe("move me\n");
+    expect(fs.existsSync(moveDestinationPath)).toBe(false);
+    expect(fs.existsSync(deleteFilePath)).toBe(true);
+    expect(
+      fs.readFileSync(path.join(recursiveDirPath, "nested.txt"), "utf8"),
+    ).toBe("nested delete target\n");
+    expect(
+      fs.readFileSync(path.join(controlledDirPath, "nested.txt"), "utf8"),
+    ).toBe("must survive controlled failure\n");
+    expect(
+      fs.readFileSync(path.join(first.fixtureRoot, "tolerant.txt"), "utf8"),
+    ).toContain("“hello”");
+
+    fs.writeFileSync(overwritePath, "dirty", "utf8");
+    fs.renameSync(moveSourcePath, moveDestinationPath);
+    fs.rmSync(deleteFilePath);
+    fs.rmSync(recursiveDirPath, { recursive: true, force: true });
+    fs.rmSync(controlledDirPath, { recursive: true, force: true });
+    fs.writeFileSync(createdPath, "leftover", "utf8");
+
+    const second = await resetToolLabFixture("file-mutation");
+
+    expect(second.fixtureRoot).toBe(first.fixtureRoot);
+    expect(fs.readFileSync(overwritePath, "utf8")).toBe("before overwrite\n");
+    expect(fs.readFileSync(moveSourcePath, "utf8")).toBe("move me\n");
+    expect(fs.existsSync(moveDestinationPath)).toBe(false);
+    expect(fs.existsSync(deleteFilePath)).toBe(true);
+    expect(fs.existsSync(path.join(recursiveDirPath, "nested.txt"))).toBe(true);
+    expect(fs.existsSync(path.join(controlledDirPath, "nested.txt"))).toBe(true);
+    expect(fs.existsSync(createdPath)).toBe(false);
   });
 
   it("always prepares fixtures inside managed workspace, never selected user workspace", async () => {

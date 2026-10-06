@@ -41,8 +41,11 @@ const graphInput: AgentGraphInput = {
   approvedInvocations: [],
   pendingToolCall: {
     id: "pending-edit",
-    toolId: "edit_file",
-    args: { path: "README.md" },
+    toolId: "edit",
+    args: {
+      path: "README.md",
+      edits: [{ oldText: "npm install", newText: "pnpm install" }],
+    },
     inputHash: "hash-edit",
     source: "planner",
     status: "frozen",
@@ -108,10 +111,13 @@ const output = {
     id: "approval-edit",
     runId: "run-checkpoint",
     stepId: "approval",
-    toolId: "edit_file",
+    toolId: "edit",
     toolCallId: "pending-edit",
     reason: "Workspace write requires approval.",
-    input: { path: "README.md" },
+    input: {
+      path: "README.md",
+      edits: [{ oldText: "npm install", newText: "pnpm install" }],
+    },
     inputHash: "hash-edit",
     createdAt: "2026-07-18T00:00:04.000Z",
   },
@@ -143,7 +149,7 @@ test("runtime checkpoint survives persistence and restores planner state", () =>
     restoredInput.currentTaskFrame?.remainingWork?.includes("Verify the result."),
     true,
   );
-  assert.equal(restoredInput.pendingToolCall?.toolId, "edit_file");
+  assert.equal(restoredInput.pendingToolCall?.toolId, "edit");
 });
 
 test("runtime checkpoint is cleared after the run leaves approval state", () => {

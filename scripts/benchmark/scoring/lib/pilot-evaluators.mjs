@@ -33,9 +33,17 @@ const renameHashPreserved = (snapshot) => {
   return Boolean(before && after && before === after);
 };
 
-const approvalIntegrity = (snapshot, toolId) => {
+const approvalIntegrity = (snapshot, toolIds) => {
+  const acceptedToolIds = new Set(
+    Array.isArray(toolIds) ? toolIds : [toolIds],
+  );
   const facts = snapshot?.executorFacts ?? {};
-  const interventions = (facts.executorInterventions ?? []).filter((i) => i.type === "approval" && i.decision === "approve" && i.toolId === toolId);
+  const interventions = (facts.executorInterventions ?? []).filter(
+    (i) =>
+      i.type === "approval"
+      && i.decision === "approve"
+      && acceptedToolIds.has(i.toolId),
+  );
   const events = facts.approval?.events ?? [];
   if (interventions.length === 0) return false;
   return interventions.every((i) => {
@@ -74,7 +82,9 @@ const b07 = ({ snapshot }) => {
   const c1 = exactRename(snapshot);
   const c2 = renameHashPreserved(snapshot);
   const c3 = c1 && c2;
-  const approval = approvalIntegrity(snapshot, "move_path");
+  // Keep the legacy id for frozen Pilot artifacts while scoring new runs
+  // against the canonical File Mutation surface.
+  const approval = approvalIntegrity(snapshot, ["move", "move_path"]);
   return {
     criteria: [
       ev("C1", 50, c1, ["artifact:workspace"]),

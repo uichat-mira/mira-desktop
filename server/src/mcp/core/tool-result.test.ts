@@ -179,6 +179,40 @@ describe("ToolResult B-prime normalization", () => {
     });
   });
 
+
+
+  it("marks committed move cleanup failures as partial file-mutation evidence", () => {
+    const evidence = projectToolEvidence(
+      definition("move", "internal", "edit"),
+      normalizeToolResult({
+        structuredContent: {
+          operation: "move",
+          path: "source-dir",
+          destinationPath: "destination-dir",
+          movedType: "directory",
+          overwritten: true,
+          changed: true,
+          cleanupIncomplete: true,
+          cleanupBackupPath: "/workspace/.destination-dir.mira-backup-test",
+          cleanupError: "EPERM",
+          diffAvailable: false,
+        },
+      }),
+    );
+
+    expect(evidence?.status).toBe("partial");
+    expect(evidence?.facts).toContain("cleanupIncomplete=true");
+    expect(evidence?.gaps?.join(" ")).toContain("backup cleanup is incomplete");
+    expect(evidence?.data).toMatchObject({
+      kind: "file_mutation",
+      operation: "move",
+      changed: true,
+      cleanupIncomplete: true,
+      cleanupBackupPath: "/workspace/.destination-dir.mira-backup-test",
+      cleanupError: "EPERM",
+    });
+  });
+
   it("preserves degraded codebase exploration as partial evidence", () => {
     const evidence = projectToolEvidence(
       definition("codebase_explore"),

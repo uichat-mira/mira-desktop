@@ -61,7 +61,7 @@ Registry 中存在不代表：
 
 ### Public Surface
 
-当前会隐藏内部 / 兼容工具：
+当前会隐藏内部 / 兼容 Read primitive：
 
 ```text
 read_open
@@ -69,9 +69,9 @@ read_list
 read_locate
 read_extract
 read_slice
-edit_file
-workspace_mutation
 ```
+
+旧本地 mutation id 已退出 registry，不再依赖 exposure filter 做隐藏兼容。
 
 ### Availability Gate
 
@@ -157,7 +157,10 @@ Exposure schema 必须：
 ```text
 read
 grep
-write_file
+write
+edit
+move
+delete
 web_search
 terminal_session
 browser_observe

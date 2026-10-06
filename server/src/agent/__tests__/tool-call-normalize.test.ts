@@ -39,7 +39,7 @@ const createState = (
       "read_list",
       "web_search",
       "terminal_session",
-      "workspace_mutation",
+      "delete",
     ],
     toolMeta: [
       {
@@ -139,32 +139,27 @@ const createState = (
         },
       },
       {
-        toolId: "workspace_mutation",
-        title: "Workspace Mutation",
-        description: "Mutate workspace files",
+        toolId: "delete",
+        title: "Delete",
+        description: "Delete a workspace file or directory",
         inputSchema: {
           type: "object",
-          required: ["operation", "targetPath"],
+          required: ["path"],
           properties: {
-            operation: {
-              type: "string",
-              enum: ["delete", "move", "write"],
-            },
-            targetPath: { type: "string" },
-            destinationPath: { type: "string" },
-            content: { type: "string" },
+            path: { type: "string" },
+            recursive: { type: "boolean" },
           },
           additionalProperties: false,
         },
         domain: "edit",
         source: "internal",
-        tags: ["edit"],
+        tags: ["edit", "delete"],
         capabilities: {
           sideEffect: "local-write",
           requiresApproval: true,
           workspaceBound: true,
           workspaceBoundary: {
-            argKeys: ["targetPath", "destinationPath"],
+            argKeys: ["path"],
           },
         },
       },
@@ -294,15 +289,14 @@ test("toolCallNormalizeNode rejects workspace-root-relative traversal attempts",
   assert.match(patch.errorMessage ?? "", /escaped the workspace root/i);
 });
 
-test("toolCallNormalizeNode preserves non-sentinel absolute mutation targetPath", async () => {
+test("toolCallNormalizeNode preserves non-sentinel absolute mutation path", async () => {
   const patch = await toolCallNormalizeNode(
     createState({
       nextAction: {
         type: "use_tool",
-        toolId: "workspace_mutation",
+        toolId: "delete",
         args: {
-          operation: "delete",
-          targetPath: "/ONLY_ALT_WORKSPACE.txt",
+          path: "/ONLY_ALT_WORKSPACE.txt",
         },
         reason: "Delete the workspace file.",
       },
@@ -311,20 +305,19 @@ test("toolCallNormalizeNode preserves non-sentinel absolute mutation targetPath"
 
   assert.equal(patch.errorMessage, undefined);
   assert.deepEqual(patch.pendingToolCall?.args, {
-    operation: "delete",
-    targetPath: "/ONLY_ALT_WORKSPACE.txt",
+    path: "/ONLY_ALT_WORKSPACE.txt",
   });
 });
 
-test("toolCallNormalizeNode rejects workspace_mutation traversal targetPath", async () => {
+test("toolCallNormalizeNode rejects delete traversal path", async () => {
   const patch = await toolCallNormalizeNode(
     createState({
       nextAction: {
         type: "use_tool",
-        toolId: "workspace_mutation",
+        toolId: "delete",
         args: {
           operation: "delete",
-          targetPath: "..\\outside.txt",
+          path: "..\\outside.txt",
         },
         reason: "Delete the outside file.",
       },
@@ -335,15 +328,14 @@ test("toolCallNormalizeNode rejects workspace_mutation traversal targetPath", as
   assert.match(patch.errorMessage ?? "", /escaped the workspace root/i);
 });
 
-test("toolCallNormalizeNode preserves Windows absolute workspace_mutation targetPath for boundary rejection", async () => {
+test("toolCallNormalizeNode preserves Windows absolute delete path for boundary rejection", async () => {
   const patch = await toolCallNormalizeNode(
     createState({
       nextAction: {
         type: "use_tool",
-        toolId: "workspace_mutation",
+        toolId: "delete",
         args: {
-          operation: "delete",
-          targetPath: "D:\\outside.txt",
+          path: "D:\\outside.txt",
         },
         reason: "Delete the outside file.",
       },
@@ -352,8 +344,7 @@ test("toolCallNormalizeNode preserves Windows absolute workspace_mutation target
 
   assert.equal(patch.errorMessage, undefined);
   assert.deepEqual(patch.pendingToolCall?.args, {
-    operation: "delete",
-    targetPath: "D:\\outside.txt",
+    path: "D:\\outside.txt",
   });
 });
 
@@ -742,7 +733,7 @@ test("toolCallNormalizeNode fails when toolId is not exposed", async () => {
       },
       nextAction: {
         type: "use_tool",
-        toolId: "workspace_mutation",
+        toolId: "delete",
         args: {},
         reason: "Need file changes.",
       },
@@ -987,7 +978,7 @@ test("toolCallNormalizeNode emits failure trace details without dumping args", a
     createState({
       nextAction: {
         type: "use_tool",
-        toolId: "workspace_mutation",
+        toolId: "delete",
         args: { command: "dir" },
         reason: "Need file changes.",
       },
@@ -1007,7 +998,7 @@ test("toolCallNormalizeNode emits failure trace details without dumping args", a
   );
   assert.ok(errorEvent);
   const details = errorEvent?.details as Record<string, unknown>;
-  assert.equal(details.toolId, "workspace_mutation");
+  assert.equal(details.toolId, "delete");
   assert.equal(typeof details.availableToolCount, "number");
   assert.equal("args" in details, false);
 });

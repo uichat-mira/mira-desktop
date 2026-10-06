@@ -328,7 +328,7 @@ GitHub 模式需要一个独立的本地施工现场，用于：
 
 # 本地文件施工
 
-本地文件施工统一由 `terminal_session` 承担，不要求 Skill 感知 `write_file`、`replace_block`、`delete_path`、`move_path` 或兼容层 `edit_file` 等实现细节。具体命令仍走终端审批、Workspace 边界和执行回读。
+本地文件施工统一由 `terminal_session` 承担，不要求 Skill 感知 canonical `write`、`edit`、`delete`、`move` 等 File Mutation 实现细节。具体命令仍走终端审批、Workspace 边界和执行回读。
 
 Skill 命中不代表工具已经进入本轮 ToolExposure。Planner 只能使用当前真实暴露并通过 Policy 的能力。当前环境已经真实暴露的能力，不应被 Skill 人为回避；当前步骤需要时应实际调用。
 

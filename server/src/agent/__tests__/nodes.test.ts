@@ -609,7 +609,7 @@ test("generateNode does not semantically rewrite ordinary model text", async () 
   assert.equal(result.answer, "我将调用 read_open 来打开 README.md。");
 });
 
-test("createToolExecutionEvidenceSummary marks applied edit_file replacement as a real mutation", () => {
+test("createToolExecutionEvidenceSummary preserves historical edit_file mutation evidence", () => {
   const summary = createToolExecutionEvidenceSummary({
     question: "把 notes.txt 里的 old 替换成 new",
     execution: {
@@ -632,16 +632,26 @@ test("createToolExecutionEvidenceSummary marks applied edit_file replacement as 
           bytes: Buffer.byteLength("new", "utf-8"),
         },
       },
-      evidence: normalizedEvidence("edit_file", {
-        actionProfileId: "edit_replace_block",
-        runtimeToolId: "edit_file",
-        result: {
-          path: "notes.txt",
-          operation: "replace_block",
+      evidence: {
+        status: "completed",
+        actionTaken: "Changed workspace file notes.txt.",
+        facts: [
+          "operation=replace",
+          "targetPath=notes.txt",
+          "dryRun=false",
+          "changed=true",
+        ],
+        data: {
+          kind: "edit_file",
+          operation: "replace",
+          targetPath: "notes.txt",
           dryRun: false,
-          bytes: Buffer.byteLength("new", "utf-8"),
+          changed: true,
+          replaced: true,
+          actionProfileId: "edit_replace_block",
+          runtimeToolId: "edit_file",
         },
-      }),
+      },
       startedAt: "2026-07-07T00:00:00.000Z",
       finishedAt: "2026-07-07T00:00:01.000Z",
     },
@@ -660,7 +670,7 @@ test("createToolExecutionEvidenceSummary marks applied edit_file replacement as 
   }
 });
 
-test("createToolExecutionEvidenceSummary maps workspace_mutation delete to completed mutation evidence", () => {
+test("createToolExecutionEvidenceSummary preserves historical workspace_mutation evidence", () => {
   const summary = createToolExecutionEvidenceSummary({
     question: "删除 notes.txt",
     execution: {
@@ -678,13 +688,24 @@ test("createToolExecutionEvidenceSummary maps workspace_mutation delete to compl
         deletedType: "file",
         recursive: false,
       },
-      evidence: normalizedEvidence("workspace_mutation", {
-        operation: "delete",
-        targetPath: "notes.txt",
-        dryRun: false,
-        deletedType: "file",
-        recursive: false,
-      }),
+      evidence: {
+        status: "completed",
+        actionTaken: "Applied workspace mutation to notes.txt.",
+        facts: [
+          "operation=delete",
+          "targetPath=notes.txt",
+          "dryRun=false",
+          "changed=true",
+        ],
+        data: {
+          kind: "workspace_mutation",
+          operation: "delete",
+          targetPath: "notes.txt",
+          dryRun: false,
+          changed: true,
+          deleted: true,
+        },
+      },
       startedAt: "2026-07-07T00:00:00.000Z",
       finishedAt: "2026-07-07T00:00:01.000Z",
     },

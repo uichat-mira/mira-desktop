@@ -267,8 +267,8 @@ test("matchToolCandidatesByEmbedding respects topK while keeping selection empty
           finalScore: 0.66,
         },
         {
-          toolId: "edit_file",
-          title: "Edit File",
+          toolId: "edit",
+          title: "Edit",
           description: "Modify workspace files through managed editing",
           domain: "edit",
           source: "internal",

@@ -49,8 +49,8 @@ const readTool = {
 };
 
 const writeTool = {
-  id: "write_file",
-  title: "Write File",
+  id: "write",
+  title: "Write",
   description: "Write",
   domain: "edit",
   source: "internal",
@@ -264,10 +264,10 @@ describe("useCapabilities", () => {
     expect(result.current.canOpenManual).toBe(false);
 
     act(() => {
-      result.current.selectTool("write_file");
+      result.current.selectTool("write");
     });
 
-    await waitFor(() => expect(result.current.selectedTool?.id).toBe("write_file"));
+    await waitFor(() => expect(result.current.selectedTool?.id).toBe("write"));
     expect(result.current.canOpenManual).toBe(true);
   });
 
@@ -312,7 +312,7 @@ describe("useCapabilities", () => {
         onEvent({
           type: "invocation:start",
           invocationId: "inv-approval",
-          toolId: "write_file",
+          toolId: "write",
           at: "2026-10-05T00:00:00.000Z",
         });
         onEvent({
@@ -332,12 +332,11 @@ describe("useCapabilities", () => {
     );
     getMcpInvocationMock.mockResolvedValue({
       id: "inv-approval",
-      toolId: "write_file",
+      toolId: "write",
       status: "awaiting_approval",
       args: {
         path: ".tool-lab-fixtures/platform-approval-boundary/approval-probe.txt",
         content: "capabilities-approval-probe",
-        dryRun: true,
       },
       approval: {
         required: true,
@@ -349,7 +348,7 @@ describe("useCapabilities", () => {
     getMcpInvocationTraceMock.mockResolvedValue({
       traceId: "trace-approval",
       invocationId: "inv-approval",
-      toolId: "write_file",
+      toolId: "write",
       startedAt: "2026-10-05T00:00:00.000Z",
       spans: [],
     });
@@ -359,16 +358,17 @@ describe("useCapabilities", () => {
 
     await waitFor(() => {
       expect(result.current.tools.some((tool) => tool.id === "read")).toBe(true);
-      expect(result.current.tools.some((tool) => tool.id === "write_file")).toBe(true);
+      expect(result.current.tools.some((tool) => tool.id === "write")).toBe(true);
     });
 
     act(() => {
-      result.current.selectTool("write_file");
+      result.current.selectCase("core-approval-boundary");
     });
 
-    await waitFor(() =>
-      expect(result.current.selectedCase?.id).toBe("core-approval-boundary"),
-    );
+    await waitFor(() => {
+      expect(result.current.selectedTool?.id).toBe("write");
+      expect(result.current.selectedCase?.id).toBe("core-approval-boundary");
+    });
 
     await act(async () => {
       await result.current.runSelectedCase();
@@ -376,8 +376,11 @@ describe("useCapabilities", () => {
 
     expect(executeMcpInvocationStreamMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        toolId: "write_file",
-        args: expect.objectContaining({ dryRun: true }),
+        toolId: "write",
+        args: expect.objectContaining({
+          path: ".tool-lab-fixtures/platform-approval-boundary/approval-probe.txt",
+          content: "capabilities-approval-probe",
+        }),
       }),
       expect.any(Function),
     );
@@ -392,7 +395,7 @@ describe("useCapabilities", () => {
       result.current.selectCase("core-read-success");
     });
 
-    expect(result.current.selectedTool?.id).toBe("write_file");
+    expect(result.current.selectedTool?.id).toBe("write");
     expect(result.current.selectedCase?.id).toBe("core-approval-boundary");
     expect(result.current.runState.invocation?.id).toBe("inv-approval");
 
@@ -407,7 +410,7 @@ describe("useCapabilities", () => {
     resolveMcpInvocationApprovalMock.mockResolvedValue({
       originalInvocation: {
         id: "inv-approval",
-        toolId: "write_file",
+        toolId: "write",
         status: "completed",
         args: {},
         approval: {
@@ -424,7 +427,7 @@ describe("useCapabilities", () => {
       },
       resumedInvocation: {
         id: "inv-resumed",
-        toolId: "write_file",
+        toolId: "write",
         status: "completed",
         args: {},
         result: { ok: true },
@@ -448,11 +451,10 @@ describe("useCapabilities", () => {
       "inv-approval",
       {
         decision: "approved",
-        toolId: "write_file",
+        toolId: "write",
         args: {
           path: ".tool-lab-fixtures/platform-approval-boundary/approval-probe.txt",
           content: "capabilities-approval-probe",
-          dryRun: true,
         },
       },
     );
