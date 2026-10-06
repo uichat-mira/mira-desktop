@@ -461,6 +461,14 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         input.now,
         input.hostId,
       );
+      this.storage.sql.exec(
+        `UPDATE notification_events
+         SET state = 'cancelled', next_attempt_at = NULL,
+             last_error = 'host_binding_revoked'
+         WHERE host_id = ?
+           AND state IN ('pending', 'waiting_token_refresh')`,
+        input.hostId,
+      );
       this.insertNonce(
         input.requestNonce,
         "revoke-binding",
@@ -584,6 +592,21 @@ export class SqlBrokerPersistence implements BrokerPersistence {
   recordDeliveryAttempt(input: RecordDeliveryAttemptInput) {
     this.storage.transactionSync(() => {
       this.insertDeliveryAttempt(input);
+      const currentEvent = this.getEvent(input.eventId);
+      if (
+        currentEvent?.state === "cancelled" &&
+        input.eventState !== "delivered"
+      ) {
+        this.storage.sql.exec(
+          `UPDATE notification_events
+           SET attempt_count = ?, provider_request_id = ?
+           WHERE event_id = ?`,
+          input.attemptNo,
+          input.providerRequestId,
+          input.eventId,
+        );
+        return;
+      }
       this.storage.sql.exec(
         `UPDATE notification_events
          SET state = ?, attempt_count = ?, next_attempt_at = ?,

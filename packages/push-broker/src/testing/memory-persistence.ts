@@ -160,6 +160,20 @@ export class MemoryBrokerPersistence implements BrokerPersistence {
     const binding = this.bindings.get(input.hostId);
     if (!binding || binding.revokedAt) return "binding_not_found" as const;
     this.bindings.set(input.hostId, { ...binding, revokedAt: input.now });
+    for (const [eventId, event] of this.events) {
+      if (
+        event.hostId === input.hostId &&
+        (event.state === "pending" ||
+          event.state === "waiting_token_refresh")
+      ) {
+        this.events.set(eventId, {
+          ...event,
+          state: "cancelled",
+          nextAttemptAt: null,
+          lastError: "host_binding_revoked",
+        });
+      }
+    }
     this.nonces.add(input.requestNonce);
     return "ok" as const;
   }
@@ -244,6 +258,14 @@ export class MemoryBrokerPersistence implements BrokerPersistence {
     });
     const event = this.events.get(input.eventId);
     if (event) {
+      if (event.state === "cancelled" && input.eventState !== "delivered") {
+        this.events.set(input.eventId, {
+          ...event,
+          attemptCount: input.attemptNo,
+          providerRequestId: input.providerRequestId,
+        });
+        return;
+      }
       this.events.set(input.eventId, {
         ...event,
         state: input.eventState,

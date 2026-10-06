@@ -457,3 +457,67 @@ test("duplicate ingest after provider acceptance never dispatches the provider t
   assert.equal(calls.length, 1);
   assert.equal(store.events.size, 1);
 });
+
+
+test("binding revoke cancels pending provider delivery for that Host", async () => {
+  const store = new MemoryBrokerPersistence();
+  const service = new BrokerService(store, storageKey, () => NOW);
+  const installationKey = await createKeyPair();
+  const hostKey = await createKeyPair();
+  await register(service, installationKey);
+  const binding = await approve(service, installationKey, hostKey);
+  const deliveryToken = String(binding.json.deliveryToken);
+
+  const pendingEvent = await createEvent(hostKey, {
+    eventId: "event-cancel-on-binding-revoke",
+  });
+  const accepted = await post(service, "/events", pendingEvent, deliveryToken);
+  assert.equal(accepted.status, 202);
+  assert.equal(
+    store.getEvent("event-cancel-on-binding-revoke")?.state,
+    "pending",
+  );
+
+  const revokeUnsigned = {
+    schemaVersion: BROKER_SCHEMA_VERSION as 1,
+    installationId: INSTALLATION_ID,
+    hostId: "host-1",
+    requestNonce: "cancel-pending-binding-revoke",
+    issuedAt: new Date(NOW).toISOString(),
+  };
+  const revoked = await post(service, "/bindings/revoke", {
+    ...revokeUnsigned,
+    installationSignature: await sign(
+      installationKey.privateKey,
+      bindingRevokeSigningValue(revokeUnsigned),
+    ),
+  });
+  assert.equal(revoked.status, 200);
+  assert.equal(
+    store.getEvent("event-cancel-on-binding-revoke")?.state,
+    "cancelled",
+  );
+
+  let providerCalls = 0;
+  const worker = new BrokerDeliveryWorker(
+    store,
+    storageKey,
+    {
+      android: {
+        provider: "fcm",
+        async send() {
+          providerCalls += 1;
+          return {
+            type: "accepted",
+            provider: "fcm",
+            requestId: "should-not-send",
+            httpStatus: 200,
+          };
+        },
+      },
+    },
+    () => NOW,
+  );
+  await worker.drain();
+  assert.equal(providerCalls, 0);
+});

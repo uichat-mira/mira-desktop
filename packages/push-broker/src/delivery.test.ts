@@ -310,3 +310,59 @@ test("token refresh racing an invalid-token response preserves the fresh token",
   assert.equal(calls, 2);
   assert.equal(store.getEvent("event-refresh-race")?.state, "delivered");
 });
+
+
+test("binding revoke during a retryable provider request cannot resurrect the event", async () => {
+  const store = await prepareStore("android", START);
+  const binding = store.commitBinding({
+    hostId: "host-1",
+    hostPublicKey: "host-public-key",
+    sourceScope: ["thread:alpha"],
+    deliveryTokenHash: "delivery-token-hash",
+    bindingNonce: "binding-race-nonce",
+    nonceExpiresAt: new Date(START + 60_000).toISOString(),
+    now: new Date(START).toISOString(),
+  });
+  assert.equal(binding, "ok");
+  store.commitEvent(event("event-revoke-race", START));
+
+  let calls = 0;
+  const adapter: PushProviderAdapter = {
+    provider: "fcm",
+    async send() {
+      calls += 1;
+      const revoked = store.revokeBinding({
+        hostId: "host-1",
+        requestNonce: "revoke-during-provider-request",
+        nonceExpiresAt: new Date(START + 60_000).toISOString(),
+        now: new Date(START).toISOString(),
+      });
+      assert.equal(revoked, "ok");
+      return {
+        type: "retryable",
+        provider: "fcm",
+        requestId: null,
+        httpStatus: 503,
+        errorCode: "UNAVAILABLE",
+      };
+    },
+  };
+  const worker = new BrokerDeliveryWorker(
+    store,
+    storageKey,
+    { android: adapter },
+    () => START,
+  );
+
+  await worker.drain();
+  assert.equal(calls, 1);
+  assert.equal(store.getEvent("event-revoke-race")?.state, "cancelled");
+  assert.equal(store.getEvent("event-revoke-race")?.nextAttemptAt, null);
+  assert.equal(
+    store.getEvent("event-revoke-race")?.lastError,
+    "host_binding_revoked",
+  );
+
+  await worker.drain();
+  assert.equal(calls, 1);
+});
