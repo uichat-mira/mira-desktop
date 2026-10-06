@@ -66,6 +66,21 @@ const createThreadTables = () => {
     CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 
+    CREATE TABLE IF NOT EXISTS canonical_message_cleanup_jobs (
+      id TEXT PRIMARY KEY,
+      payload_json TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'pending'
+        CHECK (state IN ('pending', 'failed')),
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT NOT NULL,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_canonical_message_cleanup_delivery
+      ON canonical_message_cleanup_jobs(state, next_attempt_at);
+
     CREATE TABLE IF NOT EXISTS host_notification_identity (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       host_id TEXT NOT NULL UNIQUE,
