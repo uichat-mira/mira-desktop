@@ -312,7 +312,7 @@ const generalSettingsRoute: FastifyPluginAsync = async (app) => {
     },
     routeHandler("Failed to revoke remote device", async (request) => {
       const userId = request.authUser?.id;
-      const revoked = tailscaleRemoteAccessRepository.revokeDevice(
+      const revoked = tailscaleRemoteAccessService.revokeDevice(
         request.params.id,
         userId,
       );
