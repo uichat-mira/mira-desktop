@@ -55,8 +55,9 @@ const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
   edit: { path: "", edits: [{ oldText: "", newText: "" }] },
   delete: { path: "" },
   move: { path: "", destinationPath: "" },
-  apply_patch: { patchText: "*** Begin Patch\n*** End Patch" },
-  web_search: { query: "" },
+  apply_patch: { patchText: "*** Begin Patch\\n*** End Patch" },
+  web_search: { queries: [""] },
+  web_fetch: { url: "" },
   news_search: { query: "" },
   github_repository: {
     operation: "get",
@@ -90,7 +91,7 @@ const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
     limit: 20,
     page: 1,
   },
-  terminal_session: { command: "" },
+  terminal: { command: "" },
 };
 
 const fallbackDomainMetadata = (domain: string) => ({
