@@ -425,7 +425,7 @@ describe("mcp invocations", () => {
 
     const tool: ToolImplementation = {
       definition: {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "terminal",
         domain: "terminal",
@@ -465,11 +465,11 @@ describe("mcp invocations", () => {
     };
 
     const record = await executeHarnessInvocation({
-      toolId: "terminal_session",
+      toolId: "terminal",
       args: nextArgs,
       approvedInvocations: [
         {
-          toolId: "terminal_session",
+          toolId: "terminal",
           inputHash: createInvocationInputHash(approvedArgs),
         },
       ],

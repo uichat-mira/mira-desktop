@@ -95,7 +95,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
   it("exposes action profile metadata for terminal and edit capability groups", () => {
     const profiles = resolveHarnessCapabilityProfiles([
       {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "terminal",
         domain: "terminal",
@@ -142,7 +142,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "terminal_execution",
-          preferredToolId: "terminal_session",
+          preferredToolId: "terminal",
           actionProfileId: "terminal_execute_command",
         }),
         expect.objectContaining({

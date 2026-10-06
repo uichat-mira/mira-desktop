@@ -141,7 +141,7 @@ describe("browser-intent Harness candidate exposure", () => {
     );
     registerTool(
       createTool({
-        id: "terminal_session",
+        id: "terminal",
         domain: "terminal",
         tags: ["terminal", "shell"],
         sideEffect: "process",
@@ -179,7 +179,7 @@ describe("browser-intent Harness candidate exposure", () => {
         "browser_act",
         "browser_assert",
         "write_file",
-        "terminal_session",
+        "terminal",
       ]),
     );
     expect(result.toolExposure.reason).not.toContain(

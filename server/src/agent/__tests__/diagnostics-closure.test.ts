@@ -98,7 +98,7 @@ const webSearchTool = () =>
 
 const terminalTool = () =>
   makeToolDefinition({
-    id: "terminal_session",
+    id: "terminal",
     domain: "terminal",
     inputSchema: {
       type: "object",
@@ -262,7 +262,7 @@ test("diagnostics closure records planner and normalize reasons when the selecte
 
   vi.spyOn(providerProxyService, "streamTaskChatText").mockImplementation(
     async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"dir"},"reason":"Need terminal."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"dir"},"reason":"Need terminal."}';
     },
   );
 
@@ -316,7 +316,7 @@ test("diagnostics closure records planner and normalize reasons when the selecte
       messages: [makeMessage("open README.md")],
       nextAction: {
         type: "use_tool",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args: { command: "dir" },
         reason: "Need terminal.",
       },
@@ -397,7 +397,7 @@ test("diagnostics closure records runtime timedOut evidence as not answer-ready"
   setupToolExposure("run pwd", [terminalSession]);
   vi.spyOn(providerProxyService, "streamTaskChatText")
     .mockImplementationOnce(async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"pwd"},"reason":"Need command output."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"pwd"},"reason":"Need command output."}';
     })
     .mockImplementationOnce(async function* () {
       yield '{"type":"answer","reason":"Timeout evidence is not enough for a grounded command result.","completionProof":[{"criterion":"report the command outcome","evidenceRefs":["tool:0"]}],"unresolvedGaps":[]}';
@@ -426,7 +426,7 @@ test("diagnostics closure records runtime timedOut evidence as not answer-ready"
   );
   vi.spyOn(harnessInvocations, "executeHarnessInvocation").mockResolvedValue({
     id: "invocation-terminal-timeout-1",
-    toolId: "terminal_session",
+    toolId: "terminal",
     status: "completed",
     result: timedOutResult,
     evidence: timedOutEvidence,

@@ -50,7 +50,7 @@ test("Generate excludes only agent-execution request context", async () => {
       },
       {
         role: "system",
-        content: "你可以使用当前可用工具。当前可用工具：read_open, terminal_session",
+        content: "你可以使用当前可用工具。当前可用工具：read_open, terminal",
         requestContextScope: "agent-execution",
       },
     ],
@@ -120,8 +120,8 @@ test("Generate excludes only agent-execution request context", async () => {
   assert.equal(result.answer, "已有工具执行完成。");
   assert.match(generationPrompt, /角色设定：保持回答简洁/);
   assert.match(generationPrompt, /线程摘要：工具已经执行完成/);
-  assert.doesNotMatch(generationPrompt, /当前可用工具|read_open|terminal_session/);
+  assert.doesNotMatch(generationPrompt, /当前可用工具|read_open|terminal/);
   assert.match(budgetPreface, /角色设定：保持回答简洁/);
   assert.match(budgetPreface, /线程摘要：工具已经执行完成/);
-  assert.doesNotMatch(budgetPreface, /当前可用工具|read_open|terminal_session/);
+  assert.doesNotMatch(budgetPreface, /当前可用工具|read_open|terminal/);
 });

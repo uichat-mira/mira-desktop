@@ -145,7 +145,7 @@ test("resolveChatToolSurface exposes only allowlisted safe chat tools by default
     toolSurface.map((tool) => tool.id),
     [...__chatToolSurfaceTestUtils.DEFAULT_CHAT_TOOL_ALLOWLIST],
   );
-  assert.ok(toolSurface.every((tool) => tool.id !== "terminal_session"));
+  assert.ok(toolSurface.every((tool) => tool.id !== "terminal"));
 });
 
 test("resolveChatToolSurface respects custom allowlist and maxTools trimming", () => {
@@ -164,7 +164,7 @@ test("resolveChatToolSurface respects custom allowlist and maxTools trimming", (
     new Set(["list", "read", "web_search"]),
   );
   assert.ok(toolSurface.every((tool) => tool.id !== "read_list"));
-  assert.ok(toolSurface.every((tool) => tool.id !== "terminal_session"));
+  assert.ok(toolSurface.every((tool) => tool.id !== "terminal"));
 });
 
 
