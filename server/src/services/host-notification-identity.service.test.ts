@@ -53,6 +53,8 @@ test("Host notification identity is stable and private key is encrypted at rest"
 
   assert.equal(second.hostId, first.hostId);
   assert.equal(second.publicKey, first.publicKey);
+  assert.equal("privateKeyPem" in first, false);
+  assert.equal("privateKeyPem" in second, false);
 
   const row = getSqlite()
     .prepare(
@@ -60,13 +62,14 @@ test("Host notification identity is stable and private key is encrypted at rest"
     )
     .get() as { encrypted: string };
   assert.equal(row.encrypted.includes("BEGIN PRIVATE KEY"), false);
-  assert.notEqual(row.encrypted, first.privateKeyPem);
 });
 
 test("binding descriptor is Host-signed, scoped, expiring and one-time", () => {
   const now = Date.parse("2026-10-06T04:45:00.000Z");
   const descriptor = hostNotificationIdentityService.createBindingDescriptor({
     installationId: "installation-1",
+    originRemoteDeviceId: "device-1",
+    ownerUserId: 7,
     sourceScope: ["thread-b", "thread-a", "thread-a"],
     now,
   });
@@ -106,6 +109,8 @@ test("binding descriptor is Host-signed, scoped, expiring and one-time", () => {
   const accepted = hostNotificationIdentityService.acceptApprovedBinding({
     bindingNonce: descriptor.bindingNonce,
     installationId: descriptor.installationId,
+    originRemoteDeviceId: "device-1",
+    ownerUserId: 7,
     deliveryToken: token,
     sourceScope: descriptor.sourceScope,
     now: new Date(now + 1_000).toISOString(),
@@ -125,6 +130,8 @@ test("binding descriptor is Host-signed, scoped, expiring and one-time", () => {
       hostNotificationIdentityService.acceptApprovedBinding({
         bindingNonce: descriptor.bindingNonce,
         installationId: descriptor.installationId,
+        originRemoteDeviceId: "device-1",
+        ownerUserId: 7,
         deliveryToken: token,
         sourceScope: descriptor.sourceScope,
         now: new Date(now + 2_000).toISOString(),
@@ -137,6 +144,8 @@ test("binding acceptance rejects scope substitution", () => {
   const now = Date.parse("2026-10-06T04:50:00.000Z");
   const descriptor = hostNotificationIdentityService.createBindingDescriptor({
     installationId: "installation-scope",
+    originRemoteDeviceId: "device-scope",
+    ownerUserId: 7,
     sourceScope: ["thread-allowed"],
     now,
   });
@@ -146,6 +155,8 @@ test("binding acceptance rejects scope substitution", () => {
       hostNotificationRepository.acceptBindingCapability({
         nonce: descriptor.bindingNonce,
         installationId: descriptor.installationId,
+        originRemoteDeviceId: "device-scope",
+        ownerUserId: 7,
         brokerBaseUrl: "https://push.example.test",
         deliveryToken: "delivery_abcdefghijklmnopqrstuvwxyz0123456789",
         sourceScope: ["thread-other"],
