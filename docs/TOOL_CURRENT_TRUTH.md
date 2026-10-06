@@ -1,7 +1,7 @@
 ---
 status: current
 owner: runtime
-last_verified: 2026-07-30
+last_verified: 2026-10-06
 layer: wiki
 module: Tool
 feature: ToolRuntime
