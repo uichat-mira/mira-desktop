@@ -643,6 +643,78 @@ test("buildNextActionPlannerMessages only uses toolExposure as the planner-visib
   );
 });
 
+test("buildNextActionPlannerMessages gives Terminal exposure-aware alternatives without narrowing cwd authority", () => {
+  const terminalExposure = {
+    exposedTools: ["terminal", "read_open", "web_search"],
+    toolMeta: [
+      {
+        toolId: "terminal",
+        title: "Terminal",
+        description: "Run host commands.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            command: { type: "string" },
+            cwd: { type: "string" },
+          },
+        },
+        domain: "terminal",
+        source: "internal" as const,
+        tags: ["terminal"],
+        capabilities: {
+          sideEffect: "process" as const,
+          requiresApproval: true,
+          workspaceBound: true,
+          workspaceBoundary: {
+            argKeys: ["cwd"],
+            argTypes: { cwd: "directory" as const },
+          },
+          longRunning: true,
+          sandboxRequired: false,
+        },
+      },
+      baseToolExposure.toolMeta[0]!,
+      baseToolExposure.toolMeta[1]!,
+    ],
+  };
+
+  const messages = buildNextActionPlannerMessages({
+    question: "Run the repository tests.",
+    messages: createState().messages,
+    observationContext: buildPlannerObservationContext(createState()),
+    toolExposure: terminalExposure,
+    iteration: 0,
+    maxIterations: 3,
+  });
+
+  const payload = JSON.parse(String(messages[1]?.content ?? "{}")) as {
+    toolExposure: {
+      toolMeta: Array<{ toolId: string; description: string }>;
+    };
+  };
+  const terminalMeta = payload.toolExposure.toolMeta.find(
+    (tool) => tool.toolId === "terminal",
+  );
+  const systemPrompt = String(messages[0]?.content ?? "");
+
+  assert.ok(terminalMeta);
+  assert.match(terminalMeta.description, /real process\/shell work/i);
+  assert.match(terminalMeta.description, /execution escape hatch/i);
+  assert.match(terminalMeta.description, /read_open/);
+  assert.match(terminalMeta.description, /web_search/);
+  assert.doesNotMatch(terminalMeta.description, /write|delete|web_fetch/);
+
+  assert.match(
+    systemPrompt,
+    /绝对路径和父级跳转也是有效的 host 执行目录/,
+  );
+  assert.match(systemPrompt, /Policy \/ Approval \/ runtime authority/);
+  assert.doesNotMatch(
+    systemPrompt,
+    /对 terminal\.cwd，只能输出 workspace-relative directory/,
+  );
+});
+
 test("buildNextActionPlannerMessages keeps a bounded recent user and assistant history window", () => {
   const messages = buildNextActionPlannerMessages({
     question: "那一段展开说说",
