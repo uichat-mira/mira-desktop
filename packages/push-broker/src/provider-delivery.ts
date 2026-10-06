@@ -239,6 +239,11 @@ export class FcmProviderAdapter implements PushProviderAdapter {
       extractFcmErrorCode(responseBody),
       `HTTP_${response.status}`,
     );
+    if (response.status === 401) {
+      // A cached OAuth token can be revoked or invalidated before its advertised
+      // expiry. Force the next durable retry through service-account auth again.
+      this.cachedAccessToken = null;
+    }
     if (code === "UNREGISTERED" || code === "INVALID_ARGUMENT") {
       return {
         type: "invalid_token",

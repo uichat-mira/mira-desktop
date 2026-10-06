@@ -379,3 +379,58 @@ test("APNs adapter classifies invalid, retryable and rejected responses", async 
   });
   assert.equal(rejected.type, "rejected");
 });
+
+
+test("FCM 401 clears the cached OAuth token before the durable retry", async () => {
+  const privateKeyPem = await createRsaPem();
+  let authCalls = 0;
+  let sendCalls = 0;
+  const adapter = new FcmProviderAdapter(
+    {
+      projectId: "mira-project",
+      clientEmail: "push@example.iam.gserviceaccount.com",
+      privateKeyPem,
+    },
+    (async (input) => {
+      if (String(input).includes("oauth2.googleapis.com")) {
+        authCalls += 1;
+        return new Response(
+          JSON.stringify({
+            access_token: `oauth-access-${authCalls}`,
+            expires_in: 3600,
+          }),
+          { status: 200 },
+        );
+      }
+      sendCalls += 1;
+      if (sendCalls === 1) {
+        return new Response(
+          JSON.stringify({ error: { status: "UNAUTHENTICATED" } }),
+          { status: 401 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ name: "projects/mira/messages/reauthenticated" }),
+        { status: 200 },
+      );
+    }) as typeof fetch,
+  );
+
+  const first = await adapter.send({
+    installationId: "installation-1",
+    providerToken: "token",
+    event,
+    nowMs: NOW,
+  });
+  assert.equal(first.type, "retryable");
+
+  const second = await adapter.send({
+    installationId: "installation-1",
+    providerToken: "token",
+    event,
+    nowMs: NOW + 60_000,
+  });
+  assert.equal(second.type, "accepted");
+  assert.equal(authCalls, 2);
+  assert.equal(sendCalls, 2);
+});
