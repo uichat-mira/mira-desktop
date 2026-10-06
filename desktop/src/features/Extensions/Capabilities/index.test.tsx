@@ -14,6 +14,9 @@ const runSelectedCase = vi.fn();
 const selectTool = vi.fn();
 const selectCase = vi.fn();
 const resolveApproval = vi.fn();
+const runTerminalContinuation = vi.fn();
+const runTerminalStatus = vi.fn();
+const runTerminalStop = vi.fn();
 
 const capabilities = {
   canOpenManual: true,
@@ -36,6 +39,21 @@ const capabilities = {
   readiness: {
     state: "ready" as const,
     reason: "前置条件已满足，可以运行。",
+  },
+  terminalContinuation: null as null | {
+    continuationId: string;
+    nextOutputOffset: number;
+    outputLimitBytes?: number;
+  },
+  terminalSummary: null as null | {
+    command?: string;
+    cwd?: string;
+    sessionId?: string;
+    state?: "running" | "completed" | "failed" | "cancelled";
+    continuationId?: string;
+    continuationAvailable?: boolean;
+    nextOutputOffset?: number;
+    outputLimitBytes?: number;
   },
   runState: {
     isRunning: false,
@@ -104,6 +122,9 @@ const capabilities = {
   resolveApproval,
   runCase,
   runSelectedCase,
+  runTerminalContinuation,
+  runTerminalStatus,
+  runTerminalStop,
   selectCase,
   selectTool,
 };
@@ -153,6 +174,8 @@ describe("CapabilitiesPage", () => {
       state: "ready" as const,
       reason: "前置条件已满足，可以运行。",
     };
+    capabilities.terminalContinuation = null;
+    capabilities.terminalSummary = null;
     delete (
       capabilities.runState.invocation.approval as {
         resolution?: unknown;
@@ -426,6 +449,72 @@ describe("CapabilitiesPage", () => {
 
     expect(screen.getByText("Write workspace files.", { exact: true })).toBeInTheDocument();
     expect(screen.getByText("Native")).toBeInTheDocument();
+  });
+
+  it("shows persistent Terminal controls on the sidebar Capability surface", async () => {
+    const user = userEvent.setup();
+    const terminalTool = {
+      ...capabilities.selectedTool,
+      id: "terminal",
+      title: "Terminal",
+      domain: "terminal",
+      capabilities: {
+        sideEffect: "process" as const,
+        requiresApproval: true,
+        workspaceBound: true,
+        longRunning: true,
+      },
+    };
+    const terminalCase = {
+      ...capabilities.selectedCase,
+      id: "terminal-persistent-start",
+      toolId: "terminal",
+      title: "持久任务",
+      group: "Terminal",
+    };
+    capabilities.tools = [terminalTool];
+    capabilities.cases = [terminalCase];
+    capabilities.toolCases = [terminalCase];
+    capabilities.selectedTool = terminalTool;
+    capabilities.selectedCase = terminalCase;
+    capabilities.terminalContinuation = {
+      continuationId: "continuation-1",
+      nextOutputOffset: 12,
+      outputLimitBytes: 4096,
+    };
+    capabilities.terminalSummary = {
+      command: "node persistent.js",
+      cwd: "/workspace",
+      sessionId: "session-1",
+      state: "running",
+      continuationId: "continuation-1",
+      continuationAvailable: true,
+      nextOutputOffset: 12,
+      outputLimitBytes: 4096,
+    };
+
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("session :: session-1")).toBeInTheDocument();
+    expect(screen.getByText("state :: running")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", {
+      name: "settings.development.capabilities.actions.continueOutput",
+    }));
+    await user.click(screen.getByRole("button", {
+      name: "settings.development.capabilities.actions.inspectStatus",
+    }));
+    await user.click(screen.getByRole("button", {
+      name: "settings.development.capabilities.actions.stopTerminal",
+    }));
+
+    expect(runTerminalContinuation).toHaveBeenCalledOnce();
+    expect(runTerminalStatus).toHaveBeenCalledOnce();
+    expect(runTerminalStop).toHaveBeenCalledOnce();
   });
 
   it("does not render navigation buttons in the Tool surface", () => {
