@@ -386,6 +386,28 @@ test("updateThread stores and clears context summary", () => {
   assert.equal(cleared?.contextSummaryUpdatedAt, null);
 });
 
+test("thread summary lookup enforces the requested owner", () => {
+  const owner = userRepository.create({
+    username: `thread-owner-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const otherUser = userRepository.create({
+    username: `thread-other-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: owner.id });
+
+  assert.ok(threadService.getThreadSummaryById(thread.id, owner.id));
+  assert.equal(
+    threadService.getThreadSummaryById(thread.id, otherUser.id),
+    null,
+  );
+});
+
 test("thread summary responses do not expose legacy RAG flags", () => {
   const user = userRepository.create({
     username: `user-${crypto.randomUUID()}`,
