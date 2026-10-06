@@ -69,7 +69,7 @@ export interface WebFetchTransportResult {
   status: number;
   finalUrl: string;
   contentType: string;
-  body: string;
+  body: Buffer;
   byteLength: number;
   truncated: boolean;
 }
@@ -162,10 +162,10 @@ const readBoundedBody = async (input: {
   maxResponseBytes: number;
   deadlineAt: number;
   signal: AbortSignal;
-}): Promise<{ body: string; byteLength: number; truncated: boolean }> => {
+}): Promise<{ body: Buffer; byteLength: number; truncated: boolean }> => {
   const readable = toNodeReadable(input.body);
   if (!readable) {
-    return { body: "", byteLength: 0, truncated: false };
+    return { body: Buffer.alloc(0), byteLength: 0, truncated: false };
   }
 
   const chunks: Buffer[] = [];
@@ -201,7 +201,7 @@ const readBoundedBody = async (input: {
   }
 
   return {
-    body: Buffer.concat(chunks, byteLength).toString("utf8"),
+    body: Buffer.concat(chunks, byteLength),
     byteLength,
     truncated,
   };

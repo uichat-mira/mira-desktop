@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { executeWebFetch } from "./fetch.js";
 import { WebFetchTransportError } from "./transport.js";
 
+const transportResult = (overrides: Record<string, unknown> = {}) => ({
+  status: 200,
+  finalUrl: "https://example.com/final",
+  contentType: "text/plain; charset=utf-8",
+  body: Buffer.from("plain body"),
+  byteLength: 10,
+  truncated: false,
+  ...overrides,
+});
+
 describe("web fetch runtime", () => {
   it("rejects an empty url", async () => {
     await expect(
@@ -9,15 +19,8 @@ describe("web fetch runtime", () => {
     ).rejects.toThrow("url must be a non-empty string");
   });
 
-  it("maps a transport result into the execution result", async () => {
-    const transport = vi.fn(async () => ({
-      status: 200,
-      finalUrl: "https://example.com/final",
-      contentType: "text/plain",
-      body: "body",
-      byteLength: 4,
-      truncated: false,
-    }));
+  it("extracts content and preserves transport metadata", async () => {
+    const transport = vi.fn(async () => transportResult());
     const pushEvent = vi.fn();
 
     const result = await executeWebFetch({
@@ -39,11 +42,48 @@ describe("web fetch runtime", () => {
       url: "https://example.com",
       finalUrl: "https://example.com/final",
       status: 200,
-      contentType: "text/plain",
-      content: "body",
-      byteLength: 4,
+      contentType: "text/plain; charset=utf-8",
+      byteLength: 10,
       truncated: false,
+      kind: "text",
+      content: "plain body",
     });
+  });
+
+  it("preserves transport truncation metadata after extraction", async () => {
+    const transport = vi.fn(async () =>
+      transportResult({ truncated: true, byteLength: 512 * 1024 }),
+    );
+
+    const result = await executeWebFetch({
+      url: "https://example.com/big",
+      signal: new AbortController().signal,
+      transport,
+    });
+
+    expect(result.truncated).toBe(true);
+    expect(result.byteLength).toBe(512 * 1024);
+    expect(result.kind).toBe("text");
+  });
+
+  it("reports browser_required for a JavaScript shell", async () => {
+    const transport = vi.fn(async () =>
+      transportResult({
+        contentType: "text/html; charset=utf-8",
+        body: Buffer.from(
+          '<!doctype html><html><head><title>App</title></head><body><div id="root"></div><noscript>You need to enable JavaScript to run this app.</noscript><script src="/app.js"></script></body></html>',
+        ),
+      }),
+    );
+
+    const result = await executeWebFetch({
+      url: "https://example.com/app",
+      signal: new AbortController().signal,
+      transport,
+    });
+
+    expect(result.kind).toBe("browser_required");
+    expect(result.reason).toBeTruthy();
   });
 
   it("throws cancelled before fetching when the signal is already aborted", async () => {

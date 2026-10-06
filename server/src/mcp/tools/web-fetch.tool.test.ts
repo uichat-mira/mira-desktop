@@ -57,15 +57,17 @@ describe("web fetch tool", () => {
     expect(executeWebFetchMock).not.toHaveBeenCalled();
   });
 
-  it("delegates to the web fetch runtime and returns bounded content", async () => {
+  it("delegates to the web fetch runtime and returns extracted content", async () => {
     executeWebFetchMock.mockResolvedValue({
       url: "https://example.com",
       finalUrl: "https://example.com/final",
       status: 200,
       contentType: "text/html",
-      content: "<html></html>",
-      byteLength: 13,
+      byteLength: 1234,
       truncated: false,
+      kind: "html",
+      title: "Example",
+      content: "# Example\n\nBody",
     });
 
     const result = await webFetchTool.execute(
@@ -83,9 +85,38 @@ describe("web fetch tool", () => {
       finalUrl: "https://example.com/final",
       status: 200,
       contentType: "text/html",
-      content: "<html></html>",
-      byteLength: 13,
+      byteLength: 1234,
       truncated: false,
+      kind: "html",
+      title: "Example",
+      content: "# Example\n\nBody",
     });
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("flags browser_required and unsupported outcomes as errors", async () => {
+    executeWebFetchMock.mockResolvedValue({
+      url: "https://example.com/app",
+      finalUrl: "https://example.com/app",
+      status: 200,
+      contentType: "text/html",
+      byteLength: 40,
+      truncated: false,
+      kind: "browser_required",
+      reason: "The page requires JavaScript to render its content.",
+    });
+
+    const result = await webFetchTool.execute(
+      createContext({ args: { url: "https://example.com/app" } }),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      kind: "browser_required",
+      reason: "The page requires JavaScript to render its content.",
+    });
+    expect(
+      (result.structuredContent as Record<string, unknown>).content,
+    ).toBeUndefined();
   });
 });

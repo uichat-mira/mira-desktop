@@ -293,8 +293,11 @@ export interface AgentWebFetchEvidenceData {
   finalUrl: string;
   status: number;
   contentType?: string;
+  contentKind: string;
+  title?: string;
   byteLength: number;
   truncated: boolean;
+  reason?: string;
   contentPreview: string;
 }
 

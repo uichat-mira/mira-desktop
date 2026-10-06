@@ -804,33 +804,48 @@ export const projectToolEvidence = (
   ) {
     const url = typeof result.url === "string" ? result.url : result.finalUrl;
     const contentType = typeof result.contentType === "string" ? result.contentType : "";
+    const contentKind = typeof result.kind === "string" ? result.kind : "unknown";
+    const title = typeof result.title === "string" ? result.title : "";
     const content = typeof result.content === "string" ? result.content : "";
+    const reason = typeof result.reason === "string" ? result.reason : "";
     const byteLength = typeof result.byteLength === "number" ? result.byteLength : content.length;
     const truncated = result.truncated === true;
     const contentPreview = textPreview(content);
+    const hasContent = contentKind === "html" || contentKind === "text";
     return baseEvidence({
       result,
       isError: normalized.isError,
-      actionTaken: `Fetched ${url}.`,
+      actionTaken: hasContent
+        ? `Fetched ${url}.`
+        : `Fetched ${url} but could not extract readable content.`,
       facts: [
         `url=${url}`,
         `finalUrl=${result.finalUrl}`,
         `status=${result.status}`,
+        `kind=${contentKind}`,
         ...(contentType ? [`contentType=${contentType}`] : []),
+        ...(title ? [`title=${textPreview(title, 180)}`] : []),
         `byteLength=${byteLength}`,
         `truncated=${truncated}`,
+        ...(reason ? [`reason=${reason}`] : []),
         ...(contentPreview ? [contentPreview] : []),
       ],
-      gaps: truncated ? ["Fetched content is truncated."] : undefined,
-      status: truncated ? "truncated" : undefined,
+      gaps: [
+        ...(truncated ? ["Fetched content is truncated."] : []),
+        ...(!hasContent && reason ? [reason] : []),
+      ],
+      status: truncated ? "truncated" : hasContent ? undefined : "partial",
       data: {
         kind: "web_fetch",
         url,
         finalUrl: result.finalUrl,
         status: result.status,
         ...(contentType ? { contentType } : {}),
+        contentKind,
+        ...(title ? { title } : {}),
         byteLength,
         truncated,
+        ...(reason ? { reason } : {}),
         contentPreview,
       },
     });

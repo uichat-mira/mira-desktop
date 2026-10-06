@@ -71,7 +71,7 @@ describe("web fetch transport", () => {
     });
 
     expect(guardedFetch).toHaveBeenCalledOnce();
-    expect(result.body).toBe("ok");
+    expect(result.body.toString("utf8")).toBe("ok");
   });
 
   it("fails closed when the proxy configuration cannot be read", async () => {
@@ -110,7 +110,7 @@ describe("web fetch transport", () => {
       status: 200,
       finalUrl: "https://example.com/page",
       contentType: "text/plain; charset=utf-8",
-      body: "hello world",
+      body: Buffer.from("hello world"),
       byteLength: 11,
       truncated: false,
     });
@@ -230,7 +230,7 @@ describe("web fetch transport", () => {
     expect(result).toMatchObject({
       status: 200,
       finalUrl: "https://example.com/page",
-      body: "proxied body",
+      body: Buffer.from("proxied body"),
       contentType: "text/html",
     });
   });
@@ -261,7 +261,7 @@ describe("web fetch transport", () => {
     expect(assertUrlIsSafeToFetch).toHaveBeenNthCalledWith(1, "https://example.com/page");
     expect(assertUrlIsSafeToFetch).toHaveBeenNthCalledWith(2, "https://example.com/final");
     expect(result.finalUrl).toBe("https://example.com/final");
-    expect(result.body).toBe("final body");
+    expect(result.body.toString("utf8")).toBe("final body");
   });
 
   it("blocks a SOCKS redirect whose next hop fails destination policy", async () => {

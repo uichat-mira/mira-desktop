@@ -18,7 +18,7 @@ export const webFetchTool: ToolImplementation = {
     id: "web_fetch",
     title: "Web Fetch",
     description:
-      "Retrieve the content of a known public http/https URL. Use this when a concrete URL is already known and the task is to read that resource. Use web_search to discover sources when the URL is not yet known, and use the browser capabilities for interactive, authenticated, or JavaScript-driven pages. Only public destinations are allowed, and the returned body is bounded text that may be truncated.",
+      "Retrieve and extract the readable content of a known public http/https URL. Use this when a concrete URL is already known and the task is to read that resource. Use web_search to discover sources when the URL is not yet known, and use the browser capabilities for interactive, authenticated, or JavaScript-rendered pages. Only public destinations are allowed; HTML is converted to readable text, the returned content may be truncated, and pages that require a browser report browser_required instead of returning an empty shell.",
     domain: "web_search",
     source: "internal",
     mode: "sync",
@@ -34,7 +34,7 @@ export const webFetchTool: ToolImplementation = {
       },
       additionalProperties: false,
     },
-    tags: ["fetch", "web", "url", "retrieve", "public"],
+    tags: ["fetch", "web", "url", "retrieve", "public", "content"],
     outputSchema: {
       type: "object",
       required: [
@@ -42,18 +42,24 @@ export const webFetchTool: ToolImplementation = {
         "finalUrl",
         "status",
         "contentType",
-        "content",
         "byteLength",
         "truncated",
+        "kind",
       ],
       properties: {
         url: { type: "string" },
         finalUrl: { type: "string" },
         status: { type: "number" },
         contentType: { type: "string" },
-        content: { type: "string" },
         byteLength: { type: "number" },
         truncated: { type: "boolean" },
+        kind: {
+          type: "string",
+          enum: ["html", "text", "browser_required", "unsupported"],
+        },
+        title: { type: "string" },
+        content: { type: "string" },
+        reason: { type: "string" },
       },
     },
     capabilities: {
@@ -71,16 +77,31 @@ export const webFetchTool: ToolImplementation = {
       trace: context.trace,
     });
 
+    const structuredContent: Record<string, unknown> = {
+      url: execution.url,
+      finalUrl: execution.finalUrl,
+      status: execution.status,
+      contentType: execution.contentType,
+      byteLength: execution.byteLength,
+      truncated: execution.truncated,
+      kind: execution.kind,
+    };
+    if (execution.title !== undefined) {
+      structuredContent.title = execution.title;
+    }
+    if (execution.content !== undefined) {
+      structuredContent.content = execution.content;
+    }
+    if (execution.reason !== undefined) {
+      structuredContent.reason = execution.reason;
+    }
+
+    const isError =
+      execution.kind === "browser_required" || execution.kind === "unsupported";
+
     return {
-      structuredContent: {
-        url: execution.url,
-        finalUrl: execution.finalUrl,
-        status: execution.status,
-        contentType: execution.contentType,
-        content: execution.content,
-        byteLength: execution.byteLength,
-        truncated: execution.truncated,
-      },
+      structuredContent,
+      ...(isError ? { isError: true } : {}),
     };
   },
 };

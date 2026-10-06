@@ -3,6 +3,7 @@ import type {
   ToolInvocationEventInput,
 } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
+import { extractWebContent, type WebFetchContentKind } from "./extract.js";
 import {
   fetchWebResource,
   WebFetchTransportError,
@@ -23,9 +24,12 @@ export interface WebFetchExecutionResult {
   finalUrl: string;
   status: number;
   contentType: string;
-  content: string;
   byteLength: number;
   truncated: boolean;
+  kind: WebFetchContentKind;
+  title?: string;
+  content?: string;
+  reason?: string;
 }
 
 export const executeWebFetch = async (
@@ -49,26 +53,60 @@ export const executeWebFetch = async (
   });
 
   const transport = input.transport ?? fetchWebResource;
+  let result: WebFetchTransportResult;
   try {
-    const result = await transport({ url, signal: input.signal });
-    fetchSpan?.end({
-      metadata: {
-        status: result.status,
-        byteLength: result.byteLength,
-        truncated: result.truncated,
-      },
-    });
-    return {
-      url,
-      finalUrl: result.finalUrl,
-      status: result.status,
-      contentType: result.contentType,
-      content: result.body,
-      byteLength: result.byteLength,
-      truncated: result.truncated,
-    };
+    result = await transport({ url, signal: input.signal });
   } catch (error) {
     fetchSpan?.end({ status: input.signal.aborted ? "cancelled" : "failed" });
     throw error;
+  }
+  fetchSpan?.end({
+    metadata: {
+      status: result.status,
+      byteLength: result.byteLength,
+      truncated: result.truncated,
+    },
+  });
+
+  input.pushEvent?.({
+    type: "invocation:progress",
+    message: "Extracting web content",
+  });
+  const extractSpan = input.trace?.startSpan({
+    name: "Extract web content",
+    kind: "result_normalization",
+  });
+  const extraction = extractWebContent({
+    finalUrl: result.finalUrl,
+    contentType: result.contentType,
+    body: result.body,
+  });
+  extractSpan?.end({
+    metadata: { kind: extraction.kind, truncated: result.truncated },
+  });
+
+  const base = {
+    url,
+    finalUrl: result.finalUrl,
+    status: result.status,
+    contentType: result.contentType,
+    byteLength: result.byteLength,
+    truncated: result.truncated,
+  };
+
+  switch (extraction.kind) {
+    case "html":
+      return {
+        ...base,
+        kind: "html",
+        title: extraction.title,
+        content: extraction.content,
+      };
+    case "text":
+      return { ...base, kind: "text", content: extraction.content };
+    case "browser_required":
+      return { ...base, kind: "browser_required", reason: extraction.reason };
+    case "unsupported":
+      return { ...base, kind: "unsupported", reason: extraction.reason };
   }
 };
