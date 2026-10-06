@@ -6,6 +6,7 @@ on:
       - feat/agent-dispatch-poc
     paths:
       - .github/workflows/mira-agent-worker.md
+      - .github/workflows/shared/mira-opencode-go.md
       - .github/workflows/agent-dispatch-poc-compile.yml
 
 permissions:
@@ -15,6 +16,9 @@ permissions:
 jobs:
   compile:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
     steps:
       - name: Checkout POC branch
         uses: actions/checkout@v4
@@ -23,7 +27,7 @@ jobs:
           fetch-depth: 1
           token: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
 
-      - name: Install pinned gh-aw compiler
+      - name: Install pinned gh-aw prerelease
         shell: bash
         run: |
           set -euo pipefail
@@ -35,38 +39,47 @@ jobs:
 
       - name: Compile agentic workflow
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
         run: |
           set -euo pipefail
           "$RUNNER_TEMP/gh-aw" compile .github/workflows/mira-agent-worker.md --strict
-
-      - name: Verify generated lock
-        shell: bash
-        run: |
-          set -euo pipefail
+          git diff --check
           test -s ".github/workflows/mira-agent-worker.lock.yml"
 
-      - name: Stage compiled lock for maintainer publication
+      - name: Verify read-only compiled policy
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .gh-aw-poc
-          cp .github/workflows/mira-agent-worker.lock.yml .gh-aw-poc/mira-agent-worker.lock.yml
+          lock=".github/workflows/mira-agent-worker.lock.yml"
+          grep -q 'AI_PROVIDER_OPENCODE_GO_KEY' "$lock"
+          grep -q 'mira-opencode-go/deepseek-v4.1-flash' "$lock"
+          if grep -q 'OPENAI_API_KEY' "$lock"; then
+            echo "Unexpected OPENAI_API_KEY dependency remains in compiled worker." >&2
+            exit 1
+          fi
+          if grep -qE 'issues:[[:space:]]+write' "$lock"; then
+            echo "Read-only smoke unexpectedly requests issues: write." >&2
+            exit 1
+          fi
+
+      - name: Publish compiled lock
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .gh-aw-poc/mira-agent-worker.lock.yml
+          git add .github/workflows/mira-agent-worker.lock.yml
           if git diff --cached --quiet; then
-            echo "Compiled lock staging file is already current."
+            echo "Compiled lock is already current."
           else
-            git commit -m "poc: stage compiled agent worker lock"
+            git commit -m "poc: publish compiled agent worker lock"
             git push origin HEAD:feat/agent-dispatch-poc
           fi
 
-      - name: Upload generated lock
-        uses: actions/upload-artifact@v4
-        with:
-          name: mira-agent-worker-lock
-          path: .github/workflows/mira-agent-worker.lock.yml
-          if-no-files-found: error
-          retention-days: 1
+      - name: Dispatch read-only worker smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gh-aw" run mira-agent-worker \
+            --ref feat/agent-dispatch-poc \
+            --approve \
+            --json
