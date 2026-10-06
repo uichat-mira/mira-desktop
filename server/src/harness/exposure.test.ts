@@ -17,6 +17,9 @@ const terminalSchemaKeys = [
   "timeoutMs",
   "attachSessionId",
   "sessionMode",
+  "continuationId",
+  "outputOffset",
+  "outputLimitBytes",
 ];
 
 const externalFakeTool = {
