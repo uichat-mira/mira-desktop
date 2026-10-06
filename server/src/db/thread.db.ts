@@ -127,8 +127,7 @@ const createThreadTables = () => {
       ON host_notification_bindings(origin_remote_device_id);
 
     CREATE TABLE IF NOT EXISTS host_notification_binding_scopes (
-      installation_id TEXT NOT NULL
-        REFERENCES host_notification_bindings(installation_id) ON DELETE CASCADE,
+      installation_id TEXT NOT NULL,
       source_id TEXT NOT NULL,
       PRIMARY KEY (installation_id, source_id)
     );
