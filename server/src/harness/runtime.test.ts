@@ -59,16 +59,16 @@ describe("initializeHarnessRuntime tool registration", () => {
     expect(toolIds).toEqual(
       expect.arrayContaining(["read", "list", "glob", "grep"]),
     );
-    expect(toolIds).not.toEqual(
-      expect.arrayContaining([
-        "read_discover",
-        "read_open",
-        "read_list",
-        "read_locate",
-        "read_extract",
-        "read_slice",
-      ]),
-    );
+    for (const legacyId of [
+      "read_discover",
+      "read_open",
+      "read_list",
+      "read_locate",
+      "read_extract",
+      "read_slice",
+    ]) {
+      expect(toolIds).not.toContain(legacyId);
+    }
   });
 
   it("registers exactly four GitHub domain tools and no legacy read wrappers", () => {
