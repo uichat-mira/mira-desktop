@@ -1,4 +1,5 @@
 import {
+  canonicalMessageCleanupRepository,
   chatWorkspaceRepository,
   hostNotificationRepository,
   messageRepository,
@@ -13,11 +14,12 @@ import { threadContextSummaryNode } from "@/services/shared-nodes/thread-context
 import { isValidWorkspaceRootPath } from "@/services/workspace-path-validation.js";
 import { THREAD_ACCESS_ERROR_MESSAGE } from "@/utils/errors.js";
 import { chatMediaService } from "@/services/chat-media.service.js";
+import { canonicalMessageCleanupService } from "@/services/canonical-message-cleanup.service.js";
 import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
 import { getHarnessEnvironmentSnapshot } from "@/harness/environment.js";
 import {
+  getFileAttachmentsRemovedFromParts,
   removeFileAttachmentsFromParts,
-  removeFileAttachmentsRemovedFromParts,
 } from "@/services/chat-file-context.service.js";
 import type { NotificationCanonicalMessage } from "@/services/notification-eligibility.js";
 
@@ -164,7 +166,7 @@ const parsePartsJson = (
 const serializeParts = (parts: CreateMessageInput["parts"]) =>
   parts ? JSON.stringify(parts) : undefined;
 
-const pruneThreadTail = (
+const getThreadTailMessages = (
   threadId: string,
   anchorMessageId: string | null,
   preserveMessageId?: string,
@@ -176,19 +178,33 @@ const pruneThreadTail = (
       : threadMessages.findIndex((message) => message.id === anchorMessageId);
 
   if (anchorMessageId !== null && anchorIndex < 0) {
-    return;
+    return [];
   }
 
-  const trailingMessages = threadMessages.slice(anchorIndex + 1);
+  return threadMessages
+    .slice(anchorIndex + 1)
+    .filter((message) => message.id !== preserveMessageId);
+};
 
-  for (const message of trailingMessages) {
-    if (message.id === preserveMessageId) {
-      continue;
-    }
+const buildCanonicalCleanupPayload = (
+  mediaMessageIds: string[],
+  attachmentParts: unknown[],
+) => ({
+  media: chatMediaService.createCleanupSnapshot(mediaMessageIds),
+  attachmentParts,
+});
 
+const enqueueCanonicalCleanup = (
+  mediaMessageIds: string[],
+  attachmentParts: unknown[],
+) =>
+  canonicalMessageCleanupRepository.enqueue(
+    buildCanonicalCleanupPayload(mediaMessageIds, attachmentParts),
+  );
+
+const deleteCanonicalMessages = (messages: Message[]) => {
+  for (const message of messages) {
     messageRepository.deleteById(message.id);
-    removeFileAttachmentsFromParts(parsePartsJson(message.partsJson));
-    chatMediaService.removeForMessages([message.id]);
   }
 };
 
@@ -826,7 +842,6 @@ export const threadService = {
     userId: number,
     input: CreateMessageInput,
   ): MessageResponse {
-    // 验证线程属于当前用户
     const thread = threadRepository.findById(threadId, userId);
     if (!thread) {
       throw new Error(THREAD_ACCESS_ERROR_MESSAGE);
@@ -840,8 +855,12 @@ export const threadService = {
     );
     const hasDataPart = normalizedParts.some((part) => part.type === "data");
     const hasSupportedContent = hasTextPart || hasAttachmentPart || hasDataPart;
-    const normalizedMetadata = input.metadata ? JSON.stringify(input.metadata) : "{}";
-    const existing = input.id ? messageRepository.findById(input.id) : undefined;
+    const normalizedMetadata = input.metadata
+      ? JSON.stringify(input.metadata)
+      : "{}";
+    const existing = input.id
+      ? messageRepository.findById(input.id)
+      : undefined;
     const effectiveParentId =
       input.parentId !== undefined
         ? input.parentId
@@ -852,26 +871,44 @@ export const threadService = {
     }
 
     if (existing) {
-      if (
-      existing.role !== input.role ||
-      existing.content !== normalizedContent ||
-      (existing.metadata || "{}") !== normalizedMetadata ||
-      JSON.stringify(
-        parsePartsJson(
-            (existing as Message & { partsJson?: string | null }).partsJson,
-          ) ?? [],
-        ) !== JSON.stringify(input.parts ?? [])
-      ) {
-        const previousParts = parsePartsJson(existing.partsJson);
+      const existingParts = parsePartsJson(existing.partsJson);
+      const changed =
+        existing.role !== input.role ||
+        existing.content !== normalizedContent ||
+        (existing.metadata || "{}") !== normalizedMetadata ||
+        JSON.stringify(existingParts ?? []) !==
+          JSON.stringify(input.parts ?? []);
+
+      if (changed) {
+        const staleMessages =
+          effectiveParentId !== undefined && !input.preserveDescendants
+            ? getThreadTailMessages(threadId, existing.id, existing.id)
+            : [];
+        const removedAttachmentParts = [
+          ...getFileAttachmentsRemovedFromParts(existingParts, input.parts),
+          ...staleMessages.flatMap(
+            (message) => parsePartsJson(message.partsJson) ?? [],
+          ),
+        ];
+        const cleanupMediaIds = [
+          existing.id,
+          ...staleMessages.map((message) => message.id),
+        ];
+        const cleanupPayload = buildCanonicalCleanupPayload(
+          cleanupMediaIds,
+          removedAttachmentParts,
+        );
         const previous = toMessageResponse(existing);
+
         const updatedResponse = getSqlite().transaction(() => {
+          deleteCanonicalMessages(staleMessages);
+
           const updated = messageRepository.updateById(existing.id, {
             role: input.role,
             content: normalizedContent,
             partsJson: serializeParts(input.parts),
             metadata: normalizedMetadata,
           });
-
           if (!updated) {
             throw new Error("Failed to update existing message");
           }
@@ -883,32 +920,31 @@ export const threadService = {
             next: toNotificationCanonicalMessage(next),
             sourceId: threadId,
           });
+          canonicalMessageCleanupRepository.enqueue(cleanupPayload);
           return next;
         })();
 
-        // Filesystem/media cleanup cannot participate in SQLite rollback.
-        // Run it only after canonical state + outbox commit successfully.
-        if (
-          effectiveParentId !== undefined &&
-          !input.preserveDescendants
-        ) {
-          pruneThreadTail(threadId, existing.id, existing.id);
-        }
-        const mediaCleanup = chatMediaService.removeForMessages([existing.id]);
-        if (mediaCleanup.failed > 0) {
-          throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s): ${mediaCleanup.errors.map((item) => item.mediaId).join(", ")}`);
-        }
-        removeFileAttachmentsRemovedFromParts(previousParts, input.parts);
+        canonicalMessageCleanupService.drainOnce();
         return updatedResponse;
       }
 
-      if (
-        effectiveParentId !== undefined &&
-        !input.preserveDescendants
-      ) {
-        pruneThreadTail(threadId, existing.id, existing.id);
-      }
-      threadRepository.updateById(threadId, {});
+      const staleMessages =
+        effectiveParentId !== undefined && !input.preserveDescendants
+          ? getThreadTailMessages(threadId, existing.id, existing.id)
+          : [];
+      const cleanupPayload = buildCanonicalCleanupPayload(
+        staleMessages.map((message) => message.id),
+        staleMessages.flatMap(
+          (message) => parsePartsJson(message.partsJson) ?? [],
+        ),
+      );
+
+      getSqlite().transaction(() => {
+        deleteCanonicalMessages(staleMessages);
+        threadRepository.updateById(threadId, {});
+        canonicalMessageCleanupRepository.enqueue(cleanupPayload);
+      })();
+      canonicalMessageCleanupService.drainOnce();
       return toMessageResponse(existing);
     }
 
@@ -927,7 +963,20 @@ export const threadService = {
       throw new Error("Message content is missing");
     }
 
+    const staleMessages =
+      effectiveParentId !== undefined
+        ? getThreadTailMessages(threadId, effectiveParentId ?? null)
+        : [];
+    const cleanupPayload = buildCanonicalCleanupPayload(
+      staleMessages.map((message) => message.id),
+      staleMessages.flatMap(
+        (message) => parsePartsJson(message.partsJson) ?? [],
+      ),
+    );
+
     const createdResponse = getSqlite().transaction(() => {
+      deleteCanonicalMessages(staleMessages);
+
       const created = messageRepository.create({
         ...(input.id ? { id: input.id } : {}),
         threadId,
@@ -937,7 +986,6 @@ export const threadService = {
         metadata: normalizedMetadata,
       });
 
-      // canonical message 与 notification outbox 必须在同一 SQLite 事务提交。
       threadRepository.updateById(threadId, {});
       const next = toMessageResponse(created);
       hostNotificationRepository.enqueueEligibleTransition({
@@ -945,16 +993,11 @@ export const threadService = {
         next: toNotificationCanonicalMessage(next),
         sourceId: threadId,
       });
+      canonicalMessageCleanupRepository.enqueue(cleanupPayload);
       return next;
     })();
 
-    if (effectiveParentId !== undefined) {
-      pruneThreadTail(
-        threadId,
-        effectiveParentId ?? null,
-        createdResponse.id,
-      );
-    }
+    canonicalMessageCleanupService.drainOnce();
     return createdResponse;
   },
 
