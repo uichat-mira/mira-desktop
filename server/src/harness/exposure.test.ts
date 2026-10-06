@@ -20,6 +20,8 @@ const terminalSchemaKeys = [
   "continuationId",
   "outputOffset",
   "outputLimitBytes",
+  "operation",
+  "sessionId",
 ];
 
 const externalFakeTool = {

@@ -803,7 +803,32 @@ export const projectToolEvidence = (
     const exitCode = typeof result.exitCode === "number" || result.exitCode === null ? result.exitCode : null;
     const timedOut = result.timedOut === true;
     const command = typeof result.command === "string" ? result.command : "unknown";
-    const commandSucceeded = timedOut ? "unknown" : exitCode === 0 ? "true" : typeof exitCode === "number" ? "false" : "unknown";
+    const operation =
+      result.operation === "status" || result.operation === "stop"
+        ? result.operation
+        : undefined;
+    const state =
+      result.state === "running" ||
+      result.state === "completed" ||
+      result.state === "failed" ||
+      result.state === "cancelled"
+        ? result.state
+        : undefined;
+    const processCompleted = state
+      ? state !== "running"
+      : !timedOut;
+    const commandSucceeded =
+      state === "completed"
+        ? "true"
+        : state === "failed"
+          ? "false"
+          : timedOut || state === "running" || state === "cancelled"
+            ? "unknown"
+            : exitCode === 0
+              ? "true"
+              : typeof exitCode === "number"
+                ? "false"
+                : "unknown";
     const stdout = typeof result.stdout === "string" ? textPreview(result.stdout) : "";
     const stderr = typeof result.stderr === "string" ? textPreview(result.stderr) : "";
     const stdoutEncoding = result.stdoutEncoding ?? "unknown";
@@ -826,6 +851,10 @@ export const projectToolEvidence = (
       typeof result.outputLimitBytes === "number" ? result.outputLimitBytes : undefined;
     const commandCompleted =
       typeof result.commandCompleted === "boolean" ? result.commandCompleted : undefined;
+    const cleanupCompleted =
+      typeof result.cleanupCompleted === "boolean"
+        ? result.cleanupCompleted
+        : undefined;
     const unreadableReason = binaryDetected
       ? "Terminal output contains binary data."
       : stdoutEncoding === "unknown" || stderrEncoding === "unknown"
@@ -855,7 +884,12 @@ export const projectToolEvidence = (
     return baseEvidence({
       result,
       isError: normalized.isError,
-      actionTaken: `Executed terminal command "${command}".`,
+      actionTaken:
+        operation === "status"
+          ? `Observed terminal session for "${command}".`
+          : operation === "stop"
+            ? `Stopped terminal session for "${command}".`
+            : `Executed terminal command "${command}".`,
       facts: [
         `exitCode=${exitCode === null ? "null" : exitCode}`,
         `timedOut=${timedOut}`,
@@ -865,6 +899,11 @@ export const projectToolEvidence = (
         ...(outputBytesAvailable === undefined
           ? []
           : [`outputBytesAvailable=${outputBytesAvailable}`]),
+        ...(operation ? [`operation=${operation}`] : []),
+        ...(state ? [`state=${state}`] : []),
+        ...(cleanupCompleted === undefined
+          ? []
+          : [`cleanupCompleted=${cleanupCompleted}`]),
         ...(stdout ? [`stdout=${stdout}`] : []),
         ...(stderr ? [`stderr=${stderr}`] : []),
       ],
@@ -874,7 +913,7 @@ export const projectToolEvidence = (
         kind: "terminal_session",
         command,
         exitCode,
-        processCompleted: !timedOut,
+        processCompleted,
         commandSucceeded,
         stdoutPreview: stdout,
         stderrPreview: stderr,
@@ -894,6 +933,9 @@ export const projectToolEvidence = (
         ...(outputBytesAvailable === undefined ? {} : { outputBytesAvailable }),
         ...(outputLimitBytes === undefined ? {} : { outputLimitBytes }),
         ...(commandCompleted === undefined ? {} : { commandCompleted }),
+        ...(state ? { state } : {}),
+        ...(cleanupCompleted === undefined ? {} : { cleanupCompleted }),
+        ...(operation ? { operation } : {}),
       },
     });
   }

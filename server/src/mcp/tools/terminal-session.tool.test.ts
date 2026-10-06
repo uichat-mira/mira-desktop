@@ -14,6 +14,7 @@ const terminalMocks = vi.hoisted(() => ({
   getTerminalSessionMock: vi.fn(),
   writeTerminalSessionMock: vi.fn(),
   removeTerminalSessionMock: vi.fn(),
+  stopTerminalSessionMock: vi.fn(),
   clearTerminalSessionsMock: vi.fn(),
   spawnMock: vi.fn(),
   killTerminalProcessTreeMock: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("../terminal-sessions.js", () => ({
   getTerminalSession: terminalMocks.getTerminalSessionMock,
   writeTerminalSession: terminalMocks.writeTerminalSessionMock,
   removeTerminalSession: terminalMocks.removeTerminalSessionMock,
+  stopTerminalSession: terminalMocks.stopTerminalSessionMock,
   clearTerminalSessions: terminalMocks.clearTerminalSessionsMock,
 }));
 
@@ -142,6 +144,7 @@ describe("terminal tool", () => {
     terminalMocks.getTerminalSessionMock.mockReset();
     terminalMocks.writeTerminalSessionMock.mockReset();
     terminalMocks.removeTerminalSessionMock.mockReset();
+    terminalMocks.stopTerminalSessionMock.mockReset();
     terminalMocks.clearTerminalSessionsMock.mockReset();
     terminalMocks.spawnMock.mockReset();
     terminalMocks.killTerminalProcessTreeMock.mockReset();
@@ -314,6 +317,7 @@ describe("terminal tool", () => {
     expect(firstContent.nextOutputOffset).toBe(5);
     expect(firstContent.continuationAvailable).toBe(true);
     expect(firstContent.commandCompleted).toBe(true);
+    expect((first.structuredContent as { state: string }).state).toBe("completed");
 
     terminalMocks.writeTerminalSessionMock.mockClear();
     const second = await terminalTool.execute({
@@ -389,6 +393,7 @@ describe("terminal tool", () => {
     expect(firstContent.timedOut).toBe(true);
     expect(firstContent.continuationAvailable).toBe(true);
     expect(firstContent.commandCompleted).toBe(false);
+    expect((first.structuredContent as { state: string }).state).toBe("running");
 
     const marker = extractMarker();
     mock.emitData("second");
@@ -424,6 +429,139 @@ describe("terminal tool", () => {
     expect(secondContent.commandCompleted).toBe(true);
     expect(secondContent.exitCode).toBe(0);
     expect(terminalMocks.writeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("reports persistent status without writing another PTY command", async () => {
+    vi.useFakeTimers();
+    const mock = createMockSession({ id: "session-status" });
+    terminalMocks.createTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.writeTerminalSessionMock.mockImplementation((_sessionId: string) => {
+      queueMicrotask(() => {
+        mock.emitData("still running");
+      });
+      return mock.session;
+    });
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const pending = terminalTool.execute({
+      invocationId: "inv-status-start",
+      args: {
+        command: "long-running",
+        sessionMode: "persistent",
+        timeoutMs: 100,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(120);
+    const started = await pending;
+    const sessionId = (started.structuredContent as { sessionId: string }).sessionId;
+
+    terminalMocks.writeTerminalSessionMock.mockClear();
+    const status = await terminalTool.execute({
+      invocationId: "inv-status-read",
+      args: {
+        operation: "status",
+        sessionId,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "b", ...artifact };
+      },
+    });
+
+    expect((status.structuredContent as { state: string }).state).toBe("running");
+    expect(
+      (status.structuredContent as { commandCompleted: boolean }).commandCompleted,
+    ).toBe(false);
+    expect(terminalMocks.writeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("stops a persistent session and returns cancelled only after cleanup completes", async () => {
+    const mock = createMockSession({ id: "session-stop" });
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    let releaseCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    terminalMocks.stopTerminalSessionMock.mockImplementation(async () => {
+      await cleanup;
+      return {
+        sessionId: "session-stop",
+        command: "watch",
+        cwd: mock.session.cwd,
+        runtimeId: "host_spawn",
+        workspaceRelation: "inside",
+        processTreeMode:
+          process.platform === "win32"
+            ? "windows_taskkill_tree"
+            : "posix_process_group",
+        state: "cancelled",
+        cleanupCompleted: true,
+      };
+    });
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    let settled = false;
+    const pending = terminalTool.execute({
+      invocationId: "inv-stop",
+      args: {
+        operation: "stop",
+        sessionId: "session-stop",
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    }).then((result) => {
+      settled = true;
+      return result;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    releaseCleanup();
+    const result = await pending;
+
+    expect((result.structuredContent as { state: string }).state).toBe("cancelled");
+    expect(
+      (result.structuredContent as { cleanupCompleted: boolean }).cleanupCompleted,
+    ).toBe(true);
+    expect(terminalMocks.stopTerminalSessionMock).toHaveBeenCalledWith(
+      "session-stop",
+    );
+    expect(terminalMocks.writeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects status for an unknown persistent session", async () => {
+    terminalMocks.getTerminalSessionMock.mockReturnValue(undefined);
+    const { terminalTool } = await import("./terminal-session.tool.js");
+
+    await expect(
+      terminalTool.execute({
+        invocationId: "inv-status-missing",
+        args: {
+          operation: "status",
+          sessionId: "missing-session",
+        },
+        signal: new AbortController().signal,
+        environment: createHarnessEnvironmentSnapshot(),
+        pushEvent() {},
+        addArtifact(artifact) {
+          return { id: "a", ...artifact };
+        },
+      }),
+    ).rejects.toThrow("terminal session not found: missing-session");
   });
 
   it("supports creating a persistent terminal session without auto-removing it", async () => {

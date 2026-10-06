@@ -54,6 +54,15 @@ const terminalProperties = {
     description:
       "Maximum output bytes returned in this Tool result. Persistent excess remains reachable through continuationId; ephemeral excess is truncated at this bound.",
   },
+  operation: {
+    type: "string",
+    enum: ["status", "stop"],
+    description: "Persistent-session control: inspect state or stop the owned session/process tree.",
+  },
+  sessionId: {
+    type: "string",
+    description: "Stable persistent terminal session id used with operation.",
+  },
 } as const;
 
 const terminalSessionLlmInputSchema = {
@@ -61,6 +70,7 @@ const terminalSessionLlmInputSchema = {
   anyOf: [
     { required: ["command"] },
     { required: ["continuationId"] },
+    { required: ["operation", "sessionId"] },
   ],
   properties: terminalProperties,
   additionalProperties: false,
@@ -71,7 +81,7 @@ export const terminalTool: ToolImplementation = {
     id: "terminal",
     title: "Terminal",
     description:
-      "Run full host shell commands or PTY-backed persistent sessions, and continue reading bounded persistent output without starting another command. Use semantic file/read/search Tools instead when they directly fit the task.",
+      "Run host commands or persistent PTY sessions, continue bounded output, inspect persistent state, or stop an owned persistent session. Use semantic file/read/search Tools when they fit directly.",
     domain: "terminal",
     source: "internal",
     mode: "stream",
@@ -102,7 +112,11 @@ export const terminalTool: ToolImplementation = {
       typeof context.args.continuationId === "string"
         ? context.args.continuationId.trim()
         : "";
-    if (!command && !continuationId) {
+    const operation =
+      typeof context.args.operation === "string"
+        ? context.args.operation.trim()
+        : "";
+    if (!command && !continuationId && !operation) {
       throw mcpBadRequest("command is required");
     }
 

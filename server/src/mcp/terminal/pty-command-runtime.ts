@@ -312,6 +312,7 @@ export const runPersistentCommand = async (input: {
     outputBytesAvailable: page.outputBytesAvailable,
     outputLimitBytes: page.outputLimitBytes,
     commandCompleted: page.commandCompleted,
+    state: page.state,
     violations,
   };
 };

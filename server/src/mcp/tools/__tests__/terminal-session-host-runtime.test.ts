@@ -50,6 +50,8 @@ describe("terminal host runtime metadata", () => {
       expect(properties.continuationId?.description).toMatch(/without starting another command/i);
       expect(properties.outputOffset?.description).toMatch(/nextOutputOffset/i);
       expect(properties.outputLimitBytes?.description).toMatch(/remains reachable/i);
+      expect(properties.operation?.enum).toEqual(["status", "stop"]);
+      expect(properties.sessionId?.description).toMatch(/persistent terminal session/i);
     }
 
     const schema = terminalTool.definition.inputSchema as {
@@ -58,6 +60,7 @@ describe("terminal host runtime metadata", () => {
     expect(schema.anyOf).toEqual([
       { required: ["command"] },
       { required: ["continuationId"] },
+      { required: ["operation", "sessionId"] },
     ]);
   });
 });

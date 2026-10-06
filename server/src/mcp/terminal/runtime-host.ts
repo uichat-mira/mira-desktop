@@ -11,13 +11,19 @@ import {
   toHostShellProfile,
 } from "./host-spawn-runtime.js";
 import {
+  getTerminalSession,
+  stopTerminalSession,
+} from "../terminal-sessions.js";
+import {
   acquirePersistentSession,
   observePersistentCommandOutput,
   runPersistentCommand,
 } from "./pty-command-runtime.js";
 import {
+  getPersistentTerminalSessionStatus,
   normalizeTerminalOutputLimitBytes,
   normalizeTerminalOutputOffset,
+  type TerminalPersistentState,
 } from "./persistent-output-store.js";
 import {
   resolveTerminalRuntimeId,
@@ -64,6 +70,9 @@ type TerminalContents = {
   outputBytesAvailable?: number;
   outputLimitBytes?: number;
   commandCompleted?: boolean;
+  state?: TerminalPersistentState;
+  cleanupCompleted?: boolean;
+  operation?: "status" | "stop";
 };
 
 type TerminalExecutionResult = {
@@ -136,6 +145,28 @@ const normalizeSessionMode = (
 ): "ephemeral" | "persistent" =>
   value === "persistent" ? "persistent" : "ephemeral";
 
+const normalizeTerminalOperation = (
+  value: unknown,
+): "status" | "stop" | undefined => {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (value === "status" || value === "stop") {
+    return value;
+  }
+  throw mcpBadRequest("operation must be status or stop");
+};
+
+const normalizeControlSessionId = (value: unknown) => {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw mcpBadRequest("sessionId must be a string");
+  }
+  return value;
+};
+
 const createTerminalArtifact = (input: {
   command: string;
   output: string;
@@ -156,7 +187,9 @@ export const describeTerminalPlan = (
   const harnessEnvironment = assertTerminalEnvironment(environment);
   const attachSessionId = normalizeAttachSessionId(args.attachSessionId);
   const continuationId = normalizeContinuationId(args.continuationId);
-  const sessionMode = attachSessionId || continuationId
+  const operation = normalizeTerminalOperation(args.operation);
+  const sessionId = normalizeControlSessionId(args.sessionId);
+  const sessionMode = attachSessionId || continuationId || operation || sessionId
     ? "persistent"
     : normalizeSessionMode(args.sessionMode);
   const runtimeId = resolveTerminalRuntimeId();
@@ -179,6 +212,8 @@ export const describeTerminalPlan = (
   return {
     runtimeId,
     attachSessionId,
+    operation,
+    sessionId,
     sessionMode,
     preferredCapabilityId,
     chain,
@@ -197,6 +232,8 @@ export const executeTerminalSessionRuntime = async ({
   const shellProfile = harnessEnvironment.terminal.shellProfile;
   const command = normalizeCommand(args.command);
   const continuationId = normalizeContinuationId(args.continuationId);
+  const operation = normalizeTerminalOperation(args.operation);
+  const controlSessionId = normalizeControlSessionId(args.sessionId);
   const outputLimitBytes = normalizeTerminalOutputLimitBytes(args.outputLimitBytes);
   const outputOffset = normalizeTerminalOutputOffset(args.outputOffset);
   const env = normalizeEnv(args.env);
@@ -206,6 +243,127 @@ export const executeTerminalSessionRuntime = async ({
     ? "persistent"
     : normalizeSessionMode(args.sessionMode);
   const runtimeId = resolveTerminalRuntimeId();
+
+  if (operation) {
+    if (!controlSessionId) {
+      throw mcpBadRequest("sessionId is required for terminal status/stop");
+    }
+    if (
+      command ||
+      continuationId ||
+      attachSessionId ||
+      args.cwd !== undefined ||
+      env !== undefined ||
+      args.sessionMode !== undefined ||
+      args.timeoutMs !== undefined ||
+      args.outputOffset !== undefined ||
+      args.outputLimitBytes !== undefined
+    ) {
+      throw mcpBadRequest(
+        "terminal status/stop only supports operation and sessionId",
+      );
+    }
+
+    const session = getTerminalSession(controlSessionId);
+    if (!session) {
+      throw mcpBadRequest(`terminal session not found: ${controlSessionId}`);
+    }
+    const latest = await getPersistentTerminalSessionStatus(controlSessionId);
+
+    if (operation === "stop") {
+      const stopSpan = trace?.startSpan({
+        name: "Stop persistent terminal session",
+        kind: "command_execution",
+        metadata: {
+          sessionId: controlSessionId,
+          state: latest?.state ?? "running",
+        },
+      });
+      const stopped = await stopTerminalSession(controlSessionId);
+      stopSpan?.end({
+        status: "cancelled",
+        metadata: {
+          sessionId: stopped.sessionId,
+          cleanupCompleted: stopped.cleanupCompleted,
+        },
+      });
+      return {
+        contents: {
+          runtimeId: stopped.runtimeId,
+          sessionId: stopped.sessionId,
+          command: latest?.command ?? stopped.command,
+          cwd: stopped.cwd,
+          workspaceRelation: stopped.workspaceRelation,
+          processTreeMode: stopped.processTreeMode,
+          exitCode: latest?.exitCode ?? null,
+          output: "",
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          reusedSession: true,
+          sessionMode: "persistent",
+          streamMode: "merged",
+          stderrSeparated: false,
+          stdoutEncoding: "utf8",
+          stderrEncoding: "utf8",
+          operation: "stop",
+          state: "cancelled",
+          commandCompleted: true,
+          continuationAvailable: false,
+          cleanupCompleted: stopped.cleanupCompleted,
+        },
+        artifacts: [],
+      };
+    }
+
+    const state = latest?.state ?? "running";
+    const statusSpan = trace?.startSpan({
+      name: "Inspect persistent terminal session",
+      kind: "stream_observation",
+      metadata: {
+        sessionId: controlSessionId,
+        state,
+        outputBytesAvailable: latest?.outputBytesAvailable ?? 0,
+      },
+    });
+    statusSpan?.end();
+    return {
+      contents: {
+        runtimeId: session.runtimeId,
+        sessionId: session.id,
+        command: latest?.command ?? session.command,
+        cwd: session.cwd,
+        workspaceRelation: session.workspaceRelation,
+        processTreeMode: session.processTreeMode,
+        exitCode: latest?.exitCode ?? null,
+        output: "",
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        reusedSession: true,
+        sessionMode: "persistent",
+        streamMode: "merged",
+        stderrSeparated: false,
+        stdoutEncoding: "utf8",
+        stderrEncoding: "utf8",
+        operation: "status",
+        state,
+        commandCompleted: latest?.commandCompleted ?? false,
+        continuationId: latest?.continuationId,
+        continuationAvailable:
+          Boolean(latest?.continuationId) &&
+          ((latest?.outputBytesAvailable ?? 0) > 0 ||
+            latest?.continuationAvailable === true),
+        outputBytesAvailable: latest?.outputBytesAvailable,
+        cleanupCompleted: false,
+      },
+      artifacts: [],
+    };
+  }
+
+  if (controlSessionId) {
+    throw mcpBadRequest("sessionId requires operation status or stop");
+  }
 
   if (continuationId) {
     if (command) {
@@ -275,6 +433,7 @@ export const executeTerminalSessionRuntime = async ({
       outputBytesAvailable: observed.outputBytesAvailable,
       outputLimitBytes: observed.outputLimitBytes,
       commandCompleted: observed.commandCompleted,
+      state: observed.state,
     };
     return {
       contents,
@@ -297,6 +456,7 @@ export const executeTerminalSessionRuntime = async ({
             outputBytesAvailable: observed.outputBytesAvailable,
             outputLimitBytes: observed.outputLimitBytes,
             commandCompleted: observed.commandCompleted,
+            state: observed.state,
             truncated: observed.truncated,
           },
         }),
@@ -421,6 +581,7 @@ export const executeTerminalSessionRuntime = async ({
       outputBytesAvailable: result.outputBytesAvailable,
       outputLimitBytes: result.outputLimitBytes,
       commandCompleted: result.commandCompleted,
+      state: result.state,
     };
     return {
       contents,
@@ -446,6 +607,7 @@ export const executeTerminalSessionRuntime = async ({
             outputBytesAvailable: result.outputBytesAvailable,
             outputLimitBytes: result.outputLimitBytes,
             commandCompleted: result.commandCompleted,
+            state: result.state,
           },
         }),
       ],

@@ -12,6 +12,12 @@ export const MAX_TERMINAL_OUTPUT_LIMIT_BYTES = 64 * 1024 * 1024;
 const OUTPUT_WRITE_PAUSE_BYTES = 1024 * 1024;
 const OUTPUT_WRITE_RESUME_BYTES = 512 * 1024;
 
+export type TerminalPersistentState =
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 type PersistentOutputRecord = {
   id: string;
   sessionId: string;
@@ -23,6 +29,7 @@ type PersistentOutputRecord = {
   pausedForBackpressure: boolean;
   completed: boolean;
   completionPromise: Promise<void> | null;
+  cancelled: boolean;
   exitCode: number | null;
   error: Error | null;
 };
@@ -41,6 +48,14 @@ const getRecord = (id: string) => {
     throw mcpBadRequest("terminal output continuation not found: " + id);
   }
   return record;
+};
+
+const getRecordState = (
+  record: PersistentOutputRecord,
+): TerminalPersistentState => {
+  if (record.cancelled) return "cancelled";
+  if (!record.completed) return "running";
+  return record.exitCode === 0 ? "completed" : "failed";
 };
 
 const assertRecordHealthy = (record: PersistentOutputRecord) => {
@@ -85,6 +100,7 @@ export const createPersistentTerminalOutput = (input: {
     pausedForBackpressure: false,
     completed: false,
     completionPromise: null,
+    cancelled: false,
     exitCode: null,
     error: null,
   };
@@ -203,6 +219,13 @@ export const readPersistentTerminalOutput = async (input: {
   }
   const commandCompletedAtSnapshot = record.completed;
   const exitCodeAtSnapshot = record.exitCode;
+  const stateAtSnapshot: TerminalPersistentState = record.cancelled
+    ? "cancelled"
+    : !commandCompletedAtSnapshot
+      ? "running"
+      : exitCodeAtSnapshot === 0
+        ? "completed"
+        : "failed";
   const stats = await fsPromises.stat(record.filePath);
   const availableBytes = stats.size;
   if (offset > availableBytes) {
@@ -255,10 +278,52 @@ export const readPersistentTerminalOutput = async (input: {
     outputBytesAvailable: availableBytes,
     outputLimitBytes: limitBytes,
     truncated: hasBufferedMore,
+    state: stateAtSnapshot,
     commandCompleted: commandCompletedAtSnapshot,
     exitCode: exitCodeAtSnapshot,
     continuationAvailable: hasBufferedMore || !commandCompletedAtSnapshot,
   };
+};
+
+export const getPersistentTerminalSessionStatus = async (
+  sessionId: string,
+) => {
+  const ids = [...(sessionRecords.get(sessionId) ?? [])];
+  const id = ids.at(-1);
+  if (!id) return undefined;
+
+  const record = getRecord(id);
+  if (record.completionPromise) {
+    await record.completionPromise;
+  } else {
+    await flushRecord(record);
+  }
+  const stats = await fsPromises.stat(record.filePath);
+  return {
+    continuationId: record.id,
+    sessionId: record.sessionId,
+    command: record.command,
+    state: getRecordState(record),
+    commandCompleted: record.completed,
+    exitCode: record.exitCode,
+    outputBytesAvailable: stats.size,
+    nextOutputOffset: stats.size,
+    continuationAvailable: !record.completed,
+  };
+};
+
+export const cancelPersistentTerminalOutputsForSession = async (
+  sessionId: string,
+) => {
+  const ids = [...(sessionRecords.get(sessionId) ?? [])];
+  await Promise.all(
+    ids.map(async (id) => {
+      const record = records.get(id);
+      if (!record || record.completed) return;
+      record.cancelled = true;
+      await completePersistentTerminalOutput(id, null);
+    }),
+  );
 };
 
 const disposeRecord = async (record: PersistentOutputRecord) => {

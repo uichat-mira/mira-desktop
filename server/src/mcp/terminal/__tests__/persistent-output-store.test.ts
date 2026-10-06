@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   appendPersistentTerminalOutput,
+  cancelPersistentTerminalOutputsForSession,
   clearAllPersistentTerminalOutputs,
   completePersistentTerminalOutput,
   createPersistentTerminalOutput,
+  getPersistentTerminalSessionStatus,
   readPersistentTerminalOutput,
 } from "../persistent-output-store.js";
 
@@ -48,6 +50,7 @@ describe("persistent terminal output store", () => {
     expect(third.continuationAvailable).toBe(false);
     expect(third.commandCompleted).toBe(true);
     expect(third.exitCode).toBe(0);
+    expect(third.state).toBe("completed");
   });
 
   it("keeps continuation available while a command is still collecting output", async () => {
@@ -66,6 +69,31 @@ describe("persistent terminal output store", () => {
     expect(page.truncated).toBe(false);
     expect(page.commandCompleted).toBe(false);
     expect(page.continuationAvailable).toBe(true);
+    expect(page.state).toBe("running");
     expect(page.nextOutputOffset).toBe(Buffer.byteLength("ready\n", "utf8"));
+  });
+
+  it("reports failed and cancelled persistent states", async () => {
+    const failed = createPersistentTerminalOutput({
+      sessionId: "session-failed",
+      command: "exit 2",
+    });
+    await completePersistentTerminalOutput(failed.id, 2);
+    expect(
+      (await getPersistentTerminalSessionStatus("session-failed"))?.state,
+    ).toBe("failed");
+
+    const running = createPersistentTerminalOutput({
+      sessionId: "session-cancelled",
+      command: "watch",
+    });
+    appendPersistentTerminalOutput(running.id, "working");
+    await cancelPersistentTerminalOutputsForSession("session-cancelled");
+
+    const cancelled = await getPersistentTerminalSessionStatus(
+      "session-cancelled",
+    );
+    expect(cancelled?.state).toBe("cancelled");
+    expect(cancelled?.commandCompleted).toBe(true);
   });
 });

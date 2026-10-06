@@ -314,6 +314,9 @@ export interface AgentTerminalSessionEvidenceData {
   outputBytesAvailable?: number;
   outputLimitBytes?: number;
   commandCompleted?: boolean;
+  state?: "running" | "completed" | "failed" | "cancelled";
+  cleanupCompleted?: boolean;
+  operation?: "status" | "stop";
 }
 
 export interface AgentRetrievalEvidenceData {

@@ -175,6 +175,7 @@ describe("ToolResult B-prime normalization", () => {
           outputBytesAvailable: 4096,
           outputLimitBytes: 1024,
           commandCompleted: false,
+          state: "running",
         },
       }),
     );
@@ -191,9 +192,11 @@ describe("ToolResult B-prime normalization", () => {
       outputBytesAvailable: 4096,
       outputLimitBytes: 1024,
       commandCompleted: false,
+      state: "running",
     });
     expect(evidence?.facts).toContain("continuationId=continuation-1");
     expect(evidence?.facts).toContain("nextOutputOffset=1024");
+    expect(evidence?.facts).toContain("state=running");
     expect(evidence?.gaps?.join(" ")).toMatch(/continuationId=continuation-1/);
     expect(evidence?.gaps?.join(" ")).toMatch(/outputOffset=1024/);
 
@@ -214,6 +217,68 @@ describe("ToolResult B-prime normalization", () => {
     );
     expect(legacyEvidence?.status).toBe("timed_out");
     expect(legacyEvidence?.data).toMatchObject({ kind: "terminal_session" });
+  });
+
+  it("projects terminal status running state without claiming completion", () => {
+    const evidence = projectToolEvidence(
+      definition("terminal", "internal", "terminal"),
+      normalizeToolResult({
+        structuredContent: {
+          operation: "status",
+          command: "watch",
+          timedOut: false,
+          exitCode: null,
+          stdout: "",
+          stderr: "",
+          stdoutEncoding: "utf8",
+          stderrEncoding: "utf8",
+          state: "running",
+          commandCompleted: false,
+          continuationId: "continuation-running",
+          continuationAvailable: true,
+          outputBytesAvailable: 12,
+        },
+      }),
+    );
+
+    expect(evidence?.data).toMatchObject({
+      kind: "terminal_session",
+      operation: "status",
+      state: "running",
+      processCompleted: false,
+      commandCompleted: false,
+    });
+    expect(evidence?.actionTaken).toMatch(/Observed terminal session/);
+  });
+
+  it("projects terminal stop state and verified cleanup", () => {
+    const evidence = projectToolEvidence(
+      definition("terminal", "internal", "terminal"),
+      normalizeToolResult({
+        structuredContent: {
+          operation: "stop",
+          command: "watch",
+          timedOut: false,
+          exitCode: null,
+          stdout: "",
+          stderr: "",
+          state: "cancelled",
+          cleanupCompleted: true,
+          commandCompleted: true,
+        },
+      }),
+    );
+
+    expect(evidence?.data).toMatchObject({
+      kind: "terminal_session",
+      operation: "stop",
+      state: "cancelled",
+      cleanupCompleted: true,
+      commandCompleted: true,
+    });
+    expect(evidence?.facts).toContain("operation=stop");
+    expect(evidence?.facts).toContain("state=cancelled");
+    expect(evidence?.facts).toContain("cleanupCompleted=true");
   });
 
   it("preserves degraded codebase exploration as partial evidence", () => {
