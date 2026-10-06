@@ -54,7 +54,6 @@ describe("resolveHarnessActionProfiles", () => {
     expect(profiles.map((profile) => profile.id)).toEqual([
       "terminal_execute_command",
       "edit_create_file",
-      "edit_overwrite_file",
       "edit_replace_block",
     ]);
     expect(profiles[0]).toMatchObject({
@@ -102,23 +101,6 @@ describe("resolveActionProfileInvocation", () => {
       args: {
         path: "notes/todo.txt",
         content: "",
-      },
-    });
-
-    expect(
-      resolveActionProfileInvocation({
-        actionProfileId: "edit_overwrite_file",
-        args: {
-          path: "notes/todo.txt",
-          content: "next",
-        },
-      }),
-    ).toEqual({
-      toolId: "write",
-      args: {
-        path: "notes/todo.txt",
-        content: "next",
-        overwrite: true,
       },
     });
 
