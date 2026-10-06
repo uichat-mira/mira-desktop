@@ -1,0 +1,140 @@
+name: Agent Dispatch Direct POC
+
+on:
+  push:
+    branches:
+      - feat/agent-dispatch-poc-direct
+    paths:
+      - .github/workflows/agent-dispatch-direct-poc.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: OpenCode + DeepSeek + portable Skill smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout current dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned Organization Skill
+        uses: actions/checkout@v4
+        with:
+          repository: uichat-mira/.github
+          ref: 765601f8bc9f67a726d425b2fad2e4101116d4b3
+          path: .poc-org
+          sparse-checkout: |
+            skills/execute-work-item
+          persist-credentials: false
+
+      - name: Stage portable Skill for native OpenCode discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .agents/skills/execute-work-item
+          cp .poc-org/skills/execute-work-item/SKILL.md .agents/skills/execute-work-item/SKILL.md
+          test -s .agents/skills/execute-work-item/SKILL.md
+
+      - name: Install pinned OpenCode CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://opencode.ai/install | bash -s -- --version 1.18.34
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Verify OpenCode version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(opencode --version)" = "1.18.34"
+
+      - name: Run read-only DeepSeek smoke
+        shell: bash
+        env:
+          OPENCODE_GO_API_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+          OPENCODE_DISABLE_AUTOUPDATE: "1"
+          OPENCODE_DISABLE_DEFAULT_PLUGINS: "1"
+          OPENCODE_DISABLE_LSP_DOWNLOAD: "1"
+          OPENCODE_DISABLE_MODELS_FETCH: "1"
+          NO_COLOR: "1"
+        run: |
+          set -euo pipefail
+
+          export OPENCODE_AUTH_CONTENT
+          OPENCODE_AUTH_CONTENT="$(jq -cn --arg key "$OPENCODE_GO_API_KEY"             '{"opencode-go":{"type":"api","key":$key}}')"
+
+          export OPENCODE_CONFIG_CONTENT
+          OPENCODE_CONFIG_CONTENT='{
+            "$schema": "https://opencode.ai/config.json",
+            "share": "disabled",
+            "autoupdate": false,
+            "permission": {
+              "read": "allow",
+              "glob": "allow",
+              "grep": "allow",
+              "list": "allow",
+              "skill": "allow",
+              "edit": "deny",
+              "bash": "deny",
+              "task": "deny",
+              "webfetch": "deny",
+              "websearch": "deny",
+              "question": "deny"
+            }
+          }'
+
+          cat > "$RUNNER_TEMP/agent-dispatch-smoke-prompt.txt" <<'PROMPT'
+          You are running a read-only Mira Agent Dispatch POC smoke test.
+
+          Do not edit files, run shell commands, use web/search tools, create branches, commit, push, or perform product work.
+
+          Prove only these facts:
+          1. Read the repository root AGENTS.md and identify the repository role.
+          2. Confirm the portable Skill named execute-work-item is discoverable.
+          3. Load execute-work-item using OpenCode's native skill tool.
+          4. Confirm from the loaded Skill that execution authority is distinct from outcome authority.
+          5. Do not execute the Skill's implementation loop because no Issue has been assigned.
+
+          Return exactly these five lines and no prose wrapper:
+          repo_instructions: PASS
+          portable_skill_discovered: PASS
+          portable_skill_loaded: PASS
+          authority_boundary_confirmed: PASS
+          overall: PASS
+
+          If any check fails, set that check and overall to FAIL.
+          PROMPT
+
+          opencode run             --model opencode-go/deepseek-v4.1-flash             --agent build             --title "Mira Agent Dispatch direct POC"             "$(cat "$RUNNER_TEMP/agent-dispatch-smoke-prompt.txt")"             | tee "$RUNNER_TEMP/agent-dispatch-smoke.txt"
+
+          grep -Fxq "repo_instructions: PASS" "$RUNNER_TEMP/agent-dispatch-smoke.txt"
+          grep -Fxq "portable_skill_discovered: PASS" "$RUNNER_TEMP/agent-dispatch-smoke.txt"
+          grep -Fxq "portable_skill_loaded: PASS" "$RUNNER_TEMP/agent-dispatch-smoke.txt"
+          grep -Fxq "authority_boundary_confirmed: PASS" "$RUNNER_TEMP/agent-dispatch-smoke.txt"
+          grep -Fxq "overall: PASS" "$RUNNER_TEMP/agent-dispatch-smoke.txt"
+
+      - name: Verify read-only workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- . ':(exclude).agents/**' ':(exclude).poc-org/**'; then
+            echo "OpenCode modified tracked repository content during the read-only smoke." >&2
+            git diff --stat
+            exit 1
+          fi
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-dispatch-direct-poc-smoke
+          path: ${{ runner.temp }}/agent-dispatch-smoke.txt
+          if-no-files-found: warn
+          retention-days: 3
