@@ -1,56 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
-import * as XLSX from "xlsx";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { workspaceResource } from "./workspace-resource.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
-import {
-  hasPythonOfficeTooling,
-  resolveExternalToolingPython,
-} from "@/test-support/external-tooling.js";
 
 const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-mcp-read");
-
-const createDocx = (filePath: string, text: string) => {
-  execFileSync(
-    resolveExternalToolingPython(),
-    [
-      "-c",
-      [
-        "from docx import Document",
-        "import sys",
-        "doc = Document()",
-        "doc.add_paragraph(sys.argv[2])",
-        "doc.save(sys.argv[1])",
-      ].join(";"),
-      filePath,
-      text,
-    ],
-    { stdio: "ignore" },
-  );
-};
-
-const createPptx = (filePath: string, text: string) => {
-  execFileSync(
-    resolveExternalToolingPython(),
-    [
-      "-c",
-      [
-        "from pptx import Presentation",
-        "import sys",
-        "prs = Presentation()",
-        "slide = prs.slides.add_slide(prs.slide_layouts[5])",
-        "slide.shapes.title.text = sys.argv[2]",
-        "prs.save(sys.argv[1])",
-      ].join(";"),
-      filePath,
-      text,
-    ],
-    { stdio: "ignore" },
-  );
-};
 
 describe("workspace resource", () => {
   beforeEach(() => {
@@ -78,34 +33,34 @@ describe("workspace resource", () => {
       },
     });
     expect((dirResult.contents as { type: string }).type).toBe("list");
-    expect((dirResult.contents as { entries: Array<{ name: string; type: string }> }).entries[0]).toMatchObject({
+    const dirEntries = (
+      dirResult.contents as { entries: Array<{ name: string; type: string }> }
+    ).entries;
+    expect(dirEntries.find((entry) => entry.name === "a.txt")).toMatchObject({
       name: "a.txt",
       type: "file",
     });
-    expect(dirEvents[0]).toContain("Directory listing plan");
+    expect(dirEvents[0]).toContain("List plan:");
 
-    const fileEvents: string[] = [];
     const fileResult = await workspaceResource.read!({
       args: { path: "docs/a.txt" },
       environment: createHarnessEnvironmentSnapshot(),
-      pushEvent(event) {
-        fileEvents.push(event.type === "invocation:progress" ? event.message : event.type);
-      },
     });
     expect((fileResult.contents as { source: { text: string } }).source.text).toContain("hello");
-    expect((fileResult.contents as { source: { metadata: { readerStrategy: string } } }).source.metadata.readerStrategy).toBe(
-      "text-known-extension",
-    );
-    expect(fileEvents[0]).toContain("Read plan:");
+    expect(
+      (fileResult.contents as { source: { metadata: { encoding: string } } }).source.metadata
+        .encoding,
+    ).toBe("utf-8");
 
     const logResult = await workspaceResource.read!({
       args: { path: "docs/app.log" },
       environment: createHarnessEnvironmentSnapshot(),
     });
     expect((logResult.contents as { source: { text: string } }).source.text).toContain("line one");
-    expect((logResult.contents as { source: { metadata: { readerStrategy: string } } }).source.metadata.readerStrategy).toBe(
-      "text-known-extension",
-    );
+    expect(
+      (logResult.contents as { source: { metadata: { encoding: string } } }).source.metadata
+        .encoding,
+    ).toBe("utf-8");
 
     const extensionlessResult = await workspaceResource.read!({
       args: { path: "docs/notes" },
@@ -115,62 +70,48 @@ describe("workspace resource", () => {
       "plain text without extension",
     );
     expect(
-      (extensionlessResult.contents as { source: { metadata: { readerStrategy: string } } }).source.metadata
-        .readerStrategy,
-    ).toBe("text-content-probe");
+      (extensionlessResult.contents as { source: { metadata: { encoding: string } } }).source.metadata
+        .encoding,
+    ).toBe("utf-8");
   });
 
-  it("returns a binary summary for unsupported binary files", async () => {
-    fs.writeFileSync(path.join(tempRoot, "blob.bin"), Buffer.from([0, 159, 146, 150, 1, 2, 3]));
+  it("returns an explicit unsupported outcome for binary files", async () => {
+    fs.writeFileSync(
+      path.join(tempRoot, "blob.bin"),
+      Buffer.from([0, 159, 146, 150, 1, 2, 3]),
+    );
 
     const result = await workspaceResource.read!({
       args: { path: "blob.bin" },
       environment: createHarnessEnvironmentSnapshot(),
     });
-    expect((result.contents as { source: { text: string } }).source.text).toContain(
-      "Binary file preview is not available",
-    );
-    expect((result.contents as { source: { metadata: { binary: boolean } } }).source.metadata.binary).toBe(true);
-    expect((result.contents as { source: { metadata: { readerStrategy: string } } }).source.metadata.readerStrategy).toBe(
-      "binary-summary",
-    );
+
+    expect(result.contents).toMatchObject({
+      type: "unsupported",
+      path: "blob.bin",
+      reason: "binary",
+      fileType: "bin",
+    });
   });
 
-  it.skipIf(!hasPythonOfficeTooling())("reads docx, pptx and xlsx files", async () => {
-    createDocx(path.join(tempRoot, "sample.docx"), "Hello Docx");
-    createPptx(path.join(tempRoot, "sample.pptx"), "Hello Pptx");
+  it("routes Office files to their Skill-owned runtimes", async () => {
+    for (const extension of ["docx", "pptx", "xlsx"]) {
+      const fileName = `sample.${extension}`;
+      fs.writeFileSync(path.join(tempRoot, fileName), "office fixture");
 
-    const workbook = XLSX.utils.book_new();
-    const sheet = XLSX.utils.aoa_to_sheet([["Name", "Value"], ["A", "1"]]);
-    XLSX.utils.book_append_sheet(workbook, sheet, "Sheet1");
-    XLSX.writeFile(workbook, path.join(tempRoot, "sample.xlsx"));
+      const result = await workspaceResource.read!({
+        args: { path: fileName },
+        environment: createHarnessEnvironmentSnapshot(),
+      });
 
-    const docxResult = await workspaceResource.read!({
-      args: { path: "sample.docx" },
-      environment: createHarnessEnvironmentSnapshot(),
-    });
-    expect((docxResult.contents as { source: { text: string } }).source.text).toContain("Hello Docx");
-    expect((docxResult.contents as { source: { metadata: { readerStrategy: string } } }).source.metadata.readerStrategy).toBe(
-      "docx-cli-extract",
-    );
-
-    const pptxResult = await workspaceResource.read!({
-      args: { path: "sample.pptx" },
-      environment: createHarnessEnvironmentSnapshot(),
-    });
-    expect((pptxResult.contents as { source: { text: string } }).source.text).toContain("Hello Pptx");
-    expect((pptxResult.contents as { source: { metadata: { readerStrategy: string } } }).source.metadata.readerStrategy).toBe(
-      "pptx-cli-extract",
-    );
-
-    const xlsxResult = await workspaceResource.read!({
-      args: { path: "sample.xlsx" },
-      environment: createHarnessEnvironmentSnapshot(),
-    });
-    expect((xlsxResult.contents as { source: { text: string } }).source.text).toContain("Sheet Sheet1");
-    expect((xlsxResult.contents as { source: { metadata: { readerStrategy: string } } }).source.metadata.readerStrategy).toBe(
-      "xlsx-cli-extract",
-    );
+      expect(result.contents).toMatchObject({
+        type: "unsupported",
+        path: fileName,
+        reason: "office_owned",
+        fileType: extension,
+        suggestedSkill: extension,
+      });
+    }
   });
 
   it("rejects missing paths", async () => {
