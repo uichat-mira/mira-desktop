@@ -108,7 +108,7 @@ test("coverage reducer completes list task from canonical list evidence", () => 
   assert.deepEqual(state.globalPendingActions, []);
 });
 
-test("coverage reducer completes list task from read_list evidence", () => {
+test("coverage reducer completes list task from list evidence", () => {
   const state = reduceAgentCoverageState({
     question: "列出当前目录有哪些文件",
     evidence: {
@@ -116,13 +116,13 @@ test("coverage reducer completes list task from read_list evidence", () => {
       retrievals: [],
       toolExecutions: [
         {
-          toolId: "read_list",
+          toolId: "list",
           args: { path: "." },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_list",
+            toolId: "list",
             actionTaken: "Listed current directory.",
             keyFindings: ["entryCount=3"],
             answerReadiness: {
@@ -130,14 +130,13 @@ test("coverage reducer completes list task from read_list evidence", () => {
               reason: "Directory listing is available.",
             },
             data: {
-              kind: "read_list",
+              kind: "list",
               path: ".",
               entryCount: 3,
               fileCount: 2,
               directoryCount: 1,
               entriesPreview: ["README.md", "AGENTS.md", "docs"],
               truncated: false,
-              canAnswerDirectoryQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:00.000Z",
@@ -230,13 +229,13 @@ test("coverage reducer completes locate-only task from canonical glob evidence",
   assert.deepEqual(state.globalPendingActions, []);
 });
 
-test("coverage reducer completes locate-only task from read_locate evidence", () => {
+test("coverage reducer completes locate-only task from glob evidence", () => {
   const state = reduceAgentCoverageState({
     question: "README.md 在哪里？",
     latestSummary: {
       source: "tool",
       status: "completed",
-      toolId: "read_locate",
+      toolId: "glob",
       actionTaken: "Located README.md.",
       keyFindings: ["matchedPath=README.md"],
       answerReadiness: {
@@ -244,15 +243,13 @@ test("coverage reducer completes locate-only task from read_locate evidence", ()
         reason: "Located target path is available.",
       },
       data: {
-        kind: "read_locate",
-        scope: ".",
-        query: "README.md",
-        searchMode: "path",
+        kind: "glob",
+        pattern: "**/README.md",
+        path: ".",
         matchCount: 1,
         matchedPaths: ["README.md"],
         matchesPreview: ["README.md"],
         truncated: false,
-        canAnswerLocateQuestion: true,
       },
     },
   });
@@ -274,7 +271,7 @@ test("coverage reducer keeps read_content pending after locate-only evidence", (
     latestSummary: {
       source: "tool",
       status: "completed",
-      toolId: "read_locate",
+      toolId: "glob",
       actionTaken: "Located README.md.",
       keyFindings: ["matchedPath=README.md"],
       answerReadiness: {
@@ -282,15 +279,13 @@ test("coverage reducer keeps read_content pending after locate-only evidence", (
         reason: "Located target path is available.",
       },
       data: {
-        kind: "read_locate",
-        scope: ".",
-        query: "README.md",
-        searchMode: "path",
+        kind: "glob",
+        pattern: "**/README.md",
+        path: ".",
         matchCount: 1,
         matchedPaths: ["README.md"],
         matchesPreview: ["README.md"],
         truncated: false,
-        canAnswerLocateQuestion: true,
       },
     },
   });
@@ -308,13 +303,13 @@ test("coverage reducer keeps multi-target read_content incomplete until all targ
       retrievals: [],
       toolExecutions: [
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "README.md" },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_open",
+            toolId: "read",
             actionTaken: "Opened README.md.",
             keyFindings: ["path=README.md"],
             answerReadiness: {
@@ -322,13 +317,12 @@ test("coverage reducer keeps multi-target read_content incomplete until all targ
               reason: "Opened file content is available.",
             },
             data: {
-              kind: "read_open",
+              kind: "read",
               path: "README.md",
               contentPreview: "readme",
               contentLength: 6,
               truncated: false,
               keySections: [],
-              canAnswerFileQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:00.000Z",
@@ -351,48 +345,46 @@ test("coverage reducer completes multi-target read_content when both targets are
       retrievals: [],
       toolExecutions: [
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "README.md" },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_open",
+            toolId: "read",
             actionTaken: "Opened README.md.",
             keyFindings: ["path=README.md"],
             answerReadiness: { canAnswer: true, reason: "Opened." },
             data: {
-              kind: "read_open",
+              kind: "read",
               path: "README.md",
               contentPreview: "readme",
               contentLength: 6,
               truncated: false,
               keySections: [],
-              canAnswerFileQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:00.000Z",
           finishedAt: "2026-07-09T00:00:01.000Z",
         },
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "AGENTS.md" },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_open",
+            toolId: "read",
             actionTaken: "Opened AGENTS.md.",
             keyFindings: ["path=AGENTS.md"],
             answerReadiness: { canAnswer: true, reason: "Opened." },
             data: {
-              kind: "read_open",
+              kind: "read",
               path: "AGENTS.md",
               contentPreview: "agents",
               contentLength: 6,
               truncated: false,
               keySections: [],
-              canAnswerFileQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:02.000Z",
@@ -412,20 +404,18 @@ test("coverage reducer does not treat locate-only mutation evidence as mutation 
     latestSummary: {
       source: "tool",
       status: "completed",
-      toolId: "read_locate",
+      toolId: "glob",
       actionTaken: "Located notes.txt.",
       keyFindings: ["matchedPath=notes.txt"],
       answerReadiness: { canAnswer: true, reason: "Located." },
       data: {
-        kind: "read_locate",
-        scope: ".",
-        query: "notes.txt",
-        searchMode: "path",
+        kind: "glob",
+        pattern: "**/notes.txt",
+        path: ".",
         matchCount: 1,
         matchedPaths: ["notes.txt"],
         matchesPreview: ["notes.txt"],
         truncated: false,
-        canAnswerLocateQuestion: true,
       },
     },
   });
@@ -471,7 +461,7 @@ test("coverage reducer recognizes canonical file_mutation evidence", () => {
   ]);
 });
 
-test("coverage reducer keeps mutation verification pending until read_open exists", () => {
+test("coverage reducer keeps mutation verification pending until read exists", () => {
   const state = reduceAgentCoverageState({
     question: "写入 notes.txt 后验证内容是否正确",
     evidence: {
@@ -513,7 +503,7 @@ test("coverage reducer keeps mutation verification pending until read_open exist
   ]);
 });
 
-test("coverage reducer completes mutation verification after read_open evidence", () => {
+test("coverage reducer completes mutation verification after read evidence", () => {
   const state = reduceAgentCoverageState({
     question: "写入 notes.txt 后验证内容是否正确",
     evidence: {
@@ -544,24 +534,23 @@ test("coverage reducer completes mutation verification after read_open evidence"
           finishedAt: "2026-07-09T00:00:01.000Z",
         },
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "notes.txt" },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_open",
+            toolId: "read",
             actionTaken: "Opened notes.txt.",
             keyFindings: ["path=notes.txt"],
             answerReadiness: { canAnswer: true, reason: "Opened." },
             data: {
-              kind: "read_open",
+              kind: "read",
               path: "notes.txt",
               contentPreview: "hello",
               contentLength: 5,
               truncated: false,
               keySections: [],
-              canAnswerFileQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:02.000Z",
@@ -588,7 +577,7 @@ test("coverage reducer keeps recoverable read failure incomplete", () => {
       retrievals: [],
       toolExecutions: [
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "README.md" },
           status: "failed",
           failureKind: "recoverable",
