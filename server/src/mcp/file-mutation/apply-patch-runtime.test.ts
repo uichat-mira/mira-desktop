@@ -77,6 +77,32 @@ describe("apply_patch File Mutation Runtime", () => {
     );
   });
 
+  it("accepts a context-only update as a successful no-op", async () => {
+    fs.writeFileSync(path.join(tempRoot, "same.txt"), "alpha\nbeta\n", "utf8");
+
+    const result = await executeApplyPatchMutation(
+      parseApplyPatch(`*** Begin Patch
+*** Update File: same.txt
+@@
+ alpha
+ beta
+*** End Patch`),
+    );
+
+    expect(result).toMatchObject({
+      operation: "apply_patch",
+      status: "completed",
+      changed: false,
+      hunkCount: 1,
+      committed: [],
+      unapplied: [],
+      committedDeltaExact: true,
+    });
+    expect(fs.readFileSync(path.join(tempRoot, "same.txt"), "utf8")).toBe(
+      "alpha\nbeta\n",
+    );
+  });
+
   it("prevalidates the whole patch before the first mutation", async () => {
     const parsed = parseApplyPatch(`*** Begin Patch
 *** Add File: first.txt
