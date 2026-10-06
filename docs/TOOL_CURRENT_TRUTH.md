@@ -235,10 +235,11 @@ Approval 只授权 frozen exact invocation；它不会扩大 workspace authority
 - 搜索当前公共互联网；
 - provider 在受信任 runtime config 中选择；
 - 当前支持 Tavily / SearXNG；
-- 模型只提供 `query` 与 `maxResults`；
-- 默认 4 条，限幅 1–10；
-- provider 失败按计划尝试下一可用 provider；
-- 所有 provider 失败才返回结构化错误；
+- 模型只提供 `queries`（1–4 条查询，去重非空字符串）与 `maxResults`；
+- Runtime 对所有 query 并发 fan-out，结果按 URL 归一化去重合并；
+- `maxResults` 是最终 merged 结果总上限，默认 4，限幅 1–10；
+- 当前 provider 任一 query 出现真实 provider failure 时，整批 queries 按既有计划尝试下一可用 provider；
+- provider 批次都失败时返回结构化错误；
 - `sideEffect = network`，但 definition 当前 `requiresApproval = false`。
 
 `apiKey`、`baseUrl` 和 provider 不是 LLM 参数。

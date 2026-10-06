@@ -473,7 +473,7 @@ describe("remote access routes", () => {
     const streamResponse = await app.inject({
       method: "POST",
       url: "/remote/v1/tool-invocations/stream",
-      payload: { toolId: "web_search", args: { query: "mira" } },
+      payload: { toolId: "web_search", args: { queries: ["mira"] } },
     });
     assert.equal(streamResponse.statusCode, 200, streamResponse.body);
     expect(streamResponse.body).toContain('"type":"tool:start"');
@@ -482,7 +482,7 @@ describe("remote access routes", () => {
     expect(mocks.toolGateway.execute).toHaveBeenCalledWith(
       expect.objectContaining({
         toolId: "web_search",
-        args: { query: "mira" },
+        args: { queries: ["mira"] },
         userId: user.id,
         signal: expect.any(AbortSignal),
       }),

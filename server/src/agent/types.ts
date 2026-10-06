@@ -274,16 +274,18 @@ export interface AgentReadLocateEvidenceData {
   truncated: boolean;
 }
 
-export interface AgentWebSearchEvidenceData {
+export type AgentWebSearchEvidenceData = {
   kind: "web_search";
-  query: string;
   resultCount: number;
   topFindings: string[];
   citationsPreview: Array<{
     title: string;
     link: string;
   }>;
-}
+} & (
+  | { queries: string[]; query?: never }
+  | { query: string; queries?: never }
+);
 
 export type AgentEvidenceResolution =
   | "true"

@@ -57,7 +57,7 @@ const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
   edit: { path: "", edits: [{ oldText: "", newText: "" }] },
   delete: { path: "" },
   move: { path: "", destinationPath: "" },
-  web_search: { query: "" },
+  web_search: { queries: [""] },
   news_search: { query: "" },
   github_repository: {
     operation: "get",

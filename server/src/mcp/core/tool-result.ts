@@ -768,7 +768,36 @@ export const projectToolEvidence = (
   );
   if (fileMutationEvidence) return fileMutationEvidence;
 
-  if ((definition.id === "web_search" || definition.id === "news_search") && typeof result.query === "string" && Array.isArray(result.results)) {
+  if (definition.id === "web_search" && Array.isArray(result.queries) && Array.isArray(result.results)) {
+    const queries = result.queries.filter((query): query is string => typeof query === "string");
+    const results = result.results.filter(asRecord);
+    const topFindings = results.slice(0, 5).map((item) =>
+      textPreview([item.title, item.snippet].filter((part) => typeof part === "string").join(": "), 180),
+    );
+    return baseEvidence({
+      result,
+      isError: normalized.isError,
+      actionTaken: `Searched the web for ${queries.map((query) => `"${query}"`).join(", ")}.`,
+      facts: [
+        `queries=${queries.join(", ")}`,
+        `resultCount=${results.length}`,
+        ...topFindings,
+      ],
+      gaps: results.length === 0 ? ["No web results were returned."] : undefined,
+      data: {
+        kind: "web_search",
+        queries,
+        resultCount: results.length,
+        topFindings,
+        citationsPreview: results.slice(0, 5).map((item) => ({
+          title: typeof item.title === "string" ? textPreview(item.title, 180) : "",
+          link: typeof item.link === "string" ? item.link : "",
+        })),
+      },
+    });
+  }
+
+  if (definition.id === "news_search" && typeof result.query === "string" && Array.isArray(result.results)) {
     const results = result.results.filter(asRecord);
     const topFindings = results.slice(0, 5).map((item) =>
       textPreview([item.title, item.snippet].filter((part) => typeof part === "string").join(": "), 180),

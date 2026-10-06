@@ -371,7 +371,7 @@ test("executeDefaultChatToolLoop returns early when Harness requires approval", 
       id: "inv-approval",
       toolId: "web_search",
       status: "awaiting_approval",
-      args: { query: "latest news today" },
+      args: { queries: ["latest news today"] },
       artifacts: [],
       approval: {
         required: true,
