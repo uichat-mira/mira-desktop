@@ -6,11 +6,14 @@ import {
   assertUrlIsSafeToFetch,
   guardedFetch,
   guardedFetchText,
+  createGuardedLookup,
   isGuardedFetchError,
   isSafeIpAddress,
   readBodyAsText,
 } from "guarded-fetch";
 import { ProxyAgent } from "undici";
+import nodeFetch from "node-fetch";
+import { SocksProxyAgent } from "socks-proxy-agent";
 
 const require = createRequire(import.meta.url);
 const { createServer: createSocksServer } = require("@pondwader/socks5-server");
@@ -209,6 +212,83 @@ await run("external cancellation reaches transport", async () => {
     };
   } finally {
     clearTimeout(timer);
+  }
+});
+
+
+await run("SOCKS agent accepts guarded client-side lookup", async () => {
+  let requestedDestination = null;
+  let observedHostHeader = null;
+
+  const targetServer = http.createServer((request, response) => {
+    observedHostHeader = request.headers.host ?? null;
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("PINNED_OK");
+  });
+  const targetPort = await listen(targetServer);
+
+  const socksServer = createSocksServer();
+  socksServer.setConnectionHandler((connection, sendStatus) => {
+    if (connection.command !== "connect") {
+      sendStatus("COMMAND_NOT_SUPPORTED");
+      return;
+    }
+
+    requestedDestination = connection.destAddress;
+    connection.socket.on("error", () => {});
+
+    // The test SOCKS server records the destination requested by the client,
+    // then forwards to the local fixture so the HTTP exchange can complete.
+    const upstream = net.createConnection({
+      host: "127.0.0.1",
+      port: targetPort,
+    });
+
+    let opened = false;
+    upstream.on("error", () => {
+      if (!opened) sendStatus("GENERAL_FAILURE");
+    });
+    upstream.on("connect", () => {
+      opened = true;
+      sendStatus("REQUEST_GRANTED");
+      connection.socket.pipe(upstream).pipe(connection.socket);
+    });
+    connection.socket.on("close", () => upstream.destroy());
+  });
+  const socksPort = await listenSocks(socksServer);
+
+  const agent = new SocksProxyAgent(
+    "socks5://127.0.0.1:" + socksPort,
+    { lookup: createGuardedLookup() },
+  );
+
+  try {
+    const response = await nodeFetch(
+      "http://example.com:" + targetPort + "/pinned",
+      {
+        agent,
+        redirect: "manual",
+        signal: AbortSignal.timeout(5_000),
+      },
+    );
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.equal(body, "PINNED_OK");
+    assert.equal(net.isIP(requestedDestination ?? "") > 0, true);
+    assert.notEqual(requestedDestination, "example.com");
+    assert.equal(observedHostHeader, "example.com:" + targetPort);
+
+    return {
+      socksDestinationWasIp: true,
+      preservedOriginHostHeader: observedHostHeader,
+      implication:
+        "socks-proxy-agent used guarded client-side DNS output for SOCKS CONNECT while HTTP Host remained the original hostname.",
+    };
+  } finally {
+    agent.destroy();
+    await closeServer(socksServer);
+    await closeServer(targetServer);
   }
 });
 
