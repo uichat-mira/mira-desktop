@@ -67,4 +67,47 @@ describe("public edit tool surface", () => {
       expect(properties).not.toHaveProperty("operation");
     }
   });
+
+  it("keeps neighboring edit-tool choices explicit without narrowing schemas", () => {
+    initializeHarnessRuntime();
+    const definitions = listToolDefinitions()
+      .filter((definition) => definition.domain === "edit");
+    const byId = new Map(definitions.map((definition) => [definition.id, definition]));
+
+    expect(byId.get("write")?.description).toMatch(/complete.*edit/i);
+    expect(byId.get("edit")?.description).toMatch(/localized.*write/i);
+    expect(byId.get("move")?.description).toMatch(/path identity.*write\/edit.*delete/i);
+    expect(byId.get("delete")?.description).toMatch(/move.*write\/edit/i);
+
+    expect(byId.get("write")?.inputSchema).toMatchObject({
+      required: ["path", "content"],
+      properties: {
+        path: { type: "string" },
+        content: { type: "string" },
+        overwrite: { type: "boolean" },
+      },
+    });
+    expect(byId.get("edit")?.inputSchema).toMatchObject({
+      required: ["path", "edits"],
+      properties: {
+        path: { type: "string" },
+        edits: { type: "array", minItems: 1 },
+      },
+    });
+    expect(byId.get("move")?.inputSchema).toMatchObject({
+      required: ["path", "destinationPath"],
+      properties: {
+        path: { type: "string" },
+        destinationPath: { type: "string" },
+        overwrite: { type: "boolean" },
+      },
+    });
+    expect(byId.get("delete")?.inputSchema).toMatchObject({
+      required: ["path"],
+      properties: {
+        path: { type: "string" },
+        recursive: { type: "boolean" },
+      },
+    });
+  });
 });
