@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createPrivateKey, randomUUID, sign as signBytes } from "node:crypto";
 
 import { getSqlite } from "@/db/index.js";
 import { decryptSecret, encryptSecret } from "@/utils/crypto.js";
@@ -12,7 +12,6 @@ import {
 export type HostNotificationIdentityRecord = {
   hostId: string;
   publicKey: string;
-  privateKeyPem: string;
   createdAt: string;
   rotatedAt: string | null;
 };
@@ -20,6 +19,8 @@ export type HostNotificationIdentityRecord = {
 export type HostNotificationBindingRequestRecord = {
   nonce: string;
   installationId: string;
+  originRemoteDeviceId: string;
+  ownerUserId: number;
   sourceScope: string[];
   expiresAt: string;
   consumedAt: string | null;
@@ -28,6 +29,8 @@ export type HostNotificationBindingRequestRecord = {
 
 export type HostNotificationBindingRecord = {
   installationId: string;
+  originRemoteDeviceId: string;
+  ownerUserId: number;
   brokerBaseUrl: string;
   deliveryToken: string;
   sourceScope: string[];
@@ -68,6 +71,8 @@ type IdentityRow = {
 type BindingRequestRow = {
   nonce: string;
   installation_id: string;
+  origin_remote_device_id: string;
+  owner_user_id: number;
   source_scope_json: string;
   expires_at: string;
   consumed_at: string | null;
@@ -76,6 +81,8 @@ type BindingRequestRow = {
 
 type BindingRow = {
   installation_id: string;
+  origin_remote_device_id: string;
+  owner_user_id: number;
   broker_base_url: string;
   delivery_token_encrypted: string;
   source_scope_json: string;
@@ -126,11 +133,10 @@ const parseSourceScope = (value: string) => {
 };
 
 const toIdentityRecord = (
-  row: IdentityRow,
+  row: Pick<IdentityRow, "host_id" | "public_key" | "created_at" | "rotated_at">,
 ): HostNotificationIdentityRecord => ({
   hostId: row.host_id,
   publicKey: row.public_key,
-  privateKeyPem: decryptSecret(row.private_key_encrypted),
   createdAt: row.created_at,
   rotatedAt: row.rotated_at,
 });
@@ -140,6 +146,8 @@ const toBindingRequestRecord = (
 ): HostNotificationBindingRequestRecord => ({
   nonce: row.nonce,
   installationId: row.installation_id,
+  originRemoteDeviceId: row.origin_remote_device_id,
+  ownerUserId: row.owner_user_id,
   sourceScope: parseSourceScope(row.source_scope_json),
   expiresAt: row.expires_at,
   consumedAt: row.consumed_at,
@@ -148,6 +156,8 @@ const toBindingRequestRecord = (
 
 const toBindingRecord = (row: BindingRow): HostNotificationBindingRecord => ({
   installationId: row.installation_id,
+  originRemoteDeviceId: row.origin_remote_device_id,
+  ownerUserId: row.owner_user_id,
   brokerBaseUrl: row.broker_base_url,
   deliveryToken: decryptSecret(row.delivery_token_encrypted),
   sourceScope: parseSourceScope(row.source_scope_json),
@@ -175,7 +185,7 @@ export const hostNotificationRepository = {
   getIdentity(): HostNotificationIdentityRecord | null {
     const row = getSqlite()
       .prepare(
-        `SELECT host_id, public_key, private_key_encrypted, created_at, rotated_at
+        `SELECT host_id, public_key, created_at, rotated_at
          FROM host_notification_identity
          WHERE id = 1`,
       )
@@ -213,32 +223,80 @@ export const hostNotificationRepository = {
     return identity;
   },
 
+  signWithIdentityPrivateKey(payload: Uint8Array) {
+    const row = getSqlite()
+      .prepare(
+        `SELECT private_key_encrypted
+         FROM host_notification_identity
+         WHERE id = 1`,
+      )
+      .get() as Pick<IdentityRow, "private_key_encrypted"> | undefined;
+    if (!row) {
+      throw new Error("Host notification identity is not initialized");
+    }
+
+    let privateKeyPem = decryptSecret(row.private_key_encrypted);
+    try {
+      return signBytes(
+        null,
+        Buffer.from(payload),
+        createPrivateKey(privateKeyPem),
+      ).toString("base64url");
+    } finally {
+      // Keep plaintext lifetime bounded to this one signing call. JS strings are
+      // immutable, so this is reference release rather than guaranteed zeroization.
+      privateKeyPem = "";
+    }
+  },
+
   createBindingRequest(input: {
     nonce: string;
     installationId: string;
+    originRemoteDeviceId: string;
+    ownerUserId: number;
     sourceScope: string[];
     expiresAt: string;
     now?: string;
   }): HostNotificationBindingRequestRecord {
     const sourceScope = normalizeSourceScope(input.sourceScope);
-    if (!input.nonce.trim() || !input.installationId.trim() || sourceScope.length === 0) {
+    if (
+      !input.nonce.trim() ||
+      !input.installationId.trim() ||
+      !input.originRemoteDeviceId.trim() ||
+      !Number.isInteger(input.ownerUserId) ||
+      sourceScope.length === 0
+    ) {
       throw new Error("Notification binding request is incomplete");
     }
     const now = input.now ?? new Date().toISOString();
-    getSqlite()
-      .prepare(
-        `INSERT INTO host_notification_binding_requests (
-          nonce, installation_id, source_scope_json,
-          expires_at, consumed_at, created_at
-        ) VALUES (?, ?, ?, ?, NULL, ?)`,
-      )
-      .run(
-        input.nonce.trim(),
-        input.installationId.trim(),
-        JSON.stringify(sourceScope),
-        input.expiresAt,
-        now,
-      );
+    getSqlite().transaction(() => {
+      // One outstanding bootstrap per paired device. Minting a fresh descriptor
+      // invalidates older unconsumed descriptors from that device.
+      getSqlite()
+        .prepare(
+          `UPDATE host_notification_binding_requests
+           SET consumed_at = ?
+           WHERE origin_remote_device_id = ? AND consumed_at IS NULL`,
+        )
+        .run(now, input.originRemoteDeviceId.trim());
+
+      getSqlite()
+        .prepare(
+          `INSERT INTO host_notification_binding_requests (
+            nonce, installation_id, origin_remote_device_id, owner_user_id,
+            source_scope_json, expires_at, consumed_at, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
+        )
+        .run(
+          input.nonce.trim(),
+          input.installationId.trim(),
+          input.originRemoteDeviceId.trim(),
+          input.ownerUserId,
+          JSON.stringify(sourceScope),
+          input.expiresAt,
+          now,
+        );
+    })();
     const record = this.getBindingRequest(input.nonce);
     if (!record) throw new Error("Failed to persist notification binding request");
     return record;
@@ -249,8 +307,8 @@ export const hostNotificationRepository = {
   ): HostNotificationBindingRequestRecord | null {
     const row = getSqlite()
       .prepare(
-        `SELECT nonce, installation_id, source_scope_json,
-                expires_at, consumed_at, created_at
+        `SELECT nonce, installation_id, origin_remote_device_id, owner_user_id,
+                source_scope_json, expires_at, consumed_at, created_at
          FROM host_notification_binding_requests
          WHERE nonce = ?`,
       )
@@ -261,6 +319,8 @@ export const hostNotificationRepository = {
   acceptBindingCapability(input: {
     nonce: string;
     installationId: string;
+    originRemoteDeviceId: string;
+    ownerUserId: number;
     brokerBaseUrl: string;
     deliveryToken: string;
     sourceScope: string[];
@@ -283,12 +343,20 @@ export const hostNotificationRepository = {
       if (request.installationId !== input.installationId.trim()) {
         throw new Error("Notification binding installation does not match request");
       }
+      if (
+        request.originRemoteDeviceId !== input.originRemoteDeviceId.trim() ||
+        request.ownerUserId !== input.ownerUserId
+      ) {
+        throw new Error("Notification binding authority does not match request");
+      }
       if (JSON.stringify(request.sourceScope) !== JSON.stringify(normalizedScope)) {
         throw new Error("Notification binding source scope does not match request");
       }
 
       const binding = this.upsertBinding({
         installationId: input.installationId,
+        originRemoteDeviceId: input.originRemoteDeviceId,
+        ownerUserId: input.ownerUserId,
         brokerBaseUrl: input.brokerBaseUrl,
         deliveryToken: input.deliveryToken,
         sourceScope: normalizedScope,
@@ -307,6 +375,8 @@ export const hostNotificationRepository = {
 
   upsertBinding(input: {
     installationId: string;
+    originRemoteDeviceId: string;
+    ownerUserId: number;
     brokerBaseUrl: string;
     deliveryToken: string;
     sourceScope: string[];
@@ -316,6 +386,8 @@ export const hostNotificationRepository = {
     const sourceScope = normalizeSourceScope(input.sourceScope);
     if (
       !input.installationId.trim() ||
+      !input.originRemoteDeviceId.trim() ||
+      !Number.isInteger(input.ownerUserId) ||
       !input.brokerBaseUrl.trim() ||
       !input.deliveryToken.trim() ||
       sourceScope.length === 0
@@ -328,27 +400,53 @@ export const hostNotificationRepository = {
       throw new Error("Failed to protect notification delivery token");
     }
 
-    getSqlite()
-      .prepare(
-        `INSERT INTO host_notification_bindings (
-          installation_id, broker_base_url, delivery_token_encrypted,
-          source_scope_json, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'active', ?, ?)
-        ON CONFLICT(installation_id) DO UPDATE SET
-          broker_base_url = excluded.broker_base_url,
-          delivery_token_encrypted = excluded.delivery_token_encrypted,
-          source_scope_json = excluded.source_scope_json,
-          status = 'active',
-          updated_at = excluded.updated_at`,
-      )
-      .run(
-        input.installationId.trim(),
-        input.brokerBaseUrl.trim().replace(/\/+$/u, ""),
-        encrypted,
-        JSON.stringify(sourceScope),
-        now,
-        now,
-      );
+    getSqlite().transaction(() => {
+      // A paired device owns at most one active Mobile installation binding.
+      // Reinstall/rebind replaces its prior installation capability.
+      getSqlite()
+        .prepare(
+          `UPDATE host_notification_bindings
+           SET status = 'revoked', updated_at = ?
+           WHERE origin_remote_device_id = ?
+             AND installation_id <> ?
+             AND status = 'active'`,
+        )
+        .run(now, input.originRemoteDeviceId.trim(), input.installationId.trim());
+
+      const existing = this.getBinding(input.installationId);
+      if (
+        existing &&
+        (existing.originRemoteDeviceId !== input.originRemoteDeviceId.trim() ||
+          existing.ownerUserId !== input.ownerUserId)
+      ) {
+        throw new Error("Notification installation is bound to another device");
+      }
+
+      getSqlite()
+        .prepare(
+          `INSERT INTO host_notification_bindings (
+            installation_id, origin_remote_device_id, owner_user_id,
+            broker_base_url, delivery_token_encrypted,
+            source_scope_json, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+          ON CONFLICT(installation_id) DO UPDATE SET
+            broker_base_url = excluded.broker_base_url,
+            delivery_token_encrypted = excluded.delivery_token_encrypted,
+            source_scope_json = excluded.source_scope_json,
+            status = 'active',
+            updated_at = excluded.updated_at`,
+        )
+        .run(
+          input.installationId.trim(),
+          input.originRemoteDeviceId.trim(),
+          input.ownerUserId,
+          input.brokerBaseUrl.trim().replace(/\/+$/u, ""),
+          encrypted,
+          JSON.stringify(sourceScope),
+          now,
+          now,
+        );
+    })();
 
     const record = this.getBinding(input.installationId);
     if (!record) throw new Error("Failed to persist notification binding");
@@ -358,7 +456,8 @@ export const hostNotificationRepository = {
   getBinding(installationId: string): HostNotificationBindingRecord | null {
     const row = getSqlite()
       .prepare(
-        `SELECT installation_id, broker_base_url, delivery_token_encrypted,
+        `SELECT installation_id, origin_remote_device_id, owner_user_id,
+                broker_base_url, delivery_token_encrypted,
                 source_scope_json, status, created_at, updated_at
          FROM host_notification_bindings
          WHERE installation_id = ?`,
@@ -378,12 +477,30 @@ export const hostNotificationRepository = {
     return result.changes > 0;
   },
 
+  revokeBindingsForRemoteDevice(
+    remoteDeviceId: string,
+    ownerUserId: number,
+    now = new Date().toISOString(),
+  ) {
+    const result = getSqlite()
+      .prepare(
+        `UPDATE host_notification_bindings
+         SET status = 'revoked', updated_at = ?
+         WHERE origin_remote_device_id = ?
+           AND owner_user_id = ?
+           AND status = 'active'`,
+      )
+      .run(now, remoteDeviceId, ownerUserId);
+    return result.changes;
+  },
+
   listActiveBindingsForSource(
     sourceId: string,
   ): HostNotificationBindingRecord[] {
     const rows = getSqlite()
       .prepare(
-        `SELECT installation_id, broker_base_url, delivery_token_encrypted,
+        `SELECT installation_id, origin_remote_device_id, owner_user_id,
+                broker_base_url, delivery_token_encrypted,
                 source_scope_json, status, created_at, updated_at
          FROM host_notification_bindings
          WHERE status = 'active'
