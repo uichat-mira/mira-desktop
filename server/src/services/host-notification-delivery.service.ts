@@ -7,6 +7,7 @@ import {
   hostNotificationIdentityService,
   type HostNotificationEvent,
 } from "@/services/host-notification-identity.service.js";
+import { getConfiguredPushBrokerBaseUrl } from "@/services/host-notification-config.js";
 
 const RETRY_DELAYS_MS = [
   5_000,
@@ -50,6 +51,7 @@ export class HostNotificationDeliveryService {
       repository?: DeliveryRepository;
       identity?: SigningIdentity;
       fetchImpl?: typeof fetch;
+      brokerBaseUrl?: () => string;
       now?: () => number;
       pollIntervalMs?: number;
     } = {},
@@ -75,15 +77,6 @@ export class HostNotificationDeliveryService {
       repository.expireDue(now);
       const pending = repository.listPending(now, 100);
       for (const event of pending) {
-        if (!repository.isCanonicalDeliveryEligible(event)) {
-          repository.markExpired(
-            event.id,
-            "Canonical message is no longer notification-eligible",
-            now,
-          );
-          continue;
-        }
-
         const binding = repository.getBinding(event.installationId);
         if (!binding || binding.status !== "active") {
           repository.markFailed(
@@ -95,11 +88,22 @@ export class HostNotificationDeliveryService {
           continue;
         }
 
+        if (!repository.isCanonicalDeliveryEligible(event, binding)) {
+          repository.markExpired(
+            event.id,
+            "Canonical message or binding authority is no longer eligible",
+            now,
+          );
+          continue;
+        }
+
         const outcome = await this.deliverOne({
           event,
           binding,
           identity,
           fetchImpl,
+          brokerBaseUrl:
+            this.dependencies.brokerBaseUrl ?? getConfiguredPushBrokerBaseUrl,
         });
 
         if (outcome === "delivered") {
@@ -171,6 +175,7 @@ export class HostNotificationDeliveryService {
     binding: HostNotificationBindingRecord;
     identity: SigningIdentity;
     fetchImpl: typeof fetch;
+    brokerBaseUrl: () => string;
   }): Promise<
     | "delivered"
     | {
@@ -194,8 +199,9 @@ export class HostNotificationDeliveryService {
     const hostSignature = input.identity.signEvent(unsigned);
 
     try {
+      const brokerBaseUrl = input.brokerBaseUrl();
       const response = await input.fetchImpl(
-        `${input.binding.brokerBaseUrl}/v1/installations/${encodeURIComponent(
+        `${brokerBaseUrl}/v1/installations/${encodeURIComponent(
           input.event.installationId,
         )}/events`,
         {
