@@ -354,7 +354,9 @@ const createBenchCases = (): ContextReadBenchCaseDefinition[] => [
         metadata: readResult.source.metadata,
         expectedText: fixture.expected.gbkText,
       });
-      const passed = encoding === "uncertain" || encoding === "decoded";
+      const passed =
+        encoding === "gb18030" &&
+        readResult.source.text.includes(fixture.expected.gbkText);
       return {
         caseId: "read-gbk",
         operation: "read",
@@ -365,8 +367,10 @@ const createBenchCases = (): ContextReadBenchCaseDefinition[] => [
         encoding,
         truncated: false,
         diagnostics: passed
-          ? ["GBK 文件未崩溃，bench 已标记为 uncertain 或 decoded。"]
-          : [`GBK 文件编码标记不符合预期：${encoding}`],
+          ? ["GBK 文件通过 canonical read 以 gb18030 正确解码。"]
+          : [
+              `GBK 文件未以 gb18030 正确解码：encoding=${encoding}; text=${readResult.source.text}`,
+            ],
       };
     },
   },
