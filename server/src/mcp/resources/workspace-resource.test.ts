@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { workspaceResource } from "./workspace-resource.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
+import { clearWorkspaceSelection } from "../workspace.js";
 
 const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-mcp-read");
 
@@ -11,11 +12,13 @@ describe("workspace resource", () => {
   beforeEach(() => {
     fs.mkdirSync(tempRoot, { recursive: true });
     process.env.UI_CHAT_WORKSPACE_ROOT = tempRoot;
+    clearWorkspaceSelection();
   });
 
   afterEach(() => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
     delete process.env.UI_CHAT_WORKSPACE_ROOT;
+    clearWorkspaceSelection();
   });
 
   it("reads directories and text files", async () => {
