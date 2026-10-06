@@ -17,8 +17,9 @@ const materializeWorkspaceEditFacade = (
   const hasApplyPatch = definitions.some(
     (definition) => definition.id === "apply_patch",
   );
-  const facade =
-    requested === "apply_patch" && !hasApplyPatch ? "primitives" : requested;
+  const downgraded =
+    requested === "apply_patch" && !hasApplyPatch;
+  const facade = downgraded ? "primitives" : requested;
 
   if (facade === "all") {
     return { definitions, reason: undefined };
@@ -38,9 +39,11 @@ const materializeWorkspaceEditFacade = (
     definitions: definitions.filter(
       (definition) => definition.id !== "apply_patch",
     ),
-    reason: hasApplyPatch
-      ? "Workspace Edit materialized as write/edit/move/delete for this exposure."
-      : undefined,
+    reason: downgraded
+      ? "Workspace Edit requested apply_patch, but apply_patch is not available; materialized as write/edit/move/delete."
+      : hasApplyPatch
+        ? "Workspace Edit materialized as write/edit/move/delete for this exposure."
+        : undefined,
   };
 };
 
