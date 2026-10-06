@@ -709,7 +709,9 @@ V0 不建立 App A → App B 的硬依赖；跨应用协作优先通过 Agent / 
 
 ### Phase 7 — Capability Grant / Approval Research
 
-研究：
+这一阶段不是“给某个 Tool 加一个 Allow always”或“减少几次确认框”，而是补齐 Mira 当前只有 **exact invocation approval**、缺少 **governed reusable / derived authority** 的授权模型。
+
+当前方向继续保持：
 
 ```text
 capability
@@ -718,12 +720,424 @@ capability
 + side-effect boundary
 + credential boundary
 + expiry / session
-→ reusable grant
+→ governed grant
 ```
 
-但 destructive delete、external publish/send、credential disclosure、payment、broad filesystem escape、remote mutation 等可能仍需 exact confirmation。
+但这里的 `grant` 不能先验等同于“Capability 被永久授权”。Capability taxonomy 与 Approval taxonomy 仍然分离；真正需要研究的是：
 
-前置：先修清当前 exact approval 的 `toolCallId` identity drift。
+> 除了 frozen exact invocation，Mira 还需要哪些一等、可验证、可撤销、有限作用域的授权对象？
+
+#### 7.1 当前 Mira 真相：Approval 仍是 invocation-oriented
+
+当前 canonical Approval 的核心仍是一次冻结调用：
+
+```text
+toolId
++ toolCallId
++ inputHash
+→ exact invocation approval
+```
+
+当前实现中，core grant match 主要仍按 `toolId + inputHash` 消费，`toolCallId` identity 尚未完全进入 grant match；这属于已知 implementation drift，不能被 reusable grant 设计顺手掩盖。
+
+因此 P7 的硬前置仍然是：
+
+1. 先把 exact approval 的 identity / one-shot consumption 语义修清；
+2. 再在同一个 Policy / Approval authority 中增加新的授权对象；
+3. 不允许通过 Prompt、Tool 描述、sessionId bearer token 或另起一套 runtime 绕过现有 Policy。
+
+P7 不是第二套权限系统。
+
+#### 7.2 Terminal 是第一个 reference case，但不是 P7 owner
+
+#236 暴露了第一个足够具体的产品痛点：
+
+```text
+用户批准启动 persistent process
+        ↓
+Continue output
+Status
+Stop
+        ↓
+每一步仍按新的 terminal invocation 再次审批
+```
+
+当前 exact approval 只能看见“这些 invocation 的参数不同”，看不见：
+
+> Continue / Status / Stop 实际上是同一个已批准进程的生命周期操作。
+
+这说明需要研究 **derived authority**，而不是给 Terminal 写特例。
+
+更一般地，未来同一问题会出现在：
+
+- persistent Terminal process；
+- attached Browser session；
+- MicroApp background service；
+- Remote / Mobile capability；
+- 已授权的外部资源或工作对象。
+
+因此 Terminal 应作为 P7 的第一道 reference case，用来验证通用授权模型，而不是产生一个 Terminal-only Approval subsystem。
+
+#### 7.3 社区实现对比：不要只抄 “Allow always”
+
+2026-10 调研至少比较了 Codex、OpenCode 与 Gemini CLI。
+
+**OpenCode**
+
+OpenCode 将 Permission 建模为：
+
+```text
+action
++ resource
+→ allow | ask | deny
+```
+
+用户可以选择 Allow once 或 Allow always；后者把 Tool 提议的 pattern 保存为后续规则，例如：
+
+```text
+shell: git status * → allow
+```
+
+其优点是简单、可配置，适合重复执行同一类未来命令；缺点是它本质上是 **pattern-based future action grant**，对“已经存在的这个具体进程”过宽。
+
+参考：
+
+- https://opencode.ai/v2/docs/permissions
+- https://opencode.ai/v2/docs/policies/
+
+**Gemini CLI**
+
+Gemini CLI 继续以 shell command confirmation / policy rule 为主，但已经把 background shell 作为独立生命周期对象管理：
+
+- background process 可持续存在；
+- `/shells` 可查看和管理长任务；
+- UI 可查看日志并 kill background shell；
+- shell policy 可按 commandPrefix / commandRegex / allow-deny-ask 治理。
+
+这说明成熟实现已经开始把“启动命令”与“管理已存在的后台执行”区分开，但其主授权模型仍然偏 command-centric。
+
+参考：
+
+- https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/tutorials/shell-commands.md
+- https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/policy-engine.md
+
+**Codex**
+
+Codex 当前实现更接近 Mira P7 的目标：
+
+- 长进程 entry 会保留启动时的 permission context；
+- 对 existing terminal 的空输入 poll / 观察，不等同于再次执行新命令；
+- 对已有终端写入 stdin，会依据 retained launch permissions 与 **当前 Policy** 再判断是否需要 review；
+- Policy / sandbox 发生 drift 时，不假装旧进程自动获得新限制；必要时要求新开 terminal；
+- 已存在进程的后续控制仍围绕同一个 process identity，而不是把一次 approval 扩大成全局 Terminal trust。
+
+参考源码：
+
+- https://github.com/openai/codex/blob/main/codex-rs/core/src/unified_exec/stdin_approval.rs
+- https://github.com/openai/codex/blob/main/codex-rs/core/src/unified_exec/process_state.rs
+
+P7 应吸收的不是 Codex 的具体类型，而是原则：
+
+> **retain launch authority, bind it to the real resource, and re-evaluate only when the follow-up operation can widen or reuse side-effect authority.**
+
+#### 7.4 候选授权对象：Exact、Derived、Reusable 必须分开
+
+P7 至少要区分三种不同语义，不要全部塞回 `approvedInvocations[]`：
+
+```text
+Exact Invocation Approval
+  用户批准这一次 frozen invocation
+
+Derived Resource Authority
+  某次已批准动作创建了真实 resource，
+  Host 派生出仅适用于该 resource 生命周期的有限操作权
+
+Reusable Rule / Grant
+  用户明确允许未来一类 action + resource pattern
+```
+
+例如：
+
+```text
+Exact:
+  terminal(command="pnpm dev", cwd="app", sessionMode="persistent")
+
+Derived:
+  terminal-session:<sessionId>
+    observe-output
+    inspect-status
+    stop
+
+Reusable:
+  shell "git status *"
+  read "~/trusted-reference/*"
+```
+
+三者来源、审计语义、撤销方式和风险都不同。
+
+尤其不能把 Derived Resource Authority 伪装成旧的 exact approval，因为那会让未来 Trace / Evidence 无法回答：
+
+> 这次为什么没有再次询问用户？
+
+#### 7.5 Terminal reference contract：生命周期权限不等于新执行权限
+
+P7 的第一版 reference contract 可研究：
+
+| Terminal 后续动作 | 默认授权方向 | 原因 |
+| --- | --- | --- |
+| continue / observe buffered output | derived allow | 只观察已批准进程 |
+| inspect status | derived allow | 只观察生命周期 |
+| stop process tree | derived allow | 收缩 / 终止已批准副作用 |
+| interrupt / cancel | derived allow 候选 | 通常属于收缩副作用 |
+| new command on existing PTY | exact / re-review | 执行了新的代码或副作用 |
+| arbitrary stdin | re-evaluate | 可能等价于新命令或新外部行为 |
+| restart | exact approval | 新进程 |
+| changed cwd / env / credential context | exact / re-review | execution authority 发生变化 |
+| control another owner's session | hard deny | 不是补一次 approval 可以修复的 ownership 问题 |
+
+因此“批准 persistent Terminal”不应推导出：
+
+```text
+terminal:* = allow
+```
+
+而应更接近：
+
+```text
+subject:
+  user / thread
+
+resource:
+  terminal-session:<id>
+
+derived operations:
+  observe
+  status
+  stop
+
+source:
+  launch approval / invocation
+```
+
+#### 7.6 Resource ownership 是 reusable / derived grant 的硬前置
+
+当前 Mira Terminal 已有稳定 `sessionId`，但当前 `TerminalSessionRecord` 主要保存：
+
+- command / cwd / shell；
+- runtime / process-tree metadata；
+- createdAt；
+- PTY process。
+
+它还不是完整的授权资源记录；当前没有把 `userId / threadId / launchInvocationId / launch authority snapshot` 作为 Terminal session ownership contract。
+
+因此在 P7 之前不能把：
+
+```text
+knows sessionId
+→ may control session
+```
+
+当成授权模型。
+
+否则随机 `sessionId` 会事实上退化成 bearer token。
+
+P7 应先定义 resource ownership 至少需要哪些 Host-owned identity：
+
+```text
+resourceId
+owner user
+origin thread / run where relevant
+launch invocation identity
+authority snapshot / fingerprint
+resource lifecycle state
+```
+
+具体字段名不在本工程稿冻结；这里冻结的是 **resource-bound grant 必须基于真实 ownership，而不是只基于 opaque id**。
+
+#### 7.7 Scope 不应只有一种：Agent authority 与 Human owner control 可不同
+
+Thread-owned Workspace 已经确立，但授权 scope 不能机械地全部等于 thread。
+
+需要研究至少：
+
+```text
+user
+thread
+workspace
+run
+device
+resource
+credential
+external target
+```
+
+一个重要候选规则是：
+
+```text
+Agent derived authority:
+  user + thread + resource scoped
+
+Human owner control:
+  user + resource scoped
+```
+
+例如 Agent 不应在新 Thread 自动继承旧 Thread 的 Terminal 控制权；但用户自己的后台任务管理 UI 应仍能 Stop 自己启动的失控进程。
+
+这类差异应由 Policy / ownership contract 表达，不要靠 UI 特判。
+
+#### 7.8 Policy drift：旧资源不会因为新 Policy 自动变安全
+
+Derived authority 必须考虑启动后的 Policy 变化。
+
+例如一个 Terminal session 启动时拥有 network + workspace write，而用户随后把 Policy 收紧为 read-only / no-network：
+
+- observe / status / stop 可以继续基于 resource lifecycle authority；
+- 向旧进程注入新的 command / stdin 时必须重新比较 current Policy 与 launch authority；
+- 如果当前限制无法 retroactively 施加到已有资源，不应通过一次新 approval 假装旧进程已经符合新 sandbox；
+- 必要时应要求创建一个符合当前 Policy 的新 resource。
+
+这一原则应推广到 Browser、Remote、MicroApp background service，而不是 Terminal 独有。
+
+#### 7.9 Grant 不能覆盖 hard deny，也不能形成第二个 authority source
+
+候选 Policy 顺序应保持单一治理入口，概念上接近：
+
+```text
+hard deny / ownership validation
+        ↓
+exact invocation approval
+        ↓
+derived resource authority
+        ↓
+reusable rule / grant
+        ↓
+ask user
+```
+
+具体优先级仍需 P7 研究验证，但至少必须满足：
+
+- configured / organization hard deny 不能被 reusable grant 覆盖；
+- ownership failure 不能通过“再问一次用户”变成允许；
+- derived grant 不能创造原 resource 没有的能力；
+- Prompt / Agent memory / Skill 文本不能成为 grant；
+- Remote client 不能自行声明 Host grant；
+- 所有 allow 路径仍由 canonical Policy 决定。
+
+#### 7.10 生命周期、撤销与持久化要按授权对象分别设计
+
+不要把所有 grant 都做成同一种 TTL。
+
+**Derived Resource Authority**
+
+资源本身就是天然生命周期：
+
+```text
+resource created
+  ↓
+derived authority active
+  ↓
+resource exit / stop / revoke / cleanup
+  ↓
+derived authority disappears
+```
+
+如果 process 不跨 Host restart 存活，其 derived grant 也没有理由单独跨 restart 存活。
+
+**Reusable Grant**
+
+才需要单独研究：
+
+- current session；
+- thread；
+- workspace / project；
+- explicit expiry；
+- durable user setting；
+- revoke / inspect UI。
+
+不要为了统一而给 process lifecycle grant 强塞一个“30 分钟 TTL”。
+
+#### 7.11 Trace / Evidence 必须解释“为什么这次没有再问”
+
+P7 不是只改弹窗体验。
+
+对任何非 exact approval 的自动放行，Trace / Evidence 至少应能够投影：
+
+```text
+authorization kind
+source approval / grant
+subject
+resource / target
+allowed operation
+scope
+policy evaluation result
+expiry / lifecycle
+revocation state where relevant
+```
+
+否则未来无法区分：
+
+- Tool 本来就低风险；
+- 用户 exact 批准；
+- 命中 reusable rule；
+- 命中 derived resource authority；
+- Policy 配置直接 allow。
+
+授权可解释性本身是审计合同。
+
+#### 7.12 P7 的 reference cases 不应只测 Terminal
+
+Terminal 是第一道题，但 P7 至少应使用以下代表性案例检查模型是否真的通用：
+
+1. **Terminal persistent process**
+   - start exact approval；
+   - observe/status/stop derived；
+   - new command re-review；
+   - ownership mismatch deny；
+   - Policy drift。
+
+2. **Attached Browser session**
+   - observe 低摩擦；
+   - navigation / act 依据 target 和 side-effect 重新判断；
+   - submit / upload / purchase 不因 session 已批准而自动放行。
+
+3. **MicroApp background service**
+   - service lifecycle 与 service intent 分离；
+   - background existence 不代表 mutation / external send 被持续授权。
+
+4. **Remote / Mobile**
+   - paired device / capability scope 是前置身份与连接权限，不等于具体 Host mutation grant；
+   - Mobile 不可伪造 Host approval、resource ownership 或 derived grant。
+
+5. **External mutation / credential-bearing action**
+   - publish/send/payment/credential disclosure 等即使有 reusable grant，也可能继续要求 exact confirmation。
+
+#### 7.13 研究门槛与明确非目标
+
+P7 在进入 production implementation 前至少回答：
+
+1. exact approval 的 `toolCallId` identity drift 是否已修清；
+2. Mira 的授权对象 taxonomy 是什么；
+3. resource ownership 的 canonical owner 在哪里；
+4. derived authority 如何与 current Policy / Policy drift 比较；
+5. 哪些操作属于 observation / lifecycle reduction，哪些属于新 side effect；
+6. grant scope 如何表达 user / thread / workspace / resource / device / credential；
+7. grant 如何 revoke / expire / inspect；
+8. Trace / Evidence 如何解释自动 allow；
+9. Agent、MicroApp、Remote 是否都走同一个 Policy authority；
+10. 哪些高风险操作永远或默认继续 exact confirmation。
+
+明确不做：
+
+- 不做全局 `Terminal approved forever`；
+- 不把 opaque sessionId 当 bearer authorization；
+- 不用 shell command parser 反向定义所有资源权限；
+- 不让 saved grant 覆盖 hard deny；
+- 不因为 Capability 被发现 / exposed 就获得 authority；
+- 不把 P7 变成第二套 Harness 或第二套 Policy runtime。
+
+destructive delete、external publish/send、credential disclosure、payment、broad filesystem escape、remote mutation 等高风险动作，即使未来存在 reusable grant，也可能继续要求 exact confirmation。
+
+P7 可在 P2 后开始调研，但在 MicroApp / Remote 高权限能力开放前，应完成对应的 reusable / derived authority 合同。
 
 ### Phase 8 — Remote Capability Contract / Mobile
 
