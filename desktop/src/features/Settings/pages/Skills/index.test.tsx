@@ -23,7 +23,7 @@ const metadataTranslations: Record<string, string> = {
   "settings.skills.metadata.values.executionContext.fork": "独立执行",
   "settings.skills.metadata.values.executionAgent.subAgent": "子智能体",
   "settings.skills.metadata.values.workspaceBound.true": "仅当前工作区",
-  "settings.skills.metadata.values.tools.readOpen": "读取文件",
+  "settings.skills.metadata.values.tools.read": "读取文件",
   "settings.skills.metadata.values.tools.terminalSession": "终端",
 };
 
@@ -130,7 +130,7 @@ describe("SkillsSettings detail actions", () => {
         "---",
         "execution.context: fork",
         "execution.agent: subAgent",
-        "execution.allowedTools: read_open, terminal",
+        "execution.allowedTools: read, terminal",
         "execution.workspaceBound: true",
         "customField: keep-me",
         "---",
