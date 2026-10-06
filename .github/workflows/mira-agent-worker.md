@@ -31,6 +31,7 @@ network:
     - defaults
     - opencode.ai
 tools:
+  cli-proxy: false
   github:
     toolsets: [repos, issues, pull_requests]
   bash: false
