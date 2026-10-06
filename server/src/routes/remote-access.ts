@@ -829,6 +829,8 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
         brokerBaseUrl: getConfiguredPushBrokerBaseUrl(),
         descriptor: hostNotificationIdentityService.createBindingDescriptor({
           installationId: request.body.installationId,
+          originRemoteDeviceId: request.remoteDevice.id,
+          ownerUserId: user.id,
           sourceScope,
         }),
       });
@@ -901,6 +903,8 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       const binding = hostNotificationIdentityService.acceptApprovedBinding({
         bindingNonce: request.body.bindingNonce,
         installationId: request.body.installationId,
+        originRemoteDeviceId: request.remoteDevice.id,
+        ownerUserId: user.id,
         deliveryToken: request.body.deliveryToken,
         sourceScope,
       });
