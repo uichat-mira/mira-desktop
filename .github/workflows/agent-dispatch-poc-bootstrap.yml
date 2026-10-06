@@ -1,0 +1,49 @@
+name: Agent Dispatch POC Bootstrap
+
+on:
+  push:
+    branches:
+      - feat/agent-dispatch-poc
+    paths:
+      - .github/workflows/agent-dispatch-poc.md
+      - .github/workflows/shared/mira-opencode-go.md
+      - .github/workflows/agent-dispatch-poc-bootstrap.yml
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  compile-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout POC branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Install pinned gh-aw
+        run: |
+          gh extension install github/gh-aw --pin v0.89.21
+          gh aw --version
+
+      - name: Compile pinned agentic workflow
+        run: |
+          gh aw compile .github/workflows/agent-dispatch-poc.md --gh-aw-ref v0.89.21
+          git diff --check
+
+      - name: Commit, push, and run smoke
+        run: |
+          gh aw run agent-dispatch-poc \
+            --push \
+            --ref feat/agent-dispatch-poc \
+            --approve \
+            --json
