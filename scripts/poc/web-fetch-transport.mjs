@@ -90,7 +90,7 @@ await run("direct public HTTPS fetch", async () => {
   assert.equal(response.status, 200);
   const body = await readBodyAsText(response, { maxResponseBytes: 256 * 1024 });
   assert.match(body, /Example Domain/i);
-  return { status: response.status, finalUrl: response.url };
+  return { httpStatus: response.status, finalUrl: response.url };
 });
 
 await run("loopback is blocked", async () => {
@@ -298,6 +298,4 @@ await writeFile(
 console.log("\nPOC SUMMARY");
 console.log(JSON.stringify(summary, null, 2));
 
-const sharedDispatcher = getSharedGuardedDispatcher();
-await sharedDispatcher.close();
 process.exit(failures > 0 ? 1 : 0);
