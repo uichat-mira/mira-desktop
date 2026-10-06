@@ -363,6 +363,62 @@ export const nativeCapabilityAcceptanceCases: CapabilityAcceptanceCase[] = [
     workspace: "managed",
     fixture: "platform-approval-boundary",
   },
+  {
+    id: "web-search-multi-query",
+    toolId: "web_search",
+    title: "多查询网络搜索",
+    purpose:
+      "确认 web_search 在真实 Harness 中执行 1–4 条查询并合并去重，不向模型暴露 provider。",
+    expectedObservation:
+      "Completed；返回合并去重后的结果（需已配置 Tavily/SearXNG）；未配置时明确报 provider 不可用，而不是空成功。",
+    args: {
+      queries: ["mira desktop", "electron agent runtime"],
+      maxResults: 5,
+    },
+    group: "Universal Web",
+    workspace: "none",
+  },
+  {
+    id: "web-fetch-known-url",
+    toolId: "web_fetch",
+    title: "抓取已知 URL",
+    purpose:
+      "确认 web_fetch 对已知公网 URL 返回有界可读正文与 retrieval metadata。",
+    expectedObservation:
+      "Completed；kind 为 html 或 text，并返回 url/finalUrl/status/contentType/truncated；页面依赖 JS/登录时返回 browser_required。",
+    args: {
+      url: "https://example.com/",
+    },
+    group: "Universal Web",
+    workspace: "none",
+  },
+  {
+    id: "web-fetch-blocked-private-destination",
+    toolId: "web_fetch",
+    title: "拒绝私网目标",
+    purpose:
+      "确认 SSRF 防护在真实 Runtime 中拒绝私网 / loopback 目标，而不是发起请求。",
+    expectedObservation:
+      "Failed；结构化 blocked，明确目标不被允许，且不发起真实请求。",
+    args: {
+      url: "http://127.0.0.1/",
+    },
+    group: "Universal Web",
+    workspace: "none",
+  },
+  {
+    id: "web-fetch-blocked-invalid-scheme",
+    toolId: "web_fetch",
+    title: "拒绝非 http(s) 协议",
+    purpose:
+      "确认 web_fetch 只接受公网 http/https，其他协议在请求前被拒绝。",
+    expectedObservation: "Failed；结构化 blocked，明确仅支持 http/https。",
+    args: {
+      url: "file:///etc/passwd",
+    },
+    group: "Universal Web",
+    workspace: "none",
+  },
 ];
 
 const hasNoRequiredInput = (inputSchema: Record<string, unknown>) => {

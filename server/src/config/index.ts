@@ -43,8 +43,6 @@ const CONFIG = {
   JWT_EXPIRES_IN: "24h" as const,
   SWAGGER_PREFIX: "/api-docs",
   LOG_DIR: process.env.UI_CHAT_LOG_DIR ?? "logs",
-  TOOLS_DIR: process.env.UI_CHAT_TOOLS_DIR ?? "tools",
-  EXTEND_TOOLS_DIR: process.env.UI_CHAT_EXTEND_TOOLS_DIR ?? "extendTools",
   ATTACHMENTS_DIR: process.env.UI_CHAT_ATTACHMENTS_DIR ?? "data/attachments",
   WECOM_BIND_RELAY_BASE_URL: process.env.WECOM_BIND_RELAY_BASE_URL ?? "",
   REMOTE_RELAY_DEFAULT_URL:
