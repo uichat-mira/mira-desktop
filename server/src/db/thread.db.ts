@@ -66,6 +66,29 @@ const createThreadTables = () => {
     CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 
+    CREATE TABLE IF NOT EXISTS host_notification_identity (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      host_id TEXT NOT NULL UNIQUE,
+      public_key TEXT NOT NULL,
+      private_key_encrypted TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      rotated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS host_notification_binding_requests (
+      nonce TEXT PRIMARY KEY,
+      installation_id TEXT NOT NULL,
+      source_scope_json TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_host_notification_binding_requests_installation
+      ON host_notification_binding_requests(installation_id);
+    CREATE INDEX IF NOT EXISTS idx_host_notification_binding_requests_expires
+      ON host_notification_binding_requests(expires_at);
+
     CREATE TABLE IF NOT EXISTS host_notification_bindings (
       installation_id TEXT PRIMARY KEY,
       broker_base_url TEXT NOT NULL,
