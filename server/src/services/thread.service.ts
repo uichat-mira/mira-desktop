@@ -1,11 +1,13 @@
 import {
   chatWorkspaceRepository,
+  hostNotificationRepository,
   messageRepository,
   knowledgeBaseRepository,
   threadRepository,
   type ThreadListFilters,
   type ThreadWithMessageCount,
 } from "@/db/repositories";
+import { getSqlite } from "@/db/index.js";
 import type { Message, MessageRole, Thread, ThreadStatus } from "@/db/schema";
 import { threadContextSummaryNode } from "@/services/shared-nodes/thread-context-summary.node.js";
 import { isValidWorkspaceRootPath } from "@/services/workspace-path-validation.js";
@@ -17,6 +19,7 @@ import {
   removeFileAttachmentsFromParts,
   removeFileAttachmentsRemovedFromParts,
 } from "@/services/chat-file-context.service.js";
+import type { NotificationCanonicalMessage } from "@/services/notification-eligibility.js";
 
 export interface ThreadResponse {
   id: string;
@@ -335,6 +338,21 @@ const toMessageResponse = (message: Message): MessageResponse => {
     createdAt: message.createdAt,
   };
 };
+
+const toNotificationCanonicalMessage = (
+  message: MessageResponse,
+): NotificationCanonicalMessage => ({
+  id: message.id,
+  role: message.role,
+  content: message.content,
+  parts: message.parts
+    .filter(
+      (part): part is { type: "text"; text: string } =>
+        part.type === "text",
+    )
+    .map((part) => ({ type: part.type, text: part.text })),
+  metadata: message.metadata,
+});
 
 export interface GetThreadInput {
   id: string;
@@ -863,19 +881,28 @@ export const threadService = {
           parsePartsJson(existing.partsJson),
           input.parts,
         );
-        const updated = messageRepository.updateById(existing.id, {
-          role: input.role,
-          content: normalizedContent,
-          partsJson: serializeParts(input.parts),
-          metadata: normalizedMetadata,
-        });
+        const previous = toMessageResponse(existing);
+        return getSqlite().transaction(() => {
+          const updated = messageRepository.updateById(existing.id, {
+            role: input.role,
+            content: normalizedContent,
+            partsJson: serializeParts(input.parts),
+            metadata: normalizedMetadata,
+          });
 
-        if (!updated) {
-          throw new Error("Failed to update existing message");
-        }
+          if (!updated) {
+            throw new Error("Failed to update existing message");
+          }
 
-        threadRepository.updateById(threadId, {});
-        return toMessageResponse(updated);
+          threadRepository.updateById(threadId, {});
+          const next = toMessageResponse(updated);
+          hostNotificationRepository.enqueueEligibleTransition({
+            previous: toNotificationCanonicalMessage(previous),
+            next: toNotificationCanonicalMessage(next),
+            sourceId: threadId,
+          });
+          return next;
+        })();
       }
 
       threadRepository.updateById(threadId, {});
@@ -897,19 +924,26 @@ export const threadService = {
       throw new Error("Message content is missing");
     }
 
-    const created = messageRepository.create({
-      ...(input.id ? { id: input.id } : {}),
-      threadId,
-      role: input.role,
-      content: normalizedContent,
-      partsJson: serializeParts(input.parts),
-      metadata: normalizedMetadata,
-    });
+    return getSqlite().transaction(() => {
+      const created = messageRepository.create({
+        ...(input.id ? { id: input.id } : {}),
+        threadId,
+        role: input.role,
+        content: normalizedContent,
+        partsJson: serializeParts(input.parts),
+        metadata: normalizedMetadata,
+      });
 
-    // 更新 thread 的 updatedAt
-    threadRepository.updateById(threadId, {});
-
-    return toMessageResponse(created);
+      // canonical message 与 notification outbox 必须在同一 SQLite 事务提交。
+      threadRepository.updateById(threadId, {});
+      const next = toMessageResponse(created);
+      hostNotificationRepository.enqueueEligibleTransition({
+        previous: null,
+        next: toNotificationCanonicalMessage(next),
+        sourceId: threadId,
+      });
+      return next;
+    })();
   },
 
   updateMessageMetadata(
