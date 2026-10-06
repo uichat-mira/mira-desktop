@@ -333,11 +333,11 @@ export default function CapabilitiesPage() {
               </div>
             </section>
 
-            {selectedTool.id === "terminal" && capabilities.terminalSummary?.sessionId ? (
+            {selectedTool.id === "terminal" && capabilities.terminalSessionId ? (
               <section className="flex flex-wrap items-center justify-between gap-3 rounded-ui-control border border-border bg-surface-secondary px-3 py-2">
                 <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-text-secondary">
-                  <span>session :: {capabilities.terminalSummary.sessionId}</span>
-                  {capabilities.terminalSummary.state ? (
+                  <span>session :: {capabilities.terminalSessionId}</span>
+                  {capabilities.terminalSummary?.state ? (
                     <span>state :: {capabilities.terminalSummary.state}</span>
                   ) : null}
                 </div>
@@ -362,7 +362,7 @@ export default function CapabilitiesPage() {
                     variant="secondary"
                     disabled={
                       capabilities.isSelectionLocked ||
-                      capabilities.terminalSummary.state === "cancelled"
+                      capabilities.terminalSummary?.state === "cancelled"
                     }
                     onClick={() => {
                       setResultConsoleOpen(true);
@@ -376,7 +376,7 @@ export default function CapabilitiesPage() {
                     variant="danger-outline"
                     disabled={
                       capabilities.isSelectionLocked ||
-                      capabilities.terminalSummary.state === "cancelled"
+                      capabilities.terminalSummary?.state === "cancelled"
                     }
                     onClick={() => {
                       setResultConsoleOpen(true);
