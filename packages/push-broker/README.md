@@ -18,7 +18,9 @@ Host authorization, event ingest, durable broker state, and later provider deliv
 - `(installationId, eventId)` broker dedupe.
 - AES-256-GCM encryption of raw provider tokens at rest.
 
-FCM/APNs dispatch belongs to #269. Host canonical outbox/eligibility belongs to #268.
+#269 owns provider dispatch. The Broker now maps accepted events to user-visible
+FCM/APNs alerts, persists provider outcomes, and retries with bounded TTL. Host
+canonical outbox/eligibility belongs to #268.
 
 ## Security contract
 
@@ -58,3 +60,42 @@ consistent and separate from Remote Relay storage.
 - `pnpm test:push-broker`
 
 A deployed Worker smoke is separate from repository T1/T2 evidence.
+
+
+## Provider delivery (#269)
+
+The provider layer sends a generic alert only:
+
+- title: `Mira`
+- body: `Mira 有新回复`
+- identity metadata: schema version, event type, installation, event, source and
+  canonical message IDs, plus the frozen eligibility event.
+- Assistant text, prompts and tool output are never accepted by event ingest and
+  never enter provider payloads.
+
+Android uses FCM HTTP v1 and the existing `mira_messages` notification channel.
+iOS uses APNs token authentication with `apns-push-type: alert` and maps the
+event expiration to `apns-expiration`.
+
+Provider success means the provider accepted the request. It does **not** mean
+the OS displayed the notification. Permission, channel and DND suppression are
+not Broker failures and never trigger Broker retry.
+
+Durable delivery state lives in the installation Durable Object. Retryable
+transport/credential failures use bounded backoff and the event TTL. Invalid
+device/provider tokens move pending events to `waiting_token_refresh`; a
+signed Mobile `/refresh` request reactivates still-unexpired events.
+
+### Worker secret/config boundary
+
+Set these values through Worker secrets/configuration; never commit their values:
+
+- `BROKER_STORAGE_KEY`
+- Android: `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY`
+- iOS: `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_PRIVATE_KEY`,
+  `APNS_TOPIC`, and `APNS_ENVIRONMENT=production|sandbox`
+
+Raw FCM/APNs device tokens remain encrypted at rest and are decrypted only inside
+the installation Durable Object for dispatch. Delivery audit rows contain only
+provider name, attempt number, normalized outcome/error code, HTTP status and
+provider request ID.

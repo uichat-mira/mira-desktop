@@ -366,6 +366,7 @@ export class BrokerService {
       return error("invalid_host_signature", 401);
     }
 
+    const acceptedAt = new Date(now).toISOString();
     const committed = this.store.commitEvent({
       eventId: parsed.eventId,
       hostId: parsed.hostId,
@@ -376,7 +377,12 @@ export class BrokerService {
       occurredAt: parsed.occurredAt,
       expiresAt: parsed.expiresAt,
       state: "pending",
-      acceptedAt: new Date(now).toISOString(),
+      attemptCount: 0,
+      nextAttemptAt: acceptedAt,
+      lastError: null,
+      providerRequestId: null,
+      acceptedAt,
+      deliveredAt: null,
     });
     if (committed === "not_registered") return error("not_registered", 404);
     if (committed === "duplicate") {

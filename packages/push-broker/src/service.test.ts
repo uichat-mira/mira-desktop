@@ -12,6 +12,11 @@ import {
   registrationSigningValue,
 } from "./contracts";
 import { exportBytesAsBase64Url, sha256Hex } from "./crypto";
+import { BrokerDeliveryWorker } from "./delivery";
+import type {
+  ProviderDispatchInput,
+  PushProviderAdapter,
+} from "./provider-delivery";
 import { BrokerService } from "./service";
 import { MemoryBrokerPersistence } from "./testing/memory-persistence";
 
@@ -402,4 +407,117 @@ test("event contract rejects arbitrary payload fields that could carry content",
   );
   assert.equal(response.status, 400);
   assert.equal(store.events.size, 0);
+});
+
+
+test("duplicate ingest after provider acceptance never dispatches the provider twice", async () => {
+  const store = new MemoryBrokerPersistence();
+  const service = new BrokerService(store, storageKey, () => NOW);
+  const installationKey = await createKeyPair();
+  const hostKey = await createKeyPair();
+  await register(service, installationKey);
+  const binding = await approve(service, installationKey, hostKey);
+  const deliveryToken = String(binding.json.deliveryToken);
+  const event = await createEvent(hostKey, { eventId: "event-provider-dedupe" });
+
+  const accepted = await post(service, "/events", event, deliveryToken);
+  assert.equal(accepted.status, 202);
+
+  const calls: ProviderDispatchInput[] = [];
+  const adapter: PushProviderAdapter = {
+    provider: "fcm",
+    async send(input) {
+      calls.push(input);
+      return {
+        type: "accepted",
+        provider: "fcm",
+        requestId: "projects/mira/messages/dedupe",
+        httpStatus: 200,
+      };
+    },
+  };
+  const worker = new BrokerDeliveryWorker(
+    store,
+    storageKey,
+    { android: adapter },
+    () => NOW,
+  );
+  await worker.drain();
+  assert.equal(calls.length, 1);
+  assert.equal(store.getEvent("event-provider-dedupe")?.state, "delivered");
+
+  const duplicate = await post(service, "/events", event, deliveryToken);
+  assert.equal(duplicate.status, 200);
+  assert.deepEqual(await duplicate.json(), {
+    status: "accepted",
+    duplicate: true,
+  });
+
+  await worker.drain();
+  assert.equal(calls.length, 1);
+  assert.equal(store.events.size, 1);
+});
+
+
+test("binding revoke cancels pending provider delivery for that Host", async () => {
+  const store = new MemoryBrokerPersistence();
+  const service = new BrokerService(store, storageKey, () => NOW);
+  const installationKey = await createKeyPair();
+  const hostKey = await createKeyPair();
+  await register(service, installationKey);
+  const binding = await approve(service, installationKey, hostKey);
+  const deliveryToken = String(binding.json.deliveryToken);
+
+  const pendingEvent = await createEvent(hostKey, {
+    eventId: "event-cancel-on-binding-revoke",
+  });
+  const accepted = await post(service, "/events", pendingEvent, deliveryToken);
+  assert.equal(accepted.status, 202);
+  assert.equal(
+    store.getEvent("event-cancel-on-binding-revoke")?.state,
+    "pending",
+  );
+
+  const revokeUnsigned = {
+    schemaVersion: BROKER_SCHEMA_VERSION as 1,
+    installationId: INSTALLATION_ID,
+    hostId: "host-1",
+    requestNonce: "cancel-pending-binding-revoke",
+    issuedAt: new Date(NOW).toISOString(),
+  };
+  const revoked = await post(service, "/bindings/revoke", {
+    ...revokeUnsigned,
+    installationSignature: await sign(
+      installationKey.privateKey,
+      bindingRevokeSigningValue(revokeUnsigned),
+    ),
+  });
+  assert.equal(revoked.status, 200);
+  assert.equal(
+    store.getEvent("event-cancel-on-binding-revoke")?.state,
+    "cancelled",
+  );
+
+  let providerCalls = 0;
+  const worker = new BrokerDeliveryWorker(
+    store,
+    storageKey,
+    {
+      android: {
+        provider: "fcm",
+        async send() {
+          providerCalls += 1;
+          return {
+            type: "accepted",
+            provider: "fcm",
+            requestId: "should-not-send",
+            httpStatus: 200,
+          };
+        },
+      },
+    },
+    () => NOW,
+  );
+  await worker.drain();
+  assert.equal(providerCalls, 0);
 });
