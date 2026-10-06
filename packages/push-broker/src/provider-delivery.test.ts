@@ -434,3 +434,52 @@ test("FCM 401 clears the cached OAuth token before the durable retry", async () 
   assert.equal(authCalls, 2);
   assert.equal(sendCalls, 2);
 });
+
+
+test("FCM INVALID_ARGUMENT with BadRequest details does not invalidate the provider token", async () => {
+  const privateKeyPem = await createRsaPem();
+  const adapter = new FcmProviderAdapter(
+    {
+      projectId: "mira-project",
+      clientEmail: "push@example.iam.gserviceaccount.com",
+      privateKeyPem,
+    },
+    (async (input) =>
+      String(input).includes("oauth2.googleapis.com")
+        ? new Response(
+            JSON.stringify({ access_token: "oauth-access", expires_in: 3600 }),
+            { status: 200 },
+          )
+        : new Response(
+            JSON.stringify({
+              error: {
+                status: "INVALID_ARGUMENT",
+                details: [
+                  {
+                    "@type": "type.googleapis.com/google.rpc.BadRequest",
+                    fieldViolations: [
+                      {
+                        field: "message.android.ttl",
+                        description: "invalid ttl",
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
+            { status: 400 },
+          )) as typeof fetch,
+  );
+
+  const result = await adapter.send({
+    installationId: "installation-1",
+    providerToken: "token",
+    event,
+    nowMs: NOW,
+  });
+
+  assert.equal(result.type, "rejected");
+  if (result.type === "rejected") {
+    assert.equal(result.errorCode, "INVALID_ARGUMENT");
+  }
+});

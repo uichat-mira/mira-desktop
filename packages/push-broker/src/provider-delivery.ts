@@ -133,7 +133,7 @@ const normalizeAuditValue = (value: unknown, fallback: string) =>
     ? value.slice(0, 256)
     : fallback;
 
-const extractFcmErrorCode = (body: Record<string, unknown> | null) => {
+const extractFcmError = (body: Record<string, unknown> | null) => {
   const error =
     body?.error && typeof body.error === "object" && !Array.isArray(body.error)
       ? (body.error as Record<string, unknown>)
@@ -146,10 +146,16 @@ const extractFcmErrorCode = (body: Record<string, unknown> | null) => {
       record["@type"] === "type.googleapis.com/google.firebase.fcm.v1.FcmError" &&
       typeof record.errorCode === "string"
     ) {
-      return record.errorCode;
+      return {
+        code: record.errorCode,
+        fcmSpecific: true,
+      };
     }
   }
-  return typeof error?.status === "string" ? error.status : null;
+  return {
+    code: typeof error?.status === "string" ? error.status : null,
+    fcmSpecific: false,
+  };
 };
 
 export class FcmProviderAdapter implements PushProviderAdapter {
@@ -235,8 +241,9 @@ export class FcmProviderAdapter implements PushProviderAdapter {
       };
     }
 
+    const fcmError = extractFcmError(responseBody);
     const code = normalizeAuditValue(
-      extractFcmErrorCode(responseBody),
+      fcmError.code,
       `HTTP_${response.status}`,
     );
     if (response.status === 401) {
@@ -244,7 +251,10 @@ export class FcmProviderAdapter implements PushProviderAdapter {
       // expiry. Force the next durable retry through service-account auth again.
       this.cachedAccessToken = null;
     }
-    if (code === "UNREGISTERED" || code === "INVALID_ARGUMENT") {
+    if (
+      code === "UNREGISTERED" ||
+      (code === "INVALID_ARGUMENT" && fcmError.fcmSpecific)
+    ) {
       return {
         type: "invalid_token",
         provider: this.provider,
