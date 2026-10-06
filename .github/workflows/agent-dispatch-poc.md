@@ -1,10 +1,6 @@
 ---
 on:
-  push:
-    branches:
-      - feat/agent-dispatch-poc
-    paths:
-      - .github/workflows/agent-dispatch-poc.lock.yml
+  workflow_dispatch:
 permissions:
   contents: read
 engine:
