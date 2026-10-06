@@ -4,10 +4,6 @@ import { resolveHarnessToolExposure } from "./exposure.js";
 import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
-import { readListTool } from "../mcp/tools/read-list.tool.js";
-import { readDiscoverTool } from "../mcp/tools/read-discover.tool.js";
-import { readOpenTool } from "../mcp/tools/read-open.tool.js";
-import { readSliceTool } from "../mcp/tools/read-slice.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
 
 const terminalSchemaKeys = [
@@ -129,25 +125,19 @@ describe("resolveHarnessToolExposure", () => {
     expect(terminalDefinition?.capabilities.requiresApproval).toBe(false);
   });
 
-  it("keeps implementation primitives out of the public tool contract", () => {
+  it("does not apply hidden legacy-read semantics to canonical built-in tools", () => {
     registerTool(readTool);
     registerTool(listTool);
-    registerTool(readListTool);
-    registerTool(readDiscoverTool);
-    registerTool(readSliceTool);
-    registerTool(readOpenTool);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",
       query: "open README.md",
     });
 
-    expect(decision.exposedToolIds).toContain("read");
-    expect(decision.exposedToolIds).toContain("list");
-    expect(decision.exposedToolIds).not.toContain("read_discover");
-    expect(decision.exposedToolIds).not.toContain("read_open");
-    expect(decision.exposedToolIds).not.toContain("read_list");
-    expect(decision.exposedToolIds).not.toContain("read_slice");
+    expect(decision.exposedToolIds).toEqual(
+      expect.arrayContaining(["read", "list"]),
+    );
+    expect(decision.blockedCapabilityIds).toEqual([]);
   });
 
   it("uses only explicit Agent Access to determine whether an external MCP tool is public", () => {

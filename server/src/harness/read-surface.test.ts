@@ -1,49 +1,45 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveHarnessToolExposure } from "./exposure.js";
-import { clearHarnessRegistry, registerTool } from "./registry.js";
-import { codebaseExploreTool } from "../mcp/managed-codegraph/codebase-explore.tool.js";
+import {
+  clearHarnessRegistry,
+  listToolDefinitions,
+} from "./registry.js";
+import {
+  initializeHarnessRuntime,
+  resetHarnessRuntime,
+} from "./runtime.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
 import { globTool } from "../mcp/tools/glob.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
-import { readDiscoverTool } from "../mcp/tools/read-discover.tool.js";
-import { readExtractTool } from "../mcp/tools/read-extract.tool.js";
-import { readListTool } from "../mcp/tools/read-list.tool.js";
-import { readLocateTool } from "../mcp/tools/read-locate.tool.js";
-import { readOpenTool } from "../mcp/tools/read-open.tool.js";
-import { readSliceTool } from "../mcp/tools/read-slice.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 
 describe("public read tool surface", () => {
   afterEach(() => {
+    resetHarnessRuntime();
     clearHarnessRegistry();
   });
 
-  it("exposes canonical read list glob grep while keeping compatibility primitives internal", () => {
-    [
-      readTool,
-      listTool,
-      globTool,
-      readListTool,
-      readLocateTool,
-      readExtractTool,
-      readSliceTool,
-      readDiscoverTool,
-      grepTool,
-      readOpenTool,
-      codebaseExploreTool,
-    ].forEach(registerTool);
+  it("registers canonical read primitives without executable legacy readers", () => {
+    resetHarnessRuntime();
+    clearHarnessRegistry();
+    initializeHarnessRuntime();
 
-    const readToolIds = resolveHarnessToolExposure({
-      source: "agent_intent",
-      query: "inspect the workspace code",
-    }).exposedDefinitions
+    const readToolIds = listToolDefinitions()
       .filter((definition) => definition.domain === "read")
-      .map((definition) => definition.id)
-      .sort();
+      .map((definition) => definition.id);
 
     expect(readToolIds).toEqual(
-      ["codebase_explore", "glob", "grep", "list", "read"].sort(),
+      expect.arrayContaining(["glob", "grep", "list", "read"]),
     );
+    for (const legacyId of [
+      "read_discover",
+      "read_open",
+      "read_list",
+      "read_locate",
+      "read_extract",
+      "read_slice",
+    ]) {
+      expect(readToolIds).not.toContain(legacyId);
+    }
   });
 
   it("keeps neighboring read-tool choices explicit without narrowing schemas", () => {

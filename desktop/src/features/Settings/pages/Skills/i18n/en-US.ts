@@ -42,8 +42,10 @@ const skillsEn = {
             false: "Not workspace-restricted",
           },
           tools: {
-            readDiscover: "Discover files",
-            readOpen: "Read files",
+            read: "Read file",
+            list: "List directory",
+            glob: "Find paths",
+            grep: "Search file contents",
             terminalSession: "Terminal",
             githubRepository: "GitHub repositories",
             githubPullRequest: "GitHub pull requests",

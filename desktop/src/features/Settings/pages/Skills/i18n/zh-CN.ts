@@ -42,8 +42,10 @@ const skillsZh = {
             false: "不限工作区",
           },
           tools: {
-            readDiscover: "发现文件",
-            readOpen: "读取文件",
+            read: "读取文件",
+            list: "列出目录",
+            glob: "按路径查找",
+            grep: "搜索文件内容",
             terminalSession: "终端",
             githubRepository: "GitHub 仓库",
             githubPullRequest: "GitHub Pull Request",
