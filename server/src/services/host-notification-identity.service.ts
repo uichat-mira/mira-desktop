@@ -1,9 +1,7 @@
 import {
-  createPrivateKey,
   generateKeyPairSync,
   randomBytes,
   randomUUID,
-  sign as signBytes,
 } from "node:crypto";
 
 import {
@@ -59,12 +57,10 @@ const createIdentityMaterial = () => {
   };
 };
 
-const signCanonical = (privateKeyPem: string, value: unknown) =>
-  signBytes(
-    null,
+const signCanonical = (value: unknown) =>
+  hostNotificationRepository.signWithIdentityPrivateKey(
     Buffer.from(canonicalJson(value), "utf8"),
-    createPrivateKey(privateKeyPem),
-  ).toString("base64url");
+  );
 
 export type HostNotificationBindingDescriptor = {
   schemaVersion: 1;
@@ -99,6 +95,8 @@ export const hostNotificationIdentityService = {
 
   createBindingDescriptor(input: {
     installationId: string;
+    originRemoteDeviceId: string;
+    ownerUserId: number;
     sourceScope: string[];
     now?: number;
   }): HostNotificationBindingDescriptor {
@@ -124,11 +122,13 @@ export const hostNotificationIdentityService = {
       bindingNonce,
       bindingExpiresAt,
     };
-    const hostSignature = signCanonical(identity.privateKeyPem, unsigned);
+    const hostSignature = signCanonical(unsigned);
 
     hostNotificationRepository.createBindingRequest({
       nonce: bindingNonce,
       installationId,
+      originRemoteDeviceId: input.originRemoteDeviceId,
+      ownerUserId: input.ownerUserId,
       sourceScope,
       expiresAt: bindingExpiresAt,
       now: new Date(now).toISOString(),
@@ -149,6 +149,8 @@ export const hostNotificationIdentityService = {
   acceptApprovedBinding(input: {
     bindingNonce: string;
     installationId: string;
+    originRemoteDeviceId: string;
+    ownerUserId: number;
     deliveryToken: string;
     sourceScope: string[];
     now?: string;
@@ -156,6 +158,8 @@ export const hostNotificationIdentityService = {
     return hostNotificationRepository.acceptBindingCapability({
       nonce: input.bindingNonce,
       installationId: input.installationId,
+      originRemoteDeviceId: input.originRemoteDeviceId,
+      ownerUserId: input.ownerUserId,
       brokerBaseUrl: getConfiguredPushBrokerBaseUrl(),
       deliveryToken: input.deliveryToken,
       sourceScope: input.sourceScope,
@@ -168,6 +172,6 @@ export const hostNotificationIdentityService = {
     if (input.hostId !== identity.hostId) {
       throw new Error("Notification event Host identity mismatch");
     }
-    return signCanonical(identity.privateKeyPem, input);
+    return signCanonical(input);
   },
 };
