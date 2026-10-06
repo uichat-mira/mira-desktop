@@ -16,7 +16,10 @@ permissions:
 engine:
   id: opencode-go
   version: "1.18.34"
-model: opencode-go/deepseek-v4-flash
+  env:
+    OPENAI_BASE_URL: https://opencode.ai/zen/go/v1
+    OPENAI_API_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+model: openai/deepseek-v4-flash
 imports:
   - shared/opencode-go.md
 skills:
@@ -33,7 +36,11 @@ tools:
     toolsets: [repos, issues, pull_requests]
   edit:
   bash:
-    - "*"
+    - git
+    - pwd
+    - ls
+    - find
+    - cat
 safe-outputs:
   # A harmless non-builtin output prevents gh-aw v0.89.21 from auto-injecting
   # create-issue as its default fallback. The probe does not call this tool.
