@@ -39,10 +39,14 @@ jobs:
             --write-out '%{http_code}' \
             --header "Authorization: Bearer $AI_PROVIDER_OPENCODE_GO_KEY" \
             --header "Content-Type: application/json" \
+            --header "User-Agent: mira-agent-dispatch-poc/0.1" \
+            --header "x-opencode-session: mira-agent-dispatch-provider-probe" \
+            --header "x-opencode-request: provider-probe-1" \
             --data '{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"Reply with exactly pong."}],"max_tokens":16}' \
             https://opencode.ai/zen/go/v1/chat/completions)"
           echo "OpenCode Go probe HTTP status: $status"
           if [[ "$status" != 2* ]]; then
+            jq -r '.error | {type, code, message}' "$response" 2>/dev/null || true
             echo "OpenCode Go provider probe failed." >&2
             exit 1
           fi
@@ -73,7 +77,7 @@ jobs:
           set -euo pipefail
           lock=".github/workflows/mira-agent-worker.lock.yml"
           grep -q 'AI_PROVIDER_OPENCODE_GO_KEY' "$lock"
-          grep -q 'mira-opencode-go/deepseek-v4.1-flash' "$lock"
+          grep -q 'opencode-go/deepseek-v4.1-flash' "$lock"
           if grep -q 'OPENAI_API_KEY' "$lock"; then
             echo "Unexpected OPENAI_API_KEY dependency remains in compiled worker." >&2
             exit 1
