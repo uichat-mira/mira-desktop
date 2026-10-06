@@ -210,7 +210,13 @@ describe("shared ripgrep provider", () => {
     const execution = await runWithWorkspaceRootOverride(tempRoot, async () =>
       executeGrep(
         {
-          args: { pattern: "needle", path: ".", limit: 10 },
+          args: {
+            pattern: "needle",
+            path: ".",
+            include: "src/**",
+            includeIgnored: true,
+            limit: 10,
+          },
           environment: contentEnvironment(),
           signal: new AbortController().signal,
         },
