@@ -136,6 +136,8 @@ const createState = (
               cwd: "directory",
             },
           },
+          longRunning: true,
+          sandboxRequired: false,
         },
       },
       {
@@ -511,7 +513,7 @@ test("toolCallNormalizeNode accepts terminal.cwd = 'server'", async () => {
   assert.deepEqual(patch.pendingToolCall?.args, { command: "dir", cwd: "server" });
 });
 
-test("toolCallNormalizeNode normalizes terminal.cwd child paths", async () => {
+test("toolCallNormalizeNode preserves terminal.cwd child paths byte-for-byte for host execution", async () => {
   const patch = await toolCallNormalizeNode(
     createState({
       nextAction: {
@@ -525,10 +527,10 @@ test("toolCallNormalizeNode normalizes terminal.cwd child paths", async () => {
 
   assert.equal(patch.errorMessage, undefined);
   assert.equal(patch.schemaReplanDiagnostics, undefined);
-  assert.deepEqual(patch.pendingToolCall?.args, { command: "dir", cwd: "server/src" });
+  assert.deepEqual(patch.pendingToolCall?.args, { command: "dir", cwd: "server\\src" });
 });
 
-test("toolCallNormalizeNode rejects terminal.cwd Windows absolute paths with schema replan diagnostics", async () => {
+test("toolCallNormalizeNode preserves terminal.cwd Windows absolute paths for downstream approval/runtime checks", async () => {
   const patch = await toolCallNormalizeNode(
     createState({
       nextAction: {
@@ -540,18 +542,15 @@ test("toolCallNormalizeNode rejects terminal.cwd Windows absolute paths with sch
     }),
   );
 
-  assert.equal(patch.pendingToolCall, undefined);
   assert.equal(patch.errorMessage, undefined);
-  assert.equal(patch.errorSourceNodeId, undefined);
-  assert.match(
-    patch.schemaReplanDiagnostics?.schemaError ?? "",
-    /workspace root|absolute paths|parent traversal/i,
-  );
-  assert.equal(patch.schemaReplanDiagnostics?.toolId, "terminal");
-  assert.equal(patch.schemaReplanDiagnostics?.attemptCount, 1);
+  assert.equal(patch.schemaReplanDiagnostics, undefined);
+  assert.deepEqual(patch.pendingToolCall?.args, {
+    command: "dir",
+    cwd: "D:\\workspace\\rag-demo",
+  });
 });
 
-test("toolCallNormalizeNode rejects terminal.cwd drive-root paths with schema replan diagnostics", async () => {
+test("toolCallNormalizeNode preserves terminal.cwd drive-root paths for downstream approval/runtime checks", async () => {
   const patch = await toolCallNormalizeNode(
     createState({
       nextAction: {
@@ -563,17 +562,15 @@ test("toolCallNormalizeNode rejects terminal.cwd drive-root paths with schema re
     }),
   );
 
-  assert.equal(patch.pendingToolCall, undefined);
   assert.equal(patch.errorMessage, undefined);
-  assert.equal(patch.errorSourceNodeId, undefined);
-  assert.match(
-    patch.schemaReplanDiagnostics?.schemaError ?? "",
-    /workspace root|absolute paths|parent traversal/i,
-  );
-  assert.equal(patch.schemaReplanDiagnostics?.toolId, "terminal");
+  assert.equal(patch.schemaReplanDiagnostics, undefined);
+  assert.deepEqual(patch.pendingToolCall?.args, {
+    command: "dir",
+    cwd: "C:\\",
+  });
 });
 
-test("toolCallNormalizeNode rejects terminal.cwd POSIX absolute paths with schema replan diagnostics", async () => {
+test("toolCallNormalizeNode preserves terminal.cwd POSIX absolute paths for downstream approval/runtime checks", async () => {
   const patch = await toolCallNormalizeNode(
     createState({
       nextAction: {
@@ -585,17 +582,15 @@ test("toolCallNormalizeNode rejects terminal.cwd POSIX absolute paths with schem
     }),
   );
 
-  assert.equal(patch.pendingToolCall, undefined);
   assert.equal(patch.errorMessage, undefined);
-  assert.equal(patch.errorSourceNodeId, undefined);
-  assert.match(
-    patch.schemaReplanDiagnostics?.schemaError ?? "",
-    /workspace root|absolute paths|parent traversal/i,
-  );
-  assert.equal(patch.schemaReplanDiagnostics?.toolId, "terminal");
+  assert.equal(patch.schemaReplanDiagnostics, undefined);
+  assert.deepEqual(patch.pendingToolCall?.args, {
+    command: "dir",
+    cwd: "/workspace",
+  });
 });
 
-test("toolCallNormalizeNode rejects terminal.cwd parent traversal with schema replan diagnostics", async () => {
+test("toolCallNormalizeNode preserves terminal.cwd parent traversal for downstream approval/runtime checks", async () => {
   const patch = await toolCallNormalizeNode(
     createState({
       nextAction: {
@@ -607,14 +602,12 @@ test("toolCallNormalizeNode rejects terminal.cwd parent traversal with schema re
     }),
   );
 
-  assert.equal(patch.pendingToolCall, undefined);
   assert.equal(patch.errorMessage, undefined);
-  assert.equal(patch.errorSourceNodeId, undefined);
-  assert.match(
-    patch.schemaReplanDiagnostics?.schemaError ?? "",
-    /workspace root|absolute paths|parent traversal/i,
-  );
-  assert.equal(patch.schemaReplanDiagnostics?.toolId, "terminal");
+  assert.equal(patch.schemaReplanDiagnostics, undefined);
+  assert.deepEqual(patch.pendingToolCall?.args, {
+    command: "dir",
+    cwd: "../outside",
+  });
 });
 
 test("toolCallNormalizeNode returns empty result for non-use_tool nextAction", async () => {
