@@ -189,6 +189,8 @@ export const readPersistentTerminalOutput = async (input: {
   const limitBytes = normalizeTerminalOutputLimitBytes(input.limitBytes);
 
   await flushRecord(record);
+  const commandCompletedAtSnapshot = record.completed;
+  const exitCodeAtSnapshot = record.exitCode;
   const stats = await fsPromises.stat(record.filePath);
   const availableBytes = stats.size;
   if (offset > availableBytes) {
@@ -241,9 +243,9 @@ export const readPersistentTerminalOutput = async (input: {
     outputBytesAvailable: availableBytes,
     outputLimitBytes: limitBytes,
     truncated: hasBufferedMore,
-    commandCompleted: record.completed,
-    exitCode: record.exitCode,
-    continuationAvailable: hasBufferedMore || !record.completed,
+    commandCompleted: commandCompletedAtSnapshot,
+    exitCode: exitCodeAtSnapshot,
+    continuationAvailable: hasBufferedMore || !commandCompletedAtSnapshot,
   };
 };
 

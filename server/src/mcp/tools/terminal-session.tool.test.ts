@@ -847,6 +847,37 @@ describe("terminal tool", () => {
     ).rejects.toThrow("attachSessionId cannot be combined with cwd or env overrides");
   });
 
+  it("aborting an attached persistent invocation does not remove the reused session", async () => {
+    const mock = createMockSession({ id: "session-reused-abort" });
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.writeTerminalSessionMock.mockReturnValue(mock.session);
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const controller = new AbortController();
+    const promise = terminalTool.execute({
+      invocationId: "inv-reused-abort",
+      args: {
+        command: "long-running",
+        attachSessionId: "session-reused-abort",
+        timeoutMs: 10_000,
+      },
+      signal: controller.signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(terminalMocks.writeTerminalSessionMock).toHaveBeenCalledTimes(1);
+    });
+    controller.abort();
+
+    await expect(promise).rejects.toThrow("Terminal session aborted");
+    expect(terminalMocks.removeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
   it.skipIf(process.platform !== "win32")("aborts and cleans up ephemeral sessions", async () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);

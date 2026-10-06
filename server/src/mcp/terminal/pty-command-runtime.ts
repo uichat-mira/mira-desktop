@@ -231,10 +231,9 @@ export const runPersistentCommand = async (input: {
       invocationSettled = true;
       clearTimeout(timer);
       settleInvocation = null;
-      dataDisposable.dispose();
-      exitDisposable.dispose();
-      void completePersistentTerminalOutput(outputRecord.id, exitCode);
       if (!input.reusedSession) {
+        dataDisposable.dispose();
+        exitDisposable.dispose();
         removeTerminalSession(input.session.id);
       }
       reject(new Error("Terminal session aborted"));
