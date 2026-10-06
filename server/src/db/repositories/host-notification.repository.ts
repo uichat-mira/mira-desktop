@@ -5,6 +5,7 @@ import { decryptSecret, encryptSecret } from "@/utils/crypto.js";
 import {
   NOTIFICATION_ELIGIBILITY_EVENT,
   isNotificationEligibleTransition,
+  isNotificationUserVisibleFinal,
   type NotificationCanonicalMessage,
 } from "@/services/notification-eligibility.js";
 
@@ -453,6 +454,72 @@ export const hostNotificationRepository = {
     return created;
   },
 
+  isCanonicalDeliveryEligible(event: NotificationOutboxRecord) {
+    const row = getSqlite()
+      .prepare(
+        `SELECT m.id, m.role, m.content, m.parts_json, m.metadata,
+                m.thread_id, t.status AS thread_status
+         FROM messages m
+         JOIN threads t ON t.id = m.thread_id
+         WHERE m.id = ? AND m.thread_id = ?
+         LIMIT 1`,
+      )
+      .get(event.canonicalMessageId, event.sourceId) as
+      | {
+          id: string;
+          role: string;
+          content: string;
+          parts_json: string | null;
+          metadata: string | null;
+          thread_id: string;
+          thread_status: string;
+        }
+      | undefined;
+
+    if (!row || row.thread_status !== "active") return false;
+
+    let metadata: Record<string, unknown> = {};
+    if (row.metadata) {
+      try {
+        const parsed = JSON.parse(row.metadata) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          metadata = parsed as Record<string, unknown>;
+        }
+      } catch {
+        return false;
+      }
+    }
+
+    let parts: Array<{ type: string; text?: string }> = [];
+    if (row.parts_json) {
+      try {
+        const parsed = JSON.parse(row.parts_json) as unknown;
+        if (!Array.isArray(parsed)) return false;
+        parts = parsed.flatMap((part) => {
+          if (!part || typeof part !== "object" || Array.isArray(part)) return [];
+          const record = part as Record<string, unknown>;
+          if (typeof record.type !== "string") return [];
+          return [
+            {
+              type: record.type,
+              ...(typeof record.text === "string" ? { text: record.text } : {}),
+            },
+          ];
+        });
+      } catch {
+        return false;
+      }
+    }
+
+    return isNotificationUserVisibleFinal({
+      id: row.id,
+      role: row.role,
+      content: row.content,
+      parts,
+      metadata,
+    });
+  },
+
   listPending(now = new Date().toISOString(), limit = 100) {
     const rows = getSqlite()
       .prepare(
@@ -479,6 +546,21 @@ export const hostNotificationRepository = {
       )
       .run(now, now);
     return result.changes;
+  },
+
+  markExpired(
+    id: string,
+    reason: string,
+    now = new Date().toISOString(),
+  ) {
+    const result = getSqlite()
+      .prepare(
+        `UPDATE notification_outbox
+         SET state = 'expired', last_error = ?, updated_at = ?
+         WHERE id = ? AND state = 'pending'`,
+      )
+      .run(reason.slice(0, 1000), now, id);
+    return result.changes > 0;
   },
 
   markDelivered(id: string, now = new Date().toISOString()) {
