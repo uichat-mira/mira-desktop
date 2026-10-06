@@ -12,9 +12,6 @@
 - inspect 预算内 context 构建
 - 中文路径、BOM、GBK、二进制和大文件边界
 
-旧 `read_discover / read_open / read_list / read_locate / read_extract / read_slice`
-已经退出 executable Harness surface；bench 不再以它们作为当前能力验收入口。
-
 ## 运行
 
 ```bash
