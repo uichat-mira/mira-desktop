@@ -238,7 +238,7 @@ test("binding approval requires installation signature and rejects nonce replay"
 
   const replay = await approve(service, installationKey, hostKey);
   assert.equal(replay.response.status, 409);
-  assert.deepEqual(await replay.response.json(), {
+  assert.deepEqual(replay.json, {
     error: "binding_nonce_reused",
   });
 });
