@@ -200,6 +200,16 @@ const deleteCanonicalMessages = (messages: Message[]) => {
   }
 };
 
+const scheduleCanonicalMessageCleanup = () => {
+  queueMicrotask(() => {
+    try {
+      canonicalMessageCleanupService.drainOnce();
+    } catch (error) {
+      console.error("[canonical-cleanup] scheduled drain failed", { error });
+    }
+  });
+};
+
 const getBranchParentIdFromMetadata = (
   metadata: Record<string, unknown> | undefined,
 ) => {
@@ -920,7 +930,7 @@ export const threadService = {
           cleanupPayload.media.length > 0 ||
           cleanupPayload.attachmentParts.length > 0
         ) {
-          canonicalMessageCleanupService.drainOnce();
+          scheduleCanonicalMessageCleanup();
         }
         return updatedResponse;
       }
@@ -945,7 +955,7 @@ export const threadService = {
         cleanupPayload.media.length > 0 ||
         cleanupPayload.attachmentParts.length > 0
       ) {
-        canonicalMessageCleanupService.drainOnce();
+        scheduleCanonicalMessageCleanup();
       }
       return toMessageResponse(existing);
     }
@@ -1003,7 +1013,7 @@ export const threadService = {
       cleanupPayload.media.length > 0 ||
       cleanupPayload.attachmentParts.length > 0
     ) {
-      canonicalMessageCleanupService.drainOnce();
+      scheduleCanonicalMessageCleanup();
     }
     return createdResponse;
   },
