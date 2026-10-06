@@ -22,6 +22,7 @@ type PersistentOutputRecord = {
   pendingBytes: number;
   pausedForBackpressure: boolean;
   completed: boolean;
+  completionPromise: Promise<void> | null;
   exitCode: number | null;
   error: Error | null;
 };
@@ -83,6 +84,7 @@ export const createPersistentTerminalOutput = (input: {
     pendingBytes: 0,
     pausedForBackpressure: false,
     completed: false,
+    completionPromise: null,
     exitCode: null,
     error: null,
   };
@@ -160,23 +162,29 @@ const flushRecord = async (record: PersistentOutputRecord) => {
   assertRecordHealthy(record);
 };
 
-export const completePersistentTerminalOutput = async (
+export const completePersistentTerminalOutput = (
   id: string,
   exitCode: number | null,
 ) => {
   const record = getRecord(id);
-  if (record.completed) return;
-  try {
-    await flushRecord(record);
-    const handle = await record.handlePromise;
-    await handle.close();
-  } catch (error) {
-    record.error =
-      error instanceof Error ? error : new Error(String(error));
-  } finally {
-    record.exitCode = exitCode;
-    record.completed = true;
-  }
+  if (record.completionPromise) return record.completionPromise;
+  if (record.completed) return Promise.resolve();
+
+  record.completionPromise = (async () => {
+    try {
+      await flushRecord(record);
+      const handle = await record.handlePromise;
+      await handle.close();
+    } catch (error) {
+      record.error =
+        error instanceof Error ? error : new Error(String(error));
+    } finally {
+      record.exitCode = exitCode;
+      record.completed = true;
+    }
+  })();
+
+  return record.completionPromise;
 };
 
 export const readPersistentTerminalOutput = async (input: {
@@ -188,7 +196,11 @@ export const readPersistentTerminalOutput = async (input: {
   const offset = normalizeTerminalOutputOffset(input.offset);
   const limitBytes = normalizeTerminalOutputLimitBytes(input.limitBytes);
 
-  await flushRecord(record);
+  if (record.completionPromise) {
+    await record.completionPromise;
+  } else {
+    await flushRecord(record);
+  }
   const commandCompletedAtSnapshot = record.completed;
   const exitCodeAtSnapshot = record.exitCode;
   const stats = await fsPromises.stat(record.filePath);
