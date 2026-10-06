@@ -2521,6 +2521,9 @@ const settingsPending = {
         },
         actions: {
           run: "Run this case",
+          continueOutput: "Continue output",
+          inspectStatus: "Inspect status",
+          stopTerminal: "Stop task",
           viewCase: "View case",
           expandResult: "Expand result",
           collapseResult: "Collapse result",

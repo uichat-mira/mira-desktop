@@ -2480,6 +2480,9 @@ const settingsPending = {
         },
         actions: {
           run: "运行这个用例",
+          continueOutput: "继续读取",
+          inspectStatus: "查看状态",
+          stopTerminal: "停止任务",
           viewCase: "查看用例",
           expandResult: "展开本次结果",
           collapseResult: "收起本次结果",

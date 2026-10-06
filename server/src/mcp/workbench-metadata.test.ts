@@ -110,7 +110,7 @@ describe("withWorkbenchMetadata", () => {
     ).toBe("browser_computer_use");
   });
 
-  it("registers terminal acceptance cases without changing the runtime contract", () => {
+  it("keeps Tool Lab acceptance cases out of the ordinary Settings workbench", () => {
     const projected = withWorkbenchMetadata([
       {
         id: "terminal",
@@ -130,22 +130,11 @@ describe("withWorkbenchMetadata", () => {
       },
     ]);
 
-    const cases = projected[0]?.workbench?.cases;
-    expect(cases?.map((item) => item.id)).toEqual([
-      "short-success",
-      "short-failure",
-      "persistent-start",
-      "stale-session",
-    ]);
-    expect(cases?.find((item) => item.id === "persistent-start")?.args).toMatchObject({
-      sessionMode: "persistent",
-      timeoutMs: 700,
-      outputLimitBytes: 4096,
+    expect(projected[0]?.workbench).toMatchObject({
+      groupId: "terminal",
+      groupLabel: "终端",
     });
-    expect(cases?.find((item) => item.id === "stale-session")?.args).toEqual({
-      operation: "status",
-      sessionId: "tool-lab-stale-session",
-    });
+    expect(projected[0]?.workbench?.cases).toBeUndefined();
   });
 
   it("groups exactly four GitHub domain tools and supplies operation drafts", () => {

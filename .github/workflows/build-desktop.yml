@@ -43,8 +43,8 @@ jobs:
       - name: Type check
         run: pnpm check
 
-      - name: Run Terminal Tool Lab regressions
-        run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/Settings/pages/Tools/__tests__/useToolsWorkbench.test.tsx src/features/Settings/pages/Tools/components/ToolsPackagePanel.test.tsx src/features/Settings/pages/Tools/utils.test.ts
+      - name: Run Terminal Capability Lab regressions
+        run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/Extensions/Capabilities/cases.test.ts src/features/Extensions/Capabilities/hooks/useCapabilities.test.tsx src/features/Extensions/Capabilities/index.test.tsx src/features/Settings/pages/Tools/__tests__/useToolsWorkbench.test.tsx src/features/Settings/pages/Tools/components/ToolsPackagePanel.test.tsx src/features/Settings/pages/Tools/utils.test.ts
 
       - name: "Run #199 UI convergence regressions"
         run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/shared/uchat/ui/UChatThreadView.test.tsx src/shared/uchat/ui/UChatAgentControls.test.tsx src/features/chat/components/roleChatState.test.ts src/features/chat/components/UChatThread.test.tsx
