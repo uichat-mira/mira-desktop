@@ -101,6 +101,24 @@ export const getRequiredRemoteScope = (
   }
 
   if (
+    normalizedMethod === "POST" &&
+    parts[0] === "remote" &&
+    parts[1] === "v1" &&
+    parts[2] === "push" &&
+    (
+      (parts.length === 4 && parts[3] === "binding-descriptor") ||
+      (parts.length === 5 &&
+        parts[3] === "bindings" &&
+        parts[4] === "accept")
+    )
+  ) {
+    // Push trust bootstrap rides the already-authenticated pairing channel.
+    // Broker authorization still comes only from the Mobile installation
+    // signature; this route does not promote mira_device_* into Broker auth.
+    return "authenticated";
+  }
+
+  if (
     normalizedMethod === "GET" &&
     parts.length === 3 &&
     parts[0] === "remote" &&
