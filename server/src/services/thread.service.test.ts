@@ -952,6 +952,20 @@ const createNotificationThreadFixture = () => {
   return { user, thread, installationId };
 };
 
+const installOutboxInsertFailureTrigger = () => {
+  const sqlite = getSqlite();
+  sqlite.exec(`
+    CREATE TRIGGER fail_notification_outbox_insert
+    BEFORE INSERT ON notification_outbox
+    BEGIN
+      SELECT RAISE(ABORT, 'injected notification outbox failure');
+    END;
+  `);
+  return () => {
+    sqlite.exec("DROP TRIGGER IF EXISTS fail_notification_outbox_insert");
+  };
+};
+
 test("canonical assistant insert atomically creates one notification outbox row", () => {
   const { user, thread, installationId } = createNotificationThreadFixture();
   const assistantMessageId = `assistant-${crypto.randomUUID()}`;
@@ -995,6 +1009,34 @@ test("canonical assistant insert atomically creates one notification outbox row"
     )
     .get(installationId, assistantMessageId) as { count: number };
   assert.equal(count.count, 1);
+});
+
+test("corrupt delivery token does not block canonical Assistant persistence", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-token-${crypto.randomUUID()}`;
+
+  getSqlite()
+    .prepare(
+      "UPDATE host_notification_bindings SET delivery_token_encrypted = ? WHERE installation_id = ?",
+    )
+    .run("bad.bad.bad", installationId);
+
+  const created = threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "final reply still persists",
+    parts: [{ type: "text", text: "final reply still persists" }],
+  });
+
+  assert.equal(created.id, assistantMessageId);
+  const outbox = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(outbox.count, 1);
 });
 
 test("Agent running to completed produces one outbox event while waiting approval does not", () => {
@@ -1119,30 +1161,29 @@ test("notification outbox failure rolls back the canonical assistant message", (
   const { user, thread, installationId } = createNotificationThreadFixture();
   const assistantMessageId = `assistant-rollback-${crypto.randomUUID()}`;
 
-  getSqlite()
-    .prepare(
-      "UPDATE host_notification_bindings SET source_scope_json = ? WHERE installation_id = ?",
-    )
-    .run("{invalid-json", installationId);
+  const removeFailureTrigger = installOutboxInsertFailureTrigger();
+  try {
+    assert.throws(
+      () =>
+        threadService.createMessage(thread.id, user.id, {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "must roll back with outbox",
+          parts: [{ type: "text", text: "must roll back with outbox" }],
+        }),
+      /injected notification outbox failure/,
+    );
 
-  assert.throws(
-    () =>
-      threadService.createMessage(thread.id, user.id, {
-        id: assistantMessageId,
-        role: "assistant",
-        content: "must roll back with outbox",
-        parts: [{ type: "text", text: "must roll back with outbox" }],
-      }),
-    /Stored notification source scope is invalid/,
-  );
-
-  assert.equal(messageRepository.findById(assistantMessageId), undefined);
-  const outbox = getSqlite()
-    .prepare(
-      "SELECT COUNT(*) AS count FROM notification_outbox WHERE canonical_message_id = ?",
-    )
-    .get(assistantMessageId) as { count: number };
-  assert.equal(outbox.count, 0);
+    assert.equal(messageRepository.findById(assistantMessageId), undefined);
+    const outbox = getSqlite()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM notification_outbox WHERE canonical_message_id = ?",
+      )
+      .get(assistantMessageId) as { count: number };
+    assert.equal(outbox.count, 0);
+  } finally {
+    removeFailureTrigger();
+  }
 });
 
 test("notification failure leaves existing message descendants and media cleanup untouched", () => {
@@ -1171,12 +1212,7 @@ test("notification failure leaves existing message descendants and media cleanup
     parts: [{ type: "text", text: "keep me" }],
   });
 
-  getSqlite()
-    .prepare(
-      "UPDATE host_notification_bindings SET source_scope_json = ? WHERE installation_id = ?",
-    )
-    .run("{invalid-json", installationId);
-
+  const removeFailureTrigger = installOutboxInsertFailureTrigger();
   const cleanupSpy = vi.spyOn(chatMediaService, "removeCleanupSnapshot");
   try {
     assert.throws(
@@ -1189,7 +1225,7 @@ test("notification failure leaves existing message descendants and media cleanup
           parts: [{ type: "text", text: "最终答案" }],
           metadata: { agent: { status: "completed" } },
         }),
-      /Stored notification source scope is invalid/,
+      /injected notification outbox failure/,
     );
 
     const persisted = threadService.getMessageById(assistantMessageId, user.id);
@@ -1205,6 +1241,7 @@ test("notification failure leaves existing message descendants and media cleanup
     assert.equal(cleanupSpy.mock.calls.length, 0);
   } finally {
     cleanupSpy.mockRestore();
+    removeFailureTrigger();
   }
 });
 
