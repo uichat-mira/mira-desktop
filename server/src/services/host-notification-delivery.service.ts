@@ -18,6 +18,7 @@ const RETRY_DELAYS_MS = [
 ] as const;
 const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
+const BROKER_REQUEST_TIMEOUT_MS = 10_000;
 
 type DeliveryRepository = Pick<
   typeof hostNotificationRepository,
@@ -225,6 +226,7 @@ export class HostNotificationDeliveryService {
             ...unsigned,
             hostSignature,
           }),
+          signal: AbortSignal.timeout(BROKER_REQUEST_TIMEOUT_MS),
         },
       );
 
