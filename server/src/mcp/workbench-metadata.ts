@@ -55,7 +55,7 @@ const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
   edit: { path: "", edits: [{ oldText: "", newText: "" }] },
   delete: { path: "" },
   move: { path: "", destinationPath: "" },
-  apply_patch: { patchText: "*** Begin Patch\\n*** End Patch" },
+  apply_patch: { patchText: "*** Begin Patch\n*** End Patch\n" },
   web_search: { queries: [""] },
   web_fetch: { url: "" },
   news_search: { query: "" },
