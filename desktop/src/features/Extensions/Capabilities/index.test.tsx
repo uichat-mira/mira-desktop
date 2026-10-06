@@ -46,6 +46,7 @@ const capabilities = {
     nextOutputOffset: number;
     outputLimitBytes?: number;
   },
+  terminalSessionId: null as string | null,
   terminalSummary: null as null | {
     command?: string;
     cwd?: string;
@@ -213,6 +214,7 @@ describe("CapabilitiesPage", () => {
       reason: "前置条件已满足，可以运行。",
     };
     capabilities.terminalContinuation = null;
+    capabilities.terminalSessionId = null;
     capabilities.terminalSummary = null;
     delete (
       capabilities.runState.invocation.approval as {
@@ -520,6 +522,7 @@ describe("CapabilitiesPage", () => {
       nextOutputOffset: 12,
       outputLimitBytes: 4096,
     };
+    capabilities.terminalSessionId = "session-1";
     capabilities.terminalSummary = {
       command: "node persistent.js",
       cwd: "/workspace",
