@@ -135,6 +135,15 @@ export const canonicalMessageCleanupRepository = {
     return rows.map(toRecord);
   },
 
+  countFailed() {
+    const row = getSqlite()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM canonical_message_cleanup_jobs WHERE state = 'failed'",
+      )
+      .get() as { count: number };
+    return row.count;
+  },
+
   remove(id: string) {
     return (
       getSqlite()
