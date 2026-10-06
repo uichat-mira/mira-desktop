@@ -154,15 +154,17 @@ export class BrokerDeliveryWorker {
       }
 
       if (outcome.type === "invalid_token") {
-        this.store.recordDeliveryAttempt({
+        const invalidation = this.store.recordInvalidProviderTokenAttempt({
           ...common,
           outcome: "invalid_token",
-          eventState: "waiting_token_refresh",
-          nextAttemptAt: null,
-          lastError: outcome.errorCode,
-          invalidateProviderToken: true,
+          expectedProviderTokenCiphertext:
+            registration.providerTokenCiphertext,
         });
-        result.waitingTokenRefresh += 1;
+        if (invalidation === "invalidated") {
+          result.waitingTokenRefresh += 1;
+        } else if (invalidation === "rotated") {
+          result.retried += 1;
+        }
         break;
       }
 

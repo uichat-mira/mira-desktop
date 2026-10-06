@@ -89,8 +89,16 @@ export type RecordDeliveryAttemptInput = DeliveryAttemptRecord & {
   eventState: DeliveryEventState;
   nextAttemptAt: string | null;
   lastError: string | null;
-  invalidateProviderToken?: boolean;
 };
+
+export type InvalidProviderTokenAttemptInput = DeliveryAttemptRecord & {
+  expectedProviderTokenCiphertext: string;
+};
+
+export type InvalidProviderTokenAttemptResult =
+  | "invalidated"
+  | "rotated"
+  | "inactive";
 
 export type BrokerPersistence = {
   getRegistration(): RegistrationRecord | null;
@@ -127,6 +135,9 @@ export type BrokerPersistence = {
   expireDue(now: string): number;
   pausePendingForTokenRefresh(now: string): number;
   recordDeliveryAttempt(input: RecordDeliveryAttemptInput): void;
+  recordInvalidProviderTokenAttempt(
+    input: InvalidProviderTokenAttemptInput,
+  ): InvalidProviderTokenAttemptResult;
   getNextWakeAt(now: string): string | null;
 };
 
@@ -572,20 +583,7 @@ export class SqlBrokerPersistence implements BrokerPersistence {
 
   recordDeliveryAttempt(input: RecordDeliveryAttemptInput) {
     this.storage.transactionSync(() => {
-      this.storage.sql.exec(
-        `INSERT INTO provider_delivery_attempts (
-          event_id, attempt_no, provider, outcome, provider_request_id,
-          http_status, error_code, attempted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        input.eventId,
-        input.attemptNo,
-        input.provider,
-        input.outcome,
-        input.providerRequestId,
-        input.httpStatus,
-        input.errorCode,
-        input.attemptedAt,
-      );
+      this.insertDeliveryAttempt(input);
       this.storage.sql.exec(
         `UPDATE notification_events
          SET state = ?, attempt_count = ?, next_attempt_at = ?,
@@ -600,24 +598,102 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         input.eventState === "delivered" ? input.attemptedAt : null,
         input.eventId,
       );
-      if (input.invalidateProviderToken) {
-        this.storage.sql.exec(
-          `UPDATE installation
-           SET provider_token_ciphertext = NULL,
-               provider_token_status = 'refresh_required',
-               updated_at = ?
-           WHERE revoked_at IS NULL`,
-          input.attemptedAt,
-        );
+    });
+  }
+
+  recordInvalidProviderTokenAttempt(
+    input: InvalidProviderTokenAttemptInput,
+  ): InvalidProviderTokenAttemptResult {
+    return this.storage.transactionSync(() => {
+      this.insertDeliveryAttempt(input);
+      const registration = this.getRegistration();
+      const currentEvent = this.getEvent(input.eventId);
+
+      if (
+        !registration ||
+        registration.revokedAt ||
+        !currentEvent ||
+        currentEvent.state === "cancelled"
+      ) {
+        if (currentEvent) {
+          this.storage.sql.exec(
+            `UPDATE notification_events
+             SET attempt_count = ?, provider_request_id = ?
+             WHERE event_id = ?`,
+            input.attemptNo,
+            input.providerRequestId,
+            input.eventId,
+          );
+        }
+        return "inactive" as const;
+      }
+
+      if (
+        registration.providerTokenStatus !== "active" ||
+        registration.providerTokenCiphertext !==
+          input.expectedProviderTokenCiphertext
+      ) {
         this.storage.sql.exec(
           `UPDATE notification_events
-           SET state = 'waiting_token_refresh', next_attempt_at = NULL,
-               last_error = 'provider_token_refresh_required'
-           WHERE state = 'pending' AND expires_at > ?`,
+           SET state = 'pending', attempt_count = ?, next_attempt_at = ?,
+               last_error = 'provider_token_rotated_during_attempt',
+               provider_request_id = ?, delivered_at = NULL
+           WHERE event_id = ?`,
+          input.attemptNo,
           input.attemptedAt,
+          input.providerRequestId,
+          input.eventId,
         );
+        return "rotated" as const;
       }
+
+      this.storage.sql.exec(
+        `UPDATE notification_events
+         SET state = 'waiting_token_refresh', attempt_count = ?,
+             next_attempt_at = NULL, last_error = ?,
+             provider_request_id = ?, delivered_at = NULL
+         WHERE event_id = ?`,
+        input.attemptNo,
+        input.errorCode,
+        input.providerRequestId,
+        input.eventId,
+      );
+      this.storage.sql.exec(
+        `UPDATE installation
+         SET provider_token_ciphertext = NULL,
+             provider_token_status = 'refresh_required',
+             updated_at = ?
+         WHERE revoked_at IS NULL
+           AND provider_token_ciphertext = ?`,
+        input.attemptedAt,
+        input.expectedProviderTokenCiphertext,
+      );
+      this.storage.sql.exec(
+        `UPDATE notification_events
+         SET state = 'waiting_token_refresh', next_attempt_at = NULL,
+             last_error = 'provider_token_refresh_required'
+         WHERE state = 'pending' AND expires_at > ?`,
+        input.attemptedAt,
+      );
+      return "invalidated" as const;
     });
+  }
+
+  private insertDeliveryAttempt(input: DeliveryAttemptRecord) {
+    this.storage.sql.exec(
+      `INSERT INTO provider_delivery_attempts (
+        event_id, attempt_no, provider, outcome, provider_request_id,
+        http_status, error_code, attempted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.eventId,
+      input.attemptNo,
+      input.provider,
+      input.outcome,
+      input.providerRequestId,
+      input.httpStatus,
+      input.errorCode,
+      input.attemptedAt,
+    );
   }
 
   getNextWakeAt(now: string): string | null {

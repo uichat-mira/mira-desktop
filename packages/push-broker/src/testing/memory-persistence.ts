@@ -5,6 +5,8 @@ import type {
   CommitRegistrationInput,
   DeliveryAttemptRecord,
   EventRecord,
+  InvalidProviderTokenAttemptInput,
+  InvalidProviderTokenAttemptResult,
   RecordDeliveryAttemptInput,
   RegistrationRecord,
 } from "../persistence";
@@ -253,27 +255,84 @@ export class MemoryBrokerPersistence implements BrokerPersistence {
           input.eventState === "delivered" ? input.attemptedAt : null,
       });
     }
-    if (input.invalidateProviderToken && this.registration) {
-      this.registration = {
-        ...this.registration,
-        providerTokenCiphertext: null,
-        providerTokenStatus: "refresh_required",
-        updatedAt: input.attemptedAt,
-      };
-      for (const [eventId, pending] of this.events) {
-        if (
-          pending.state === "pending" &&
-          pending.expiresAt > input.attemptedAt
-        ) {
-          this.events.set(eventId, {
-            ...pending,
-            state: "waiting_token_refresh",
-            nextAttemptAt: null,
-            lastError: "provider_token_refresh_required",
-          });
-        }
+  }
+
+  recordInvalidProviderTokenAttempt(
+    input: InvalidProviderTokenAttemptInput,
+  ): InvalidProviderTokenAttemptResult {
+    this.attempts.push({
+      eventId: input.eventId,
+      attemptNo: input.attemptNo,
+      provider: input.provider,
+      outcome: input.outcome,
+      providerRequestId: input.providerRequestId,
+      httpStatus: input.httpStatus,
+      errorCode: input.errorCode,
+      attemptedAt: input.attemptedAt,
+    });
+    const currentEvent = this.events.get(input.eventId);
+    if (
+      !this.registration ||
+      this.registration.revokedAt ||
+      !currentEvent ||
+      currentEvent.state === "cancelled"
+    ) {
+      if (currentEvent) {
+        this.events.set(input.eventId, {
+          ...currentEvent,
+          attemptCount: input.attemptNo,
+          providerRequestId: input.providerRequestId,
+        });
+      }
+      return "inactive";
+    }
+
+    if (
+      this.registration.providerTokenStatus !== "active" ||
+      this.registration.providerTokenCiphertext !==
+        input.expectedProviderTokenCiphertext
+    ) {
+      this.events.set(input.eventId, {
+        ...currentEvent,
+        state: "pending",
+        attemptCount: input.attemptNo,
+        nextAttemptAt: input.attemptedAt,
+        lastError: "provider_token_rotated_during_attempt",
+        providerRequestId: input.providerRequestId,
+        deliveredAt: null,
+      });
+      return "rotated";
+    }
+
+    this.events.set(input.eventId, {
+      ...currentEvent,
+      state: "waiting_token_refresh",
+      attemptCount: input.attemptNo,
+      nextAttemptAt: null,
+      lastError: input.errorCode,
+      providerRequestId: input.providerRequestId,
+      deliveredAt: null,
+    });
+    this.registration = {
+      ...this.registration,
+      providerTokenCiphertext: null,
+      providerTokenStatus: "refresh_required",
+      updatedAt: input.attemptedAt,
+    };
+    for (const [eventId, pending] of this.events) {
+      if (
+        pending.state === "pending" &&
+        pending.expiresAt > input.attemptedAt
+      ) {
+        this.events.set(eventId, {
+          ...pending,
+          state: "waiting_token_refresh",
+          nextAttemptAt: null,
+          lastError: "provider_token_refresh_required",
+        });
       }
     }
+    return "invalidated";
   }
 
   getNextWakeAt(now: string) {

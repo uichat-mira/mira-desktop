@@ -242,3 +242,71 @@ test("retry stops at event TTL instead of busy looping", async () => {
   assert.equal(store.getEvent("event-expiring")?.nextAttemptAt, null);
   assert.equal(adapter.calls.length, 1);
 });
+
+
+test("token refresh racing an invalid-token response preserves the fresh token", async () => {
+  let now = START;
+  const store = await prepareStore("android", now);
+  store.commitEvent(event("event-refresh-race", now));
+  let calls = 0;
+  const adapter: PushProviderAdapter = {
+    provider: "fcm",
+    async send(input) {
+      calls += 1;
+      if (calls === 1) {
+        const refreshedCiphertext = await sealSecret(
+          "fresh-provider-token",
+          storageKey,
+          INSTALLATION_ID,
+        );
+        const refreshed = store.commitRegistration({
+          action: "refresh",
+          installationId: INSTALLATION_ID,
+          platform: "android",
+          providerTokenCiphertext: refreshedCiphertext,
+          installationPublicKey: "installation-public-key",
+          requestNonce: "refresh-during-provider-request",
+          nonceExpiresAt: new Date(now + 60_000).toISOString(),
+          now: new Date(now).toISOString(),
+        });
+        assert.equal(refreshed, "ok");
+        return {
+          type: "invalid_token",
+          provider: "fcm",
+          requestId: null,
+          httpStatus: 404,
+          errorCode: "UNREGISTERED",
+        };
+      }
+      assert.equal(input.providerToken, "fresh-provider-token");
+      return {
+        type: "accepted",
+        provider: "fcm",
+        requestId: "projects/mira/messages/fresh-token",
+        httpStatus: 200,
+      };
+    },
+  };
+  const worker = new BrokerDeliveryWorker(
+    store,
+    storageKey,
+    { android: adapter },
+    () => now,
+  );
+
+  const raced = await worker.drain();
+  assert.equal(raced.retried, 1);
+  assert.equal(store.registration?.providerTokenStatus, "active");
+  assert.ok(store.registration?.providerTokenCiphertext);
+  assert.equal(store.getEvent("event-refresh-race")?.state, "pending");
+  assert.equal(
+    store.getEvent("event-refresh-race")?.lastError,
+    "provider_token_rotated_during_attempt",
+  );
+
+  now += 1;
+  const delivered = await worker.drain();
+  assert.equal(delivered.delivered, 1);
+  assert.equal(calls, 2);
+  assert.equal(store.getEvent("event-refresh-race")?.state, "delivered");
+});
