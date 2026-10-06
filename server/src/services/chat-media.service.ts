@@ -73,17 +73,53 @@ export const chatMediaService = {
   createCleanupSnapshot(messageIds: string[]) {
     return chatMediaRepository.listByMessageIds(messageIds).map((record) => ({
       id: record.id,
+      messageId: record.messageId,
+      mediaType: record.mediaType as ChatMediaType,
       absolutePath: record.absolutePath,
     }));
   },
 
   removeCleanupSnapshot(
-    records: Array<{ id: string; absolutePath: string }>,
+    records: Array<{
+      id: string;
+      messageId: string;
+      mediaType: ChatMediaType;
+      absolutePath: string;
+    }>,
   ) {
     for (const record of records) {
       const absolutePath = validatePath(record.absolutePath);
+      const message = messageRepository.findById(record.messageId);
+      const previousMetadata = message?.metadata ?? "{}";
+      const metadata = parseMetadata(previousMetadata);
+      const media =
+        metadata.media &&
+        typeof metadata.media === "object" &&
+        !Array.isArray(metadata.media)
+          ? { ...(metadata.media as Record<string, unknown>) }
+          : {};
+      const key = mediaMetadataKey(record.mediaType);
+      const entry = media[key];
+      const ownsMetadataEntry =
+        entry &&
+        typeof entry === "object" &&
+        (entry as { mediaId?: unknown }).mediaId === record.id;
+
       fs.rmSync(absolutePath, { force: true });
-      chatMediaRepository.deleteByIds([record.id]);
+      getSqlite().transaction(() => {
+        if (message && ownsMetadataEntry) {
+          delete media[key];
+          const updated = messageRepository.updateById(message.id, {
+            metadata: JSON.stringify({ ...metadata, media }),
+          });
+          if (!updated) {
+            throw new Error(
+              "Failed to update assistant message metadata during cleanup.",
+            );
+          }
+        }
+        chatMediaRepository.deleteByIds([record.id]);
+      })();
     }
   },
 
