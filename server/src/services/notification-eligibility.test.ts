@@ -67,6 +67,29 @@ describe("notification eligibility", () => {
     }
   });
 
+  it("does not use localized Agent placeholder copy as a state signal", () => {
+    const localizedRunning: NotificationCanonicalMessage = {
+      ...assistant("Agent is working…"),
+      metadata: { agent: { status: "running" } },
+    };
+    const malformedAgent: NotificationCanonicalMessage = {
+      ...assistant("Agent arbeitet…"),
+      metadata: { agent: {} },
+    };
+
+    expect(isNotificationEligibleTransition(null, localizedRunning)).toBe(false);
+    expect(isNotificationEligibleTransition(null, malformedAgent)).toBe(false);
+    expect(
+      isNotificationEligibleTransition(
+        localizedRunning,
+        {
+          ...assistant("Finished", "completed"),
+          metadata: { agent: { status: "completed" } },
+        },
+      ),
+    ).toBe(true);
+  });
+
   it("rejects updates after final and mismatched canonical ids", () => {
     expect(
       isNotificationEligibleTransition(
