@@ -35,7 +35,24 @@ tools:
   bash:
     - "*"
 safe-outputs:
+  # A harmless non-builtin output prevents gh-aw v0.89.21 from auto-injecting
+  # create-issue as its default fallback. The probe does not call this tool.
+  upload-artifact:
+    max-uploads: 1
+    retention-days: 1
+    allowed-paths:
+      - ".github/agent-dispatch-poc/**"
+  missing-tool:
+    create-issue: false
+  missing-data:
+    create-issue: false
+  report-incomplete:
+    create-issue: false
   noop:
+    report-as-issue: false
+  report-failure-as-issue: false
+  report-failed-jobs: false
+  threat-detection: false
 timeout-minutes: 20
 strict: true
 ---
