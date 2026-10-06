@@ -72,7 +72,8 @@ describe("grep tool", () => {
   });
 
   it("uses a compact but capable search contract", () => {
-    expect(grepTool.definition.description).toContain("regex or literal text");
+    expect(grepTool.definition.description).toContain("regex by default");
+    expect(grepTool.definition.description).toContain("literal=true");
     expect(Object.keys(grepTool.definition.inputSchema.properties ?? {})).toEqual([
       "pattern",
       "path",
