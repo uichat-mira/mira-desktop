@@ -57,7 +57,7 @@ test("resumeApprovedAgentRun resumes a pending run and keeps approval state", as
 
   agentRunStore.update(run.id, {
     status: "waiting_approval",
-    selectedCapabilityId: "web_research",
+    selectedCapabilityId: "web",
     pendingApproval: {
       id: "approval-1",
       runId: run.id,

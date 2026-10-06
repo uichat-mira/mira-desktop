@@ -55,9 +55,9 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     actionProfileDescription: "Create a new workspace file through managed editing.",
   },
   {
-    id: "web_research",
-    title: "Web Research",
-    description: "Search current public web information and retrieve known public URLs for the current task.",
+    id: "web",
+    title: "Web",
+    description: "Access public web information: discover relevant public sources or retrieve a known public URL.",
     domain: "web_search",
     tags: ["web", "search", "public", "current", "realtime", "research", "internet", "fetch", "url", "retrieve", "page"],
     preferredToolId: "web_search",

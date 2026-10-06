@@ -277,7 +277,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
       query: "今天最新新闻是什么",
       source: "chat_surface" as const,
       tools: [readTool, webSearchTool, terminalTool, externalFakeTool],
-      rerankOrder: ["web_research", "read"],
+      rerankOrder: ["web", "read"],
       expectedExposedToolIds: ["read", "web_search", "terminal"],
       expectedBlockedCapabilityIds: ["external_fake_tool"],
       expectedReason:

@@ -220,7 +220,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
 
     expect(profiles).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "web_research", preferredToolId: "web_search" }),
+        expect.objectContaining({ id: "web", preferredToolId: "web_search" }),
         expect.objectContaining({ id: "news_research", preferredToolId: "news_search" }),
         expect.objectContaining({ id: "mail_reading", preferredToolId: "mail_query" }),
       ]),
