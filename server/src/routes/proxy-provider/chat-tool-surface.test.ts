@@ -29,7 +29,7 @@ describe("chat tool surface", () => {
           },
         },
       ],
-      blockedCapabilityIds: ["terminal_session"],
+      blockedCapabilityIds: ["terminal"],
       reasons: [],
     });
 
@@ -73,7 +73,7 @@ describe("chat tool surface", () => {
           },
         },
         {
-          id: "terminal_session",
+          id: "terminal",
           title: "Terminal Session",
           description: "Run commands in a managed terminal session.",
           domain: "terminal",
@@ -101,7 +101,7 @@ describe("chat tool surface", () => {
     expect(tools.map((tool) => tool.id)).toEqual([
       "read_list",
       "web_search",
-      "terminal_session",
+      "terminal",
     ]);
   });
 
@@ -204,7 +204,7 @@ describe("chat tool surface", () => {
     resolveHarnessToolExposureMock.mockReturnValue({
       visibleDefinitions: [
       {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "Run commands.",
         domain: "terminal",
@@ -240,6 +240,6 @@ describe("chat tool surface", () => {
       agentEnabled: true,
     });
 
-    expect(tools.map((tool) => tool.id)).toEqual(["terminal_session"]);
+    expect(tools.map((tool) => tool.id)).toEqual(["terminal"]);
   });
 });

@@ -1,0 +1,138 @@
+name: Terminal Runtime Contract Smoke
+
+on:
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - ".github/workflows/terminal-runtime-contract-smoke.yml"
+      - "server/src/mcp/terminal/**"
+      - "server/src/mcp/terminal-sessions.ts"
+      - "server/src/mcp/tools/terminal-session.tool.ts"
+      - "server/src/mcp/core/tool-result.ts"
+      - "server/src/agent/types.ts"
+      - "scripts/smoke-terminal-session.ts"
+      - "scripts/smoke-terminal-session-macos.ts"
+      - "scripts/smoke-terminal-runtime.mjs"
+      - "scripts/prepare-node-pty-macos-dev.mjs"
+      - "scripts/prepare-terminal-runtime.mjs"
+      - "scripts/terminal-runtime.lock.json"
+      - "package.json"
+      - "server/package.json"
+      - "pnpm-lock.yaml"
+  push:
+    branches:
+      - dev
+    paths:
+      - ".github/workflows/terminal-runtime-contract-smoke.yml"
+      - "server/src/mcp/terminal/**"
+      - "server/src/mcp/terminal-sessions.ts"
+      - "server/src/mcp/tools/terminal-session.tool.ts"
+      - "server/src/mcp/core/tool-result.ts"
+      - "server/src/agent/types.ts"
+      - "scripts/smoke-terminal-session.ts"
+      - "scripts/smoke-terminal-session-macos.ts"
+      - "scripts/smoke-terminal-runtime.mjs"
+      - "scripts/prepare-node-pty-macos-dev.mjs"
+      - "scripts/prepare-terminal-runtime.mjs"
+      - "scripts/terminal-runtime.lock.json"
+      - "package.json"
+      - "server/package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terminal-runtime-contract-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-terminal-runtime:
+    name: Terminal Runtime Smoke (Windows)
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Cache Terminal Dev Runtime
+        uses: actions/cache@v4
+        with:
+          path: .local-runtimes/terminal-dev
+          key: windows-terminal-contract-${{ hashFiles('scripts/terminal-runtime.lock.json') }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build server bundle
+        run: pnpm internal:build:server
+
+      - name: Prepare pinned Terminal runtime
+        run: pnpm prepare:terminal-runtime
+
+      - name: Run real Terminal contract smoke
+        run: node scripts/smoke-terminal-runtime.mjs --terminal-only
+
+      - name: Upload Terminal smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-contract-smoke-windows
+          path: .test-artifact/terminal-dev-runtime-staged
+          retention-days: 7
+          if-no-files-found: ignore
+
+  macos-terminal-runtime:
+    name: Terminal Runtime Smoke (macOS Intel)
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Verify Intel runner
+        run: node -e "if (process.platform !== 'darwin' || process.arch !== 'x64') { throw new Error('Expected darwin/x64, received ' + process.platform + '/' + process.arch); }"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Prepare node-pty helper
+        run: node scripts/prepare-node-pty-macos-dev.mjs
+
+      - name: Run real Terminal contract smoke
+        run: pnpm --filter @ui-chat-mira/server exec tsx ../scripts/smoke-terminal-session-macos.ts
+
+      - name: Upload Terminal smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-contract-smoke-macos-intel
+          path: .test-artifact/terminal-contract-smoke-macos.json
+          retention-days: 7
+          if-no-files-found: ignore

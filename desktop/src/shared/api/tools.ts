@@ -52,6 +52,12 @@ export type HarnessToolDefinition = {
     groupOrder: number;
     icon: string;
     defaultArgs?: Record<string, unknown>;
+    cases?: Array<{
+      id: string;
+      title: string;
+      description: string;
+      args: Record<string, unknown>;
+    }>;
   };
 };
 

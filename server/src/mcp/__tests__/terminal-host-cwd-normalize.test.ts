@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { terminalSessionTool } from "../tools/terminal-session.tool.js";
+import { terminalTool } from "../tools/terminal-session.tool.js";
 import { normalizeWorkspaceBoundaryArgs } from "../workspace-path-args.js";
 
 describe("terminal host cwd normalization", () => {
@@ -11,7 +11,7 @@ describe("terminal host cwd normalization", () => {
     };
 
     expect(
-      normalizeWorkspaceBoundaryArgs(terminalSessionTool.definition, args),
+      normalizeWorkspaceBoundaryArgs(terminalTool.definition, args),
     ).toEqual({ args });
   });
 
@@ -22,7 +22,7 @@ describe("terminal host cwd normalization", () => {
     };
 
     expect(
-      normalizeWorkspaceBoundaryArgs(terminalSessionTool.definition, args),
+      normalizeWorkspaceBoundaryArgs(terminalTool.definition, args),
     ).toEqual({ args });
   });
 

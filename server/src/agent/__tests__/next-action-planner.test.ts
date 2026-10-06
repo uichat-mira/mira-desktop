@@ -360,7 +360,7 @@ test("buildPlannerObservationContext includes pendingApproval in both approval v
         id: "approval-1",
         runId: "run-1",
         stepId: "approval",
-        toolId: "terminal_session",
+        toolId: "terminal",
         toolCallId: "tool-call-1",
         inputHash: "hash-1",
         reason: "Needs approval before running.",
@@ -372,13 +372,13 @@ test("buildPlannerObservationContext includes pendingApproval in both approval v
   );
 
   assert.deepEqual(context.pendingApproval, {
-    toolId: "terminal_session",
+    toolId: "terminal",
     inputHash: "hash-1",
     reason: "Needs approval before running.",
   });
   assert.equal(context.latestObservation?.source, "approval");
   assert.equal(context.latestObservation?.actionType, "approval");
-  assert.equal(context.latestObservation?.toolId, "terminal_session");
+  assert.equal(context.latestObservation?.toolId, "terminal");
   assert.equal(context.latestObservation?.status, "waiting_approval");
   assert.deepEqual(context.latestObservation?.suggestedNextActions, [
     "wait_for_approval",
@@ -529,7 +529,7 @@ test("buildNextActionPlannerMessages reads planner observation context instead o
         id: "approval-1",
         runId: "run-1",
         stepId: "approval",
-        toolId: "terminal_session",
+        toolId: "terminal",
         toolCallId: "tool-call-1",
         inputHash: "hash-1",
         reason: "Needs approval before running.",
@@ -2110,7 +2110,7 @@ test("nextActionPlannerNode falls back when task model selects an unexposed tool
   const streamSpy = vi
     .spyOn(providerProxyService, "streamTaskChatText")
     .mockImplementation(async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"dir"},"reason":"Need terminal."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"dir"},"reason":"Need terminal."}';
     });
 
   try {

@@ -11,7 +11,7 @@ It ships with Mira and does not require the optional `wenshu-office` Python Runt
 
 Current execution is provided by WenShu's deterministic Office Domain Runtime. The package itself is **not** an active `SkillInstance`, and installing/shipping it does not imply formal Agent Skill Runtime integration.
 
-DOCX currently has no Python Runtime Pack dependency. Its Node/OOXML domain runtime is the only execution path. Do not introduce a Python command, `PYTHONPATH`, package installation, or `terminal_session` workaround for DOCX.
+DOCX currently has no Python Runtime Pack dependency. Its Node/OOXML domain runtime is the only execution path. Do not introduce a Python command, `PYTHONPATH`, package installation, or `terminal` workaround for DOCX.
 
 Formal Agent integration remains deferred until the Skill Runtime contract provides versioned `SkillDefinition`, active `SkillInstance`, state/stage, Evidence-driven reducer, stage-specific tool constraints, and completion evaluation.
 

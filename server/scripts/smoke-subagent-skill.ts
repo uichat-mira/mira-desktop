@@ -22,7 +22,7 @@ id: smoke-subagent-skill
 displayName: Smoke subAgent Skill
 description: deterministic smoke for uploaded Skill execution contract
 version: 1.0.0
-allowedTools: terminal_session
+allowedTools: terminal
 runtimeBindings: arbitrary_runtime
 workspaceBound: true
 ---
