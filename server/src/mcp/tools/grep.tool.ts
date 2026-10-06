@@ -7,7 +7,7 @@ export const grepTool: ToolImplementation = {
     id: "grep",
     title: "Grep",
     description:
-      "Search file contents by regex or literal text. Returns matching paths and line locations; use glob to search filenames.",
+      "Search workspace file contents and return matching locations. Use glob for path-name discovery and read for full or contextual inspection after a match. pattern is regex by default; set literal=true for exact text.",
     domain: "read",
     source: "internal",
     mode: "sync",
@@ -16,15 +16,45 @@ export const grepTool: ToolImplementation = {
       required: ["pattern"],
       additionalProperties: false,
       properties: {
-        pattern: { type: "string" },
-        path: { type: "string" },
-        include: { type: "string" },
-        literal: { type: "boolean" },
-        caseSensitive: { type: "boolean" },
-        context: { type: "integer", minimum: 0 },
-        offset: { type: "integer", minimum: 0 },
-        limit: { type: "integer", minimum: 1 },
-        includeIgnored: { type: "boolean" },
+        pattern: {
+          type: "string",
+          description: "Regex search pattern by default; interpreted literally when literal=true.",
+        },
+        path: {
+          type: "string",
+          description: "Optional directory to search; defaults to the workspace root.",
+        },
+        include: {
+          type: "string",
+          description: "Optional glob that limits candidate file paths inside path.",
+        },
+        literal: {
+          type: "boolean",
+          description: "Treat pattern as literal text instead of a regular expression.",
+        },
+        caseSensitive: {
+          type: "boolean",
+          description: "Explicit case sensitivity. When omitted, smart-case is used.",
+        },
+        context: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of surrounding lines to return before and after each match.",
+        },
+        offset: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of ordered matches to skip.",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          description: "Maximum matches to return in this call.",
+        },
+        includeIgnored: {
+          type: "boolean",
+          description: "Include paths hidden by default workspace ignore rules; does not expand workspace authority.",
+        },
       },
     },
     outputSchema: { type: "object" },

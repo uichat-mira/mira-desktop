@@ -99,7 +99,7 @@ export const readTool: ToolImplementation = {
     id: "read",
     title: "Read",
     description:
-      "Read a known file. Returns text for text files and image content for supported images. Use glob when you do not know the path; use grep to search text contents.",
+      "Read a known file or Skill resource for content inspection. Use list for direct directory children, glob when the path is unknown or pattern-based, and grep to locate text. Supported images return image content; Office-family files hand off to their Skill runtime.",
     domain: "read",
     source: "internal",
     mode: "sync",
@@ -108,9 +108,20 @@ export const readTool: ToolImplementation = {
       required: ["path"],
       additionalProperties: false,
       properties: {
-        path: { type: "string" },
-        offset: { type: "integer", minimum: 0 },
-        limit: { type: "integer", minimum: 1 },
+        path: {
+          type: "string",
+          description: "Known workspace file path or skill:// resource URI.",
+        },
+        offset: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of text lines to skip before reading; continue with nextOffset when returned.",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          description: "Maximum text lines to return in this call.",
+        },
       },
     },
     outputSchema: { type: "object" },

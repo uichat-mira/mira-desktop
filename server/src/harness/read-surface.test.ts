@@ -45,4 +45,48 @@ describe("public read tool surface", () => {
       ["codebase_explore", "glob", "grep", "list", "read"].sort(),
     );
   });
+
+  it("keeps neighboring read-tool choices explicit without narrowing schemas", () => {
+    const definitions = [readTool, listTool, globTool, grepTool].map(
+      (tool) => tool.definition,
+    );
+    const byId = new Map(definitions.map((definition) => [definition.id, definition]));
+
+    expect(byId.get("read")?.description).toMatch(/list.*glob.*grep/i);
+    expect(byId.get("list")?.description).toMatch(/glob.*read/i);
+    expect(byId.get("glob")?.description).toMatch(/list.*grep/i);
+    expect(byId.get("grep")?.description).toMatch(/glob.*read/i);
+
+    expect(byId.get("read")?.inputSchema).toMatchObject({
+      required: ["path"],
+      properties: {
+        path: { type: "string" },
+        offset: { type: "integer", minimum: 0 },
+        limit: { type: "integer", minimum: 1 },
+      },
+    });
+    expect(byId.get("list")?.inputSchema).toMatchObject({
+      properties: {
+        path: { type: "string" },
+        includeIgnored: { type: "boolean" },
+      },
+    });
+    expect(byId.get("glob")?.inputSchema).toMatchObject({
+      required: ["pattern"],
+      properties: {
+        pattern: { type: "string" },
+        includeIgnored: { type: "boolean" },
+      },
+    });
+    expect(byId.get("grep")?.inputSchema).toMatchObject({
+      required: ["pattern"],
+      properties: {
+        pattern: { type: "string" },
+        literal: { type: "boolean" },
+        caseSensitive: { type: "boolean" },
+        context: { type: "integer", minimum: 0 },
+        includeIgnored: { type: "boolean" },
+      },
+    });
+  });
 });
