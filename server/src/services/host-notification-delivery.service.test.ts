@@ -28,7 +28,9 @@ const event: NotificationOutboxRecord = {
 
 const binding: HostNotificationBindingRecord = {
   installationId: "installation-1",
-  brokerBaseUrl: "https://push.example.test",
+  originRemoteDeviceId: "device-1",
+  ownerUserId: 7,
+  brokerBaseUrl: "https://push.stale.example.test",
   deliveryToken: "delivery-secret",
   sourceScope: ["thread-1"],
   status: "active",
@@ -36,7 +38,10 @@ const binding: HostNotificationBindingRecord = {
   updatedAt: new Date(NOW - 10_000).toISOString(),
 };
 
-const createHarness = (fetchImpl: typeof fetch) => {
+const createHarness = (
+  fetchImpl: typeof fetch,
+  brokerBaseUrl: () => string = () => "https://push.current.example.test",
+) => {
   const calls = {
     delivered: [] as string[],
     expired: [] as Array<{ id: string; reason: string }>,
@@ -83,13 +88,13 @@ const createHarness = (fetchImpl: typeof fetch) => {
       getOrCreateIdentity: () => ({
         hostId: "host-1",
         publicKey: "public-key",
-        privateKeyPem: "private-key",
         createdAt: new Date(NOW - 20_000).toISOString(),
         rotatedAt: null,
       }),
       signEvent: () => "host-signature",
     },
     fetchImpl,
+    brokerBaseUrl,
     now: () => NOW,
   });
 
@@ -118,6 +123,28 @@ test("delivery posts identity-only Broker event and marks success", async () => 
   assert.equal("content" in (capturedBody ?? {}), false);
   assert.equal("body" in (capturedBody ?? {}), false);
   assert.equal("prompt" in (capturedBody ?? {}), false);
+});
+
+test("delivery resolves the current Host Broker URL instead of stored binding URL", async () => {
+  let capturedUrl = "";
+  let currentBrokerUrl = "https://push.current.example.test";
+
+  const { service } = createHarness(
+    (async (url) => {
+      capturedUrl = String(url);
+      return new Response("{}", { status: 202 });
+    }) as typeof fetch,
+    () => currentBrokerUrl,
+  );
+
+  await service.drainOnce();
+  assert.match(capturedUrl, /^https:\/\/push\.current\.example\.test\//);
+  assert.equal(capturedUrl.includes("push.stale.example.test"), false);
+
+  currentBrokerUrl = "https://push.rotated.example.test";
+  capturedUrl = "";
+  await service.drainOnce();
+  assert.match(capturedUrl, /^https:\/\/push\.rotated\.example\.test\//);
 });
 
 test("retryable Broker failures schedule bounded retry", async () => {
