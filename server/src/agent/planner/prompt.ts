@@ -18,6 +18,34 @@ export const normalizeToolExposure = (
   };
 };
 
+const TERMINAL_SEMANTIC_NEIGHBOR_DOMAINS = new Set([
+  "read",
+  "edit",
+  "web_search",
+]);
+
+const describeTerminalForPlanner = (toolExposure: AgentToolExposureState) => {
+  const exposedToolIds = new Set(toolExposure.exposedTools);
+  const semanticNeighbors = toolExposure.toolMeta
+    .filter(
+      (candidate) =>
+        candidate.toolId !== "terminal" &&
+        exposedToolIds.has(candidate.toolId) &&
+        candidate.domain !== undefined &&
+        TERMINAL_SEMANTIC_NEIGHBOR_DOMAINS.has(candidate.domain),
+    )
+    .map((candidate) => candidate.toolId);
+
+  const neighborGuidance =
+    semanticNeighbors.length > 0
+      ? ` Prefer the currently exposed semantic Tools (${semanticNeighbors.join(
+          ", ",
+        )}) for the file/search/web operations they own instead of emulating those operations in shell by default.`
+      : "";
+
+  return `Run host commands and manage persistent terminal sessions for real process/shell work such as builds, tests, package managers, Git/CLI operations, scripts, dev servers, and system commands. Use terminal as the execution escape hatch when no currently exposed semantic Tool directly fits.${neighborGuidance}`;
+};
+
 const summarizeToolSchemas = (toolExposure: AgentToolExposureState) =>
   toolExposure.toolMeta.map((tool) => {
     const capabilities = tool.capabilities;
@@ -38,7 +66,9 @@ const summarizeToolSchemas = (toolExposure: AgentToolExposureState) =>
           ? "Legacy known-target read compatibility tool."
           : tool.toolId === "codebase_explore"
             ? "Primary local code-understanding tool. Successful results include bounded workspace-verified source excerpts with paths and line ranges. Those verified excerpts already count as source-body evidence; use read only for a specific unresolved target or missing surrounding context."
-            : tool.description;
+            : tool.toolId === "terminal"
+              ? describeTerminalForPlanner(toolExposure)
+              : tool.description;
 
     return {
       toolId: tool.toolId,
@@ -276,15 +306,14 @@ export const buildNextActionPlannerMessages = (input: {
         "不要输出 '/workspace' 作为 path。",
         "不要把 workspace 根目录下的文件写成 '/README.md' 这类类 Unix 绝对路径；应写成 'README.md'。",
         "如果要读取 workspace 根目录下的嵌套文件，应写成 'docs/README.md' 这类 workspace-relative path。",
-        "对 terminal.cwd，只能输出 workspace-relative directory。",
-        "如果命令就在 workspace 根目录执行，优先省略 cwd，或把 cwd 写成 '.'。",
-        "不要把 terminal.cwd 写成 Windows 绝对路径、POSIX 绝对路径或父级跳转，例如 'D:\\workspace\\rag-demo'、'/workspace'、'..'、'../server'。",
+        "terminal.cwd 默认使用当前选定 workspace；命令就在 workspace 根目录执行时优先省略 cwd，或写成 '.'。",
+        "terminal.cwd 的相对路径从当前 workspace 解析；绝对路径和父级跳转也是有效的 host 执行目录，但仍必须经过正常 Policy / Approval / runtime authority 检查。不要仅因为 cwd 位于 workspace 外就自行改写或拒绝它。",
         "先逐项核对完整用户目标，再决定 answer。answer 等于停止整个 Agent Loop，不等于当前步骤完成。",
         "某一条 evidence 可解释，不等于整项任务已经完成。",
         "如果任务有多个目标，只完成一部分时不要提前 answer。",
         "读到一个文件只证明该读取动作完成；如果用户还要求比较、修改、发送、运行或验证，必须继续。",
         "如果最新 evidence 仍有 gaps、missing、truncated、timed_out 或明确 error，不要只因为拿到结果就 answer。",
-        "本地文件工具按意图选择：read 读取已知文件，list 查看已知目录的直接子项，glob 按路径模式找文件，grep 按正文查匹配位置。",
+        "工具选择只能依据当前 toolExposure；只有本轮实际 exposed 的语义 Tool 才能作为 Terminal 的替代候选，不要因为注册表或通用经验假设某个邻近 Tool 一定可用。",
         "codebase_explore 不属于普通 discover：其 verifiedSource[...] 是经过 workspace 原文件复读验证的正文证据，已覆盖的文件和行范围不得机械再次 read。",
         "只有当 CodeGraph 明确留下 gap、unverifiable/rejected candidate、缺少所需行范围、excerpt 被截断，或当前任务必须展开一个具体函数的相邻上下文时，才对那个具体目标执行 targeted read。",
         "如果 list / glob / grep 的结构化结果已经足够支撑完整目标，可以直接 answer，不要机械追加 read。",

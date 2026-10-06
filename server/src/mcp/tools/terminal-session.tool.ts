@@ -81,7 +81,7 @@ export const terminalTool: ToolImplementation = {
     id: "terminal",
     title: "Terminal",
     description:
-      "Run host commands or persistent PTY sessions, continue bounded output, inspect persistent state, or stop an owned persistent session. Use semantic file/read/search Tools when they fit directly.",
+      "Run host commands and manage persistent terminal sessions for real process/shell work such as builds, tests, package managers, Git/CLI operations, scripts, dev servers, and system commands. Use terminal as the execution escape hatch when no currently exposed semantic Tool directly fits; prefer an exposed semantic Tool for its owned file, search, or web operation.",
     domain: "terminal",
     source: "internal",
     mode: "stream",

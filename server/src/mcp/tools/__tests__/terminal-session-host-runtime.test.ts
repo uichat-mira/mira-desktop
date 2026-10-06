@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { normalizeWorkspaceBoundaryArgs } from "../../workspace-path-args.js";
 import { terminalSessionCompatibilityTool, terminalTool } from "../terminal-session.tool.js";
 
 type SchemaProperty = {
@@ -28,6 +29,28 @@ describe("terminal host runtime metadata", () => {
     expect(
       terminalTool.definition.capabilities.sandboxProfile,
     ).toBeUndefined();
+  });
+
+  it("describes Terminal as process execution and an escape hatch rather than a default semantic API", () => {
+    expect(terminalTool.definition.description).toMatch(/process\/shell work/i);
+    expect(terminalTool.definition.description).toMatch(/execution escape hatch/i);
+    expect(terminalTool.definition.description).toMatch(/prefer an exposed semantic Tool/i);
+  });
+
+  it("preserves canonical host-process cwd for downstream approval and runtime authority", () => {
+    for (const cwd of ["../outside", "/outside", "C:\\outside"]) {
+      expect(
+        normalizeWorkspaceBoundaryArgs(terminalTool.definition, {
+          command: "pwd",
+          cwd,
+        }),
+      ).toEqual({
+        args: {
+          command: "pwd",
+          cwd,
+        },
+      });
+    }
   });
 
   it("describes cwd as a host execution directory instead of a workspace-only jail", () => {
