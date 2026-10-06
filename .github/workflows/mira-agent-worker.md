@@ -2,6 +2,11 @@
 name: Mira Agent Worker POC
 description: Proves gh-aw + OpenCode Go + DeepSeek + portable Agent Skills before enabling real work-item dispatch.
 on:
+  push:
+    branches:
+      - feat/agent-dispatch-poc
+    paths:
+      - .github/agent-dispatch-poc-trigger
   workflow_dispatch:
 permissions:
   contents: read
