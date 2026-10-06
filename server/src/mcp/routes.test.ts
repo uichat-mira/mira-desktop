@@ -279,12 +279,10 @@ describe("mcp routes", () => {
       method: "POST",
       url: "/mcp/invocations/stream",
       payload: {
-        toolId: "edit_file",
+        toolId: "edit",
         args: {
           path: "a.txt",
-          operation: "replace_block",
-          expectedOldText: "hello",
-          newText: "world",
+          edits: [{ oldText: "hello", newText: "world" }],
         },
       },
     });
@@ -308,12 +306,10 @@ describe("mcp routes", () => {
       url: `/mcp/invocations/${editInvocationId}/approval`,
       payload: {
         decision: "reject",
-        toolId: "edit_file",
+        toolId: "edit",
         args: {
           path: "a.txt",
-          operation: "replace_block",
-          expectedOldText: "hello",
-          newText: "world",
+          edits: [{ oldText: "hello", newText: "world" }],
         },
       },
     });
@@ -325,12 +321,10 @@ describe("mcp routes", () => {
       url: `/mcp/invocations/${editInvocationId}/approval`,
       payload: {
         decision: "approved",
-        toolId: "edit_file",
+        toolId: "edit",
         args: {
           path: "a.txt",
-          operation: "replace_block",
-          expectedOldText: "hello",
-          newText: "world",
+          edits: [{ oldText: "hello", newText: "world" }],
         },
       },
     });
@@ -354,12 +348,10 @@ describe("mcp routes", () => {
       method: "POST",
       url: "/mcp/invocations/stream",
       payload: {
-        toolId: "edit_file",
+        toolId: "edit",
         args: {
           path: "a.txt",
-          operation: "replace_block",
-          expectedOldText: "world",
-          newText: "rejected-change",
+          edits: [{ oldText: "world", newText: "rejected-change" }],
         },
       },
     });
@@ -377,12 +369,10 @@ describe("mcp routes", () => {
       url: `/mcp/invocations/${rejectedInvocationId}/approval`,
       payload: {
         decision: "rejected",
-        toolId: "edit_file",
+        toolId: "edit",
         args: {
           path: "a.txt",
-          operation: "replace_block",
-          expectedOldText: "world",
-          newText: "rejected-change",
+          edits: [{ oldText: "world", newText: "rejected-change" }],
         },
       },
     });

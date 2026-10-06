@@ -10,20 +10,8 @@ const INTERNAL_READ_PRIMITIVE_TOOL_IDS = new Set([
   "read_slice",
 ]);
 
-const INTERNAL_EDIT_COMPAT_TOOL_IDS = new Set([
-  "write_file",
-  "replace_block",
-  "delete_path",
-  "move_path",
-  "edit_file",
-  "workspace_mutation",
-]);
-
 export const isInternalIntentOnlyTool = (definition: ToolDefinition) =>
   definition.source === "internal" && INTERNAL_READ_PRIMITIVE_TOOL_IDS.has(definition.id);
-
-export const isInternalEditCompatibilityTool = (definition: ToolDefinition) =>
-  definition.source === "internal" && INTERNAL_EDIT_COMPAT_TOOL_IDS.has(definition.id);
 
 export const shouldIncludeDefinition = (
   definition: ToolDefinition,
@@ -37,10 +25,6 @@ export const getDefinitionBlockReason = (
   // These are implementation/compatibility primitives, not public Agent tools.
   if (isInternalIntentOnlyTool(definition)) {
     return "Internal read primitive is not part of the public Read contract.";
-  }
-
-  if (isInternalEditCompatibilityTool(definition)) {
-    return "Legacy edit wrapper is not part of the public Edit contract.";
   }
 
   // External MCP exposure follows the user's explicit Agent Access switch only.

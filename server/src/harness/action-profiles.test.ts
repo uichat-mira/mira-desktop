@@ -22,8 +22,22 @@ describe("resolveHarnessActionProfiles", () => {
         },
       },
       {
-        id: "edit_file",
-        title: "Edit File",
+        id: "write",
+        title: "Write",
+        description: "write",
+        domain: "edit",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {},
+        tags: ["edit", "write"],
+        capabilities: {
+          sideEffect: "local-write",
+          requiresApproval: true,
+        },
+      },
+      {
+        id: "edit",
+        title: "Edit",
         description: "edit",
         domain: "edit",
         source: "internal",
@@ -49,7 +63,7 @@ describe("resolveHarnessActionProfiles", () => {
     });
     expect(profiles[1]).toMatchObject({
       id: "edit_create_file",
-      runtimeToolId: "edit_file",
+      runtimeToolId: "write",
     });
   });
 });
@@ -75,7 +89,7 @@ describe("resolveActionProfileInvocation", () => {
     });
   });
 
-  it("maps edit action profiles to edit_file with normalized runtime args", () => {
+  it("maps edit action profiles to canonical write/edit runtime args", () => {
     expect(
       resolveActionProfileInvocation({
         actionProfileId: "edit_create_file",
@@ -84,9 +98,8 @@ describe("resolveActionProfileInvocation", () => {
         },
       }),
     ).toEqual({
-      toolId: "edit_file",
+      toolId: "write",
       args: {
-        operation: "write_file",
         path: "notes/todo.txt",
         content: "",
       },
@@ -98,16 +111,14 @@ describe("resolveActionProfileInvocation", () => {
         args: {
           path: "notes/todo.txt",
           content: "next",
-          dryRun: true,
         },
       }),
     ).toEqual({
-      toolId: "edit_file",
+      toolId: "write",
       args: {
-        operation: "write_file",
         path: "notes/todo.txt",
         content: "next",
-        dryRun: true,
+        overwrite: true,
       },
     });
 
@@ -121,12 +132,15 @@ describe("resolveActionProfileInvocation", () => {
         },
       }),
     ).toEqual({
-      toolId: "edit_file",
+      toolId: "edit",
       args: {
-        operation: "replace_block",
         path: "notes/todo.txt",
-        expectedOldText: "old",
-        newText: "new",
+        edits: [
+          {
+            oldText: "old",
+            newText: "new",
+          },
+        ],
       },
     });
   });

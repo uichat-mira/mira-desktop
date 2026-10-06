@@ -112,7 +112,7 @@ test("evaluateAgentToolPolicy requires approval for risky tools", () => {
   assert.deepEqual(
     policy.evaluateAgentToolPolicy(
       createTool({
-        id: "edit_file",
+        id: "write",
         domain: "edit",
         capabilities: {
           sideEffect: "local-write",
@@ -125,7 +125,7 @@ test("evaluateAgentToolPolicy requires approval for risky tools", () => {
   assert.deepEqual(
     policy.evaluateAgentToolPolicy(
       createTool({
-        id: "workspace_mutation",
+        id: "delete",
         domain: "edit",
         capabilities: {
           sideEffect: "local-write",
@@ -276,7 +276,7 @@ test("policyNode raises approval for risky frozen pendingToolCall", async () => 
     .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
-        id: "workspace_mutation",
+        id: "delete",
         domain: "edit",
         capabilities: {
           sideEffect: "local-write",
@@ -286,9 +286,8 @@ test("policyNode raises approval for risky frozen pendingToolCall", async () => 
       }),
     ]);
   const emitted: unknown[] = [];
-  const pendingToolCall = createPendingToolCall("workspace_mutation", {
-    operation: "delete",
-    targetPath: "logs/output.txt",
+  const pendingToolCall = createPendingToolCall("delete", {
+    path: "logs/output.txt",
     recursive: true,
   });
 
@@ -304,7 +303,7 @@ test("policyNode raises approval for risky frozen pendingToolCall", async () => 
 
     assert.equal(result.selectedToolId, undefined);
     assert.equal(result.policyDecision?.type, "require_approval");
-    assert.equal(result.pendingApproval?.toolId, "workspace_mutation");
+    assert.equal(result.pendingApproval?.toolId, "delete");
     assert.equal(result.pendingApproval?.toolCallId, pendingToolCall.id);
     assert.equal(result.pendingApproval?.inputHash, pendingToolCall.inputHash);
     assert.deepEqual(result.pendingToolCall, pendingToolCall);

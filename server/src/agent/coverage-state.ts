@@ -50,11 +50,12 @@ type TargetProgress = {
   recoverableFailure?: string;
 };
 
-const WORKSPACE_MUTATION_TOOL_IDS = new Set([
+const MUTATION_EVIDENCE_TOOL_IDS = new Set([
   "write",
   "edit",
   "move",
   "delete",
+  // Historical persisted-run ids only. These tools are no longer executable.
   "workspace_mutation",
   "edit_file",
 ]);
@@ -193,6 +194,8 @@ const markCompletedSummary = (
       }
       return;
     }
+    // Historical persisted evidence can still be replayed into coverage,
+    // but these tool ids are no longer executable or registered.
     case "workspace_mutation": {
       if (summary.data.changed !== true || summary.data.dryRun === true) {
         return;
@@ -261,7 +264,7 @@ const markExecutionFailure = (
 
   for (const target of targetCandidates) {
     const progress = ensureTargetProgress(map, target);
-    if (WORKSPACE_MUTATION_TOOL_IDS.has(execution.toolId)) {
+    if (MUTATION_EVIDENCE_TOOL_IDS.has(execution.toolId)) {
       progress.terminalMutationFailure =
         execution.errorMessage ?? `${execution.toolId} failed terminally.`;
       continue;

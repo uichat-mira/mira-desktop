@@ -321,6 +321,8 @@ export interface AgentObservationEvidenceData {
   factsPreview: string[];
 }
 
+// Historical persisted-run compatibility only. No executable
+// workspace_mutation tool remains registered after #235.
 export interface AgentWorkspaceMutationEvidenceData {
   kind: "workspace_mutation";
   operation: "create" | "overwrite" | "replace" | "delete" | "move" | "unknown";
@@ -367,6 +369,8 @@ export interface AgentExternalMcpEvidenceData {
   resultPreview?: string;
 }
 
+// Historical persisted-run compatibility only. No executable
+// edit_file tool remains registered after #235.
 export interface AgentEditFileEvidenceData {
   kind: "edit_file";
   operation: "create" | "overwrite" | "replace" | "delete" | "move" | "unknown";

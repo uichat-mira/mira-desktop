@@ -21,27 +21,19 @@ describe("public edit tool surface", () => {
     clearHarnessRegistry();
   });
 
-  it("exposes exactly four direct edit actions while keeping legacy wrappers compatibility-only", () => {
+  it("registers and exposes exactly four canonical edit actions", () => {
     initializeHarnessRuntime();
 
     const registeredEditToolIds = listToolDefinitions()
       .filter((definition) => definition.domain === "edit")
       .map((definition) => definition.id)
       .sort();
-    expect(registeredEditToolIds).toEqual(
-      expect.arrayContaining([
-        "write",
-        "edit",
-        "move",
-        "delete",
-        "write_file",
-        "replace_block",
-        "delete_path",
-        "move_path",
-        "edit_file",
-        "workspace_mutation",
-      ]),
-    );
+    expect(registeredEditToolIds).toEqual([
+      "delete",
+      "edit",
+      "move",
+      "write",
+    ]);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",

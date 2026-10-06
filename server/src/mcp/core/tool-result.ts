@@ -986,33 +986,6 @@ export const projectToolEvidence = (
   }
 
   const unwrapped = asRecord(result.result) ?? result;
-  if (definition.id === "edit_file" || definition.id === "write_file" || definition.id === "replace_block") {
-    if (typeof unwrapped.path === "string" && (unwrapped.operation === "write_file" || unwrapped.operation === "replace_block")) {
-      const dryRun = unwrapped.dryRun === true;
-      const operation = unwrapped.operation === "replace_block" ? "replace" : "create";
-      const actionProfileId = typeof result.actionProfileId === "string" ? result.actionProfileId : undefined;
-      const runtimeToolId = typeof result.runtimeToolId === "string" ? result.runtimeToolId : undefined;
-      return baseEvidence({
-        result,
-        isError: normalized.isError,
-        actionTaken: dryRun ? `Prepared a dry-run edit for workspace file ${unwrapped.path}.` : `Changed workspace file ${unwrapped.path}.`,
-        facts: [`operation=${operation}`, `targetPath=${unwrapped.path}`, `dryRun=${dryRun}`, `changed=${!dryRun}`],
-        data: { kind: "edit_file", operation, targetPath: unwrapped.path, dryRun, changed: !dryRun, created: !dryRun && operation === "create", replaced: !dryRun && operation === "replace", ...(actionProfileId ? { actionProfileId } : {}), ...(runtimeToolId ? { runtimeToolId } : {}) },
-      });
-    }
-  }
-
-  if (definition.id === "workspace_mutation" && typeof unwrapped.targetPath === "string" && (unwrapped.operation === "write" || unwrapped.operation === "delete" || unwrapped.operation === "move")) {
-    const dryRun = unwrapped.dryRun === true;
-    const operation = unwrapped.operation === "write" ? unwrapped.overwrite === true ? "overwrite" : "create" : unwrapped.operation;
-    return baseEvidence({
-      result,
-      isError: normalized.isError,
-      actionTaken: dryRun ? `Prepared a dry-run workspace mutation for ${unwrapped.targetPath}.` : `Applied workspace mutation to ${unwrapped.targetPath}.`,
-      facts: [`operation=${operation}`, `targetPath=${unwrapped.targetPath}`, `dryRun=${dryRun}`, `changed=${!dryRun}`],
-      data: { kind: "workspace_mutation", operation, targetPath: unwrapped.targetPath, ...(typeof unwrapped.destinationPath === "string" ? { destinationPath: unwrapped.destinationPath } : {}), dryRun, changed: !dryRun, created: !dryRun && operation === "create", replaced: !dryRun && operation === "overwrite", deleted: !dryRun && operation === "delete", moved: !dryRun && operation === "move" },
-    });
-  }
 
   if (definition.id.startsWith("office_")) {
     const operation = typeof result.operation === "string" ? result.operation : "unknown";
