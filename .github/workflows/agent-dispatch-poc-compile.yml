@@ -10,7 +10,6 @@ on:
       - .github/workflows/agent-dispatch-poc-compile.yml
 
 permissions:
-  actions: write
   contents: write
 
 jobs:
@@ -61,25 +60,26 @@ jobs:
             exit 1
           fi
 
-      - name: Publish compiled lock
+      - name: Stage compiled lock for maintainer promotion
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p .gh-aw-poc
+          cp .github/workflows/mira-agent-worker.lock.yml .gh-aw-poc/mira-agent-worker.lock.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/mira-agent-worker.lock.yml
+          git add .gh-aw-poc/mira-agent-worker.lock.yml
           if git diff --cached --quiet; then
-            echo "Compiled lock is already current."
+            echo "Staged lock is already current."
           else
-            git commit -m "poc: publish compiled agent worker lock"
+            git commit -m "poc: stage compiled agent worker lock"
             git push origin HEAD:feat/agent-dispatch-poc
           fi
 
-      - name: Dispatch read-only worker smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$RUNNER_TEMP/gh-aw" run mira-agent-worker \
-            --ref feat/agent-dispatch-poc \
-            --approve \
-            --json
+      - name: Upload generated lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: mira-agent-worker-lock
+          path: .github/workflows/mira-agent-worker.lock.yml
+          if-no-files-found: error
+          retention-days: 1
