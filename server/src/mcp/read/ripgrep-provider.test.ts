@@ -168,6 +168,7 @@ describe("shared ripgrep provider", () => {
           args: {
             pattern: "alpha\\s+中文",
             path: ".",
+            include: "src/**",
             includeIgnored: true,
             limit: 1,
           },
