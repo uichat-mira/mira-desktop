@@ -180,6 +180,15 @@ describe("Capability acceptance cases", () => {
     ]);
     expect(terminalCases.every((item) => item.workspace === "managed")).toBe(true);
     expect(
+      terminalCases.find((item) => item.id === "terminal-short-failure"),
+    ).toMatchObject({
+      expectedObservation: expect.stringContaining("Invocation=Completed"),
+    });
+    expect(
+      terminalCases.find((item) => item.id === "terminal-short-failure")
+        ?.expectedObservation,
+    ).toContain("commandSucceeded=false");
+    expect(
       terminalCases.find((item) => item.id === "terminal-persistent-start")?.args,
     ).toMatchObject({
       sessionMode: "persistent",
