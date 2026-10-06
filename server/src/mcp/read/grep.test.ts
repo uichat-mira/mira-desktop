@@ -281,7 +281,7 @@ describe("canonical grep runtime", () => {
     const pending = runBoundedProcess({
       executablePath: process.execPath,
       args: ["-e", "setTimeout(() => {}, 5000)"],
-      cwd: tempRoot,
+      cwd: process.cwd(),
       signal: controller.signal,
       timeoutMs: 5_000,
       maxBufferBytes: 1024 * 1024,
@@ -295,7 +295,7 @@ describe("canonical grep runtime", () => {
     const result = await runBoundedProcess({
       executablePath: process.execPath,
       args: ["-e", "setTimeout(() => {}, 5000)"],
-      cwd: tempRoot,
+      cwd: process.cwd(),
       signal: new AbortController().signal,
       timeoutMs: 20,
       maxBufferBytes: 1024 * 1024,
