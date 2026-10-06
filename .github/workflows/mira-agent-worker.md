@@ -7,6 +7,7 @@ on:
       - feat/agent-dispatch-poc
     paths:
       - .github/workflows/mira-agent-worker.lock.yml
+      - .github/agent-dispatch-poc-trigger
   workflow_dispatch:
 permissions:
   contents: read
