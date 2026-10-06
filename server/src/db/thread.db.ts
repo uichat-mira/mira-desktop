@@ -65,6 +65,45 @@ const createThreadTables = () => {
     CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_thread_id ON conversation_artifacts(thread_id);
     CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+
+    CREATE TABLE IF NOT EXISTS host_notification_bindings (
+      installation_id TEXT PRIMARY KEY,
+      broker_base_url TEXT NOT NULL,
+      delivery_token_encrypted TEXT NOT NULL,
+      source_scope_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'revoked')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_host_notification_bindings_status
+      ON host_notification_bindings(status);
+
+    CREATE TABLE IF NOT EXISTS notification_outbox (
+      id TEXT PRIMARY KEY,
+      installation_id TEXT NOT NULL
+        REFERENCES host_notification_bindings(installation_id) ON DELETE CASCADE,
+      canonical_message_id TEXT NOT NULL
+        REFERENCES messages(id) ON DELETE CASCADE,
+      source_id TEXT NOT NULL,
+      eligibility_event TEXT NOT NULL DEFAULT 'final_transition_first_seen'
+        CHECK (eligibility_event = 'final_transition_first_seen'),
+      state TEXT NOT NULL DEFAULT 'pending'
+        CHECK (state IN ('pending', 'delivered', 'failed', 'expired')),
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (installation_id, canonical_message_id, eligibility_event)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notification_outbox_delivery
+      ON notification_outbox(state, next_attempt_at);
+    CREATE INDEX IF NOT EXISTS idx_notification_outbox_source
+      ON notification_outbox(source_id);
   `);
 };
 
