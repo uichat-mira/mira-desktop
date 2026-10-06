@@ -42,8 +42,18 @@ export const commitFileBuffer = async (input: {
     }
 
     // Create-only publish must never replace a path that appeared after
-    // preflight. Hard-link creation is exclusive and fails if targetPath exists.
-    filesystem.link(scratchPath, targetPath);
+    // preflight. Prefer an atomic hard-link publish. Some filesystems do not
+    // support hard links; there we fall back to an exclusive copy so EEXIST
+    // still protects a target that appeared after preflight.
+    try {
+      filesystem.link(scratchPath, targetPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EPERM" && code !== "ENOTSUP" && code !== "ENOSYS") {
+        throw error;
+      }
+      filesystem.copyExclusive(scratchPath, targetPath);
+    }
   } finally {
     if (filesystem.exists(scratchPath)) {
       filesystem.remove(scratchPath, { recursive: false, force: true });
@@ -74,11 +84,16 @@ export const renameCaseOnlySafely = (input: {
   }
 };
 
+export type DirectoryReplacementCleanupWarning = {
+  backupPath: string;
+  error: string;
+};
+
 export const replaceDirectorySafely = (input: {
   sourcePath: string;
   destinationPath: string;
   filesystem: FileMutationFilesystem;
-}) => {
+}): DirectoryReplacementCleanupWarning | undefined => {
   const { sourcePath, destinationPath, filesystem } = input;
   const backupPath = createSiblingScratchPath(destinationPath, "backup");
   filesystem.rename(destinationPath, backupPath);
@@ -99,14 +114,14 @@ export const replaceDirectorySafely = (input: {
   try {
     filesystem.remove(backupPath, { recursive: true, force: false });
   } catch (cleanupError) {
-    try {
-      filesystem.rename(destinationPath, sourcePath);
-      filesystem.rename(backupPath, destinationPath);
-    } catch (rollbackError) {
-      throw new Error(
-        `directory replacement committed but cleanup and rollback failed: cleanup=${errorMessage(cleanupError)}; rollback=${errorMessage(rollbackError)}; backup=${backupPath}`,
-      );
-    }
-    throw cleanupError;
+    // The requested replacement is already committed. Recursive cleanup can
+    // fail after partially deleting the backup, so publishing that backup
+    // again would risk replacing the good destination with damaged old data.
+    return {
+      backupPath,
+      error: errorMessage(cleanupError),
+    };
   }
+
+  return undefined;
 };

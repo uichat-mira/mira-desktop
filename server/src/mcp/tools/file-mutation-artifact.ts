@@ -30,7 +30,18 @@ const mutationMetadata = (result: FileMutationResult) => ({
         tolerantEdits: result.tolerantEdits,
       }
     : {}),
-  ...("movedType" in result ? { movedType: result.movedType } : {}),
+  ...("movedType" in result
+    ? {
+        movedType: result.movedType,
+        ...(result.cleanupIncomplete
+          ? {
+              cleanupIncomplete: true,
+              cleanupBackupPath: result.cleanupBackupPath,
+              cleanupError: result.cleanupError,
+            }
+          : {}),
+      }
+    : {}),
   ...("deletedType" in result
     ? {
         deletedType: result.deletedType,

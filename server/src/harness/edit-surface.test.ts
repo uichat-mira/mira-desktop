@@ -51,16 +51,16 @@ describe("public edit tool surface", () => {
       "move",
       "write",
     ]);
-    expect(exposedEditToolIds).not.toEqual(
-      expect.arrayContaining([
-        "write_file",
-        "replace_block",
-        "delete_path",
-        "move_path",
-        "edit_file",
-        "workspace_mutation",
-      ]),
-    );
+    for (const legacyId of [
+      "write_file",
+      "replace_block",
+      "delete_path",
+      "move_path",
+      "edit_file",
+      "workspace_mutation",
+    ]) {
+      expect(exposedEditToolIds).not.toContain(legacyId);
+    }
 
     for (const definition of exposedEditDefinitions) {
       const properties = (definition.inputSchema.properties ?? {}) as Record<string, unknown>;

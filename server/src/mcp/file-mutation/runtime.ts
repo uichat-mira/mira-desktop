@@ -28,6 +28,7 @@ import {
 import {
   adaptLineEndings,
   encodeMutationText,
+  encodeMutationTextPreservingLineEndings,
   inspectMutationTextFormat,
   readMutationTextFile,
   type MutationLineEnding,
@@ -96,6 +97,9 @@ export type MoveMutationResult = {
   movedType: "file" | "directory";
   overwritten: boolean;
   changed: true;
+  cleanupIncomplete?: boolean;
+  cleanupBackupPath?: string;
+  cleanupError?: string;
 };
 
 export type DeleteMutationResult = {
@@ -343,10 +347,8 @@ const normalizeLineForMatch = (
   for (let index = 0; index < line.length; index += 1) {
     const character = line[index];
     if (HORIZONTAL_WHITESPACE.test(character)) {
-      if (text.length > 0) {
-        pendingWhitespaceStart ??= baseOffset + index;
-        pendingWhitespaceEnd = baseOffset + index + 1;
-      }
+      pendingWhitespaceStart ??= baseOffset + index;
+      pendingWhitespaceEnd = baseOffset + index + 1;
       continue;
     }
 
@@ -364,6 +366,14 @@ const normalizeLineForMatch = (
     map.push({
       start: baseOffset + index,
       end: baseOffset + index + 1,
+    });
+  }
+
+  if (pendingWhitespaceStart !== null && text.length > 0) {
+    text += " ";
+    map.push({
+      start: pendingWhitespaceStart,
+      end: pendingWhitespaceEnd,
     });
   }
 
@@ -562,11 +572,13 @@ export const executeEditMutation = async (
         located,
         currentFile.lineEnding,
       );
-      const afterTextForDiff = adaptLineEndings(
+      // Replacement text has already been adapted per edit. Preserve all
+      // untouched line endings exactly as they existed in the source.
+      const afterTextForDiff = next;
+      const encoded = encodeMutationTextPreservingLineEndings(
         next,
-        currentFile.lineEnding,
+        currentFile,
       );
-      const encoded = encodeMutationText(next, currentFile);
 
       const tolerantCount = located.filter(
         (edit) => edit.match === "tolerant",
@@ -743,7 +755,7 @@ export const executeMoveMutation = async (
         );
       }
 
-      await wrapMutationFailure(
+      const cleanupWarning = await wrapMutationFailure(
         `Failed to move workspace target from ${sourcePath} to ${destinationPath}`,
         () => {
           if (caseOnlyRename) {
@@ -752,19 +764,18 @@ export const executeMoveMutation = async (
               destinationPath: destinationBeforeCommit.lexicalPath,
               filesystem,
             });
-            return;
+            return undefined;
           }
 
           if (
             destinationBeforeCommit.exists &&
             sourceBeforeCommit.type === "directory"
           ) {
-            replaceDirectorySafely({
+            return replaceDirectorySafely({
               sourcePath: sourceBeforeCommit.canonicalPath,
               destinationPath: destinationBeforeCommit.canonicalPath,
               filesystem,
             });
-            return;
           }
 
           // rename never delete-first. For file overwrite it replaces the
@@ -774,6 +785,7 @@ export const executeMoveMutation = async (
             sourceBeforeCommit.canonicalPath,
             destinationBeforeCommit.canonicalPath,
           );
+          return undefined;
         },
       );
 
@@ -785,6 +797,13 @@ export const executeMoveMutation = async (
           sourceBeforeCommit.type === "directory" ? "directory" : "file",
         overwritten: !caseOnlyRename && destinationBeforeCommit.exists,
         changed: true,
+        ...(cleanupWarning
+          ? {
+              cleanupIncomplete: true,
+              cleanupBackupPath: cleanupWarning.backupPath,
+              cleanupError: cleanupWarning.error,
+            }
+          : {}),
       };
     },
   );

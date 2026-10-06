@@ -146,7 +146,7 @@ const completedTerminalInvocations = (snapshot, commandPattern) => {
 const approvedWriteContains = (snapshot, path, pattern) =>
   events(snapshot).some((event) => {
     if (event?.nodeId !== "agent-approval" || event?.phase !== "start") return false;
-    if (!["write_file", "replace_block"].includes(event?.details?.toolId)) return false;
+    if (!["write", "edit", "write_file", "replace_block"].includes(event?.details?.toolId)) return false;
     if (event?.details?.input?.path !== path) return false;
     const value = JSON.stringify(event?.details?.input ?? {});
     pattern.lastIndex = 0;
@@ -247,7 +247,19 @@ const childCheckpointContinuity = (snapshot) => {
 
 const sideEffectApprovalCoverage = (snapshot) => {
   const xs = events(snapshot);
-  const sideEffectIds = new Set(["terminal_session", "write_file", "replace_block", "delete_path", "move_path"]);
+  // Canonical ids are authoritative; legacy ids remain readable for frozen
+  // benchmark artifacts recorded before the File Mutation cutover.
+  const sideEffectIds = new Set([
+    "terminal_session",
+    "write",
+    "edit",
+    "delete",
+    "move",
+    "write_file",
+    "replace_block",
+    "delete_path",
+    "move_path",
+  ]);
   const starts = xs.filter((e) =>
     e?.nodeType === "tool"
     && e?.details?.subAgentEventType === "tool.started"

@@ -23,6 +23,7 @@ export type FileMutationFilesystem = {
   unlink(targetPath: string): void;
   readdir(targetPath: string): string[];
   link(existingPath: string, newPath: string): void;
+  copyExclusive(sourcePath: string, destinationPath: string): void;
 };
 
 export const nodeFileMutationFilesystem: FileMutationFilesystem = {
@@ -68,5 +69,12 @@ export const nodeFileMutationFilesystem: FileMutationFilesystem = {
   readdir: (targetPath) => fs.readdirSync(targetPath),
   link: (existingPath, newPath) => {
     fs.linkSync(existingPath, newPath);
+  },
+  copyExclusive: (sourcePath, destinationPath) => {
+    fs.copyFileSync(
+      sourcePath,
+      destinationPath,
+      fs.constants.COPYFILE_EXCL,
+    );
   },
 };

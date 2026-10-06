@@ -646,6 +646,12 @@ const projectFileMutationEvidence = (
       facts.push(`movedType=${result.movedType}`);
     }
     facts.push(`overwritten=${result.overwritten === true}`);
+    if (result.cleanupIncomplete === true) {
+      facts.push("cleanupIncomplete=true");
+      if (typeof result.cleanupBackupPath === "string") {
+        facts.push(`cleanupBackupPath=${result.cleanupBackupPath}`);
+      }
+    }
   } else if (operation === "delete") {
     if (typeof result.deletedType === "string") {
       facts.push(`deletedType=${result.deletedType}`);
@@ -674,7 +680,13 @@ const projectFileMutationEvidence = (
         ? [`Content diff unavailable: ${diffUnavailableReason}.`]
         : []),
       ...(diffTruncated ? ["Content diff artifact is truncated."] : []),
+      ...(result.cleanupIncomplete === true
+        ? [
+            `Move committed, but backup cleanup is incomplete${typeof result.cleanupBackupPath === "string" ? `: ${result.cleanupBackupPath}` : "."}`,
+          ]
+        : []),
     ],
+    status: result.cleanupIncomplete === true ? "partial" : undefined,
     data: {
       kind: "file_mutation",
       operation,
@@ -695,7 +707,20 @@ const projectFileMutationEvidence = (
         ? { tolerantEdits: result.tolerantEdits }
         : {}),
       ...(typeof result.movedType === "string"
-        ? { movedType: result.movedType }
+        ? {
+            movedType: result.movedType,
+            ...(result.cleanupIncomplete === true
+              ? {
+                  cleanupIncomplete: true,
+                  ...(typeof result.cleanupBackupPath === "string"
+                    ? { cleanupBackupPath: result.cleanupBackupPath }
+                    : {}),
+                  ...(typeof result.cleanupError === "string"
+                    ? { cleanupError: result.cleanupError }
+                    : {}),
+                }
+              : {}),
+          }
         : {}),
       ...(typeof result.deletedType === "string"
         ? { deletedType: result.deletedType }

@@ -38,6 +38,61 @@ describe("file mutation commit", () => {
     ).toEqual([]);
   });
 
+
+
+  it("falls back to exclusive copy when hard-link publish is unsupported", async () => {
+    const target = path.join(tempRoot, "fallback.txt");
+    const fallbackFilesystem = {
+      ...nodeFileMutationFilesystem,
+      link() {
+        const error = new Error("hard links unavailable");
+        (error as NodeJS.ErrnoException).code = "ENOTSUP";
+        throw error;
+      },
+    };
+
+    await commitFileBuffer({
+      targetPath: target,
+      content: Buffer.from("created through exclusive copy", "utf8"),
+      overwrite: false,
+      filesystem: fallbackFilesystem,
+    });
+
+    expect(fs.readFileSync(target, "utf8")).toBe(
+      "created through exclusive copy",
+    );
+    expect(
+      fs.readdirSync(tempRoot).filter((name) => name.includes(".mira-write-")),
+    ).toEqual([]);
+  });
+
+  it("exclusive-copy fallback still refuses a target that appeared after preflight", async () => {
+    const target = path.join(tempRoot, "fallback-race.txt");
+    const fallbackFilesystem = {
+      ...nodeFileMutationFilesystem,
+      link() {
+        const error = new Error("hard links unavailable");
+        (error as NodeJS.ErrnoException).code = "EPERM";
+        throw error;
+      },
+      copyExclusive(sourcePath: string, destinationPath: string) {
+        fs.writeFileSync(destinationPath, "external", "utf8");
+        nodeFileMutationFilesystem.copyExclusive(sourcePath, destinationPath);
+      },
+    };
+
+    await expect(
+      commitFileBuffer({
+        targetPath: target,
+        content: Buffer.from("new", "utf8"),
+        overwrite: false,
+        filesystem: fallbackFilesystem,
+      }),
+    ).rejects.toThrow();
+
+    expect(fs.readFileSync(target, "utf8")).toBe("external");
+  });
+
   it("keeps the old file when final replacement rename fails", async () => {
     const target = path.join(tempRoot, "target.txt");
     fs.writeFileSync(target, "existing", "utf8");

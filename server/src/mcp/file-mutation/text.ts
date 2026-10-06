@@ -241,3 +241,8 @@ export const encodeMutationText = (
   text: string,
   format: MutationTextFormat,
 ) => encodeText(adaptLineEndings(text, format.lineEnding), format.encoding);
+
+export const encodeMutationTextPreservingLineEndings = (
+  text: string,
+  format: MutationTextFormat,
+) => encodeText(text, format.encoding);

@@ -186,6 +186,74 @@ describe("file mutation runtime safety", () => {
     ).toEqual([]);
   });
 
+
+
+  it("rejects the workspace root as a mutation target", async () => {
+    await expect(
+      executeDeleteMutation({ path: ".", recursive: true }),
+    ).rejects.toThrow("workspace root cannot be a file mutation target");
+
+    await expect(
+      executeMoveMutation({
+        path: ".",
+        destinationPath: "workspace-moved",
+      }),
+    ).rejects.toThrow("workspace root cannot be a file mutation target");
+
+    expect(fs.existsSync(tempRoot)).toBe(true);
+  });
+
+  it("keeps a committed directory replacement when backup cleanup fails", async () => {
+    const source = path.join(tempRoot, "cleanup-source");
+    const destination = path.join(tempRoot, "cleanup-destination");
+    fs.mkdirSync(source);
+    fs.mkdirSync(destination);
+    fs.writeFileSync(path.join(source, "new.txt"), "new", "utf8");
+    fs.writeFileSync(path.join(destination, "old-a.txt"), "old-a", "utf8");
+    fs.writeFileSync(path.join(destination, "old-b.txt"), "old-b", "utf8");
+
+    const cleanupFailingFilesystem = {
+      ...nodeFileMutationFilesystem,
+      remove(targetPath: string, options?: { recursive?: boolean; force?: boolean }) {
+        if (targetPath.includes(".mira-backup-")) {
+          const firstOldFile = path.join(targetPath, "old-a.txt");
+          if (fs.existsSync(firstOldFile)) {
+            fs.unlinkSync(firstOldFile);
+          }
+          const error = new Error("simulated partial backup cleanup failure");
+          (error as NodeJS.ErrnoException).code = "EPERM";
+          throw error;
+        }
+        nodeFileMutationFilesystem.remove(targetPath, options);
+      },
+    };
+
+    const result = await executeMoveMutation(
+      {
+        path: "cleanup-source",
+        destinationPath: "cleanup-destination",
+        overwrite: true,
+      },
+      { filesystem: cleanupFailingFilesystem },
+    );
+
+    expect(result).toMatchObject({
+      operation: "move",
+      changed: true,
+      overwritten: true,
+      cleanupIncomplete: true,
+      cleanupError: "simulated partial backup cleanup failure",
+    });
+    expect(result.cleanupBackupPath).toContain(".mira-backup-");
+    expect(fs.existsSync(source)).toBe(false);
+    expect(fs.readFileSync(path.join(destination, "new.txt"), "utf8")).toBe(
+      "new",
+    );
+    expect(fs.existsSync(path.join(destination, "old-a.txt"))).toBe(false);
+    expect(fs.existsSync(path.join(destination, "old-b.txt"))).toBe(false);
+    expect(fs.existsSync(result.cleanupBackupPath!)).toBe(true);
+  });
+
   it("rejects a parent-directory symlink swap before commit", async () => {
     const parent = path.join(tempRoot, "safe");
     const parkedParent = path.join(tempRoot, "safe-original");

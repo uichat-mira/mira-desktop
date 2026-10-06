@@ -148,6 +148,42 @@ describe("file mutation runtime", () => {
     );
   });
 
+
+
+  it("preserves mixed line endings outside edited ranges", async () => {
+    const target = path.join(tempRoot, "mixed-eol.txt");
+    const before = Buffer.from("alpha\r\nbeta\ncharlie\r\n", "utf8");
+    fs.writeFileSync(target, before);
+
+    await executeEditMutation({
+      path: "mixed-eol.txt",
+      edits: [{ oldText: "beta", newText: "BETA" }],
+    });
+
+    expect(fs.readFileSync(target)).toEqual(
+      Buffer.from("alpha\r\nBETA\ncharlie\r\n", "utf8"),
+    );
+  });
+
+  it("replaces the full tolerant indentation span instead of duplicating it", async () => {
+    const target = path.join(tempRoot, "tolerant-indent.txt");
+    fs.writeFileSync(target, "\tconst message = “hello”;   \n", "utf8");
+
+    await executeEditMutation({
+      path: "tolerant-indent.txt",
+      edits: [
+        {
+          oldText: '  const message = "hello";',
+          newText: '  const message = "hello from Mira";',
+        },
+      ],
+    });
+
+    expect(fs.readFileSync(target, "utf8")).toBe(
+      '  const message = "hello from Mira";   \n',
+    );
+  });
+
   it("fails tolerant matching when normalization leaves more than one candidate", async () => {
     const target = path.join(tempRoot, "ambiguous.txt");
     fs.writeFileSync(target, "foo   bar\nfoo\tbar\n", "utf8");

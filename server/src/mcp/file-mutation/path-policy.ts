@@ -57,6 +57,11 @@ const findNearestExistingEntry = (
   }
 };
 
+const normalizeMutationIdentity = (value: string) => {
+  const normalized = path.normalize(path.resolve(value)).normalize("NFC");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+};
+
 const canonicalizeMissingPath = (
   targetPath: string,
   filesystem: FileMutationFilesystem,
@@ -130,6 +135,19 @@ export const resolveMutationPath = (
     canonicalPath = canonicalizeMissingPath(lexicalPath, filesystem);
   }
 
+  let workspaceRoot: string;
+  try {
+    workspaceRoot = filesystem.realpath(resolveWorkspaceWritePath("."));
+  } catch {
+    throw mcpBadRequest("workspace root could not be resolved safely");
+  }
+  if (
+    normalizeMutationIdentity(canonicalPath) ===
+    normalizeMutationIdentity(workspaceRoot)
+  ) {
+    throw mcpBadRequest("workspace root cannot be a file mutation target");
+  }
+
   return {
     inputPath,
     lexicalPath,
@@ -137,11 +155,6 @@ export const resolveMutationPath = (
     type,
     exists,
   };
-};
-
-const normalizeIdentity = (value: string) => {
-  const normalized = path.normalize(path.resolve(value)).normalize("NFC");
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 };
 
 const normalizeLexicalIdentity = (value: string) =>
@@ -177,8 +190,8 @@ export const assertStableMutationPath = (
   after: ResolvedMutationPath,
 ) => {
   if (
-    normalizeIdentity(before.canonicalPath) !==
-      normalizeIdentity(after.canonicalPath) ||
+    normalizeMutationIdentity(before.canonicalPath) !==
+      normalizeMutationIdentity(after.canonicalPath) ||
     before.exists !== after.exists ||
     before.type !== after.type
   ) {
@@ -190,8 +203,8 @@ export const isSameMutationIdentity = (
   left: ResolvedMutationPath,
   right: ResolvedMutationPath,
 ) =>
-  normalizeIdentity(left.canonicalPath) ===
-  normalizeIdentity(right.canonicalPath);
+  normalizeMutationIdentity(left.canonicalPath) ===
+  normalizeMutationIdentity(right.canonicalPath);
 
 export const captureMutationPathVersion = (
   targetPath: string,
