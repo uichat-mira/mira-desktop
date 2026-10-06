@@ -13,6 +13,7 @@ const testRoot = path.join(projectRoot, ".test-artifact", "terminal-dev-runtime-
 const resourcesRoot = path.join(testRoot, "resources");
 const workspaceRoot = path.join(testRoot, "workspace");
 const full = process.argv.includes("--full");
+const terminalOnly = process.argv.includes("--terminal-only");
 const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
 const powershell = path.join(
   systemRoot,
@@ -81,6 +82,30 @@ for (const directory of [cleanEnv.TEMP, cleanEnv.HOME, cleanEnv.APPDATA, cleanEn
 }
 
 const evidence = [];
+
+function writeSmokeReport(mode) {
+  const manifest = JSON.parse(
+    fs.readFileSync(
+      path.join(resourcesRoot, "terminal-runtime", "manifest.json"),
+      "utf8",
+    ),
+  );
+  const report = {
+    mode,
+    stagedResourcesRoot: resourcesRoot,
+    cleanPath: cleanEnv.PATH,
+    manifest: manifest.components,
+    sizes: manifest.sizes,
+    evidence,
+  };
+  fs.writeFileSync(
+    path.join(testRoot, "smoke-report.json"),
+    `${JSON.stringify(report, null, 2)}\n`,
+  );
+  console.log(`Terminal Dev Runtime ${mode} staged smoke passed.`);
+  console.log(`Evidence: ${path.join(testRoot, "smoke-report.json")}`);
+}
+
 function runPowerShell(label, command, cwd = workspaceRoot, timeout = 120_000) {
   const result = spawnSync(
     powershell,
@@ -185,13 +210,18 @@ const terminalSessionResult = spawnSync(
 );
 if (terminalSessionResult.error || terminalSessionResult.status !== 0) {
   throw new Error(
-    `terminal_session smoke failed: ${terminalSessionResult.error?.message ?? ""}${terminalSessionResult.stdout ?? ""}${terminalSessionResult.stderr ?? ""}`,
+    `terminal smoke failed: ${terminalSessionResult.error?.message ?? ""}${terminalSessionResult.stdout ?? ""}${terminalSessionResult.stderr ?? ""}`,
   );
 }
 evidence.push({
-  label: "terminal_session ephemeral and persistent",
+  label: "terminal ephemeral and persistent",
   output: `${terminalSessionResult.stdout ?? ""}${terminalSessionResult.stderr ?? ""}`.trim(),
 });
+
+if (terminalOnly) {
+  writeSmokeReport("terminal-contract");
+  process.exit(0);
+}
 
 if (full) {
   const httpsCloneRoot = path.join(workspaceRoot, "https-clone");
@@ -308,17 +338,4 @@ try {
   backend.kill();
 }
 
-const manifest = JSON.parse(
-  fs.readFileSync(path.join(resourcesRoot, "terminal-runtime", "manifest.json"), "utf8"),
-);
-const report = {
-  mode: full ? "full" : "quick",
-  stagedResourcesRoot: resourcesRoot,
-  cleanPath: cleanEnv.PATH,
-  manifest: manifest.components,
-  sizes: manifest.sizes,
-  evidence,
-};
-fs.writeFileSync(path.join(testRoot, "smoke-report.json"), `${JSON.stringify(report, null, 2)}\n`);
-console.log(`Terminal Dev Runtime ${report.mode} staged smoke passed.`);
-console.log(`Evidence: ${path.join(testRoot, "smoke-report.json")}`);
+writeSmokeReport(full ? "full" : "quick");

@@ -12,10 +12,17 @@ type ToolsPackagePanelProps = {
   terminalSummary: TerminalResultSummary | null;
   runStatus: "idle" | "completed" | "failed" | "cancelled" | "awaiting_approval";
   isRunning: boolean;
+  pendingApproval: boolean;
   tracePanel: ReactNode;
   onSelectTool: (tool: WorkbenchToolDefinition) => void;
   onOpenArgsModal: () => void;
   onRun: () => void;
+  onSelectCase: (args: Record<string, unknown>) => void;
+  onApprove: () => void;
+  onReject: () => void;
+  onTerminalContinue: () => void;
+  onTerminalStatus: () => void;
+  onTerminalStop: () => void;
   labels: {
     empty: string;
     execute: string;
@@ -30,6 +37,13 @@ type ToolsPackagePanelProps = {
     terminalPtyMerged: string;
     terminalSession: (sessionId: string) => string;
     terminalCwd: (cwd: string) => string;
+    terminalState: (state: string) => string;
+    acceptanceCases: string;
+    approve: string;
+    reject: string;
+    continueOutput: string;
+    inspectStatus: string;
+    stop: string;
   };
 };
 
@@ -39,10 +53,17 @@ export default function ToolsPackagePanel({
   terminalSummary,
   runStatus,
   isRunning,
+  pendingApproval,
   tracePanel,
   onSelectTool,
   onOpenArgsModal,
   onRun,
+  onSelectCase,
+  onApprove,
+  onReject,
+  onTerminalContinue,
+  onTerminalStatus,
+  onTerminalStop,
   labels,
 }: ToolsPackagePanelProps) {
   return (
@@ -96,7 +117,29 @@ export default function ToolsPackagePanel({
               />
             </div>
 
-            {selectedTool?.id === "terminal_session" && terminalSummary ? (
+            {selectedTool?.workbench.cases?.length ? (
+              <div className="space-y-2">
+                <div className="text-[11px] font-medium text-text-tertiary">
+                  {labels.acceptanceCases}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedTool.workbench.cases.map((item) => (
+                    <Button
+                      key={item.id}
+                      variant="outline"
+                      size="xs"
+                      title={item.description}
+                      disabled={isRunning}
+                      onClick={() => onSelectCase(item.args)}
+                    >
+                      {item.title}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedTool?.id === "terminal" && terminalSummary ? (
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-secondary">
                 <Badge variant="muted">
                   {terminalSummary.streamMode === "merged"
@@ -128,9 +171,81 @@ export default function ToolsPackagePanel({
                 {terminalSummary.reusedSession ? (
                   <Badge variant="muted">{labels.terminalReused}</Badge>
                 ) : null}
+                {terminalSummary.state ? (
+                  <Badge
+                    variant={
+                      terminalSummary.state === "completed"
+                        ? "success"
+                        : terminalSummary.state === "failed"
+                          ? "danger"
+                          : terminalSummary.state === "cancelled"
+                            ? "warning"
+                            : "primary"
+                    }
+                  >
+                    {labels.terminalState(terminalSummary.state)}
+                  </Badge>
+                ) : null}
                 {runStatus === "awaiting_approval" ? (
                   <Badge variant="warning">{labels.terminalApprovalRequired}</Badge>
                 ) : null}
+              </div>
+            ) : null}
+
+            {selectedTool?.id === "terminal" && terminalSummary?.sessionId ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={onTerminalContinue}
+                  disabled={
+                    isRunning ||
+                    !terminalSummary.continuationId ||
+                    terminalSummary.continuationAvailable === false
+                  }
+                >
+                  {labels.continueOutput}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={onTerminalStatus}
+                  disabled={isRunning || terminalSummary.state === "cancelled"}
+                >
+                  {labels.inspectStatus}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="danger-outline"
+                  onClick={onTerminalStop}
+                  disabled={isRunning || terminalSummary.state === "cancelled"}
+                >
+                  {labels.stop}
+                </Button>
+              </div>
+            ) : null}
+
+            {pendingApproval ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-ui-control border border-warning-border bg-warning-background px-3 py-2">
+                <span className="text-xs text-warning-text">
+                  {labels.terminalApprovalRequired}
+                </span>
+                <Button
+                  size="xs"
+                  variant="primary"
+                  onClick={onApprove}
+                  disabled={isRunning}
+                >
+                  {labels.approve}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="danger-outline"
+                  onClick={onReject}
+                  disabled={isRunning}
+                >
+                  {labels.reject}
+                </Button>
               </div>
             ) : null}
           </div>

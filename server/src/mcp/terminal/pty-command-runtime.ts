@@ -10,6 +10,12 @@ import {
   type TerminalSessionRecord,
   writeTerminalSession,
 } from "../terminal-sessions.js";
+import {
+  appendPersistentTerminalOutput,
+  completePersistentTerminalOutput,
+  createPersistentTerminalOutput,
+  readPersistentTerminalOutput,
+} from "./persistent-output-store.js";
 import type { TerminalRuntimeId } from "./runtime-contract.js";
 
 export type TerminalShellProfile =
@@ -65,6 +71,33 @@ export const acquirePersistentSession = async (input: {
   };
 };
 
+export const observePersistentCommandOutput = async (input: {
+  continuationId: string;
+  outputOffset?: number;
+  outputLimitBytes?: number;
+}) => {
+  const page = await readPersistentTerminalOutput({
+    id: input.continuationId,
+    offset: input.outputOffset,
+    limitBytes: input.outputLimitBytes,
+  });
+  const session = getTerminalSession(page.sessionId);
+  if (!session) {
+    throw mcpBadRequest(`terminal session not found: ${page.sessionId}`);
+  }
+  return {
+    ...page,
+    runtimeId: session.runtimeId,
+    cwd: session.cwd,
+    workspaceRelation: session.workspaceRelation,
+    processTreeMode: session.processTreeMode,
+    stdout: page.output,
+    stderr: "",
+    reusedSession: true,
+    violations: [] as string[],
+  };
+};
+
 export const runPersistentCommand = async (input: {
   invocationId: string;
   command: string;
@@ -72,6 +105,7 @@ export const runPersistentCommand = async (input: {
   shellProfile: TerminalShellProfile;
   reusedSession: boolean;
   timeoutMs: number;
+  outputLimitBytes?: number;
   signal: AbortSignal;
   pushEvent?: (event: ToolInvocationEventInput) => void;
 }) => {
@@ -86,91 +120,157 @@ export const runPersistentCommand = async (input: {
     input.command,
     marker,
   );
-  let rawBuffer = "";
-  let streamedOffset = 0;
+  const outputRecord = createPersistentTerminalOutput({
+    sessionId: input.session.id,
+    command: input.command,
+  });
+  const markerPrefix = `${marker}:`;
+  let pendingBuffer = "";
   let exitCode: number | null = null;
   let timedOut = false;
-  let done = false;
+  let commandCompleted = false;
+  let invocationSettled = false;
+  let completionPromise: Promise<void> = Promise.resolve();
+  let dataDisposable: ReturnType<TerminalSessionRecord["process"]["onData"]>;
+  let exitDisposable: ReturnType<TerminalSessionRecord["process"]["onExit"]>;
+  let settleInvocation: (() => void) | null = null;
 
-  const flushVisibleOutput = () => {
-    const markerMatch = markerPattern.exec(rawBuffer);
-    const visibleText = markerMatch
-      ? rawBuffer.slice(0, markerMatch.index)
-      : rawBuffer;
-    if (visibleText.length <= streamedOffset) {
-      return;
-    }
-
-    const nextChunk = visibleText.slice(streamedOffset);
-    if (nextChunk) {
+  const appendVisible = (text: string) => {
+    if (!text) return;
+    appendPersistentTerminalOutput(outputRecord.id, text, {
+      pause: () => input.session.process.pause(),
+      resume: () => input.session.process.resume(),
+    });
+    if (!invocationSettled) {
       input.pushEvent?.({
         type: "invocation:stdout",
-        chunk: nextChunk,
+        chunk: text,
         stream: "stdout",
       });
-      streamedOffset = visibleText.length;
     }
   };
 
-  const dataDisposable = input.session.process.onData((chunk) => {
-    rawBuffer += chunk;
-    flushVisibleOutput();
-    const markerMatch = markerPattern.exec(rawBuffer);
-    if (markerMatch) {
-      exitCode = Number(markerMatch[1]);
-      done = true;
+  const completeCollector = (nextExitCode: number | null) => {
+    if (commandCompleted) return;
+    commandCompleted = true;
+    exitCode = nextExitCode;
+    if (pendingBuffer) {
+      appendVisible(pendingBuffer);
+      pendingBuffer = "";
     }
-  });
-  const exitDisposable = input.session.process.onExit(
-    ({ exitCode: nextExitCode }) => {
-      if (done) {
+    dataDisposable.dispose();
+    exitDisposable.dispose();
+    completionPromise = completePersistentTerminalOutput(
+      outputRecord.id,
+      nextExitCode,
+    );
+    settleInvocation?.();
+  };
+
+  const longestMarkerPrefixSuffix = (text: string) => {
+    const maxLength = Math.min(text.length, markerPrefix.length);
+    for (let length = maxLength; length > 0; length -= 1) {
+      if (markerPrefix.startsWith(text.slice(-length))) {
+        return length;
+      }
+    }
+    return 0;
+  };
+
+  dataDisposable = input.session.process.onData((chunk) => {
+    if (commandCompleted) return;
+    pendingBuffer += chunk;
+
+    const markerMatch = markerPattern.exec(pendingBuffer);
+    if (markerMatch) {
+      appendVisible(pendingBuffer.slice(0, markerMatch.index));
+      pendingBuffer = "";
+      completeCollector(Number(markerMatch[1]));
+      return;
+    }
+
+    const markerStart = pendingBuffer.indexOf(markerPrefix);
+    if (markerStart >= 0) {
+      const afterPrefix = pendingBuffer.slice(
+        markerStart + markerPrefix.length,
+      );
+      const plausibleIncompleteMarker =
+        afterPrefix === "" ||
+        afterPrefix === "-" ||
+        /^-?\d*$/.test(afterPrefix);
+      if (plausibleIncompleteMarker) {
+        appendVisible(pendingBuffer.slice(0, markerStart));
+        pendingBuffer = pendingBuffer.slice(markerStart);
         return;
       }
-      flushVisibleOutput();
-      exitCode = nextExitCode;
-      done = true;
+
+      const flushThrough = markerStart + markerPrefix.length;
+      appendVisible(pendingBuffer.slice(0, flushThrough));
+      pendingBuffer = pendingBuffer.slice(flushThrough);
+    }
+
+    const retainedLength = longestMarkerPrefixSuffix(pendingBuffer);
+    const flushLength = pendingBuffer.length - retainedLength;
+    if (flushLength > 0) {
+      appendVisible(pendingBuffer.slice(0, flushLength));
+      pendingBuffer = pendingBuffer.slice(flushLength);
+    }
+  });
+  exitDisposable = input.session.process.onExit(
+    ({ exitCode: nextExitCode }) => {
+      if (commandCompleted) return;
+      completeCollector(nextExitCode);
     },
   );
 
   writeTerminalSession(input.session.id, wrappedCommand);
 
   await new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      if (invocationSettled) return;
+      invocationSettled = true;
+      clearTimeout(timer);
+      settleInvocation = null;
+      if (!input.reusedSession) {
+        dataDisposable.dispose();
+        exitDisposable.dispose();
+        removeTerminalSession(input.session.id);
+      }
+      reject(new Error("Terminal session aborted"));
+    };
+
     const timer = setTimeout(() => {
       timedOut = true;
-      done = true;
+      invocationSettled = true;
+      settleInvocation = null;
       input.pushEvent?.({
         type: "invocation:progress",
         message: `Terminal command is still running after ${input.timeoutMs}ms; persistent session ${input.session.id} remains attached to the host process.`,
       });
+      input.signal.removeEventListener("abort", onAbort);
       resolve();
     }, input.timeoutMs);
 
-    const interval = setInterval(() => {
-      if (!done) {
-        return;
-      }
-      clearInterval(interval);
+    settleInvocation = () => {
+      if (invocationSettled) return;
+      invocationSettled = true;
       clearTimeout(timer);
+      settleInvocation = null;
+      input.signal.removeEventListener("abort", onAbort);
       resolve();
-    }, 10);
-
-    input.signal.addEventListener(
-      "abort",
-      () => {
-        clearInterval(interval);
-        clearTimeout(timer);
-        if (!input.reusedSession) {
-          removeTerminalSession(input.session.id);
-        }
-        reject(new Error("Terminal session aborted"));
-      },
-      { once: true },
-    );
+    };
+    input.signal.addEventListener("abort", onAbort, { once: true });
   });
 
-  dataDisposable.dispose();
-  exitDisposable.dispose();
-  const stdout = rawBuffer.replace(markerPattern, "").trimEnd();
+  if (commandCompleted) {
+    await completionPromise;
+  }
+
+  const page = await readPersistentTerminalOutput({
+    id: outputRecord.id,
+    offset: 0,
+    limitBytes: input.outputLimitBytes,
+  });
   const violations = [
     ...(input.session.workspaceRelation === "outside"
       ? [
@@ -184,6 +284,11 @@ export const runPersistentCommand = async (input: {
           "windows_job_object_unavailable: taskkill tree fallback remains active",
         ]
       : []),
+    ...(page.truncated
+      ? [
+          `terminal output page truncated at ${page.outputLimitBytes} bytes; remaining output is available through continuation ${page.continuationId}`,
+        ]
+      : []),
   ];
 
   return {
@@ -192,12 +297,22 @@ export const runPersistentCommand = async (input: {
     cwd: input.session.cwd,
     workspaceRelation: input.session.workspaceRelation,
     processTreeMode: input.session.processTreeMode,
-    exitCode,
+    exitCode: page.exitCode ?? exitCode,
     timedOut,
     reusedSession: input.reusedSession,
-    stdout,
+    stdout: page.output,
     stderr: "",
-    output: stdout,
+    output: page.output,
+    truncated: page.truncated,
+    continuationId: page.continuationId,
+    continuationAvailable: page.continuationAvailable,
+    outputOffset: page.outputOffset,
+    outputEndOffset: page.outputEndOffset,
+    nextOutputOffset: page.nextOutputOffset,
+    outputBytesAvailable: page.outputBytesAvailable,
+    outputLimitBytes: page.outputLimitBytes,
+    commandCompleted: page.commandCompleted,
+    state: page.state,
     violations,
   };
 };

@@ -91,7 +91,9 @@ const trimToolLoopMessages = (messages: NormalizedChatMessage[]) => {
       content.includes("<parameter>") ||
       content.includes("read_list") ||
       content.includes("read_locate") ||
-      content.includes("terminal_session")
+      content.includes("terminal_session") ||
+      content.includes("terminal <tool_input>") ||
+      content.includes("terminal<tool_input>")
     );
   });
 

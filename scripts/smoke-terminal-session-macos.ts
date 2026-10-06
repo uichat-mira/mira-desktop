@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { runTerminalSessionContractSmoke } from "./terminal-session-contract-smoke.js";
+
 if (process.platform !== "darwin") {
   throw new Error("macOS terminal smoke requires darwin");
 }
@@ -23,12 +25,7 @@ process.env.UI_CHAT_WORKSPACE_ROOT = workspaceRoot;
 const [
   { createHarnessEnvironmentSnapshot },
   { executeTerminalSessionRuntime },
-  {
-    clearTerminalSessions,
-    getTerminalSession,
-    listTerminalSessions,
-    writeTerminalSession,
-  },
+  { clearTerminalSessions, getTerminalSession, listTerminalSessions },
 ] = await Promise.all([
   import("../server/src/harness/environment.js"),
   import("../server/src/mcp/terminal/runtime-host.js"),
@@ -75,91 +72,136 @@ const waitForPidExit = async (pid: number) => {
 
 let persistentSessionId: string | null = null;
 let persistentPid: number | null = null;
+let controlledPid: number | null = null;
 
 try {
-  const ephemeral = await run({
-    command:
-      "printf 'ephemeral-ok\\n'; printf 'cwd=%s\\n' \"$PWD\"; printf 'mac-workspace-ok\\n' > '终端 验证.txt'; cat '终端 验证.txt'; node --version",
-    cwd: ".",
-    timeoutMs: 30_000,
-  });
-  if (
-    ephemeral.contents.exitCode !== 0 ||
-    ephemeral.contents.workspaceRelation !== "inside" ||
-    ephemeral.contents.processTreeMode !== "posix_process_group" ||
-    !ephemeral.contents.output.includes("ephemeral-ok") ||
-    !ephemeral.contents.output.includes("mac-workspace-ok") ||
-    !ephemeral.contents.output.includes(`cwd=${workspaceRoot}`)
-  ) {
-    throw new Error(`Ephemeral terminal_session failed: ${ephemeral.contents.output}`);
-  }
-
-  const first = await run({
-    command:
-      "printf 'persistent-one\\n'; printf 'persistent-cwd=%s\\n' \"$PWD\"",
-    cwd: "Nested 子目录",
-    sessionMode: "persistent",
-    timeoutMs: 30_000,
-  });
-  persistentSessionId = first.contents.sessionId;
-  persistentPid = getTerminalSession(persistentSessionId)?.process.pid ?? null;
-  if (
-    first.contents.exitCode !== 0 ||
-    first.contents.workspaceRelation !== "inside" ||
-    first.contents.processTreeMode !== "posix_process_group" ||
-    !first.contents.output.includes("persistent-one") ||
-    !first.contents.output.includes(`persistent-cwd=${nestedWorkspace}`)
-  ) {
-    throw new Error(`First persistent terminal command failed: ${first.contents.output}`);
-  }
-
-  const second = await run({
-    command: "printf 'persistent-two\\n'; printf 'session-cwd=%s\\n' \"$PWD\"",
-    attachSessionId: persistentSessionId,
-    timeoutMs: 30_000,
-  });
-  if (
-    second.contents.exitCode !== 0 ||
-    !second.contents.reusedSession ||
-    !second.contents.output.includes("persistent-two") ||
-    !second.contents.output.includes(`session-cwd=${nestedWorkspace}`)
-  ) {
-    throw new Error(
-      `Persistent terminal continuation failed: ${second.contents.output}`,
-    );
-  }
-
-  writeTerminalSession(persistentSessionId, "exit");
-  if (persistentPid !== null) {
-    await waitForPidExit(persistentPid);
-  }
-  clearTerminalSessions();
-  if (listTerminalSessions().length !== 0) {
-    throw new Error("Persistent terminal session registry was not cleared");
-  }
-
-  console.log(
-    JSON.stringify({
-      platform: process.platform,
-      architecture: process.arch,
-      workspace: {
-        root: workspaceRoot,
-        unicodePath: true,
-        fileWrite: true,
-      },
-      shell: environment.terminal.shellProfile.shell,
+  const result = await runTerminalSessionContractSmoke({
+    run,
+    listSessionCount: () => listTerminalSessions().length,
+    commands: {
       ephemeral: {
-        exitCode: ephemeral.contents.exitCode,
-        processTreeMode: ephemeral.contents.processTreeMode,
+        command:
+          "printf 'ephemeral-ok\\n'; printf 'cwd=%s\\n' \"$PWD\"; printf 'mac-workspace-ok\\n' > '终端 验证.txt'; cat '终端 验证.txt'; node --version",
+        cwd: ".",
+        timeoutMs: 30_000,
       },
-      persistent: {
-        reused: second.contents.reusedSession,
-        processTreeMode: first.contents.processTreeMode,
-        processExited: persistentPid === null || !isPidAlive(persistentPid),
-        registryCleaned: true,
+      firstPersistent: {
+        command:
+          "printf 'persistent-one\\n'; printf 'persistent-cwd=%s\\n' \"$PWD\"",
+        cwd: "Nested 子目录",
+        sessionMode: "persistent",
+        timeoutMs: 30_000,
       },
-    }),
+      secondPersistent: (sessionId) => ({
+        command:
+          "printf 'persistent-two\\n'; printf 'session-cwd=%s\\n' \"$PWD\"",
+        attachSessionId: sessionId,
+        timeoutMs: 30_000,
+      }),
+      controlledPersistent: {
+        command:
+          "i=0; while :; do i=$((i+1)); printf 'MIRA_TICK:%s\\n' \"$i\"; sleep 0.1; done",
+        cwd: ".",
+        sessionMode: "persistent",
+        timeoutMs: 350,
+        outputLimitBytes: 4096,
+      },
+    },
+    markers: {
+      ephemeral: "ephemeral-ok",
+      firstPersistent: "persistent-one",
+      secondPersistent: "persistent-two",
+      controlled: "MIRA_TICK:",
+    },
+    assertEphemeral: ({ contents }) => {
+      if (
+        contents.workspaceRelation !== "inside" ||
+        contents.processTreeMode !== "posix_process_group" ||
+        !contents.output.includes("mac-workspace-ok") ||
+        !contents.output.includes(`cwd=${workspaceRoot}`)
+      ) {
+        throw new Error(`macOS ephemeral contract failed: ${contents.output}`);
+      }
+    },
+    assertFirstPersistent: ({ contents }) => {
+      if (
+        contents.exitCode !== 0 ||
+        contents.workspaceRelation !== "inside" ||
+        contents.processTreeMode !== "posix_process_group" ||
+        !contents.output.includes(`persistent-cwd=${nestedWorkspace}`)
+      ) {
+        throw new Error(
+          `macOS persistent contract failed: ${contents.output}`,
+        );
+      }
+    },
+    assertSecondPersistent: ({ contents }) => {
+      if (
+        contents.exitCode !== 0 ||
+        !contents.output.includes(`session-cwd=${nestedWorkspace}`)
+      ) {
+        throw new Error(
+          `macOS attached-session contract failed: ${contents.output}`,
+        );
+      }
+    },
+    afterFirstPersistent: ({ contents }) => {
+      persistentSessionId = contents.sessionId ?? null;
+      persistentPid = persistentSessionId
+        ? getTerminalSession(persistentSessionId)?.process.pid ?? null
+        : null;
+    },
+    afterCompletedStop: async () => {
+      if (persistentPid !== null) {
+        await waitForPidExit(persistentPid);
+      }
+    },
+    afterControlledStart: ({ contents }) => {
+      controlledPid = contents.sessionId
+        ? getTerminalSession(contents.sessionId)?.process.pid ?? null
+        : null;
+    },
+    afterControlledStop: async () => {
+      if (controlledPid !== null) {
+        await waitForPidExit(controlledPid);
+      }
+    },
+  });
+
+  const report = {
+    platform: process.platform,
+    architecture: process.arch,
+    workspace: {
+      root: workspaceRoot,
+      unicodePath: true,
+      fileWrite: true,
+    },
+    shell: environment.terminal.shellProfile.shell,
+    ephemeral: {
+      exitCode: result.ephemeral.contents.exitCode,
+      processTreeMode: result.ephemeral.contents.processTreeMode,
+    },
+    persistent: {
+      reused: result.second.contents.reusedSession,
+      processTreeMode: result.first.contents.processTreeMode,
+      processExited: persistentPid === null || !isPidAlive(persistentPid),
+      completedSessionStopped:
+        result.completedStop.contents.cleanupCompleted === true,
+    },
+    controlled: {
+      initialState: result.controlled.contents.state,
+      statusState: result.status.contents.state,
+      continuedBytes: result.continued.contents.output.length,
+      stoppedState: result.stopped.contents.state,
+      cleanupCompleted: result.stopped.contents.cleanupCompleted,
+      processExited: controlledPid === null || !isPidAlive(controlledPid),
+    },
+  };
+  fs.writeFileSync(
+    path.join(testArtifactRoot, "terminal-contract-smoke-macos.json"),
+    `${JSON.stringify(report, null, 2)}\\n`,
   );
+  console.log(JSON.stringify(report));
 } finally {
   if (persistentSessionId && getTerminalSession(persistentSessionId)) {
     clearTerminalSessions();

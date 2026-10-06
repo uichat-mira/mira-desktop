@@ -120,7 +120,7 @@ GitHub 模式需要本地安装、类型检查和静态构建，因此必须建�
 
 默认 `Mira BASE` 只提供 Harness workspace root。默认物理目录由桌面 launcher 在 backend 启动前创建；MiraDocs Skill 不负责补建全局默认目录。
 
-如果当前没有有效 Workspace 或 `terminal_session` 不可用，则本地验证能力缺失。必须返回 capability gap，不能只写远程文件后宣称站点已经完成。
+如果当前没有有效 Workspace 或 `terminal` 不可用，则本地验证能力缺失。必须返回 capability gap，不能只写远程文件后宣称站点已经完成。
 
 ## 4. GitHub 目标检查
 

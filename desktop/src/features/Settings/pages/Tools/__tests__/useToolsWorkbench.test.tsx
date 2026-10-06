@@ -9,6 +9,7 @@ const saveMcpWebSearchConfigMock = vi.fn();
 const selectMcpWorkspaceRootMock = vi.fn();
 const executeMcpInvocationStreamMock = vi.fn();
 const getMcpInvocationTraceMock = vi.fn();
+const resolveMcpInvocationApprovalMock = vi.fn();
 function stableT(key: string) {
   return key;
 }
@@ -21,6 +22,8 @@ vi.mock("@/shared/api/tools", () => ({
   selectMcpWorkspaceRoot: (...args: unknown[]) => selectMcpWorkspaceRootMock(...args),
   executeMcpInvocationStream: (...args: unknown[]) => executeMcpInvocationStreamMock(...args),
   getMcpInvocationTrace: (...args: unknown[]) => getMcpInvocationTraceMock(...args),
+  resolveMcpInvocationApproval: (...args: unknown[]) =>
+    resolveMcpInvocationApprovalMock(...args),
 }));
 
 vi.mock("@/shared/ui/Message", () => ({
@@ -50,6 +53,7 @@ describe("useToolsWorkbench", () => {
     selectMcpWorkspaceRootMock.mockReset();
     executeMcpInvocationStreamMock.mockReset();
     getMcpInvocationTraceMock.mockReset();
+    resolveMcpInvocationApprovalMock.mockReset();
 
     getMcpToolsMock.mockResolvedValue([
       {
@@ -137,6 +141,248 @@ describe("useToolsWorkbench", () => {
       }),
       expect.any(Function),
     );
+  });
+
+  it("runs the terminal persistent acceptance flow through approval and continuation", async () => {
+    const persistentArgs = {
+      command:
+        "node -e \"let i=0; setInterval(()=>console.log('MIRA_TICK:'+ ++i),250)\"",
+      sessionMode: "persistent",
+      timeoutMs: 700,
+      outputLimitBytes: 4096,
+    };
+    getMcpToolsMock.mockResolvedValueOnce([
+      {
+        id: "terminal",
+        title: "Terminal",
+        description: "",
+        domain: "terminal",
+        source: "internal",
+        mode: "stream",
+        inputSchema: { type: "object" },
+        tags: ["terminal"],
+        capabilities: {
+          sideEffect: "process",
+          requiresApproval: true,
+          workspaceBound: true,
+          longRunning: true,
+        },
+        workbench: {
+          groupId: "terminal",
+          groupLabel: "终端",
+          groupDescription: "终端验收。",
+          groupOrder: 40,
+          icon: "terminal",
+          cases: [
+            {
+              id: "persistent-start",
+              title: "持久任务",
+              description: "start",
+              args: persistentArgs,
+            },
+          ],
+        },
+      },
+    ]);
+
+    executeMcpInvocationStreamMock.mockImplementation(
+      async (
+        input: { toolId: string; args: Record<string, unknown> },
+        onEvent: (event: Record<string, unknown>) => Promise<void>,
+      ) => {
+        if (input.args.operation === "status") {
+          await onEvent({
+            type: "invocation:start",
+            invocationId: "inv-status",
+            toolId: "terminal",
+            at: "2026-10-06T00:00:02.500Z",
+          });
+          await onEvent({
+            type: "invocation:result",
+            invocationId: "inv-status",
+            result: {
+              command: persistentArgs.command,
+              cwd: "D:/workspace/rag-demo",
+              sessionId: "session-1",
+              streamMode: "merged",
+              sessionMode: "persistent",
+              state: "running",
+              continuationId: "continuation-1",
+              continuationAvailable: true,
+              outputBytesAvailable: 24,
+              commandCompleted: false,
+            },
+            at: "2026-10-06T00:00:02.750Z",
+          });
+          await onEvent({
+            type: "invocation:finish",
+            invocationId: "inv-status",
+            status: "completed",
+            at: "2026-10-06T00:00:02.900Z",
+          });
+          return;
+        }
+
+        if ("continuationId" in input.args) {
+          await onEvent({
+            type: "invocation:start",
+            invocationId: "inv-continue",
+            toolId: "terminal",
+            at: "2026-10-06T00:00:03.000Z",
+          });
+          await onEvent({
+            type: "invocation:result",
+            invocationId: "inv-continue",
+            result: {
+              command: persistentArgs.command,
+              cwd: "D:/workspace/rag-demo",
+              sessionId: "session-1",
+              streamMode: "merged",
+              sessionMode: "persistent",
+              state: "running",
+              continuationId: "continuation-1",
+              continuationAvailable: true,
+              nextOutputOffset: 24,
+              outputLimitBytes: 4096,
+              commandCompleted: false,
+            },
+            at: "2026-10-06T00:00:04.000Z",
+          });
+          await onEvent({
+            type: "invocation:finish",
+            invocationId: "inv-continue",
+            status: "completed",
+            at: "2026-10-06T00:00:05.000Z",
+          });
+          return;
+        }
+
+        await onEvent({
+          type: "invocation:start",
+          invocationId: "inv-start",
+          toolId: "terminal",
+          at: "2026-10-06T00:00:00.000Z",
+        });
+        await onEvent({
+          type: "invocation:approval_required",
+          invocationId: "inv-start",
+          message: "approval required",
+          at: "2026-10-06T00:00:01.000Z",
+        });
+        await onEvent({
+          type: "invocation:finish",
+          invocationId: "inv-start",
+          status: "awaiting_approval",
+          at: "2026-10-06T00:00:02.000Z",
+        });
+      },
+    );
+
+    resolveMcpInvocationApprovalMock.mockResolvedValue({
+      originalInvocation: {
+        id: "inv-start",
+        toolId: "terminal",
+        status: "awaiting_approval",
+        args: persistentArgs,
+        artifacts: [],
+      },
+      resumedInvocation: {
+        id: "inv-resumed",
+        toolId: "terminal",
+        status: "completed",
+        args: persistentArgs,
+        artifacts: [],
+        result: {
+          command: persistentArgs.command,
+          cwd: "D:/workspace/rag-demo",
+          sessionId: "session-1",
+          streamMode: "merged",
+          sessionMode: "persistent",
+          state: "running",
+          continuationId: "continuation-1",
+          continuationAvailable: true,
+          nextOutputOffset: 12,
+          outputLimitBytes: 4096,
+          commandCompleted: false,
+        },
+      },
+    });
+    getMcpInvocationTraceMock.mockResolvedValue({
+      traceId: "trace-terminal",
+      invocationId: "inv-resumed",
+      toolId: "terminal",
+      startedAt: "2026-10-06T00:00:00.000Z",
+      spans: [],
+    });
+
+    const useToolsWorkbench = await importHook();
+    const { result } = renderHook(() => useToolsWorkbench());
+
+    await waitFor(() => {
+      expect(result.current.selectedTool?.id).toBe("terminal");
+    });
+
+    act(() => {
+      result.current.selectCase(persistentArgs);
+    });
+    expect(result.current.argsDraft).toBe(JSON.stringify(persistentArgs, null, 2));
+
+    await act(async () => {
+      await result.current.runSelectedTool();
+    });
+    expect(result.current.runStatus).toBe("awaiting_approval");
+    expect(result.current.pendingApproval).toMatchObject({
+      invocationId: "inv-start",
+      toolId: "terminal",
+      args: persistentArgs,
+    });
+
+    await act(async () => {
+      await result.current.resolvePendingApproval("approved");
+    });
+    expect(resolveMcpInvocationApprovalMock).toHaveBeenCalledWith(
+      "inv-start",
+      {
+        decision: "approved",
+        toolId: "terminal",
+        args: persistentArgs,
+      },
+    );
+    expect(result.current.terminalSummary).toMatchObject({
+      sessionId: "session-1",
+      state: "running",
+      continuationId: "continuation-1",
+      nextOutputOffset: 12,
+    });
+
+    await act(async () => {
+      await result.current.runTerminalStatus();
+    });
+    expect(result.current.terminalSummary).toMatchObject({
+      state: "running",
+      continuationId: "continuation-1",
+      outputBytesAvailable: 24,
+    });
+    expect(result.current.terminalSummary?.nextOutputOffset).toBeUndefined();
+
+    await act(async () => {
+      await result.current.runTerminalContinuation();
+    });
+    expect(executeMcpInvocationStreamMock).toHaveBeenLastCalledWith(
+      {
+        toolId: "terminal",
+        args: {
+          continuationId: "continuation-1",
+          outputOffset: 12,
+          outputLimitBytes: 4096,
+        },
+      },
+      expect.any(Function),
+    );
+    expect(result.current.terminalSummary).toMatchObject({
+      state: "running",
+      nextOutputOffset: 24,
+    });
   });
 
   it("does not require workspace when running web_search", async () => {

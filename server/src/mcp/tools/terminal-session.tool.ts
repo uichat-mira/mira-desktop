@@ -37,21 +37,51 @@ const terminalProperties = {
     description:
       "Use persistent for dev servers, watchers, REPLs, interactive shells, or commands that must remain available for later continuation.",
   },
+  continuationId: {
+    type: "string",
+    description:
+      "Opaque output continuation id returned by a persistent command. Use it without command to read later buffered output without starting another command.",
+  },
+  outputOffset: {
+    type: "integer",
+    minimum: 0,
+    description:
+      "Byte offset used only with continuationId. Start from nextOutputOffset returned by the previous page.",
+  },
+  outputLimitBytes: {
+    type: "integer",
+    minimum: 1,
+    description:
+      "Maximum output bytes returned in this Tool result. Persistent excess remains reachable through continuationId; ephemeral excess is truncated at this bound.",
+  },
+  operation: {
+    type: "string",
+    enum: ["status", "stop"],
+    description: "Persistent-session control: inspect state or stop the owned session/process tree.",
+  },
+  sessionId: {
+    type: "string",
+    description: "Stable persistent terminal session id used with operation.",
+  },
 } as const;
 
 const terminalSessionLlmInputSchema = {
   type: "object",
-  required: ["command"],
+  anyOf: [
+    { required: ["command"] },
+    { required: ["continuationId"] },
+    { required: ["operation", "sessionId"] },
+  ],
   properties: terminalProperties,
   additionalProperties: false,
 } as const;
 
-export const terminalSessionTool: ToolImplementation = {
+export const terminalTool: ToolImplementation = {
   definition: {
-    id: "terminal_session",
-    title: "Terminal Session",
+    id: "terminal",
+    title: "Terminal",
     description:
-      "Run full host shell commands or PTY-backed persistent sessions with process-tree ownership and streamed output.",
+      "Run host commands and manage persistent terminal sessions for real process/shell work such as builds, tests, package managers, Git/CLI operations, scripts, dev servers, and system commands. Use terminal as the execution escape hatch when no currently exposed semantic Tool directly fits; prefer an exposed semantic Tool for its owned file, search, or web operation.",
     domain: "terminal",
     source: "internal",
     mode: "stream",
@@ -78,7 +108,15 @@ export const terminalSessionTool: ToolImplementation = {
   execute: async (context) => {
     const command =
       typeof context.args.command === "string" ? context.args.command.trim() : "";
-    if (!command) {
+    const continuationId =
+      typeof context.args.continuationId === "string"
+        ? context.args.continuationId.trim()
+        : "";
+    const operation =
+      typeof context.args.operation === "string"
+        ? context.args.operation.trim()
+        : "";
+    if (!command && !continuationId && !operation) {
       throw mcpBadRequest("command is required");
     }
 
@@ -97,4 +135,15 @@ export const terminalSessionTool: ToolImplementation = {
       structuredContent: result.contents,
     };
   },
+};
+
+export const terminalSessionCompatibilityTool: ToolImplementation = {
+  definition: {
+    ...terminalTool.definition,
+    id: "terminal_session",
+    title: "Terminal Session (Compatibility)",
+    description:
+      "Compatibility alias for persisted runs created before the canonical terminal Tool migration.",
+  },
+  execute: terminalTool.execute,
 };

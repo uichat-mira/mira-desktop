@@ -66,6 +66,10 @@ describe("Capability acceptance cases", () => {
       "file-mutation-delete-recursive",
       "file-mutation-boundary-rejection",
       "file-mutation-controlled-failure",
+      "terminal-short-success",
+      "terminal-short-failure",
+      "terminal-persistent-start",
+      "terminal-stale-session",
       "core-read-controlled-failure",
       "core-approval-boundary",
     ]);
@@ -160,6 +164,42 @@ describe("Capability acceptance cases", () => {
       },
       workspace: "managed",
       fixture: "platform-approval-boundary",
+    });
+  });
+
+  it("registers Terminal acceptance cases on the Tool Lab surface", () => {
+    const terminalCases = nativeCapabilityAcceptanceCases.filter(
+      (item) => item.toolId === "terminal",
+    );
+
+    expect(terminalCases.map((item) => item.id)).toEqual([
+      "terminal-short-success",
+      "terminal-short-failure",
+      "terminal-persistent-start",
+      "terminal-stale-session",
+    ]);
+    expect(terminalCases.every((item) => item.workspace === "managed")).toBe(true);
+    expect(
+      terminalCases.find((item) => item.id === "terminal-short-failure"),
+    ).toMatchObject({
+      expectedObservation: expect.stringContaining("Invocation=Completed"),
+    });
+    expect(
+      terminalCases.find((item) => item.id === "terminal-short-failure")
+        ?.expectedObservation,
+    ).toContain("commandSucceeded=false");
+    expect(
+      terminalCases.find((item) => item.id === "terminal-persistent-start")?.args,
+    ).toMatchObject({
+      sessionMode: "persistent",
+      timeoutMs: 700,
+      outputLimitBytes: 4096,
+    });
+    expect(
+      terminalCases.find((item) => item.id === "terminal-stale-session")?.args,
+    ).toEqual({
+      operation: "status",
+      sessionId: "tool-lab-stale-session",
     });
   });
 

@@ -36,7 +36,7 @@ describe("Computer Use Harness exposure", () => {
     createComputerUseBrowserTools(browser as never).forEach(registerTool);
     registerTool({
       definition: {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "Run a local command.",
         domain: "terminal",

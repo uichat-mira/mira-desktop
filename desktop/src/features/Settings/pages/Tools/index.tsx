@@ -90,6 +90,7 @@ export default function ToolsSettings() {
             terminalSummary={workbench.terminalSummary}
             runStatus={workbench.runStatus}
             isRunning={workbench.isRunning}
+            pendingApproval={Boolean(workbench.pendingApproval)}
             tracePanel={
               <ToolsTracePanel
                 activeToolId={workbench.selectedTool?.id ?? null}
@@ -106,6 +107,12 @@ export default function ToolsSettings() {
             onSelectTool={workbench.selectTool}
             onOpenArgsModal={() => setIsArgsModalOpen(true)}
             onRun={() => void workbench.runSelectedTool()}
+            onSelectCase={workbench.selectCase}
+            onApprove={() => void workbench.resolvePendingApproval("approved")}
+            onReject={() => void workbench.resolvePendingApproval("rejected")}
+            onTerminalContinue={() => void workbench.runTerminalContinuation()}
+            onTerminalStatus={() => void workbench.runTerminalStatus()}
+            onTerminalStop={() => void workbench.runTerminalStop()}
             labels={{
               empty: t("settings.tools.package.empty"),
               config: t("settings.tools.package.config"),
@@ -122,6 +129,14 @@ export default function ToolsSettings() {
               terminalSession: (sessionId) =>
                 t("settings.tools.package.terminalSession", { sessionId }),
               terminalCwd: (cwd) => t("settings.tools.package.terminalCwd", { cwd }),
+              terminalState: (state) =>
+                t("settings.tools.package.terminalState", { state }),
+              acceptanceCases: t("settings.tools.package.acceptanceCases"),
+              approve: t("settings.tools.package.approve"),
+              reject: t("settings.tools.package.reject"),
+              continueOutput: t("settings.tools.package.continueOutput"),
+              inspectStatus: t("settings.tools.package.inspectStatus"),
+              stop: t("settings.tools.package.stop"),
             }}
           />
         </div>

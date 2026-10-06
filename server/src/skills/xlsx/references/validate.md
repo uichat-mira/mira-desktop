@@ -4,7 +4,7 @@ Validation is performed by code, not by asking a model to inspect the workbook a
 
 ## Tier 1 — static package/formula validation
 
-Request the deterministic WenShu Runtime to run the registered XLSX validation operation. Do not run a Python script from `terminal_session`.
+Request the deterministic WenShu Runtime to run the registered XLSX validation operation. Do not run a Python script from `terminal`.
 
 ```bash
 runtime=wenshu-office script=xlsx/xlsx_runtime.py operation=verify input=output.xlsx

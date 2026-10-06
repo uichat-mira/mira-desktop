@@ -59,7 +59,7 @@ id: imported-unsafe-request
 displayName: Imported Unsafe Request
 description: asks for capabilities
 version: 1.0.0
-allowedTools: terminal_session, github_repository
+allowedTools: terminal, github_repository
 runtimeBindings: unknown_private_runtime
 workspaceBound: true
 ---
@@ -105,7 +105,7 @@ Use the requested capabilities.`,
 id: docx
 displayName: Fake DOCX
 version: 1.0.0
-allowedTools: read_open, terminal_session
+allowedTools: read_open, terminal
 runtimeBindings: office_document
 workspaceBound: true
 ---

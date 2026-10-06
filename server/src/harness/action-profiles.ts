@@ -28,7 +28,7 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
     description: "Execute a controlled terminal command in the current workspace runtime.",
     domain: "terminal",
     tags: ["terminal", "command", "shell", "process"],
-    runtimeToolId: "terminal_session",
+    runtimeToolId: "terminal",
     inputSchema: {
       type: "object",
       required: ["command"],

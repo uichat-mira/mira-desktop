@@ -19,10 +19,14 @@ type DurableObjectSqlStorage = {
 
 type DurableObjectStorage = {
   readonly sql: DurableObjectSqlStorage;
+  getAlarm(): Promise<number | null>;
+  setAlarm(scheduledTime: Date | number): Promise<void>;
+  deleteAlarm(): Promise<void>;
 };
 
 interface DurableObjectState {
   readonly storage: DurableObjectStorage;
+  waitUntil(promise: Promise<unknown>): void;
 }
 
 type DurableObjectId = object;

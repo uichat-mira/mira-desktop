@@ -149,7 +149,7 @@ const METADATA_VALUE_KEYS: Record<string, Record<string, string>> = {
 const METADATA_TOOL_KEYS: Record<string, string> = {
   read_discover: "settings.skills.metadata.values.tools.readDiscover",
   read_open: "settings.skills.metadata.values.tools.readOpen",
-  terminal_session: "settings.skills.metadata.values.tools.terminalSession",
+  terminal: "settings.skills.metadata.values.tools.terminalSession",
   github_repository: "settings.skills.metadata.values.tools.githubRepository",
   github_pull_request: "settings.skills.metadata.values.tools.githubPullRequest",
   github_actions: "settings.skills.metadata.values.tools.githubActions",
