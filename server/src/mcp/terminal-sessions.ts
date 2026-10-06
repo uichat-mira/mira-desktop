@@ -61,7 +61,10 @@ export const stopTerminalSession = async (sessionId: string) => {
   // Drop live ownership before cleanup so no new command can attach while the
   // owned process tree is being stopped.
   sessionMap.delete(sessionId);
-  await cancelPersistentTerminalOutputsForSession(sessionId).catch(() => undefined);
+  const outputCancellation =
+    cancelPersistentTerminalOutputsForSession(sessionId).catch(
+      () => undefined,
+    );
 
   try {
     await killTerminalProcessTree({
@@ -74,6 +77,7 @@ export const stopTerminalSession = async (sessionId: string) => {
     } catch {
       // Process may already have exited.
     }
+    await outputCancellation;
     await clearPersistentTerminalOutputsForSession(sessionId).catch(
       () => undefined,
     );
