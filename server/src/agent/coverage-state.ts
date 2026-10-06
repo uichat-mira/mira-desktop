@@ -1,7 +1,6 @@
 import type {
   AgentEvidencePayload,
   AgentEvidenceSummary,
-  AgentReadLocateEvidenceData,
   AgentToolExecutionResult,
   CurrentTaskFrame,
 } from "./types";
@@ -64,13 +63,6 @@ const WORKSPACE_READ_TOOL_IDS = new Set([
   "list",
   "glob",
   "grep",
-  // Historical persisted-run ids only. They remain readable for old Evidence
-  // and failure replay, but no current Tool registry can execute them.
-  "read_list",
-  "read_open",
-  "read_locate",
-  "read_extract",
-  "read_slice",
 ]);
 
 const buildReason = (input: {
@@ -118,7 +110,7 @@ const ensureTargetProgress = (
 
 const addLocateMatchTargets = (
   map: Map<string, TargetProgress>,
-  matchedPaths: AgentReadLocateEvidenceData["matchedPaths"],
+  matchedPaths: string[],
 ) => {
   for (const path of matchedPaths) {
     const normalized = normalizeTaskTargetPath(path);
@@ -138,10 +130,6 @@ const markCompletedSummary = (
   }
 
   switch (summary.data.kind) {
-    // Historical persisted-run summary. No current Tool emits this kind.
-    case "read_locate":
-      addLocateMatchTargets(map, summary.data.matchedPaths);
-      return;
     case "glob":
       addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
@@ -162,18 +150,6 @@ const markCompletedSummary = (
       if (summary.status !== "truncated") {
         progress.verified = true;
       }
-      return;
-    }
-    // Historical persisted-run summary. No current Tool emits this kind.
-    case "read_open": {
-      const target = normalizeTaskTargetPath(summary.data.path);
-      if (!target) {
-        return;
-      }
-      const progress = ensureTargetProgress(map, target);
-      progress.located = true;
-      progress.opened = true;
-      progress.verified = true;
       return;
     }
     case "file_mutation": {
@@ -334,10 +310,6 @@ const hasListEvidence = (input: {
   return summaries.some((summary) => {
     if (summary?.data?.kind === "list") {
       return summary.status === "completed";
-    }
-    // Historical persisted-run summary compatibility only.
-    if (summary?.data?.kind === "read_list") {
-      return summary.status === "completed" || summary.status === "truncated";
     }
     return false;
   });
