@@ -194,14 +194,6 @@ const buildCanonicalCleanupPayload = (
   attachmentParts,
 });
 
-const enqueueCanonicalCleanup = (
-  mediaMessageIds: string[],
-  attachmentParts: unknown[],
-) =>
-  canonicalMessageCleanupRepository.enqueue(
-    buildCanonicalCleanupPayload(mediaMessageIds, attachmentParts),
-  );
-
 const deleteCanonicalMessages = (messages: Message[]) => {
   for (const message of messages) {
     messageRepository.deleteById(message.id);
