@@ -85,6 +85,70 @@ test("messages table foreign key targets threads after initialization", () => {
   assert.equal(rows.some((row) => row.table === "threads_legacy"), false);
 });
 
+test("notification outbox runtime foreign keys are enabled and cascade with canonical messages", () => {
+  const sqlite = getSqlite();
+  const pragma = sqlite.prepare("PRAGMA foreign_keys").get() as {
+    foreign_keys: number;
+  };
+  assert.equal(pragma.foreign_keys, 1);
+
+  const foreignKeys = sqlite
+    .prepare("PRAGMA foreign_key_list(notification_outbox)")
+    .all() as Array<{ table: string; on_delete: string }>;
+  assert.equal(
+    foreignKeys.some(
+      (row) => row.table === "messages" && row.on_delete === "CASCADE",
+    ),
+    true,
+  );
+  assert.equal(
+    foreignKeys.some(
+      (row) =>
+        row.table === "host_notification_bindings" &&
+        row.on_delete === "CASCADE",
+    ),
+    true,
+  );
+
+  const user = userRepository.create({
+    username: `fk-notify-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id });
+  const installationId = `installation-fk-${crypto.randomUUID()}`;
+  hostNotificationRepository.upsertBinding({
+    installationId,
+    brokerBaseUrl: "https://push.example.test",
+    deliveryToken:
+      "delivery-fk-0123456789012345678901234567890123456789",
+    sourceScope: [thread.id],
+  });
+  const assistant = threadService.createMessage(thread.id, user.id, {
+    id: `assistant-fk-${crypto.randomUUID()}`,
+    role: "assistant",
+    content: "final",
+    parts: [{ type: "text", text: "final" }],
+  });
+
+  const before = sqlite
+    .prepare(
+      "SELECT COUNT(*) AS count FROM notification_outbox WHERE canonical_message_id = ?",
+    )
+    .get(assistant.id) as { count: number };
+  assert.equal(before.count, 1);
+
+  messageRepository.deleteById(assistant.id);
+
+  const after = sqlite
+    .prepare(
+      "SELECT COUNT(*) AS count FROM notification_outbox WHERE canonical_message_id = ?",
+    )
+    .get(assistant.id) as { count: number };
+  assert.equal(after.count, 0);
+});
+
 test("createChatWorkspace validates workspace root paths", () => {
   const user = userRepository.create({
     username: `user-${crypto.randomUUID()}`,
