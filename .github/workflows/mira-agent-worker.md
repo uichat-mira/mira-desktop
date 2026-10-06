@@ -24,6 +24,25 @@ tools:
   bash: false
   cli-proxy: false
   github: false
+safe-outputs:
+  # Explicit non-builtin output suppresses gh-aw's default create-issue fallback.
+  # The read-only probe never invokes it.
+  upload-artifact:
+    max-uploads: 1
+    retention-days: 1
+    allowed-paths:
+      - ".github/agent-dispatch-poc/**"
+  missing-tool:
+    create-issue: false
+  missing-data:
+    create-issue: false
+  report-incomplete:
+    create-issue: false
+  noop:
+    report-as-issue: false
+  report-failure-as-issue: false
+  report-failed-jobs: false
+  threat-detection: false
 timeout-minutes: 15
 strict: true
 max-turns: 8
