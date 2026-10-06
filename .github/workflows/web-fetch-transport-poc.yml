@@ -1,0 +1,56 @@
+name: Web Fetch Transport POC
+
+on:
+  push:
+    branches:
+      - feat/237-web-fetch-transport-poc
+    paths:
+      - "scripts/poc/web-fetch-transport.mjs"
+      - ".github/workflows/web-fetch-transport-poc.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transport-poc:
+    name: Transport POC (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run isolated transport probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .test-artifact/web-fetch-poc
+          cp scripts/poc/web-fetch-transport.mjs .test-artifact/web-fetch-poc/
+          cd .test-artifact/web-fetch-poc
+          npm init -y >/dev/null
+          npm install --no-save --no-audit --no-fund \
+            guarded-fetch@0.1.5 \
+            undici@7.30.0 \
+            @pondwader/socks5-server@1.0.10
+          node web-fetch-transport.mjs
+
+      - name: Upload POC evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-fetch-transport-poc-${{ runner.os }}
+          path: .test-artifact/web-fetch-poc/web-fetch-transport-result.json
+          if-no-files-found: warn
