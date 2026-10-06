@@ -17,6 +17,7 @@ export * from "./chat-workspace.repository";
 export * from "./conversation-artifact.repository";
 export * from "./thread.repository";
 export * from "./host-notification.repository";
+export * from "./canonical-message-cleanup.repository";
 export * from "./role.repository";
 export * from "./agent-run.repository";
 export * from "./mail-accounts.repository";
