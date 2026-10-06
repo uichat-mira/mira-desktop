@@ -30,7 +30,7 @@ const canonicalJson = (value: unknown): string => {
   if (typeof value === "object") {
     const record = value as Record<string, unknown>;
     return `{${Object.keys(record)
-      .sort()
+      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
       .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
       .join(",")}}`;
   }
@@ -38,7 +38,7 @@ const canonicalJson = (value: unknown): string => {
 };
 
 const normalizeSourceScope = (value: string[]) =>
-  Array.from(new Set(value.map((item) => item.trim()).filter(Boolean))).sort();
+  Array.from(new Set(value.map((item) => item.trim()).filter(Boolean))).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 
 const createIdentityMaterial = () => {
   const pair = generateKeyPairSync("ed25519");

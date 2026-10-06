@@ -815,7 +815,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
 
       const sourceScope = Array.from(
         new Set(request.body.sourceScope.map((value) => value.trim()).filter(Boolean)),
-      ).sort();
+      ).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
       if (
         sourceScope.length === 0 ||
         sourceScope.some(
@@ -890,7 +890,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
 
       const sourceScope = Array.from(
         new Set(request.body.sourceScope.map((value) => value.trim()).filter(Boolean)),
-      ).sort();
+      ).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
       if (
         sourceScope.length === 0 ||
         sourceScope.some(

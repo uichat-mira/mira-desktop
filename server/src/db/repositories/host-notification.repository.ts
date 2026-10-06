@@ -113,7 +113,7 @@ const normalizeSourceScope = (sourceScope: string[]) =>
         .map((sourceId) => sourceId.trim())
         .filter(Boolean),
     ),
-  ).sort();
+  ).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 
 const parseSourceScope = (value: string) => {
   let parsed: unknown;
