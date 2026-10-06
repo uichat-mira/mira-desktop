@@ -99,12 +99,14 @@ test("cleans media for regenerate, branch pruning, message deletion, and thread 
 
   const regenerated = await createAttachedAssistantMedia(user.id, "regenerate");
   threadService.createMessage(regenerated.thread.id, user.id, { id: regenerated.assistant.id, role: "assistant", content: "regenerated", parts: [{ type: "text", text: "regenerated" }] });
+  await Promise.resolve();
   assert.equal(chatMediaRepository.getById(regenerated.media.id), null);
   assert.equal(fs.existsSync(regenerated.absolutePath), false);
   assert.equal(JSON.parse(messageRepository.findById(regenerated.assistant.id)!.metadata || "{}").media, undefined);
 
   const branched = await createAttachedAssistantMedia(user.id, "branch", true);
   threadService.createMessage(branched.thread.id, user.id, { role: "user", content: "new branch", parts: [{ type: "text", text: "new branch" }], metadata: { lineage: { parentId: branched.parent!.id } } });
+  await Promise.resolve();
   assert.equal(chatMediaRepository.getById(branched.media.id), null);
   assert.equal(fs.existsSync(branched.absolutePath), false);
   assert.equal(messageRepository.findById(branched.assistant.id), undefined);
