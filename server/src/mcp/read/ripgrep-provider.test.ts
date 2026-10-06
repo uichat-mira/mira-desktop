@@ -7,7 +7,7 @@ import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { resolveTerminalRuntimeExecutable } from "../terminal/dev-runtime.js";
 import { clearWorkspaceSelection } from "../workspace.js";
-import { executeReadLocateWithDiagnostics } from "./locate.js";
+import { executeGrep } from "./grep.js";
 import { probeRipgrepProvider, searchWithRipgrep } from "./ripgrep-provider.js";
 
 const tempRoot = createTimestampedTestArtifactPath("workspace", "ripgrep-provider");
@@ -162,33 +162,36 @@ describe("shared ripgrep provider", () => {
     fs.writeFileSync(path.join(tempRoot, "src", "delta.ts"), "alpha 中文\n", "utf-8");
     fs.writeFileSync(path.join(tempRoot, "ignored", "ignored.ts"), "alpha 中文\n", "utf-8");
 
-    const execution = await executeReadLocateWithDiagnostics(
-      contentEnvironment(),
+    const execution = await executeGrep(
       {
-        query: "alpha\\s+中文",
-        searchMode: "content",
-        extensions: ["ts"],
-        limit: 1,
+        args: {
+          pattern: "alpha\\s+中文",
+          path: ".",
+          limit: 1,
+        },
+        environment: contentEnvironment(),
+        signal: new AbortController().signal,
       },
       {
-        ripgrep: {
-          resolveExecutable: () => ({ source: "unavailable" }),
-        },
+        resolveExecutable: () => ({ source: "unavailable" }),
       },
     );
 
-    expect(execution.diagnostics).toEqual(
+    expect(execution.contents).toEqual(
       expect.objectContaining({
         provider: "node-content-scan",
-        attempts: [
+        providerAttempts: [
           expect.objectContaining({ status: "unavailable" }),
-          expect.objectContaining({ provider: "node-content-scan", status: "success" }),
+          expect.objectContaining({
+            provider: "node-content-scan",
+            status: "success",
+          }),
         ],
+        returnedCount: 1,
+        hasMore: true,
       }),
     );
-    expect(execution.result.returnedCount).toBe(1);
-    expect(execution.result.hasMore).toBe(true);
-    expect(execution.result.matches[0]).toEqual(
+    expect(execution.contents.matches[0]).toEqual(
       expect.objectContaining({
         path: expect.stringMatching(/^src\//),
         line: 1,
@@ -196,30 +199,40 @@ describe("shared ripgrep provider", () => {
         preview: expect.stringContaining("中文"),
       }),
     );
-    expect(execution.result.matches.some((match) => match.path.startsWith("ignored/"))).toBe(false);
+    expect(
+      execution.contents.matches.some((match) => match.path.startsWith("ignored/")),
+    ).toBe(false);
   });
 
   it("uses Node scan after a resolved ripgrep execution failure", async () => {
-    const execution = await executeReadLocateWithDiagnostics(
-      contentEnvironment(),
-      { query: "needle", searchMode: "content", limit: 10 },
+    const execution = await executeGrep(
       {
-        ripgrep: {
-          resolveExecutable: () => ({
-            source: "bundled",
-            executablePath: "C:\\runtime\\rg.exe",
-          }),
-          spawn: () => ({ status: 2, stdout: "" }),
-        },
+        args: { pattern: "needle", path: ".", limit: 10 },
+        environment: contentEnvironment(),
+        signal: new AbortController().signal,
+      },
+      {
+        resolveExecutable: () => ({
+          source: "bundled",
+          executablePath: "C:\\runtime\\rg.exe",
+        }),
+        runProcess: async () => ({
+          status: "completed",
+          exitCode: 2,
+          stdout: "",
+          stderr: "",
+        }),
       },
     );
 
-    expect(execution.diagnostics.provider).toBe("node-content-scan");
-    expect(execution.diagnostics.attempts[0]).toEqual({
+    expect(execution.contents.provider).toBe("node-content-scan");
+    expect(execution.contents.providerAttempts[0]).toEqual({
       provider: "bundled-ripgrep",
       status: "failed",
       reason: "exit-status-2",
     });
-    expect(execution.result.matches.some((match) => match.path === "src/alpha.ts")).toBe(true);
+    expect(
+      execution.contents.matches.some((match) => match.path === "src/alpha.ts"),
+    ).toBe(true);
   });
 });
