@@ -14,6 +14,7 @@ import {
   type HarnessToolDefinition,
   type McpWorkspaceSelection,
 } from "@/shared/api/tools";
+import { getTerminalResultSummary } from "@/shared/tools/terminalResult";
 import { buildCapabilityAcceptanceCases } from "../cases";
 import type {
   CapabilityAcceptanceCase,
@@ -50,6 +51,11 @@ export function useCapabilities() {
   const [runState, setRunState] = useState<CapabilityRunState>(emptyRunState);
   const [isPreparingCase, setIsPreparingCase] = useState(false);
   const [isResolvingApproval, setIsResolvingApproval] = useState(false);
+  const [terminalContinuation, setTerminalContinuation] = useState<{
+    continuationId: string;
+    nextOutputOffset: number;
+    outputLimitBytes?: number;
+  } | null>(null);
   const runGenerationRef = useRef(0);
   const executionLockRef = useRef(false);
 
@@ -161,6 +167,35 @@ export function useCapabilities() {
     [selectedCase, selectedTool, workspaceSelection?.rootPath],
   );
 
+  const displayInvocation = runState.resolutionInvocation ?? runState.invocation;
+  const terminalSummary = useMemo(
+    () =>
+      selectedTool?.id === "terminal"
+        ? getTerminalResultSummary(displayInvocation?.result)
+        : null,
+    [displayInvocation?.result, selectedTool?.id],
+  );
+
+  const rememberTerminalResult = (value: unknown) => {
+    const summary = getTerminalResultSummary(value);
+    if (summary?.state === "cancelled") {
+      setTerminalContinuation(null);
+      return;
+    }
+    if (
+      summary?.continuationId &&
+      typeof summary.nextOutputOffset === "number"
+    ) {
+      setTerminalContinuation({
+        continuationId: summary.continuationId,
+        nextOutputOffset: summary.nextOutputOffset,
+        ...(summary.outputLimitBytes
+          ? { outputLimitBytes: summary.outputLimitBytes }
+          : {}),
+      });
+    }
+  };
+
   const resetRunState = () => {
     runGenerationRef.current += 1;
     setRunState(emptyRunState);
@@ -178,6 +213,7 @@ export function useCapabilities() {
 
   const selectTool = (toolId: string) => {
     if (executionLockRef.current || isSelectionLocked) return;
+    setTerminalContinuation(null);
     setSelectedToolId(toolId);
     setSelectedCaseId(
       cases.find((caseDefinition) => caseDefinition.toolId === toolId)?.id ?? null,
@@ -187,6 +223,7 @@ export function useCapabilities() {
 
   const selectCase = (caseId: string) => {
     if (executionLockRef.current || isSelectionLocked) return;
+    setTerminalContinuation(null);
     const nextCase = cases.find((caseDefinition) => caseDefinition.id === caseId);
     if (!nextCase) return;
     setSelectedToolId(nextCase.toolId);
@@ -232,6 +269,7 @@ export function useCapabilities() {
       return;
     }
 
+    setTerminalContinuation(null);
     executionLockRef.current = true;
     const generation = ++runGenerationRef.current;
     const isCurrentRun = () => runGenerationRef.current === generation;
@@ -325,6 +363,10 @@ export function useCapabilities() {
             !invocationResult.value.approval?.resolution
           : approvalRequired;
 
+      if (invocationResult.status === "fulfilled" && nextTool.id === "terminal") {
+        rememberTerminalResult(invocationResult.value.result);
+      }
+
       const retrievalErrors = [
         invocationResult.status === "rejected"
           ? `Invocation record: ${
@@ -401,6 +443,9 @@ export function useCapabilities() {
       approvalResolved = true;
 
       const resumedInvocation = resolution.resumedInvocation;
+      if (resumedInvocation?.toolId === "terminal") {
+        rememberTerminalResult(resumedInvocation.result);
+      }
       const [traceResult, eventsResult] = resumedInvocation
         ? await Promise.allSettled([
             getMcpInvocationTrace(resumedInvocation.id),
@@ -460,6 +505,157 @@ export function useCapabilities() {
     }
   };
 
+  const runTerminalControl = async (args: Record<string, unknown>) => {
+    if (
+      selectedTool?.id !== "terminal" ||
+      executionLockRef.current ||
+      hasPendingApproval ||
+      isPreparingCase ||
+      runState.isRunning
+    ) {
+      return;
+    }
+
+    executionLockRef.current = true;
+    const generation = ++runGenerationRef.current;
+    const isCurrentRun = () => runGenerationRef.current === generation;
+    const releaseExecutionLock = () => {
+      if (isCurrentRun()) {
+        executionLockRef.current = false;
+      }
+    };
+
+    let invocationId = "";
+    let approvalRequired = false;
+    let keepExecutionLock = false;
+    setRunState({ ...emptyRunState, isRunning: true });
+
+    try {
+      await executeMcpInvocationStream(
+        {
+          toolId: "terminal",
+          args,
+          workspaceContext: "tool_lab_managed",
+        },
+        (event) => {
+          if (!isCurrentRun() || event.type === "invocation:done") {
+            return;
+          }
+          if (event.type === "invocation:start") {
+            invocationId = event.invocationId;
+          }
+          if (event.type === "invocation:approval_required") {
+            approvalRequired = true;
+          }
+          setRunState((current) => ({
+            ...current,
+            invocationId:
+              event.type === "invocation:start"
+                ? event.invocationId
+                : current.invocationId,
+            events: [...current.events, event],
+          }));
+        },
+      );
+
+      if (!isCurrentRun()) return;
+      if (!invocationId) {
+        throw new Error("Invocation stream ended before an invocation id was received.");
+      }
+
+      const [invocationResult, traceResult] = await Promise.allSettled([
+        getMcpInvocation(invocationId),
+        getMcpInvocationTrace(invocationId),
+      ]);
+      if (!isCurrentRun()) return;
+
+      keepExecutionLock =
+        invocationResult.status === "fulfilled"
+          ? invocationResult.value.status === "awaiting_approval" &&
+            !invocationResult.value.approval?.resolution
+          : approvalRequired;
+
+      if (invocationResult.status === "fulfilled") {
+        rememberTerminalResult(invocationResult.value.result);
+      }
+
+      const retrievalErrors = [
+        invocationResult.status === "rejected"
+          ? `Invocation record: ${
+              invocationResult.reason instanceof Error
+                ? invocationResult.reason.message
+                : String(invocationResult.reason)
+            }`
+          : null,
+        traceResult.status === "rejected"
+          ? `Trace: ${
+              traceResult.reason instanceof Error
+                ? traceResult.reason.message
+                : String(traceResult.reason)
+            }`
+          : null,
+      ].filter((message): message is string => Boolean(message));
+
+      setRunState((current) => ({
+        ...current,
+        invocationId,
+        invocation:
+          invocationResult.status === "fulfilled"
+            ? invocationResult.value
+            : current.invocation,
+        resolutionInvocation: null,
+        trace:
+          traceResult.status === "fulfilled"
+            ? traceResult.value
+            : current.trace,
+        transportError:
+          retrievalErrors.length > 0
+            ? retrievalErrors.join(" · ")
+            : current.transportError,
+      }));
+    } catch (error) {
+      if (!isCurrentRun()) return;
+      setRunState((current) => ({
+        ...current,
+        transportError: error instanceof Error ? error.message : String(error),
+      }));
+    } finally {
+      if (isCurrentRun()) {
+        setRunState((current) => ({ ...current, isRunning: false }));
+        if (!keepExecutionLock) {
+          releaseExecutionLock();
+        }
+      }
+    }
+  };
+
+  const runTerminalContinuation = async () => {
+    if (!terminalContinuation) return;
+    await runTerminalControl({
+      continuationId: terminalContinuation.continuationId,
+      outputOffset: terminalContinuation.nextOutputOffset,
+      ...(terminalContinuation.outputLimitBytes
+        ? { outputLimitBytes: terminalContinuation.outputLimitBytes }
+        : {}),
+    });
+  };
+
+  const runTerminalStatus = async () => {
+    if (!terminalSummary?.sessionId) return;
+    await runTerminalControl({
+      operation: "status",
+      sessionId: terminalSummary.sessionId,
+    });
+  };
+
+  const runTerminalStop = async () => {
+    if (!terminalSummary?.sessionId) return;
+    await runTerminalControl({
+      operation: "stop",
+      sessionId: terminalSummary.sessionId,
+    });
+  };
+
   const runSelectedCase = async () => {
     if (!selectedCase) return;
     await runCase(selectedCase.id);
@@ -476,6 +672,8 @@ export function useCapabilities() {
     readiness,
     resolveApproval,
     runState,
+    terminalContinuation,
+    terminalSummary,
     selectedCase,
     selectedTool,
     toolCases,
@@ -484,6 +682,9 @@ export function useCapabilities() {
     refresh: load,
     runCase,
     runSelectedCase,
+    runTerminalContinuation,
+    runTerminalStatus,
+    runTerminalStop,
     selectCase,
     selectTool,
   };
