@@ -568,7 +568,6 @@ CodeGraph verified retrieval 会走 retrieval Evidence；普通工具、Mail、G
 当前不能这样描述 Tool 系统：
 
 - Planner 公共 Read 面仍是六个 `read_*` primitive；
-- 旧 `read_*` executable runtime 仍为了兼容而注册；
 - grep 只是隐藏在 `read_locate` 里的实现；
 - 公共 Edit 只有一个 `edit_file` wrapper；
 - 删除、移动仍未实现；
