@@ -84,7 +84,9 @@ export const withMutationLocks = async <T>(
   signal: AbortSignal | undefined,
   run: () => Promise<T> | T,
 ): Promise<T> => {
-  const keys = [...new Set(rawKeys.map(normalizeLockKey))].sort();
+  const keys = [...new Set(rawKeys.map(normalizeLockKey))].sort((left, right) =>
+    left.localeCompare(right),
+  );
   const releases: Array<() => void> = [];
 
   try {
