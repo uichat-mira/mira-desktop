@@ -242,8 +242,6 @@ test("resumeApprovedAgentRun updates assistant message when run returns waiting 
     },
   });
 
-  // This intentionally models a persisted run created before terminal became
-  // the canonical public Tool id. Resume must preserve its frozen legacy id.
   agentRunStore.update(run.id, {
     status: "waiting_approval",
     pendingApproval: {
@@ -684,6 +682,8 @@ test("resumeApprovedAgentRun keeps legacy terminal_session checkpoint identity w
     },
   });
 
+  // This intentionally models a persisted run created before terminal became
+  // the canonical public Tool id. Resume must preserve its frozen legacy id.
   agentRunStore.update(run.id, {
     status: "waiting_approval",
     pendingApproval: {
