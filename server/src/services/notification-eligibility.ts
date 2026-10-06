@@ -9,19 +9,16 @@ export type NotificationCanonicalMessage = {
   metadata?: Record<string, unknown>;
 };
 
-const PLACEHOLDER_TEXT = new Set([
-  "Agent 正在运行…",
-  "Agent 正在运行...",
-  "等待审批",
-]);
-
-const getAgentStatus = (message: NotificationCanonicalMessage) => {
+const getAgentState = (message: NotificationCanonicalMessage) => {
   const agent = message.metadata?.agent;
   if (!agent || typeof agent !== "object" || Array.isArray(agent)) {
-    return null;
+    return { isAgent: false, status: null as string | null };
   }
   const status = (agent as { status?: unknown }).status;
-  return typeof status === "string" ? status : null;
+  return {
+    isAgent: true,
+    status: typeof status === "string" ? status : null,
+  };
 };
 
 const getVisibleText = (message: NotificationCanonicalMessage) => {
@@ -42,21 +39,28 @@ export const isNotificationPlaceholderOrRunning = (
   message: NotificationCanonicalMessage,
 ) => {
   if (message.role !== "assistant") return false;
-  const status = getAgentStatus(message);
-  if (status === "queued" || status === "running") return true;
-  return PLACEHOLDER_TEXT.has(getVisibleText(message));
+  const agent = getAgentState(message);
+  return (
+    agent.isAgent &&
+    (agent.status === "queued" || agent.status === "running")
+  );
 };
 
 export const isNotificationUserVisibleFinal = (
   message: NotificationCanonicalMessage,
 ) => {
   if (message.role !== "assistant") return false;
-  const text = getVisibleText(message);
-  if (!text || PLACEHOLDER_TEXT.has(text)) return false;
+  if (!getVisibleText(message)) return false;
 
-  const status = getAgentStatus(message);
-  if (!status) return true;
-  return status === "completed";
+  const agent = getAgentState(message);
+  if (!agent.isAgent) {
+    // Ordinary Chat / RAG Assistant messages do not carry Agent metadata.
+    return true;
+  }
+
+  // Agent notification semantics are metadata-only. UI copy and locale must
+  // never determine whether an Agent snapshot is final.
+  return agent.status === "completed";
 };
 
 export const isNotificationEligibleTransition = (
@@ -65,8 +69,5 @@ export const isNotificationEligibleTransition = (
 ) => {
   if (!isNotificationUserVisibleFinal(next)) return false;
   if (previous && previous.id !== next.id) return false;
-  return (
-    previous === null ||
-    isNotificationPlaceholderOrRunning(previous)
-  );
+  return previous === null || isNotificationPlaceholderOrRunning(previous);
 };
