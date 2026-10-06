@@ -256,7 +256,7 @@ test("generateNode blocks function_calls protocol text without treating it as ex
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_list",
+        toolId: "list",
         args: { path: "." },
         status: "completed",
         inputHash: "hash-read-list",
@@ -268,7 +268,7 @@ test("generateNode blocks function_calls protocol text without treating it as ex
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_list",
+          toolId: "list",
           inputHash: "hash-read-list",
           actionTaken: "Listed workspace directory .",
           keyFindings: ["entryCount=3", "[F] README.md", "[D] docs"],
@@ -277,7 +277,7 @@ test("generateNode blocks function_calls protocol text without treating it as ex
             reason: "Directory listing is sufficient for the user's workspace overview question.",
           },
           data: {
-            kind: "read_list",
+            kind: "list",
             path: ".",
             entryCount: 3,
             fileCount: 2,
@@ -298,7 +298,7 @@ test("generateNode blocks function_calls protocol text without treating it as ex
 
   const invokeSpy = vi
     .spyOn(providerProxyService, "generateTextForRole")
-    .mockResolvedValue('<function_calls>{"toolId":"read_list"}</function_calls>');
+    .mockResolvedValue('<function_calls>{"toolId":"list"}</function_calls>');
   const executionEvents: Array<{
     nodeId: string;
     phase: string;
@@ -518,7 +518,7 @@ test("generateNode does not semantically rewrite ordinary model text", async () 
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_open",
+        toolId: "read",
         args: { path: "README.md" },
         status: "completed",
         inputHash: "hash-read-open",
@@ -526,7 +526,7 @@ test("generateNode does not semantically rewrite ordinary model text", async () 
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_open",
+          toolId: "read",
           inputHash: "hash-read-open",
           actionTaken: "Opened file README.md.",
           keyFindings: ["contentLength=42", "# UIChat Mira"],
@@ -535,7 +535,7 @@ test("generateNode does not semantically rewrite ordinary model text", async () 
             reason: "Opened file content is available for answer generation.",
           },
           data: {
-            kind: "read_open",
+            kind: "read",
             path: "README.md",
             contentPreview: "# UIChat Mira UIChat Mira is a local-first desktop workspace.",
             contentLength: 42,
@@ -554,12 +554,12 @@ test("generateNode does not semantically rewrite ordinary model text", async () 
   citeFirstTool(state);
 
   vi.spyOn(providerProxyService, "generateTextForRole").mockResolvedValue(
-    "我将调用 read_open 来打开 README.md。",
+    "我将调用 read 来打开 README.md。",
   );
 
   const result = await generateNode(state);
 
-  assert.equal(result.answer, "我将调用 read_open 来打开 README.md。");
+  assert.equal(result.answer, "我将调用 read 来打开 README.md。");
 });
 
 test("createToolExecutionEvidenceSummary preserves historical edit_file mutation evidence", () => {
@@ -681,7 +681,7 @@ test("generateNode treats a tool protocol after incomplete evidence as delivery 
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_list",
+        toolId: "list",
         args: { path: "." },
         status: "completed",
         inputHash: "hash-read-list-missing-content",
@@ -689,7 +689,7 @@ test("generateNode treats a tool protocol after incomplete evidence as delivery 
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_list",
+          toolId: "list",
           inputHash: "hash-read-list-missing-content",
           actionTaken: "Listed workspace directory .",
           keyFindings: ["entryCount=3", "[F] README.md", "[D] docs"],
@@ -699,7 +699,7 @@ test("generateNode treats a tool protocol after incomplete evidence as delivery 
             missingInfo: ["target file content or a narrower path"],
           },
           data: {
-            kind: "read_list",
+            kind: "list",
             path: ".",
             entryCount: 3,
             fileCount: 2,
@@ -719,7 +719,7 @@ test("generateNode treats a tool protocol after incomplete evidence as delivery 
   citeFirstTool(state);
 
   vi.spyOn(providerProxyService, "generateTextForRole").mockResolvedValue(
-    "<function_calls>{\"toolId\":\"read_open\"}</function_calls>",
+    "<function_calls>{\"toolId\":\"read\"}</function_calls>",
   );
 
   const result = await generateNode(state);
@@ -1051,7 +1051,7 @@ test("Generate only blocks protocol envelopes, not ordinary text containing a to
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_open",
+        toolId: "read",
         args: { path: "README.md" },
         status: "completed",
         inputHash: "hash-read-open",
@@ -1059,7 +1059,7 @@ test("Generate only blocks protocol envelopes, not ordinary text containing a to
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_open",
+          toolId: "read",
           inputHash: "hash-read-open",
           actionTaken: "Opened file README.md.",
           keyFindings: ["contentLength=42", "# UIChat Mira"],
@@ -1068,7 +1068,7 @@ test("Generate only blocks protocol envelopes, not ordinary text containing a to
             reason: "Opened file content is available for answer generation.",
           },
           data: {
-            kind: "read_open",
+            kind: "read",
             path: "README.md",
             contentPreview: "# UIChat Mira UIChat Mira is a local-first desktop workspace.",
             contentLength: 42,
@@ -1087,14 +1087,14 @@ test("Generate only blocks protocol envelopes, not ordinary text containing a to
   citeFirstTool(state);
 
   vi.spyOn(providerProxyService, "generateTextForRole").mockResolvedValue(
-    "read_open completed, README.md says UIChat Mira is a local-first desktop workspace.",
+    "read completed, README.md says UIChat Mira is a local-first desktop workspace.",
   );
 
   const result = await generateNode(state);
 
   assert.equal(
     result.answer,
-    "read_open completed, README.md says UIChat Mira is a local-first desktop workspace.",
+    "read completed, README.md says UIChat Mira is a local-first desktop workspace.",
   );
 });
 
@@ -1104,7 +1104,7 @@ test("generateNode fails delivery when model answer is empty despite completed e
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_open",
+        toolId: "read",
         args: { path: "README.md" },
         status: "completed",
         inputHash: "hash-read-open",
@@ -1112,7 +1112,7 @@ test("generateNode fails delivery when model answer is empty despite completed e
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_open",
+          toolId: "read",
           inputHash: "hash-read-open",
           actionTaken: "Opened file README.md.",
           keyFindings: ["contentLength=42", "# UIChat Mira"],
@@ -1121,7 +1121,7 @@ test("generateNode fails delivery when model answer is empty despite completed e
             reason: "Opened file content is available for answer generation.",
           },
           data: {
-            kind: "read_open",
+            kind: "read",
             path: "README.md",
             contentPreview: "# UIChat Mira UIChat Mira is a local-first desktop workspace.",
             contentLength: 42,
@@ -1161,10 +1161,10 @@ test("generateNode refuses to run without a Planner answer finalization packet",
   const state = createBaseState("README.md 的 Runtime 一节具体列了哪些运行组件？请基于文件内容回答。");
   state.schemaReplanDiagnostics = {
     schemaError: "args.limit is not allowed",
-    toolId: "read_open",
+    toolId: "read",
     invalidAction: {
       type: "use_tool",
-      toolId: "read_open",
+      toolId: "read",
       args: {
         path: "README.md",
         limit: 3,
