@@ -1482,11 +1482,7 @@ export type NewHostNotificationBinding =
 export const hostNotificationBindingScopes = sqliteTable(
   "host_notification_binding_scopes",
   {
-    installationId: text("installation_id")
-      .notNull()
-      .references(() => hostNotificationBindings.installationId, {
-        onDelete: "cascade",
-      }),
+    installationId: text("installation_id").notNull(),
     sourceId: text("source_id").notNull(),
   },
   (table) => ({
