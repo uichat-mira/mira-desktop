@@ -955,10 +955,24 @@ export const threadService = {
     const thread = threadRepository.findById(threadId, userId);
     const existing = messageRepository.findById(messageId);
     if (!thread || !existing || existing.threadId !== threadId) return null;
-    const updated = messageRepository.updateById(messageId, {
-      metadata: JSON.stringify(metadata),
-    });
-    return updated ? toMessageResponse(updated) : null;
+
+    const previous = toMessageResponse(existing);
+    return getSqlite().transaction(() => {
+      const updated = messageRepository.updateById(messageId, {
+        metadata: JSON.stringify(metadata),
+      });
+      if (!updated) {
+        throw new Error("Failed to update message metadata");
+      }
+
+      const nextMessage = toMessageResponse(updated);
+      hostNotificationRepository.enqueueEligibleTransition({
+        previous: toNotificationCanonicalMessage(previous),
+        next: toNotificationCanonicalMessage(nextMessage),
+        sourceId: threadId,
+      });
+      return nextMessage;
+    })();
   },
 
   createMessages(
