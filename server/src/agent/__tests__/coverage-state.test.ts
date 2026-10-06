@@ -435,6 +435,42 @@ test("coverage reducer does not treat locate-only mutation evidence as mutation 
   assert.equal(state.targets[0]?.status, "located");
 });
 
+test("coverage reducer recognizes canonical file_mutation evidence", () => {
+  const state = reduceAgentCoverageState({
+    question: "写入 notes.txt",
+    latestSummary: {
+      source: "tool",
+      status: "completed",
+      toolId: "write",
+      actionTaken: "Created workspace file notes.txt.",
+      keyFindings: [
+        "operation=write",
+        "targetPath=notes.txt",
+        "changed=true",
+      ],
+      data: {
+        kind: "file_mutation",
+        operation: "write",
+        targetPath: "notes.txt",
+        changed: true,
+        created: true,
+        artifactId: "artifact-1",
+        bytesBefore: 0,
+        bytesAfter: 5,
+        diffTruncated: false,
+      },
+    },
+  });
+
+  assert.equal(state.taskCompletable, true);
+  assert.deepEqual(state.pendingActions, []);
+  assert.equal(state.targets[0]?.status, "mutated");
+  assert.deepEqual(state.targets[0]?.completedActions, [
+    "locate",
+    "mutation_execution",
+  ]);
+});
+
 test("coverage reducer keeps mutation verification pending until read_open exists", () => {
   const state = reduceAgentCoverageState({
     question: "写入 notes.txt 后验证内容是否正确",

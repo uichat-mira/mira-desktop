@@ -557,6 +557,191 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
   return undefined;
 };
 
+const FILE_MUTATION_TOOL_IDS = new Set([
+  "write",
+  "edit",
+  "move",
+  "delete",
+]);
+
+const projectFileMutationEvidence = (
+  toolId: string,
+  result: Record<string, unknown>,
+  isError: boolean,
+): ToolEvidence | undefined => {
+  if (!FILE_MUTATION_TOOL_IDS.has(toolId)) {
+    return undefined;
+  }
+
+  const operation = result.operation;
+  const targetPath = result.path;
+  if (
+    operation !== toolId ||
+    typeof targetPath !== "string" ||
+    result.changed !== true
+  ) {
+    return undefined;
+  }
+
+  const destinationPath =
+    typeof result.destinationPath === "string"
+      ? result.destinationPath
+      : undefined;
+  const artifactId =
+    typeof result.artifactId === "string" ? result.artifactId : undefined;
+  const resultDiffPreview =
+    typeof result.diffPreview === "string"
+      ? result.diffPreview
+      : undefined;
+  const diffPreview =
+    resultDiffPreview === undefined
+      ? undefined
+      : resultDiffPreview.length > 1_200
+        ? `${resultDiffPreview.slice(0, 1_200)}\n... [evidence preview truncated]`
+        : resultDiffPreview;
+  const diffAvailable = result.diffAvailable === true;
+  const diffUnavailableReason =
+    typeof result.diffUnavailableReason === "string"
+      ? result.diffUnavailableReason
+      : undefined;
+  const diffTruncated = result.diffTruncated === true;
+
+  const facts = [
+    `operation=${operation}`,
+    `targetPath=${targetPath}`,
+    "changed=true",
+    `diffAvailable=${diffAvailable}`,
+    ...(artifactId ? [`artifactId=${artifactId}`] : []),
+  ];
+
+  if (operation === "write") {
+    facts.push(
+      `created=${result.created === true}`,
+      `overwritten=${result.overwritten === true}`,
+      ...(typeof result.bytesBefore === "number"
+        ? [`bytesBefore=${result.bytesBefore}`]
+        : []),
+      ...(typeof result.bytesAfter === "number"
+        ? [`bytesAfter=${result.bytesAfter}`]
+        : []),
+    );
+  } else if (operation === "edit") {
+    facts.push(
+      ...(typeof result.editsApplied === "number"
+        ? [`editsApplied=${result.editsApplied}`]
+        : []),
+      ...(typeof result.tolerantEdits === "number"
+        ? [`tolerantEdits=${result.tolerantEdits}`]
+        : []),
+      ...(typeof result.bytesBefore === "number"
+        ? [`bytesBefore=${result.bytesBefore}`]
+        : []),
+      ...(typeof result.bytesAfter === "number"
+        ? [`bytesAfter=${result.bytesAfter}`]
+        : []),
+    );
+  } else if (operation === "move") {
+    if (destinationPath) facts.push(`destinationPath=${destinationPath}`);
+    if (typeof result.movedType === "string") {
+      facts.push(`movedType=${result.movedType}`);
+    }
+    facts.push(`overwritten=${result.overwritten === true}`);
+    if (result.cleanupIncomplete === true) {
+      facts.push("cleanupIncomplete=true");
+      if (typeof result.cleanupBackupPath === "string") {
+        facts.push(`cleanupBackupPath=${result.cleanupBackupPath}`);
+      }
+    }
+  } else if (operation === "delete") {
+    if (typeof result.deletedType === "string") {
+      facts.push(`deletedType=${result.deletedType}`);
+    }
+    facts.push(`recursive=${result.recursive === true}`);
+  }
+
+  const actionTaken =
+    operation === "write"
+      ? result.created === true
+        ? `Created workspace file ${targetPath}.`
+        : `Overwrote workspace file ${targetPath}.`
+      : operation === "edit"
+        ? `Edited workspace file ${targetPath}.`
+        : operation === "move"
+          ? `Moved workspace target ${targetPath} to ${destinationPath ?? "unknown destination"}.`
+          : `Deleted workspace target ${targetPath}.`;
+
+  return baseEvidence({
+    result,
+    isError,
+    actionTaken,
+    facts,
+    gaps: [
+      ...(diffUnavailableReason
+        ? [`Content diff unavailable: ${diffUnavailableReason}.`]
+        : []),
+      ...(diffTruncated ? ["Content diff artifact is truncated."] : []),
+      ...(result.cleanupIncomplete === true
+        ? [
+            `Move committed, but backup cleanup is incomplete${typeof result.cleanupBackupPath === "string" ? `: ${result.cleanupBackupPath}` : "."}`,
+          ]
+        : []),
+    ],
+    status: result.cleanupIncomplete === true ? "partial" : undefined,
+    data: {
+      kind: "file_mutation",
+      operation,
+      targetPath,
+      ...(destinationPath ? { destinationPath } : {}),
+      changed: true,
+      ...(artifactId ? { artifactId } : {}),
+      ...(typeof result.created === "boolean"
+        ? { created: result.created }
+        : {}),
+      ...(typeof result.overwritten === "boolean"
+        ? { overwritten: result.overwritten }
+        : {}),
+      ...(typeof result.editsApplied === "number"
+        ? { editsApplied: result.editsApplied }
+        : {}),
+      ...(typeof result.tolerantEdits === "number"
+        ? { tolerantEdits: result.tolerantEdits }
+        : {}),
+      ...(typeof result.movedType === "string"
+        ? {
+            movedType: result.movedType,
+            ...(result.cleanupIncomplete === true
+              ? {
+                  cleanupIncomplete: true,
+                  ...(typeof result.cleanupBackupPath === "string"
+                    ? { cleanupBackupPath: result.cleanupBackupPath }
+                    : {}),
+                  ...(typeof result.cleanupError === "string"
+                    ? { cleanupError: result.cleanupError }
+                    : {}),
+                }
+              : {}),
+          }
+        : {}),
+      ...(typeof result.deletedType === "string"
+        ? { deletedType: result.deletedType }
+        : {}),
+      ...(typeof result.recursive === "boolean"
+        ? { recursive: result.recursive }
+        : {}),
+      ...(typeof result.bytesBefore === "number"
+        ? { bytesBefore: result.bytesBefore }
+        : {}),
+      ...(typeof result.bytesAfter === "number"
+        ? { bytesAfter: result.bytesAfter }
+        : {}),
+      diffAvailable,
+      ...(diffPreview ? { diffPreview } : {}),
+      diffTruncated,
+      ...(diffUnavailableReason ? { diffUnavailableReason } : {}),
+    },
+  });
+};
+
 export const projectToolEvidence = (
   definition: Pick<ToolDefinition, "id" | "source" | "domain">,
   normalized: NormalizedToolResult,
@@ -575,6 +760,13 @@ export const projectToolEvidence = (
 
   const readEvidence = projectReadEvidence(definition.id, result, normalized.isError);
   if (readEvidence) return readEvidence;
+
+  const fileMutationEvidence = projectFileMutationEvidence(
+    definition.id,
+    result,
+    normalized.isError,
+  );
+  if (fileMutationEvidence) return fileMutationEvidence;
 
   if ((definition.id === "web_search" || definition.id === "news_search") && typeof result.query === "string" && Array.isArray(result.results)) {
     const results = result.results.filter(asRecord);
@@ -819,33 +1011,6 @@ export const projectToolEvidence = (
   }
 
   const unwrapped = asRecord(result.result) ?? result;
-  if (definition.id === "edit_file" || definition.id === "write_file" || definition.id === "replace_block") {
-    if (typeof unwrapped.path === "string" && (unwrapped.operation === "write_file" || unwrapped.operation === "replace_block")) {
-      const dryRun = unwrapped.dryRun === true;
-      const operation = unwrapped.operation === "replace_block" ? "replace" : "create";
-      const actionProfileId = typeof result.actionProfileId === "string" ? result.actionProfileId : undefined;
-      const runtimeToolId = typeof result.runtimeToolId === "string" ? result.runtimeToolId : undefined;
-      return baseEvidence({
-        result,
-        isError: normalized.isError,
-        actionTaken: dryRun ? `Prepared a dry-run edit for workspace file ${unwrapped.path}.` : `Changed workspace file ${unwrapped.path}.`,
-        facts: [`operation=${operation}`, `targetPath=${unwrapped.path}`, `dryRun=${dryRun}`, `changed=${!dryRun}`],
-        data: { kind: "edit_file", operation, targetPath: unwrapped.path, dryRun, changed: !dryRun, created: !dryRun && operation === "create", replaced: !dryRun && operation === "replace", ...(actionProfileId ? { actionProfileId } : {}), ...(runtimeToolId ? { runtimeToolId } : {}) },
-      });
-    }
-  }
-
-  if (definition.id === "workspace_mutation" && typeof unwrapped.targetPath === "string" && (unwrapped.operation === "write" || unwrapped.operation === "delete" || unwrapped.operation === "move")) {
-    const dryRun = unwrapped.dryRun === true;
-    const operation = unwrapped.operation === "write" ? unwrapped.overwrite === true ? "overwrite" : "create" : unwrapped.operation;
-    return baseEvidence({
-      result,
-      isError: normalized.isError,
-      actionTaken: dryRun ? `Prepared a dry-run workspace mutation for ${unwrapped.targetPath}.` : `Applied workspace mutation to ${unwrapped.targetPath}.`,
-      facts: [`operation=${operation}`, `targetPath=${unwrapped.targetPath}`, `dryRun=${dryRun}`, `changed=${!dryRun}`],
-      data: { kind: "workspace_mutation", operation, targetPath: unwrapped.targetPath, ...(typeof unwrapped.destinationPath === "string" ? { destinationPath: unwrapped.destinationPath } : {}), dryRun, changed: !dryRun, created: !dryRun && operation === "create", replaced: !dryRun && operation === "overwrite", deleted: !dryRun && operation === "delete", moved: !dryRun && operation === "move" },
-    });
-  }
 
   if (definition.id.startsWith("office_")) {
     const operation = typeof result.operation === "string" ? result.operation : "unknown";

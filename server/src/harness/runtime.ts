@@ -2,13 +2,10 @@ import { workspaceResource } from "../mcp/resources/workspace-resource.js";
 import {
   codebaseExploreTool,
 } from "../mcp/managed-codegraph/codebase-explore.tool.js";
-import {
-  deletePathTool,
-  movePathTool,
-  replaceBlockTool,
-  writeFileTool,
-} from "../mcp/tools/edit-actions.tool.js";
-import { editFileTool } from "../mcp/tools/edit-file.tool.js";
+import { writeTool } from "../mcp/tools/write.tool.js";
+import { editTool } from "../mcp/tools/edit.tool.js";
+import { moveTool } from "../mcp/tools/move.tool.js";
+import { deleteTool } from "../mcp/tools/delete.tool.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
 import { globTool } from "../mcp/tools/glob.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
@@ -25,7 +22,6 @@ import { readTool } from "../mcp/tools/read.tool.js";
 import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
 import { mailQueryTool } from "../mcp/tools/mail-query.tool.js";
-import { workspaceMutationTool } from "../mcp/tools/workspace-mutation.tool.js";
 import { createBrowserAttachedTools } from "../mcp/tools/browser-attached.tool.js";
 import { askExternalExpertTool } from "../mcp/tools/ask-external-expert.tool.js";
 import {
@@ -56,20 +52,15 @@ export const initializeHarnessRuntime = () => {
   registerTool(readOpenTool);
   registerTool(readExtractTool);
 
-  registerTool(writeFileTool);
-  registerTool(replaceBlockTool);
-  registerTool(deletePathTool);
-  registerTool(movePathTool);
+  registerTool(writeTool);
+  registerTool(editTool);
+  registerTool(moveTool);
+  registerTool(deleteTool);
 
   // WenShu document types are exposed as Skills, not duplicate Harness tools.
   // Keep runtime-pack readiness observable while ensuring legacy office_* wrappers
   // are not left registered from older bootstrap paths or persisted processes.
   reconcileWenshuOfficeHarnessCapabilities();
-
-  // Compatibility-only implementations for persisted/legacy invocations.
-  // Exposure policy keeps these out of the Agent-visible edit surface.
-  registerTool(editFileTool);
-  registerTool(workspaceMutationTool);
 
   registerTool(webSearchTool);
   registerTool(newsSearchTool);

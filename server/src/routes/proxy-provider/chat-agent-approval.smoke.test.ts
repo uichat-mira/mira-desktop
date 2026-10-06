@@ -82,10 +82,7 @@ const makeToolDefinition = (input: {
     ...(input.workspaceBound
       ? {
           workspaceBoundary: {
-            argKeys:
-              input.id === "workspace_mutation"
-                ? ["targetPath", "destinationPath"]
-                : ["path"],
+            argKeys: ["path"],
           },
         }
       : {}),
@@ -122,21 +119,16 @@ const readToolDefinition = () =>
     workspaceBound: true,
   });
 
-const workspaceMutationTool = () =>
+const deleteToolDefinition = () =>
   makeToolDefinition({
-    id: "workspace_mutation",
+    id: "delete",
     domain: "edit",
     inputSchema: {
       type: "object",
-      required: ["operation", "targetPath"],
+      required: ["path"],
       properties: {
-        operation: {
-          type: "string",
-          enum: ["delete", "move", "write"],
-        },
-        targetPath: { type: "string" },
-        destinationPath: { type: "string" },
-        content: { type: "string" },
+        path: { type: "string" },
+        recursive: { type: "boolean" },
       },
       additionalProperties: false,
     },
@@ -445,10 +437,10 @@ describe("chat route approval resume smoke", () => {
     const app = await createAuthedApp();
     const { user, thread, token } = createUserThread();
 
-    setupToolExposure("删除 ONLY_ALT_WORKSPACE.txt。", [workspaceMutationTool()]);
+    setupToolExposure("删除 ONLY_ALT_WORKSPACE.txt。", [deleteToolDefinition()]);
     vi.spyOn(providerProxyService, "streamTaskChatText")
       .mockImplementationOnce(async function* () {
-        yield '{"type":"use_tool","toolId":"workspace_mutation","args":{"operation":"delete","targetPath":"/ONLY_ALT_WORKSPACE.txt"},"reason":"Need to delete the file."}';
+        yield '{"type":"use_tool","toolId":"delete","args":{"path":"/ONLY_ALT_WORKSPACE.txt"},"reason":"Need to delete the file."}';
       })
       .mockImplementationOnce(async function* () {
         yield '{"type":"answer","reason":"The approved mutation is complete.","completionProof":[{"criterion":"The approved delete mutation ran exactly once.","evidenceRefs":[]}],"unresolvedGaps":[]}';
@@ -462,11 +454,11 @@ describe("chat route approval resume smoke", () => {
       .spyOn(harnessInvocations, "executeHarnessInvocation")
       .mockResolvedValue({
         id: "invocation-s2-delete",
-        toolId: "workspace_mutation",
+        toolId: "delete",
         status: "completed",
         result: {
           operation: "delete",
-          targetPath: "ONLY_ALT_WORKSPACE.txt",
+          path: "ONLY_ALT_WORKSPACE.txt",
           deletedType: "file",
           dryRun: false,
           recursive: false,
@@ -501,7 +493,7 @@ describe("chat route approval resume smoke", () => {
     }).agent;
     assert.equal(waitingAssistant?.content, "等待审批");
     assert.equal(waitingAgent?.status, "waiting_approval");
-    assert.equal(waitingAgent?.pendingApproval?.toolId, "workspace_mutation");
+    assert.equal(waitingAgent?.pendingApproval?.toolId, "delete");
     assert.equal(waitingAgent?.blockedReason, "waiting approval");
 
     const approveResponse = await app.inject({
@@ -528,10 +520,9 @@ describe("chat route approval resume smoke", () => {
       expectedStatus: "completed",
     });
     assert.equal(executeSpy.mock.calls.length, 1);
-    assert.equal(executeSpy.mock.calls[0]?.[0]?.toolId, "workspace_mutation");
+    assert.equal(executeSpy.mock.calls[0]?.[0]?.toolId, "delete");
     assert.deepEqual(executeSpy.mock.calls[0]?.[0]?.args, {
-      operation: "delete",
-      targetPath: "/ONLY_ALT_WORKSPACE.txt",
+      path: "/ONLY_ALT_WORKSPACE.txt",
     });
 
 
@@ -579,10 +570,10 @@ describe("chat route approval resume smoke", () => {
         agentEnabled: true,
       });
 
-      setupToolExposure("删除 ONLY_ALT_WORKSPACE.txt。", [workspaceMutationTool()]);
+      setupToolExposure("删除 ONLY_ALT_WORKSPACE.txt。", [deleteToolDefinition()]);
       vi.spyOn(providerProxyService, "streamTaskChatText").mockImplementation(
         async function* () {
-          yield '{"type":"use_tool","toolId":"workspace_mutation","args":{"operation":"delete","targetPath":"/ONLY_ALT_WORKSPACE.txt"},"reason":"Need to delete the file."}';
+          yield '{"type":"use_tool","toolId":"delete","args":{"path":"/ONLY_ALT_WORKSPACE.txt"},"reason":"Need to delete the file."}';
         },
       );
       vi.spyOn(harnessInvocations, "executeHarnessInvocation");

@@ -378,6 +378,9 @@ importers:
       better-sqlite3:
         specifier: ^12.10.0
         version: 12.10.0
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
       docx:
         specifier: ^9.7.1
         version: 9.7.1
@@ -459,6 +462,9 @@ importers:
       turndown:
         specifier: ^7.2.4
         version: 7.2.4
+      write-file-atomic:
+        specifier: ^7.0.1
+        version: 7.0.1
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
@@ -487,6 +493,9 @@ importers:
       '@types/turndown':
         specifier: ^5.0.6
         version: 5.0.6
+      '@types/write-file-atomic':
+        specifier: ^4.0.3
+        version: 4.0.3
       '@vitest/coverage-v8':
         specifier: ^3.2.4
         version: 3.2.6(vitest@3.2.6(@types/debug@4.1.13)(@types/node@22.19.19)(jsdom@26.1.0))
@@ -4155,6 +4164,9 @@ packages:
   '@types/verror@1.10.11':
     resolution: {integrity: sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg==}
 
+  '@types/write-file-atomic@4.0.3':
+    resolution: {integrity: sha512-qdo+vZRchyJIHNeuI1nrpsLw+hnkgqP/8mlaN6Wle/NKhydHmUN9l4p3ZE8yP90AJNJW4uB8HQhedb4f1vNayQ==}
+
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
 
@@ -5087,6 +5099,10 @@ packages:
 
   didyoumean@1.2.2:
     resolution: {integrity: sha512-gxtyfqMg7GKyhQmb056K7M3xszy/myH8w+B4RT+QXBQsvAOdc3XymqDDPHx1BgPgsdAA5SIifona89YtRATDzw==}
+
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
+    engines: {node: '>=0.3.1'}
 
   dir-compare@3.3.0:
     resolution: {integrity: sha512-J7/et3WlGUCxjdnD3HAAzQ6nsnc0WL6DD7WcwJb7c39iH1+AWfg+9OqzJNaI6PkBwBvm1mhZNL9iY/nRiZXlPg==}
@@ -8409,6 +8425,10 @@ packages:
 
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
+
+  write-file-atomic@7.0.1:
+    resolution: {integrity: sha512-OTIk8iR8/aCRWBqvxrzxR0hgxWpnYBblY1S5hDWBQfk/VFmJwzmJgQFN3WsoUKHISv2eAwe+PpbUzyL1CKTLXg==}
+    engines: {node: ^20.17.0 || >=22.9.0}
 
   ws@8.21.0:
     resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
@@ -12473,6 +12493,10 @@ snapshots:
   '@types/verror@1.10.11':
     optional: true
 
+  '@types/write-file-atomic@4.0.3':
+    dependencies:
+      '@types/node': 22.19.19
+
   '@types/yauzl@2.10.3':
     dependencies:
       '@types/node': 22.19.19
@@ -13558,6 +13582,8 @@ snapshots:
       dequal: 2.0.3
 
   didyoumean@1.2.2: {}
+
+  diff@9.0.0: {}
 
   dir-compare@3.3.0:
     dependencies:
@@ -17603,6 +17629,10 @@ snapshots:
       strip-ansi: 7.2.0
 
   wrappy@1.0.2: {}
+
+  write-file-atomic@7.0.1:
+    dependencies:
+      signal-exit: 4.1.0
 
   ws@8.21.0: {}
 

@@ -161,6 +161,44 @@ const fixtureDefinitions: ToolLabFixtureDefinition[] = [
       "tree/ignored/secret.ts": 'export const hidden = "MIRA_NEEDLE";\n',
     },
   }),
+  workspaceFixture({
+    id: "file-mutation",
+    directories: [
+      "recursive-dir",
+      "controlled-dir",
+    ],
+    files: {
+      "overwrite.txt": "before overwrite\n",
+      "multi-edit.txt": [
+        "alpha target",
+        "middle",
+        "omega target",
+        "",
+      ].join("\n"),
+      "tolerant.txt": [
+        "function greet() {",
+        "\tconst message = “hello”;   ",
+        "\treturn message;",
+        "}",
+        "",
+      ].join("\n"),
+      "missing-edit.txt": [
+        "alpha",
+        "beta",
+        "",
+      ].join("\n"),
+      "ambiguous-edit.txt": [
+        "MIRA_DUPLICATE",
+        "middle",
+        "MIRA_DUPLICATE",
+        "",
+      ].join("\n"),
+      "move-source.txt": "move me\n",
+      "delete-file.txt": "delete me\n",
+      "recursive-dir/nested.txt": "nested delete target\n",
+      "controlled-dir/nested.txt": "must survive controlled failure\n",
+    },
+  }),
 ];
 
 const fixtureRegistry = new Map(

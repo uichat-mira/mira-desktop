@@ -251,9 +251,9 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
       },
     };
     const writeFile = {
-      ...createEligibleTool("write_file"),
+      ...createEligibleTool("write"),
       definition: {
-        ...createEligibleTool("write_file").definition,
+        ...createEligibleTool("write").definition,
         domain: "edit" as const,
         capabilities: {
           sideEffect: "local-write" as const,
@@ -272,7 +272,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     });
 
     expect(result.toolExposure.exposedToolIds).toEqual(
-      expect.arrayContaining(["browser_observe", "write_file", "terminal_session"]),
+      expect.arrayContaining(["browser_observe", "write", "terminal_session"]),
     );
   });
 

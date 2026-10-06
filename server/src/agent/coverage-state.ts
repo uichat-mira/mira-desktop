@@ -50,7 +50,15 @@ type TargetProgress = {
   recoverableFailure?: string;
 };
 
-const WORKSPACE_MUTATION_TOOL_IDS = new Set(["workspace_mutation", "edit_file"]);
+const MUTATION_EVIDENCE_TOOL_IDS = new Set([
+  "write",
+  "edit",
+  "move",
+  "delete",
+  // Historical persisted-run ids only. These tools are no longer executable.
+  "workspace_mutation",
+  "edit_file",
+]);
 const WORKSPACE_READ_TOOL_IDS = new Set([
   "read",
   "list",
@@ -164,6 +172,30 @@ const markCompletedSummary = (
       progress.verified = true;
       return;
     }
+    case "file_mutation": {
+      if (summary.data.changed !== true) {
+        return;
+      }
+
+      for (const candidate of [
+        summary.data.targetPath,
+        summary.data.destinationPath,
+      ]) {
+        if (typeof candidate !== "string") {
+          continue;
+        }
+        const target = normalizeTaskTargetPath(candidate);
+        if (!target) {
+          continue;
+        }
+        const progress = ensureTargetProgress(map, target);
+        progress.located = true;
+        progress.mutated = true;
+      }
+      return;
+    }
+    // Historical persisted evidence can still be replayed into coverage,
+    // but these tool ids are no longer executable or registered.
     case "workspace_mutation": {
       if (summary.data.changed !== true || summary.data.dryRun === true) {
         return;
@@ -232,7 +264,7 @@ const markExecutionFailure = (
 
   for (const target of targetCandidates) {
     const progress = ensureTargetProgress(map, target);
-    if (WORKSPACE_MUTATION_TOOL_IDS.has(execution.toolId)) {
+    if (MUTATION_EVIDENCE_TOOL_IDS.has(execution.toolId)) {
       progress.terminalMutationFailure =
         execution.errorMessage ?? `${execution.toolId} failed terminally.`;
       continue;
