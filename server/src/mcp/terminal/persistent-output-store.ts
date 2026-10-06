@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer";
 import fs from "node:fs";
 import fsPromises, { type FileHandle } from "node:fs/promises";
 import os from "node:os";
@@ -18,13 +19,11 @@ type PersistentOutputRecord = {
   filePath: string;
   handlePromise: Promise<FileHandle>;
   writeChain: Promise<void>;
-  acceptedBytes: number;
   pendingBytes: number;
   pausedForBackpressure: boolean;
   completed: boolean;
   exitCode: number | null;
   error: Error | null;
-  createdAt: string;
 };
 
 const records = new Map<string, PersistentOutputRecord>();
@@ -79,15 +78,13 @@ export const createPersistentTerminalOutput = (input: {
     sessionId: input.sessionId,
     command: input.command,
     filePath,
-    handlePromise: fsPromises.open(filePath, "wx"),
+    handlePromise: fsPromises.open(filePath, "wx", 0o600),
     writeChain: Promise.resolve(),
-    acceptedBytes: 0,
     pendingBytes: 0,
     pausedForBackpressure: false,
     completed: false,
     exitCode: null,
     error: null,
-    createdAt: new Date().toISOString(),
   };
   records.set(id, record);
   const ids = sessionRecords.get(input.sessionId) ?? new Set<string>();
@@ -114,7 +111,6 @@ export const appendPersistentTerminalOutput = (
   if (record.completed) return;
 
   const bytes = Buffer.from(text, "utf8");
-  record.acceptedBytes += bytes.byteLength;
   record.pendingBytes += bytes.byteLength;
 
   if (
@@ -153,6 +149,12 @@ export const appendPersistentTerminalOutput = (
 };
 
 const flushRecord = async (record: PersistentOutputRecord) => {
+  try {
+    await record.handlePromise;
+  } catch (error) {
+    record.error =
+      error instanceof Error ? error : new Error(String(error));
+  }
   await record.writeChain;
   assertRecordHealthy(record);
 };
@@ -196,15 +198,29 @@ export const readPersistentTerminalOutput = async (input: {
     );
   }
 
-  const bytesToRead = Math.min(limitBytes, availableBytes - offset);
-  const buffer = Buffer.alloc(bytesToRead);
-  if (bytesToRead > 0) {
+  const requestedBytes = Math.min(limitBytes, availableBytes - offset);
+  const buffer = Buffer.alloc(requestedBytes);
+  if (requestedBytes > 0) {
     const handle = await fsPromises.open(record.filePath, "r");
     try {
-      await handle.read(buffer, 0, bytesToRead, offset);
+      await handle.read(buffer, 0, requestedBytes, offset);
     } finally {
       await handle.close();
     }
+  }
+
+  let bytesToRead = requestedBytes;
+  while (
+    bytesToRead > 0 &&
+    !isUtf8(buffer.subarray(0, bytesToRead)) &&
+    requestedBytes - bytesToRead < 4
+  ) {
+    bytesToRead -= 1;
+  }
+  if (requestedBytes > 0 && bytesToRead === 0) {
+    throw mcpBadRequest(
+      "outputOffset must use a previous nextOutputOffset and outputLimitBytes must fit at least one UTF-8 character",
+    );
   }
 
   const endOffset = offset + bytesToRead;
@@ -213,7 +229,7 @@ export const readPersistentTerminalOutput = async (input: {
     continuationId: record.id,
     sessionId: record.sessionId,
     command: record.command,
-    output: buffer.toString("utf8"),
+    output: buffer.subarray(0, bytesToRead).toString("utf8"),
     outputOffset: offset,
     outputEndOffset: endOffset,
     nextOutputOffset: endOffset,

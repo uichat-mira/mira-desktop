@@ -155,7 +155,8 @@ export const describeTerminalPlan = (
 ) => {
   const harnessEnvironment = assertTerminalEnvironment(environment);
   const attachSessionId = normalizeAttachSessionId(args.attachSessionId);
-  const sessionMode = attachSessionId
+  const continuationId = normalizeContinuationId(args.continuationId);
+  const sessionMode = attachSessionId || continuationId
     ? "persistent"
     : normalizeSessionMode(args.sessionMode);
   const runtimeId = resolveTerminalRuntimeId();
@@ -222,10 +223,29 @@ export const executeTerminalSessionRuntime = async ({
       );
     }
 
+    const observationSpan = trace?.startSpan({
+      name: "Read persistent terminal output",
+      kind: "stream_observation",
+      metadata: {
+        continuationId,
+        outputOffset,
+        outputLimitBytes,
+      },
+    });
     const observed = await observePersistentCommandOutput({
       continuationId,
       outputOffset,
       outputLimitBytes,
+    });
+    observationSpan?.end({
+      metadata: {
+        sessionId: observed.sessionId,
+        outputOffset: observed.outputOffset,
+        outputEndOffset: observed.outputEndOffset,
+        outputBytesAvailable: observed.outputBytesAvailable,
+        commandCompleted: observed.commandCompleted,
+        continuationAvailable: observed.continuationAvailable,
+      },
     });
     const contents: TerminalContents = {
       runtimeId: observed.runtimeId,

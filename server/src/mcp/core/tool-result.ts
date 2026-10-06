@@ -617,6 +617,23 @@ export const projectToolEvidence = (
     const stdoutEncoding = result.stdoutEncoding ?? "unknown";
     const stderrEncoding = result.stderrEncoding ?? "unknown";
     const binaryDetected = result.binaryDetected === true;
+    const continuationId =
+      typeof result.continuationId === "string" ? result.continuationId : undefined;
+    const continuationAvailable = result.continuationAvailable === true;
+    const outputOffset =
+      typeof result.outputOffset === "number" ? result.outputOffset : undefined;
+    const outputEndOffset =
+      typeof result.outputEndOffset === "number" ? result.outputEndOffset : undefined;
+    const nextOutputOffset =
+      typeof result.nextOutputOffset === "number" ? result.nextOutputOffset : undefined;
+    const outputBytesAvailable =
+      typeof result.outputBytesAvailable === "number"
+        ? result.outputBytesAvailable
+        : undefined;
+    const outputLimitBytes =
+      typeof result.outputLimitBytes === "number" ? result.outputLimitBytes : undefined;
+    const commandCompleted =
+      typeof result.commandCompleted === "boolean" ? result.commandCompleted : undefined;
     const unreadableReason = binaryDetected
       ? "Terminal output contains binary data."
       : stdoutEncoding === "unknown" || stderrEncoding === "unknown"
@@ -625,9 +642,15 @@ export const projectToolEvidence = (
           ? "Terminal output contains replacement, mojibake, or placeholder characters."
           : undefined;
     const outputInterpretable = unreadableReason === undefined;
+    const continuationHint =
+      continuationId && continuationAvailable
+        ? ` Continue with terminal using continuationId=${continuationId} and outputOffset=${nextOutputOffset ?? outputEndOffset ?? 0}.`
+        : "";
     const gaps = [
-      ...(timedOut ? ["Command did not finish."] : []),
-      ...(result.truncated === true ? ["Terminal output is truncated."] : []),
+      ...(timedOut ? [`Command did not finish during this observation window.${continuationHint}`] : []),
+      ...(result.truncated === true
+        ? [`Terminal output is paged; more output remains available.${continuationHint}`]
+        : []),
       ...(!outputInterpretable ? ["Terminal output encoding or text is not reliably interpretable."] : []),
     ];
     const status = timedOut
@@ -645,6 +668,11 @@ export const projectToolEvidence = (
         `exitCode=${exitCode === null ? "null" : exitCode}`,
         `timedOut=${timedOut}`,
         `truncated=${result.truncated === true}`,
+        ...(continuationId ? [`continuationId=${continuationId}`] : []),
+        ...(nextOutputOffset === undefined ? [] : [`nextOutputOffset=${nextOutputOffset}`]),
+        ...(outputBytesAvailable === undefined
+          ? []
+          : [`outputBytesAvailable=${outputBytesAvailable}`]),
         ...(stdout ? [`stdout=${stdout}`] : []),
         ...(stderr ? [`stderr=${stderr}`] : []),
       ],
@@ -666,6 +694,14 @@ export const projectToolEvidence = (
         violations: Array.isArray(result.violations) ? result.violations.filter((item): item is string => typeof item === "string") : [],
         outputInterpretable,
         ...(unreadableReason ? { unreadableReason } : {}),
+        ...(continuationId ? { continuationId } : {}),
+        ...(continuationId ? { continuationAvailable } : {}),
+        ...(outputOffset === undefined ? {} : { outputOffset }),
+        ...(outputEndOffset === undefined ? {} : { outputEndOffset }),
+        ...(nextOutputOffset === undefined ? {} : { nextOutputOffset }),
+        ...(outputBytesAvailable === undefined ? {} : { outputBytesAvailable }),
+        ...(outputLimitBytes === undefined ? {} : { outputLimitBytes }),
+        ...(commandCompleted === undefined ? {} : { commandCompleted }),
       },
     });
   }

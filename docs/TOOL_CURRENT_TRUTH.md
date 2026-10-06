@@ -267,6 +267,15 @@ terminal
 - Windows Job Object / taskkill fallback；
 - POSIX process group。
 
+Persistent 输出当前采用有界返回 + continuation：
+
+- 单次结果默认最多返回 8 MiB，最大可请求 64 MiB；
+- 未返回的 persistent 输出不会因为本轮结果截断而丢失，而是写入受 session 生命周期管理的临时 spool；
+- 返回 `continuationId / nextOutputOffset / outputBytesAvailable`，后续调用同一个 `terminal` 且只提供 continuation 参数即可继续读取，不会向 PTY 写入新命令；
+- observation timeout 只结束本轮等待，collector 继续接收该 persistent command 的后续输出；命令完成后 continuation 可以读取最终剩余日志与 exit code；
+- cursor 使用 UTF-8 byte offset，并由 runtime 返回稳定的 `nextOutputOffset`，避免分页切断多字节字符；
+- session 被移除时，对应 spool 会一并清理。
+
 它不是 generic integration container，但也不是已经退役的 command sandbox。
 
 ### Terminal 与 workspace 的真实边界

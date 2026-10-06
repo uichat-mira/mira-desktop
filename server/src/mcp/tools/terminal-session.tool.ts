@@ -43,12 +43,14 @@ const terminalProperties = {
       "Opaque output continuation id returned by a persistent command. Use it without command to read later buffered output without starting another command.",
   },
   outputOffset: {
-    type: "number",
+    type: "integer",
+    minimum: 0,
     description:
       "Byte offset used only with continuationId. Start from nextOutputOffset returned by the previous page.",
   },
   outputLimitBytes: {
-    type: "number",
+    type: "integer",
+    minimum: 1,
     description:
       "Maximum output bytes returned in this Tool result. Persistent output beyond this page remains reachable through continuationId.",
   },

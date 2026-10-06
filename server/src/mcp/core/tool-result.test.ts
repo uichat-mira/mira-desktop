@@ -166,7 +166,15 @@ describe("ToolResult B-prime normalization", () => {
           stderr: "",
           stdoutEncoding: "utf8",
           stderrEncoding: "utf8",
-          truncated: false,
+          truncated: true,
+          continuationId: "continuation-1",
+          continuationAvailable: true,
+          outputOffset: 0,
+          outputEndOffset: 1024,
+          nextOutputOffset: 1024,
+          outputBytesAvailable: 4096,
+          outputLimitBytes: 1024,
+          commandCompleted: false,
         },
       }),
     );
@@ -176,7 +184,18 @@ describe("ToolResult B-prime normalization", () => {
       commandSucceeded: "unknown",
       processCompleted: false,
       timedOut: true,
+      truncated: true,
+      continuationId: "continuation-1",
+      continuationAvailable: true,
+      nextOutputOffset: 1024,
+      outputBytesAvailable: 4096,
+      outputLimitBytes: 1024,
+      commandCompleted: false,
     });
+    expect(evidence?.facts).toContain("continuationId=continuation-1");
+    expect(evidence?.facts).toContain("nextOutputOffset=1024");
+    expect(evidence?.gaps?.join(" ")).toMatch(/continuationId=continuation-1/);
+    expect(evidence?.gaps?.join(" ")).toMatch(/outputOffset=1024/);
 
     const legacyEvidence = projectToolEvidence(
       definition("terminal_session", "internal", "terminal"),

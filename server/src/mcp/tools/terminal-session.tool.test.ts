@@ -7,6 +7,7 @@ import { getHarnessInvocationTrace } from "../../harness/invocations.js";
 import { clearWorkspaceSelection } from "../workspace.js";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
+import { clearAllPersistentTerminalOutputs } from "../terminal/persistent-output-store.js";
 
 const terminalMocks = vi.hoisted(() => ({
   createTerminalSessionMock: vi.fn(),
@@ -48,6 +49,8 @@ type MockSession = {
     onData: (handler: (chunk: string) => void) => { dispose: () => void };
     onExit: (handler: (input: { exitCode: number }) => void) => { dispose: () => void };
     kill: () => void;
+    pause: () => void;
+    resume: () => void;
   };
 };
 
@@ -75,6 +78,8 @@ const createMockSession = (input?: {
         return { dispose() {} };
       },
       kill() {},
+      pause() {},
+      resume() {},
     },
   };
 
@@ -143,7 +148,8 @@ describe("terminal tool", () => {
     terminalMocks.killTerminalProcessTreeMock.mockResolvedValue(undefined);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await clearAllPersistentTerminalOutputs();
     fs.rmSync(workspaceRoot, { recursive: true, force: true });
     delete process.env.UI_CHAT_WORKSPACE_ROOT;
     clearWorkspaceSelection();
@@ -264,6 +270,160 @@ describe("terminal tool", () => {
     expect((result.structuredContent as { streamMode: string }).streamMode).toBe("merged");
     expect((result.structuredContent as { stderrSeparated: boolean }).stderrSeparated).toBe(false);
     expect(terminalMocks.removeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("bounds persistent output and reads the remaining bytes through continuation", async () => {
+    const mock = createMockSession({ id: "session-bounded-output" });
+    terminalMocks.createTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.writeTerminalSessionMock.mockImplementation((_sessionId: string) => {
+      queueMicrotask(() => {
+        const marker = extractMarker();
+        mock.emitData("abcdefghij");
+        mock.emitData(`\n${marker}:0\n`);
+      });
+      return mock.session;
+    });
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const first = await terminalTool.execute({
+      invocationId: "inv-bounded-output",
+      args: {
+        command: "emit ten bytes",
+        sessionMode: "persistent",
+        outputLimitBytes: 5,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    });
+
+    const firstContent = first.structuredContent as {
+      output: string;
+      truncated: boolean;
+      continuationId: string;
+      nextOutputOffset: number;
+      continuationAvailable: boolean;
+      commandCompleted: boolean;
+    };
+    expect(firstContent.output).toBe("abcde");
+    expect(firstContent.truncated).toBe(true);
+    expect(firstContent.nextOutputOffset).toBe(5);
+    expect(firstContent.continuationAvailable).toBe(true);
+    expect(firstContent.commandCompleted).toBe(true);
+
+    terminalMocks.writeTerminalSessionMock.mockClear();
+    const second = await terminalTool.execute({
+      invocationId: "inv-bounded-output-read",
+      args: {
+        continuationId: firstContent.continuationId,
+        outputOffset: firstContent.nextOutputOffset,
+        outputLimitBytes: 16,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "b", ...artifact };
+      },
+    });
+
+    const secondContent = second.structuredContent as {
+      output: string;
+      truncated: boolean;
+      continuationAvailable: boolean;
+      commandCompleted: boolean;
+      outputOffset: number;
+    };
+    expect(secondContent.output).toContain("fghij");
+    expect(secondContent.outputOffset).toBe(5);
+    expect(secondContent.truncated).toBe(false);
+    expect(secondContent.continuationAvailable).toBe(false);
+    expect(secondContent.commandCompleted).toBe(true);
+    expect(terminalMocks.writeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps collecting persistent output after observation timeout", async () => {
+    vi.useFakeTimers();
+    const mock = createMockSession({ id: "session-timeout-continuation" });
+    terminalMocks.createTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.writeTerminalSessionMock.mockImplementation((_sessionId: string) => {
+      queueMicrotask(() => {
+        mock.emitData("first");
+      });
+      return mock.session;
+    });
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const pending = terminalTool.execute({
+      invocationId: "inv-timeout-continuation",
+      args: {
+        command: "long-running",
+        sessionMode: "persistent",
+        timeoutMs: 100,
+        outputLimitBytes: 32,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(120);
+    const first = await pending;
+    const firstContent = first.structuredContent as {
+      output: string;
+      timedOut: boolean;
+      continuationId: string;
+      nextOutputOffset: number;
+      continuationAvailable: boolean;
+      commandCompleted: boolean;
+    };
+    expect(firstContent.output).toBe("first");
+    expect(firstContent.timedOut).toBe(true);
+    expect(firstContent.continuationAvailable).toBe(true);
+    expect(firstContent.commandCompleted).toBe(false);
+
+    const marker = extractMarker();
+    mock.emitData("second");
+    mock.emitData(`\n${marker}:0\n`);
+    await vi.advanceTimersByTimeAsync(0);
+
+    terminalMocks.writeTerminalSessionMock.mockClear();
+    const second = await terminalTool.execute({
+      invocationId: "inv-timeout-continuation-read",
+      args: {
+        continuationId: firstContent.continuationId,
+        outputOffset: firstContent.nextOutputOffset,
+        outputLimitBytes: 32,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "b", ...artifact };
+      },
+    });
+
+    const secondContent = second.structuredContent as {
+      output: string;
+      timedOut: boolean;
+      continuationAvailable: boolean;
+      commandCompleted: boolean;
+      exitCode: number | null;
+    };
+    expect(secondContent.output).toContain("second");
+    expect(secondContent.timedOut).toBe(false);
+    expect(secondContent.continuationAvailable).toBe(false);
+    expect(secondContent.commandCompleted).toBe(true);
+    expect(secondContent.exitCode).toBe(0);
+    expect(terminalMocks.writeTerminalSessionMock).not.toHaveBeenCalled();
   });
 
   it("supports creating a persistent terminal session without auto-removing it", async () => {

@@ -83,7 +83,7 @@ export const observePersistentCommandOutput = async (input: {
   });
   const session = getTerminalSession(page.sessionId);
   if (!session) {
-    throw mcpBadRequest(\`terminal session not found: \${page.sessionId}\`);
+    throw mcpBadRequest(`terminal session not found: ${page.sessionId}`);
   }
   return {
     ...page,
@@ -114,7 +114,7 @@ export const runPersistentCommand = async (input: {
   }
 
   const marker = buildTerminalCompletionMarker(input.invocationId);
-  const markerPattern = new RegExp(\`\${escapeRegex(marker)}:(-?\\\\d+)\`);
+  const markerPattern = new RegExp(`${escapeRegex(marker)}:(-?\\d+)`);
   const wrappedCommand = buildWrappedCommand(
     input.shellProfile,
     input.command,
@@ -124,7 +124,7 @@ export const runPersistentCommand = async (input: {
     sessionId: input.session.id,
     command: input.command,
   });
-  const markerTailLength = marker.length + 32;
+  const markerPrefix = `${marker}:`;
   let pendingBuffer = "";
   let exitCode: number | null = null;
   let timedOut = false;
@@ -167,9 +167,20 @@ export const runPersistentCommand = async (input: {
     settleInvocation?.();
   };
 
+  const longestMarkerPrefixSuffix = (text: string) => {
+    const maxLength = Math.min(text.length, markerPrefix.length);
+    for (let length = maxLength; length > 0; length -= 1) {
+      if (markerPrefix.startsWith(text.slice(-length))) {
+        return length;
+      }
+    }
+    return 0;
+  };
+
   dataDisposable = input.session.process.onData((chunk) => {
     if (commandCompleted) return;
     pendingBuffer += chunk;
+
     const markerMatch = markerPattern.exec(pendingBuffer);
     if (markerMatch) {
       appendVisible(pendingBuffer.slice(0, markerMatch.index));
@@ -178,7 +189,15 @@ export const runPersistentCommand = async (input: {
       return;
     }
 
-    const flushLength = Math.max(0, pendingBuffer.length - markerTailLength);
+    const markerStart = pendingBuffer.indexOf(markerPrefix);
+    if (markerStart >= 0) {
+      appendVisible(pendingBuffer.slice(0, markerStart));
+      pendingBuffer = pendingBuffer.slice(markerStart);
+      return;
+    }
+
+    const retainedLength = longestMarkerPrefixSuffix(pendingBuffer);
+    const flushLength = pendingBuffer.length - retainedLength;
     if (flushLength > 0) {
       appendVisible(pendingBuffer.slice(0, flushLength));
       pendingBuffer = pendingBuffer.slice(flushLength);
@@ -214,7 +233,7 @@ export const runPersistentCommand = async (input: {
       settleInvocation = null;
       input.pushEvent?.({
         type: "invocation:progress",
-        message: \`Terminal command is still running after \${input.timeoutMs}ms; persistent session \${input.session.id} remains attached to the host process.\`,
+        message: `Terminal command is still running after ${input.timeoutMs}ms; persistent session ${input.session.id} remains attached to the host process.`,
       });
       input.signal.removeEventListener("abort", onAbort);
       resolve();
@@ -255,7 +274,7 @@ export const runPersistentCommand = async (input: {
       : []),
     ...(page.truncated
       ? [
-          \`terminal output page truncated at \${page.outputLimitBytes} bytes; remaining output is available through continuation \${page.continuationId}\`,
+          `terminal output page truncated at ${page.outputLimitBytes} bytes; remaining output is available through continuation ${page.continuationId}`,
         ]
       : []),
   ];

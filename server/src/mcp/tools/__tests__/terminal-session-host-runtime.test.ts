@@ -47,6 +47,17 @@ describe("terminal host runtime metadata", () => {
       ]);
       expect(properties.attachSessionId?.description).toMatch(/existing/i);
       expect(properties.env?.description).toMatch(/host environment/i);
+      expect(properties.continuationId?.description).toMatch(/without starting another command/i);
+      expect(properties.outputOffset?.description).toMatch(/nextOutputOffset/i);
+      expect(properties.outputLimitBytes?.description).toMatch(/remains reachable/i);
     }
+
+    const schema = terminalTool.definition.inputSchema as {
+      anyOf?: Array<{ required?: string[] }>;
+    };
+    expect(schema.anyOf).toEqual([
+      { required: ["command"] },
+      { required: ["continuationId"] },
+    ]);
   });
 });
