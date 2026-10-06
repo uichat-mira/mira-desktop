@@ -545,8 +545,15 @@ describe("web search tool", () => {
         }),
       } as Response);
 
+    const artifacts: Array<Record<string, unknown>> = [];
     const result = await webSearchTool.execute(
-      createContext({ args: { queries: ["fallback search"] } }),
+      createContext({
+        args: { queries: ["fallback search"] },
+        addArtifact(artifact) {
+          artifacts.push(artifact as Record<string, unknown>);
+          return { id: "artifact-fallback", ...artifact };
+        },
+      }),
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -555,8 +562,13 @@ describe("web search tool", () => {
       "http://localhost:8080/search?",
     );
     expect(result.structuredContent).toMatchObject({
-      provider: "searxng",
       queries: ["fallback search"],
+    });
+    expect(result.structuredContent).not.toHaveProperty("provider");
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.metadata).toMatchObject({
+      provider: "searxng",
+      capabilityId: "searxng-search",
     });
   });
 
