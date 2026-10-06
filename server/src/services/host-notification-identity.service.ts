@@ -10,6 +10,7 @@ import {
   hostNotificationRepository,
   type HostNotificationBindingRecord,
 } from "@/db/repositories/host-notification.repository.js";
+import { getConfiguredPushBrokerBaseUrl } from "@/services/host-notification-config.js";
 
 const BINDING_DESCRIPTOR_TTL_MS = 5 * 60 * 1000;
 
@@ -148,7 +149,6 @@ export const hostNotificationIdentityService = {
   acceptApprovedBinding(input: {
     bindingNonce: string;
     installationId: string;
-    brokerBaseUrl: string;
     deliveryToken: string;
     sourceScope: string[];
     now?: string;
@@ -156,7 +156,7 @@ export const hostNotificationIdentityService = {
     return hostNotificationRepository.acceptBindingCapability({
       nonce: input.bindingNonce,
       installationId: input.installationId,
-      brokerBaseUrl: input.brokerBaseUrl,
+      brokerBaseUrl: getConfiguredPushBrokerBaseUrl(),
       deliveryToken: input.deliveryToken,
       sourceScope: input.sourceScope,
       now: input.now,
