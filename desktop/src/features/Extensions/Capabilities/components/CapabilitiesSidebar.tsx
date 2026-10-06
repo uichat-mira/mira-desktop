@@ -67,7 +67,7 @@ const fallbackNativeGroups: Record<
   web_search: {
     id: "web",
     label: "Web",
-    description: "Search and fetch web content.",
+    description: "Access public web information.",
     icon: "globe",
     order: 40,
   },
@@ -78,8 +78,8 @@ const nativeGroupTranslationKeys: Record<string, string> = {
   mutation: "mutation",
   edit: "mutation",
   terminal: "terminal",
-  web: "webSearch",
-  web_search: "webSearch",
+  web: "web",
+  web_search: "web",
 };
 
 type CapabilityGroupTranslator = (key: string) => string;

@@ -2383,9 +2383,9 @@ const settingsPending = {
             label: "终端",
             description: "执行受控的终端操作。",
           },
-          webSearch: {
-            label: "网络搜索",
-            description: "搜索并获取网络内容。",
+          web: {
+            label: "网络",
+            description: "访问公开 Web 信息。",
           },
         },
         detailTabs: {

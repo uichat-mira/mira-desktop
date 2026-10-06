@@ -2424,9 +2424,9 @@ const settingsPending = {
             label: "Terminal",
             description: "Run governed terminal operations.",
           },
-          webSearch: {
-            label: "Web Search",
-            description: "Search and fetch web content.",
+          web: {
+            label: "Web",
+            description: "Access public web information.",
           },
         },
         detailTabs: {
