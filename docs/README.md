@@ -120,6 +120,7 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[microapp/README]]：MicroApps Hub、Integration binding、Studio 与领域 Runtime 入口；
 - [[chat/README]]：Chat 与 Agent UI 入口；
 - [[remote-access/push-broker-v1]]：Push Broker V1 独立服务、身份授权、event ingest 与 Relay 边界；
+- [[remote-access/host-notification-outbox-v1]]：Host canonical notification eligibility、durable outbox、binding 与 Broker delivery；
 - [[platform/tauri]]：Tauri 平台路径；
 - [[platform/macos-implementation-phases]]：macOS 支持缺口、改造进度与验收门槛（Proposed，不代表当前已支持）；
 - [[platform/macos-electron-build-exploration]]：macOS Electron 构建独立探索（Intel 优先，research，不代表当前已支持）；
