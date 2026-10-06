@@ -44,10 +44,12 @@ If outbox evaluation/insertion fails, the canonical Assistant mutation rolls bac
 
 Branch-tail database deletion, canonical mutation, outbox enqueue, and any required
 filesystem/media cleanup journal entry are committed in the same SQLite transaction.
-Filesystem/media deletion itself runs from the durable
-`canonical_message_cleanup_jobs` journal after commit. A cleanup failure records
-`attempt_count`, `next_attempt_at`, and `last_error` and is retried by the
-Server lifecycle worker instead of creating an unowned partial-success state.
+This is the authoritative atomic boundary. Filesystem/media deletion cannot share a
+SQLite rollback boundary and is therefore an explicit durable eventual side effect,
+not claimed as atomic. It runs from `canonical_message_cleanup_jobs` after commit.
+Failures record `attempt_count`, `next_attempt_at`, and `last_error`; exhausted
+jobs remain durably in `failed` state and are surfaced in Server error logs on
+failure and again at startup until operators resolve the backlog.
 
 Outbox rows contain identities/status only; Assistant text, prompt and tool output
 are not columns in the table or fields in the Broker event.
@@ -56,6 +58,11 @@ are not columns in the table or fields in the Broker event.
 
 - Host owns one stable Ed25519 identity (`hostId` + keypair).
 - Private key is encrypted with the existing Host secret-encryption boundary.
+- Public identity records never expose the decrypted private key. Signing decrypts
+  the key only inside one repository-owned one-shot signer, creates the Node key
+  object, signs, and releases the plaintext reference immediately afterward. This
+  is an at-rest + bounded-plaintext software boundary, not an HSM/secure-enclave
+  claim and not guaranteed memory zeroization.
 - A paired Mobile requests a one-time binding descriptor over the authenticated
   Remote Host channel.
 - Descriptor covers `hostId`, `hostPublicKey`, target `installationId`,
@@ -66,6 +73,13 @@ are not columns in the table or fields in the Broker event.
   is Host-controlled via `MIRA_PUSH_BROKER_URL`, preventing a paired device from
   turning the delivery worker into an arbitrary network client.
 - Binding nonce is persisted, one-time and TTL-bound.
+- Every binding request and active binding records the originating paired-device id
+  and owner user. A device may have only one outstanding descriptor and one active
+  installation binding; rebind revokes its previous installation binding.
+- Revoking the paired device revokes all Push bindings originating from that device
+  in the same Host lifecycle transaction.
+- Source scopes are normalized into an indexed relation table; canonical writes do
+  not scan every active binding.
 
 Remote bootstrap routes:
 
@@ -80,9 +94,16 @@ Threads owned by the paired device's owner user.
 The Host worker starts with Mira Server and drains pending durable outbox rows.
 
 - Broker event uses #267 identity-only event shape and stable outbox `id` as eventId.
-- Before each Broker POST, Host re-reads the canonical message and owning thread.
-  Missing/deleted/non-final canonical state, or an archived thread, expires the
-  outbox row without network delivery.
+- Before each Broker POST, Host re-reads the canonical message and owning thread,
+  verifies the owning user still matches the binding, and verifies the originating
+  paired device is still active. Missing/deleted/non-final canonical state,
+  archived/reassigned threads, revoked devices, or stale source authority expire
+  the outbox row without network delivery.
+- `canonical_message_id` is deliberately not an FK to `messages`: deleting a
+  canonical message cannot silently erase durable outbox history; the worker marks
+  that retained row expired explicitly.
+- The Broker URL is resolved from the current `MIRA_PUSH_BROKER_URL` for every
+  delivery attempt. The stored binding URL is not network authority.
 - Host signs every event with its Ed25519 private key.
 - 2xx => delivered.
 - authorization/contract 4xx => final failure.
