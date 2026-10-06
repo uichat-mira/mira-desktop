@@ -49,6 +49,8 @@ jobs:
           npm install --no-save --no-audit --no-fund \
             guarded-fetch@0.1.5 \
             undici@7.30.0 \
+            node-fetch@3.3.2 \
+            socks-proxy-agent@10.1.0 \
             @pondwader/socks5-server@1.0.10
           node web-fetch-transport.mjs
 
