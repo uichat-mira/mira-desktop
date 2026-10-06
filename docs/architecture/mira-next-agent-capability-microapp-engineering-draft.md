@@ -1,7 +1,7 @@
 ---
 status: planned
 owner: architecture / agent-runtime / harness / microapp
-last_verified: 2026-10-03
+last_verified: 2026-10-07
 layer: design
 module: MiraNext
 feature: AgentCapabilityMicroApp
