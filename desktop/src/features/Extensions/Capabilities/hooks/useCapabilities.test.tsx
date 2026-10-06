@@ -707,6 +707,7 @@ describe("useCapabilities", () => {
       nextOutputOffset: 12,
       outputLimitBytes: 4096,
     });
+    expect(result.current.terminalSessionId).toBe("session-1");
 
     await act(async () => {
       await result.current.runTerminalContinuation();
@@ -732,6 +733,7 @@ describe("useCapabilities", () => {
       nextOutputOffset: 24,
     });
 
+    getMcpInvocationMock.mockRejectedValueOnce(new Error("status read failed"));
     await act(async () => {
       await result.current.runTerminalStatus();
     });
@@ -750,6 +752,9 @@ describe("useCapabilities", () => {
       executeMcpInvocationStreamMock.mock.calls.at(-1)?.[0]?.args,
     ).not.toHaveProperty("command");
     expect(result.current.terminalContinuation?.nextOutputOffset).toBe(24);
+    expect(result.current.terminalSessionId).toBe("session-1");
+    expect(result.current.terminalSummary).toBeNull();
+    expect(result.current.runState.transportError).toContain("status read failed");
 
     await act(async () => {
       await result.current.runTerminalStop();
@@ -774,5 +779,6 @@ describe("useCapabilities", () => {
       cleanupCompleted: true,
     });
     expect(result.current.terminalContinuation).toBeNull();
+    expect(result.current.terminalSessionId).toBeNull();
   });
 });
