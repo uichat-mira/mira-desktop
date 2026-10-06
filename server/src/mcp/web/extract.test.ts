@@ -58,7 +58,7 @@ describe("web content extraction", () => {
 
     expect(result.kind).toBe("html");
     if (result.kind !== "html") throw new Error("expected html result");
-    expect(result.content).toContain("Normal article");
+    expect(result.content).toContain("Mira now retrieves a known public URL");
   });
 
   it("decodes non-UTF-8 HTML declared in the Content-Type charset", () => {
