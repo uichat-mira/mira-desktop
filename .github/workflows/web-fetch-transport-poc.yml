@@ -12,10 +12,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: web-fetch-transport-poc-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   transport-poc:
     name: Transport POC (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
     strategy:
       fail-fast: false
       matrix:
