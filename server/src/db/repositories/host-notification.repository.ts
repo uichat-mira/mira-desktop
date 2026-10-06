@@ -8,6 +8,23 @@ import {
   type NotificationCanonicalMessage,
 } from "@/services/notification-eligibility.js";
 
+export type HostNotificationIdentityRecord = {
+  hostId: string;
+  publicKey: string;
+  privateKeyPem: string;
+  createdAt: string;
+  rotatedAt: string | null;
+};
+
+export type HostNotificationBindingRequestRecord = {
+  nonce: string;
+  installationId: string;
+  sourceScope: string[];
+  expiresAt: string;
+  consumedAt: string | null;
+  createdAt: string;
+};
+
 export type HostNotificationBindingRecord = {
   installationId: string;
   brokerBaseUrl: string;
@@ -37,6 +54,23 @@ export type NotificationOutboxRecord = {
   lastError: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type IdentityRow = {
+  host_id: string;
+  public_key: string;
+  private_key_encrypted: string;
+  created_at: string;
+  rotated_at: string | null;
+};
+
+type BindingRequestRow = {
+  nonce: string;
+  installation_id: string;
+  source_scope_json: string;
+  expires_at: string;
+  consumed_at: string | null;
+  created_at: string;
 };
 
 type BindingRow = {
@@ -84,6 +118,27 @@ const parseSourceScope = (value: string) => {
   return normalizeSourceScope(parsed);
 };
 
+const toIdentityRecord = (
+  row: IdentityRow,
+): HostNotificationIdentityRecord => ({
+  hostId: row.host_id,
+  publicKey: row.public_key,
+  privateKeyPem: decryptSecret(row.private_key_encrypted),
+  createdAt: row.created_at,
+  rotatedAt: row.rotated_at,
+});
+
+const toBindingRequestRecord = (
+  row: BindingRequestRow,
+): HostNotificationBindingRequestRecord => ({
+  nonce: row.nonce,
+  installationId: row.installation_id,
+  sourceScope: parseSourceScope(row.source_scope_json),
+  expiresAt: row.expires_at,
+  consumedAt: row.consumed_at,
+  createdAt: row.created_at,
+});
+
 const toBindingRecord = (row: BindingRow): HostNotificationBindingRecord => ({
   installationId: row.installation_id,
   brokerBaseUrl: row.broker_base_url,
@@ -110,6 +165,139 @@ const toOutboxRecord = (row: OutboxRow): NotificationOutboxRecord => ({
 });
 
 export const hostNotificationRepository = {
+  getIdentity(): HostNotificationIdentityRecord | null {
+    const row = getSqlite()
+      .prepare(
+        `SELECT host_id, public_key, private_key_encrypted, created_at, rotated_at
+         FROM host_notification_identity
+         WHERE id = 1`,
+      )
+      .get() as IdentityRow | undefined;
+    return row ? toIdentityRecord(row) : null;
+  },
+
+  createIdentity(input: {
+    hostId: string;
+    publicKey: string;
+    privateKeyPem: string;
+    now?: string;
+  }): HostNotificationIdentityRecord {
+    const now = input.now ?? new Date().toISOString();
+    const privateKeyEncrypted = encryptSecret(input.privateKeyPem);
+    if (!privateKeyEncrypted) {
+      throw new Error("Failed to protect Host notification private key");
+    }
+
+    getSqlite()
+      .prepare(
+        `INSERT INTO host_notification_identity (
+          id, host_id, public_key, private_key_encrypted, created_at, rotated_at
+        ) VALUES (1, ?, ?, ?, ?, NULL)`,
+      )
+      .run(
+        input.hostId,
+        input.publicKey,
+        privateKeyEncrypted,
+        now,
+      );
+
+    const identity = this.getIdentity();
+    if (!identity) throw new Error("Failed to persist Host notification identity");
+    return identity;
+  },
+
+  createBindingRequest(input: {
+    nonce: string;
+    installationId: string;
+    sourceScope: string[];
+    expiresAt: string;
+    now?: string;
+  }): HostNotificationBindingRequestRecord {
+    const sourceScope = normalizeSourceScope(input.sourceScope);
+    if (!input.nonce.trim() || !input.installationId.trim() || sourceScope.length === 0) {
+      throw new Error("Notification binding request is incomplete");
+    }
+    const now = input.now ?? new Date().toISOString();
+    getSqlite()
+      .prepare(
+        `INSERT INTO host_notification_binding_requests (
+          nonce, installation_id, source_scope_json,
+          expires_at, consumed_at, created_at
+        ) VALUES (?, ?, ?, ?, NULL, ?)`,
+      )
+      .run(
+        input.nonce.trim(),
+        input.installationId.trim(),
+        JSON.stringify(sourceScope),
+        input.expiresAt,
+        now,
+      );
+    const record = this.getBindingRequest(input.nonce);
+    if (!record) throw new Error("Failed to persist notification binding request");
+    return record;
+  },
+
+  getBindingRequest(
+    nonce: string,
+  ): HostNotificationBindingRequestRecord | null {
+    const row = getSqlite()
+      .prepare(
+        `SELECT nonce, installation_id, source_scope_json,
+                expires_at, consumed_at, created_at
+         FROM host_notification_binding_requests
+         WHERE nonce = ?`,
+      )
+      .get(nonce) as BindingRequestRow | undefined;
+    return row ? toBindingRequestRecord(row) : null;
+  },
+
+  acceptBindingCapability(input: {
+    nonce: string;
+    installationId: string;
+    brokerBaseUrl: string;
+    deliveryToken: string;
+    sourceScope: string[];
+    now?: string;
+  }): HostNotificationBindingRecord {
+    const now = input.now ?? new Date().toISOString();
+    const normalizedScope = normalizeSourceScope(input.sourceScope);
+
+    return getSqlite().transaction(() => {
+      const request = this.getBindingRequest(input.nonce);
+      if (!request) {
+        throw new Error("Notification binding request was not found");
+      }
+      if (request.consumedAt) {
+        throw new Error("Notification binding request was already consumed");
+      }
+      if (Date.parse(request.expiresAt) <= Date.parse(now)) {
+        throw new Error("Notification binding request has expired");
+      }
+      if (request.installationId !== input.installationId.trim()) {
+        throw new Error("Notification binding installation does not match request");
+      }
+      if (JSON.stringify(request.sourceScope) !== JSON.stringify(normalizedScope)) {
+        throw new Error("Notification binding source scope does not match request");
+      }
+
+      const binding = this.upsertBinding({
+        installationId: input.installationId,
+        brokerBaseUrl: input.brokerBaseUrl,
+        deliveryToken: input.deliveryToken,
+        sourceScope: normalizedScope,
+        now,
+      });
+      getSqlite()
+        .prepare(
+          `UPDATE host_notification_binding_requests
+           SET consumed_at = ?
+           WHERE nonce = ? AND consumed_at IS NULL`,
+        )
+        .run(now, input.nonce);
+      return binding;
+    })();
+  },
+
   upsertBinding(input: {
     installationId: string;
     brokerBaseUrl: string;
