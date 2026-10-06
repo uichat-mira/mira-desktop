@@ -1365,6 +1365,37 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
 
+export const canonicalMessageCleanupJobs = sqliteTable(
+  "canonical_message_cleanup_jobs",
+  {
+    id: text("id").primaryKey(),
+    payloadJson: text("payload_json").notNull(),
+    state: text("state", { enum: ["pending", "failed"] as const })
+      .notNull()
+      .default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    lastError: text("last_error"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    deliveryIdx: index("idx_canonical_message_cleanup_delivery").on(
+      table.state,
+      table.nextAttemptAt,
+    ),
+  }),
+);
+
+export type CanonicalMessageCleanupJobRow =
+  typeof canonicalMessageCleanupJobs.$inferSelect;
+export type NewCanonicalMessageCleanupJobRow =
+  typeof canonicalMessageCleanupJobs.$inferInsert;
+
 export const hostNotificationIdentity = sqliteTable(
   "host_notification_identity",
   {
