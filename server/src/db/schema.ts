@@ -1365,6 +1365,86 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
 
+export const hostNotificationBindings = sqliteTable(
+  "host_notification_bindings",
+  {
+    installationId: text("installation_id").primaryKey(),
+    brokerBaseUrl: text("broker_base_url").notNull(),
+    deliveryTokenEncrypted: text("delivery_token_encrypted").notNull(),
+    sourceScopeJson: text("source_scope_json").notNull(),
+    status: text("status", { enum: ["active", "revoked"] as const })
+      .notNull()
+      .default("active"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    statusIdx: index("idx_host_notification_bindings_status").on(table.status),
+  }),
+);
+
+export type HostNotificationBinding =
+  typeof hostNotificationBindings.$inferSelect;
+export type NewHostNotificationBinding =
+  typeof hostNotificationBindings.$inferInsert;
+
+export const notificationOutbox = sqliteTable(
+  "notification_outbox",
+  {
+    id: text("id").primaryKey(),
+    installationId: text("installation_id")
+      .notNull()
+      .references(() => hostNotificationBindings.installationId, {
+        onDelete: "cascade",
+      }),
+    canonicalMessageId: text("canonical_message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    sourceId: text("source_id").notNull(),
+    eligibilityEvent: text("eligibility_event", {
+      enum: ["final_transition_first_seen"] as const,
+    })
+      .notNull()
+      .default("final_transition_first_seen"),
+    state: text("state", {
+      enum: ["pending", "delivered", "failed", "expired"] as const,
+    })
+      .notNull()
+      .default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    lastError: text("last_error"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    deliveryIdx: index("idx_notification_outbox_delivery").on(
+      table.state,
+      table.nextAttemptAt,
+    ),
+    sourceIdx: index("idx_notification_outbox_source").on(table.sourceId),
+    messageInstallationUnique: uniqueIndex(
+      "idx_notification_outbox_message_installation_unique",
+    ).on(
+      table.installationId,
+      table.canonicalMessageId,
+      table.eligibilityEvent,
+    ),
+  }),
+);
+
+export type NotificationOutboxRow = typeof notificationOutbox.$inferSelect;
+export type NewNotificationOutboxRow = typeof notificationOutbox.$inferInsert;
+
 export type ModelType =
   | "llm"
   | "embedding"
