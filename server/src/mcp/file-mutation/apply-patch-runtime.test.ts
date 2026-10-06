@@ -59,6 +59,24 @@ describe("apply_patch File Mutation Runtime", () => {
     expect(fs.existsSync(path.join(tempRoot, "remove.txt"))).toBe(false);
   });
 
+  it("updates an empty file with an insertion-only chunk", async () => {
+    fs.writeFileSync(path.join(tempRoot, "empty.txt"), "", "utf8");
+
+    const result = await executeApplyPatchMutation(
+      parseApplyPatch(`*** Begin Patch
+*** Update File: empty.txt
+@@
++first
++second
+*** End Patch`),
+    );
+
+    expect(result.status).toBe("completed");
+    expect(fs.readFileSync(path.join(tempRoot, "empty.txt"), "utf8")).toBe(
+      "first\nsecond\n",
+    );
+  });
+
   it("prevalidates the whole patch before the first mutation", async () => {
     const parsed = parseApplyPatch(`*** Begin Patch
 *** Add File: first.txt

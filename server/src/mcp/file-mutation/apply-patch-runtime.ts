@@ -109,7 +109,10 @@ const lineMatches = (actual: string, expected: string) =>
 const splitNormalizedLines = (text: string) => {
   const normalized = text.replace(/\r\n|\r/g, "\n");
   const hasTrailingNewline = normalized.endsWith("\n");
-  const lines = normalized.split("\n");
+  const lines =
+    normalized.length === 0
+      ? []
+      : normalized.split("\n");
   if (hasTrailingNewline) lines.pop();
   return { normalized, lines, hasTrailingNewline };
 };
