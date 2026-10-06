@@ -68,6 +68,21 @@ const closeServer = (server) =>
     server.close(() => resolve());
   });
 
+const getFreePort = async () => {
+  const probe = net.createServer();
+  const port = await listen(probe);
+  await closeServer(probe);
+  return port;
+};
+
+const listenSocks = async (server) => {
+  const port = await getFreePort();
+  await new Promise((resolve) => {
+    server.listen({ port, host: "127.0.0.1" }, resolve);
+  });
+  return port;
+};
+
 await run("direct public HTTPS fetch", async () => {
   const response = await guardedFetch("https://example.com/", {
     timeoutMs: 15_000,
@@ -230,7 +245,7 @@ await run("SOCKS custom dispatcher compatibility and pinning gap", async () => {
     });
     connection.socket.on("close", () => upstream.destroy());
   });
-  const socksPort = await listen(socksServer);
+  const socksPort = await listenSocks(socksServer);
 
   const dispatcher = new ProxyAgent("socks5://127.0.0.1:" + socksPort);
 
@@ -283,6 +298,6 @@ await writeFile(
 console.log("\nPOC SUMMARY");
 console.log(JSON.stringify(summary, null, 2));
 
-if (failures > 0) {
-  process.exitCode = 1;
-}
+const sharedDispatcher = getSharedGuardedDispatcher();
+await sharedDispatcher.close();
+process.exit(failures > 0 ? 1 : 0);
