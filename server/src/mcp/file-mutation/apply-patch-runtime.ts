@@ -483,16 +483,6 @@ const validateAndPrepare = (
       filesystem,
     ).text;
     const derived = deriveUpdate(sourceText, item.hunk.chunks);
-    if (
-      derived.edits.length === 0 &&
-      derived.emptyFileReplacement === undefined &&
-      !item.hunk.movePath
-    ) {
-      throw mcpBadRequest(
-        `apply_patch Update File makes no change: ${item.hunk.path}`,
-      );
-    }
-
     return {
       hunk: item.hunk,
       hunkIndex: item.hunkIndex,
