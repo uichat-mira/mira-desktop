@@ -352,8 +352,9 @@ export const nativeCapabilityAcceptanceCases: CapabilityAcceptanceCase[] = [
     id: "terminal-short-failure",
     toolId: "terminal",
     title: "短命令失败",
-    purpose: "确认 canonical terminal 保留失败退出码，不把失败包装成成功。",
-    expectedObservation: "Awaiting Approval；批准后 Failed，并可检查 exit code 7。",
+    purpose: "确认 canonical terminal 区分调用完成与命令失败，保留非零退出码。",
+    expectedObservation:
+      "Awaiting Approval；批准后 Invocation=Completed，但命令证据明确 exitCode=7、processCompleted=true、commandSucceeded=false。",
     args: {
       command: "node -e \"process.exit(7)\"",
     },
