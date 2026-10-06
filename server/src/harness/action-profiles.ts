@@ -67,28 +67,6 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
     }),
   },
   {
-    id: "edit_overwrite_file",
-    title: "Edit Overwrite File",
-    description: "Overwrite an existing workspace file through managed editing.",
-    domain: "edit",
-    tags: ["workspace", "edit", "overwrite", "file", "write"],
-    runtimeToolId: "write",
-    inputSchema: {
-      type: "object",
-      required: ["path", "content"],
-      additionalProperties: false,
-      properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-      },
-    },
-    mapArgs: (args) => ({
-      path: args.path,
-      content: args.content,
-      overwrite: true,
-    }),
-  },
-  {
     id: "edit_replace_block",
     title: "Edit Replace Block",
     description: "Replace a uniquely matched block inside a workspace file.",
