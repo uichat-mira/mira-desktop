@@ -80,7 +80,9 @@ const readSourceId = (value: unknown) =>
 const readTimestamp = (value: unknown) => {
   if (typeof value !== "string") return null;
   const time = Date.parse(value);
-  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+  if (!Number.isFinite(time)) return null;
+  const canonical = new Date(time).toISOString();
+  return value === canonical ? value : null;
 };
 
 const readBase64Url = (value: unknown, maxLength = 4096) =>
