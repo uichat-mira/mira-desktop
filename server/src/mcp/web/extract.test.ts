@@ -47,6 +47,20 @@ describe("web content extraction", () => {
     expect(result.content).not.toContain("Copyright 2026");
   });
 
+  it("does not treat a Cloudflare CDN script URL as an anti-bot challenge", () => {
+    const html = `<!doctype html><html><head><title>Normal article</title><script src="https://cdnjs.cloudflare.com/ajax/libs/example/1.0.0/example.min.js"></script></head><body><article><h1>Normal article</h1><p>${LONG_PARAGRAPH.repeat(3)}</p></article></body></html>`;
+
+    const result = extractWebContent({
+      finalUrl: "https://example.com/article",
+      contentType: "text/html; charset=utf-8",
+      body: utf8(html),
+    });
+
+    expect(result.kind).toBe("html");
+    if (result.kind !== "html") throw new Error("expected html result");
+    expect(result.content).toContain("Normal article");
+  });
+
   it("decodes non-UTF-8 HTML declared in the Content-Type charset", () => {
     const chinese =
       "这是一段用于验证 GBK 解码是否正确的中文正文内容，包含足够长度以便被识别为主正文。".repeat(

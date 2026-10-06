@@ -87,8 +87,8 @@ describe("web_search acceptance", () => {
             { title: "Beta", url: "https://example.com/b", content: "b" },
           ]
         : [
-            { title: "Alpha duplicate", url: "https://example.com/a#section", content: "dup" },
             { title: "Gamma", url: "https://example.com/c", content: "c" },
+            { title: "Alpha duplicate", url: "https://example.com/a#section", content: "dup" },
           ];
       return { ok: true, json: async () => ({ results }) } as Response;
     });
@@ -104,8 +104,8 @@ describe("web_search acceptance", () => {
     expect(structured.queries).toEqual(["alpha", "beta"]);
     expect((structured.results as Array<{ link: string }>).map((item) => item.link)).toEqual([
       "https://example.com/a/",
-      "https://example.com/b",
       "https://example.com/c",
+      "https://example.com/b",
     ]);
   });
 

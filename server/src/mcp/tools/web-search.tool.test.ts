@@ -257,8 +257,8 @@ describe("web search tool", () => {
                   { title: "Alpha Two", url: "https://example.com/b", content: "two" },
                 ]
               : [
+                  { title: "Beta One", url: "https://example.com/c", content: "three" },
                   { title: "Beta Duplicate", url: "https://example.com/a#section", content: "dup" },
-                  { title: "Beta Unique", url: "https://example.com/c", content: "three" },
                 ],
         }),
       } as Response;
@@ -270,8 +270,8 @@ describe("web search tool", () => {
 
     expect(result.structuredContent.results).toEqual([
       { title: "Alpha One", link: "https://Example.com/a/", snippet: "one" },
+      { title: "Beta One", link: "https://example.com/c", snippet: "three" },
       { title: "Alpha Two", link: "https://example.com/b", snippet: "two" },
-      { title: "Beta Unique", link: "https://example.com/c", snippet: "three" },
     ]);
   });
 

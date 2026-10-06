@@ -28,7 +28,7 @@ const BINARY_SNIFF_SAMPLE_BYTES = 1_024;
 const JS_REQUIRED_PATTERN =
   /enable\s+javascript|javascript\s+is\s+(required|disabled|not\s+enabled)|requires?\s+javascript|please\s+enable\s+js|need\s+to\s+enable\s+javascript/i;
 const CHALLENGE_PATTERN =
-  /captcha|recaptcha|hcaptcha|cf[-_]?challenge|checking\s+your\s+browser|just\s+a\s+moment|attention\s+required|cloudflare|verify\s+you\s+are\s+human/i;
+  /captcha|recaptcha|hcaptcha|cf[-_]?challenge|checking\s+your\s+browser|just\s+a\s+moment|attention\s+required|verify\s+you\s+are\s+human/i;
 const LOGIN_PATTERN =
   /(sign|log)\s*in\s+to\s+continue|login\s+required|please\s+(sign|log)\s*in|authentication\s+required|access\s+denied|unauthorized/i;
 const DOCUMENT_MIME_PATTERN =
@@ -148,8 +148,8 @@ const looksLikeHtml = (body: Buffer) => {
 const hasNulByte = (body: Buffer) =>
   body.subarray(0, BINARY_SNIFF_SAMPLE_BYTES).includes(0);
 
-const detectExplicitBrowserOnlyEvidence = (html: string): string | undefined => {
-  const sample = html.slice(0, 200_000);
+const detectExplicitBrowserOnlyEvidence = (text: string): string | undefined => {
+  const sample = text.slice(0, 200_000);
   if (JS_REQUIRED_PATTERN.test(sample)) {
     return "The page requires JavaScript to render its content.";
   }
@@ -179,11 +179,6 @@ const extractHtml = (input: {
     return { kind: "unsupported", reason: "The response body was empty." };
   }
 
-  const explicitEvidence = detectExplicitBrowserOnlyEvidence(html);
-  if (explicitEvidence) {
-    return { kind: "browser_required", reason: explicitEvidence };
-  }
-
   let document: Document;
   let scriptCount: number;
   let article: { title: string; content: string; textContent: string } | null;
@@ -193,6 +188,27 @@ const extractHtml = (input: {
     });
     document = dom.window.document;
     scriptCount = document.querySelectorAll("script").length;
+
+    const noscriptText = Array.from(document.querySelectorAll("noscript"))
+      .map((node) => node.textContent ?? "")
+      .join(" ");
+    const visibleBody = document.body?.cloneNode(true) as HTMLElement | undefined;
+    visibleBody
+      ?.querySelectorAll("script, style, noscript")
+      .forEach((node) => node.remove());
+    const visibleText = [
+      document.title,
+      visibleBody?.textContent ?? "",
+      noscriptText,
+    ]
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const explicitEvidence = detectExplicitBrowserOnlyEvidence(visibleText);
+    if (explicitEvidence) {
+      return { kind: "browser_required", reason: explicitEvidence };
+    }
+
     const parsed = new Readability(document).parse();
     article = parsed
       ? {

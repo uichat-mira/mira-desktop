@@ -348,8 +348,14 @@ const mergeQueryResults = (
 ): SearchResult[] => {
   const seenLinks = new Set<string>();
   const merged: SearchResult[] = [];
-  for (const results of perQueryResults) {
-    for (const item of results) {
+  const maxRank = Math.max(0, ...perQueryResults.map((results) => results.length));
+
+  for (let rank = 0; rank < maxRank; rank += 1) {
+    for (const results of perQueryResults) {
+      const item = results[rank];
+      if (!item) {
+        continue;
+      }
       const linkKey = normalizeResultLinkKey(item.link);
       if (!linkKey || seenLinks.has(linkKey)) {
         continue;
