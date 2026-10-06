@@ -51,26 +51,21 @@ describe("initializeHarnessRuntime tool registration", () => {
     expect(decision.exposedToolIds).toContain("codebase_explore");
   });
 
-  it("retires obsolete read wrappers while preserving Office compatibility readers", () => {
+  it("registers only canonical read tools and retires legacy read wrappers", () => {
     initializeHarnessRuntime();
 
     const toolIds = listToolDefinitions().map((definition) => definition.id);
 
     expect(toolIds).toEqual(
-      expect.arrayContaining([
-        "read",
-        "list",
-        "glob",
-        "grep",
-        "read_open",
-        "read_extract",
-      ]),
+      expect.arrayContaining(["read", "list", "glob", "grep"]),
     );
     expect(toolIds).not.toEqual(
       expect.arrayContaining([
         "read_discover",
+        "read_open",
         "read_list",
         "read_locate",
+        "read_extract",
         "read_slice",
       ]),
     );
