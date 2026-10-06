@@ -480,7 +480,7 @@ describe("useCapabilities", () => {
       "approved",
     );
     expect(result.current.runState.resolutionInvocation?.id).toBe("inv-resumed");
-
+  });
 
   it("runs Terminal continuation, status, and stop from the Capability Lab without replaying the command", async () => {
     getMcpRegisteredToolsMock.mockResolvedValueOnce([
@@ -774,6 +774,5 @@ describe("useCapabilities", () => {
       cleanupCompleted: true,
     });
     expect(result.current.terminalContinuation).toBeNull();
-  });
   });
 });
