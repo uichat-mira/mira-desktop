@@ -101,12 +101,8 @@ test("notification outbox survives canonical message deletion for explicit expir
     false,
   );
   assert.equal(
-    foreignKeys.some(
-      (row) =>
-        row.table === "host_notification_bindings" &&
-        row.on_delete === "CASCADE",
-    ),
-    true,
+    foreignKeys.some((row) => row.table === "host_notification_bindings"),
+    false,
   );
 
   const user = userRepository.create({
