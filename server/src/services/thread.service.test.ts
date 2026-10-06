@@ -9,6 +9,7 @@ import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import {
+  canonicalMessageCleanupRepository,
   hostNotificationRepository,
   knowledgeBaseRepository,
   messageRepository,
@@ -1264,6 +1265,56 @@ test("notification failure leaves existing message descendants and media cleanup
   } finally {
     cleanupSpy.mockRestore();
     removeFailureTrigger();
+  }
+});
+
+test("cleanup repository quarantines malformed pending payloads without blocking valid jobs", () => {
+  const sqlite = getSqlite();
+  const now = new Date().toISOString();
+  const malformedId = `cleanup-malformed-${crypto.randomUUID()}`;
+
+  sqlite
+    .prepare(
+      `INSERT INTO canonical_message_cleanup_jobs (
+        id, payload_json, state, attempt_count, next_attempt_at,
+        last_error, created_at, updated_at
+      ) VALUES (?, ?, 'pending', 0, ?, NULL, ?, ?)`,
+    )
+    .run(malformedId, "{not-json", now, now, now);
+
+  const validJob = canonicalMessageCleanupRepository.enqueue(
+    {
+      media: [],
+      attachmentParts: [{ type: "file", data: "/attachments/keep-going.txt" }],
+    },
+    now,
+  );
+  assert.ok(validJob);
+
+  try {
+    const jobs = canonicalMessageCleanupRepository.listPending(now, 100);
+    assert.equal(jobs.some((job) => job.id === validJob.id), true);
+
+    const malformed = sqlite
+      .prepare(
+        `SELECT state, last_error
+         FROM canonical_message_cleanup_jobs
+         WHERE id = ?`,
+      )
+      .get(malformedId) as
+      | { state: string; last_error: string | null }
+      | undefined;
+    assert.equal(malformed?.state, "failed");
+    assert.match(
+      malformed?.last_error ?? "",
+      /Stored canonical cleanup payload is invalid/,
+    );
+  } finally {
+    sqlite
+      .prepare(
+        "DELETE FROM canonical_message_cleanup_jobs WHERE id IN (?, ?)",
+      )
+      .run(malformedId, validJob.id);
   }
 });
 

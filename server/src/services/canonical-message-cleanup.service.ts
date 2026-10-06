@@ -38,17 +38,17 @@ export class CanonicalMessageCleanupService {
     }
     this.draining = true;
 
-    const repository =
-      this.dependencies.repository ?? canonicalMessageCleanupRepository;
-    const nowMs = this.dependencies.now?.() ?? Date.now();
-    const now = new Date(nowMs).toISOString();
-
     let completed = 0;
     let retried = 0;
     let failed = 0;
 
     try {
+      const repository =
+        this.dependencies.repository ?? canonicalMessageCleanupRepository;
+      const nowMs = this.dependencies.now?.() ?? Date.now();
+      const now = new Date(nowMs).toISOString();
       const jobs = repository.listPending(now, 100);
+
       for (const job of jobs) {
         try {
           this.runJob(job);
@@ -91,6 +91,9 @@ export class CanonicalMessageCleanupService {
       }
 
       return { completed, retried, failed };
+    } catch (error) {
+      console.error("[canonical-cleanup] drain failed", { error });
+      return { completed, retried, failed };
     } finally {
       this.draining = false;
     }
@@ -100,11 +103,15 @@ export class CanonicalMessageCleanupService {
     if (this.timer) return;
     const repository =
       this.dependencies.repository ?? canonicalMessageCleanupRepository;
-    const failedBacklog = repository.countFailed();
-    if (failedBacklog > 0) {
-      console.error("[canonical-cleanup] unresolved failed jobs", {
-        count: failedBacklog,
-      });
+    try {
+      const failedBacklog = repository.countFailed();
+      if (failedBacklog > 0) {
+        console.error("[canonical-cleanup] unresolved failed jobs", {
+          count: failedBacklog,
+        });
+      }
+    } catch (error) {
+      console.error("[canonical-cleanup] failed backlog check", { error });
     }
     this.drainOnce();
     this.timer = setInterval(

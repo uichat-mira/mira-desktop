@@ -78,86 +78,113 @@ export class HostNotificationDeliveryService {
       repository.expireDue(now);
       const pending = repository.listPending(now, 100);
       for (const event of pending) {
+        let outcome:
+          | { type: "delivered" }
+          | { type: "expired"; message: string }
+          | { type: "failed"; message: string }
+          | {
+              type: "retry";
+              attemptCount: number;
+              nextAttemptAt: string;
+              message: string;
+            };
+
         try {
           const binding = repository.getBinding(event.installationId);
           if (!binding || binding.status !== "active") {
-            repository.markFailed(
-              event.id,
-              "Notification binding is unavailable or revoked",
-              now,
-            );
-            failed += 1;
-            continue;
-          }
-
-          if (!repository.isCanonicalDeliveryEligible(event, binding)) {
-            repository.markExpired(
-              event.id,
-              "Canonical message or binding authority is no longer eligible",
-              now,
-            );
-            continue;
-          }
-
-          const outcome = await this.deliverOne({
-            event,
-            binding,
-            identity,
-            fetchImpl,
-            brokerBaseUrl:
-              this.dependencies.brokerBaseUrl ?? getConfiguredPushBrokerBaseUrl,
-          });
-
-          if (outcome === "delivered") {
-            repository.markDelivered(event.id, now);
-            delivered += 1;
-            continue;
-          }
-
-          if (outcome.retryable) {
-            const attemptCount = event.attemptCount + 1;
-            if (attemptCount >= MAX_ATTEMPTS) {
-              repository.markFailed(event.id, outcome.message, now);
-              failed += 1;
-              continue;
-            }
-            const delay =
-              RETRY_DELAYS_MS[
-                Math.min(attemptCount - 1, RETRY_DELAYS_MS.length - 1)
-              ] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
-            const nextAttemptAt = new Date(nowMs + delay).toISOString();
-            if (Date.parse(event.expiresAt) <= Date.parse(nextAttemptAt)) {
-              repository.markFailed(
-                event.id,
-                "Notification retry would exceed event TTL",
-                now,
-              );
-              failed += 1;
-              continue;
-            }
-            repository.scheduleRetry({
-              id: event.id,
-              attemptCount,
-              nextAttemptAt,
-              errorMessage: outcome.message,
-              now,
+            outcome = {
+              type: "failed",
+              message: "Notification binding is unavailable or revoked",
+            };
+          } else if (!repository.isCanonicalDeliveryEligible(event, binding)) {
+            outcome = {
+              type: "expired",
+              message:
+                "Canonical message or binding authority is no longer eligible",
+            };
+          } else {
+            const deliveryOutcome = await this.deliverOne({
+              event,
+              binding,
+              identity,
+              fetchImpl,
+              brokerBaseUrl:
+                this.dependencies.brokerBaseUrl ??
+                getConfiguredPushBrokerBaseUrl,
             });
-            retried += 1;
-            continue;
-          }
 
-          repository.markFailed(event.id, outcome.message, now);
-          failed += 1;
+            if (deliveryOutcome === "delivered") {
+              outcome = { type: "delivered" };
+            } else if (deliveryOutcome.retryable) {
+              const attemptCount = event.attemptCount + 1;
+              if (attemptCount >= MAX_ATTEMPTS) {
+                outcome = {
+                  type: "failed",
+                  message: deliveryOutcome.message,
+                };
+              } else {
+                const delay =
+                  RETRY_DELAYS_MS[
+                    Math.min(attemptCount - 1, RETRY_DELAYS_MS.length - 1)
+                  ] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
+                const nextAttemptAt = new Date(nowMs + delay).toISOString();
+                outcome =
+                  Date.parse(event.expiresAt) <= Date.parse(nextAttemptAt)
+                    ? {
+                        type: "failed",
+                        message: "Notification retry would exceed event TTL",
+                      }
+                    : {
+                        type: "retry",
+                        attemptCount,
+                        nextAttemptAt,
+                        message: deliveryOutcome.message,
+                      };
+              }
+            } else {
+              outcome = {
+                type: "failed",
+                message: deliveryOutcome.message,
+              };
+            }
+          }
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
-          repository.markFailed(
-            event.id,
-            `Notification delivery preparation failed: ${message}`,
-            now,
-          );
-          failed += 1;
+          outcome = {
+            type: "failed",
+            message: `Notification delivery preparation failed: ${message}`,
+          };
         }
+
+        if (outcome.type === "delivered") {
+          // State writes stay outside the preparation/delivery catch. If this
+          // write fails after Broker acceptance, keep the row pending so the
+          // next drain can safely replay the same idempotent event.
+          repository.markDelivered(event.id, now);
+          delivered += 1;
+          continue;
+        }
+
+        if (outcome.type === "expired") {
+          repository.markExpired(event.id, outcome.message, now);
+          continue;
+        }
+
+        if (outcome.type === "retry") {
+          repository.scheduleRetry({
+            id: event.id,
+            attemptCount: outcome.attemptCount,
+            nextAttemptAt: outcome.nextAttemptAt,
+            errorMessage: outcome.message,
+            now,
+          });
+          retried += 1;
+          continue;
+        }
+
+        repository.markFailed(event.id, outcome.message, now);
+        failed += 1;
       }
 
       return { delivered, retried, failed };
@@ -168,9 +195,14 @@ export class HostNotificationDeliveryService {
 
   start() {
     if (this.timer) return;
-    void this.drainOnce();
+    const tick = () => {
+      void this.drainOnce().catch((error) => {
+        console.error("[host-notification] outbox drain failed", { error });
+      });
+    };
+    tick();
     this.timer = setInterval(
-      () => void this.drainOnce(),
+      tick,
       this.dependencies.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
     );
     this.timer.unref?.();

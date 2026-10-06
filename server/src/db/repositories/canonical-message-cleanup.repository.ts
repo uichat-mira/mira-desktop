@@ -132,7 +132,24 @@ export const canonicalMessageCleanupRepository = {
          LIMIT ?`,
       )
       .all(now, limit) as CleanupRow[];
-    return rows.map(toRecord);
+    const jobs: CanonicalMessageCleanupJob[] = [];
+    const markInvalid = getSqlite().prepare(
+      `UPDATE canonical_message_cleanup_jobs
+       SET state = 'failed', last_error = ?, updated_at = ?
+       WHERE id = ? AND state = 'pending'`,
+    );
+    for (const row of rows) {
+      try {
+        jobs.push(toRecord(row));
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Stored canonical cleanup payload is invalid";
+        markInvalid.run(message.slice(0, 1000), now, row.id);
+      }
+    }
+    return jobs;
   },
 
   countFailed() {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 import {
   HostNotificationDeliveryService,
@@ -257,4 +257,65 @@ test("one corrupt binding does not abort delivery of later outbox events", async
         "Notification delivery preparation failed: stored delivery token cannot be decrypted",
     },
   ]);
+});
+
+
+test("Broker acceptance is not reclassified as failed when markDelivered throws", async () => {
+  const { service, calls } = createHarness(
+    (async () => new Response("{}", { status: 202 })) as typeof fetch,
+  );
+  const repository = (
+    service as unknown as {
+      dependencies: {
+        repository: {
+          markDelivered: (id: string) => boolean;
+        };
+      };
+    }
+  ).dependencies.repository;
+
+  repository.markDelivered = () => {
+    throw new Error("injected delivered-state write failure");
+  };
+
+  await assert.rejects(
+    () => service.drainOnce(),
+    /injected delivered-state write failure/,
+  );
+  assert.deepEqual(calls.failed, []);
+  assert.deepEqual(calls.retried, []);
+});
+
+test("delivery poller logs rejected drains instead of leaving an unhandled rejection", async () => {
+  const { service } = createHarness(
+    (async () => new Response("{}", { status: 202 })) as typeof fetch,
+  );
+  const repository = (
+    service as unknown as {
+      dependencies: {
+        repository: {
+          expireDue: () => number;
+        };
+      };
+    }
+  ).dependencies.repository;
+  repository.expireDue = () => {
+    throw new Error("injected outbox read failure");
+  };
+
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    service.start();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(
+      errorSpy.mock.calls.some(
+        ([message]) =>
+          message === "[host-notification] outbox drain failed",
+      ),
+      true,
+    );
+  } finally {
+    service.stop();
+    errorSpy.mockRestore();
+  }
 });
