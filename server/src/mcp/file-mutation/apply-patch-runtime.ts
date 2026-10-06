@@ -16,7 +16,6 @@ import {
 import { readMutationTextFile } from "./text.js";
 import {
   executeDeleteMutation,
-  executeEditMutation,
   executeMoveMutation,
   executeWriteMutation,
   type FileMutationRuntimeContext,
@@ -28,15 +27,12 @@ import type {
 } from "./apply-patch-parser.js";
 import type {
   DeleteMutationResult,
-  EditMutation,
-  EditMutationResult,
   MoveMutationResult,
   WriteMutationResult,
 } from "./runtime.js";
 
 export type ApplyPatchCommittedMutation =
   | WriteMutationResult
-  | EditMutationResult
   | MoveMutationResult
   | DeleteMutationResult;
 
@@ -83,8 +79,7 @@ type HunkPreflight = {
 type PreparedHunk = {
   hunk: ApplyPatchHunk;
   hunkIndex: number;
-  edits?: EditMutation[];
-  emptyFileReplacement?: string;
+  replacementContent?: string;
 };
 
 const canonicalLine = (value: string) =>
@@ -196,13 +191,15 @@ const buildReplacement = (input: {
   input.newLines.join("\n") +
   (input.preserveTrailingSeparator && input.newLines.length > 0 ? "\n" : "");
 
-const deriveChunkEdit = (input: {
+const deriveChunkReplacement = (input: {
   chunk: ApplyPatchChunk;
   source: ReturnType<typeof splitNormalizedLines>;
   starts: number[];
   cursor: number;
 }): {
-  edit?: EditMutation;
+  start: number;
+  end: number;
+  replacement: string;
   startLine: number;
   endLine: number;
   nextCursor: number;
@@ -222,98 +219,45 @@ const deriveChunkEdit = (input: {
     searchStart = contextIndex + 1;
   }
 
+  const hasAnchor =
+    input.chunk.oldLines.length > 0 || Boolean(input.chunk.changeContext);
   const matchIndex = findSequence({
     lines: input.source.lines,
     pattern: input.chunk.oldLines,
-    startIndex: searchStart,
-    endOfFile: input.chunk.isEndOfFile,
+    startIndex:
+      !hasAnchor && !input.chunk.isEndOfFile
+        ? input.source.lines.length
+        : searchStart,
+    endOfFile: input.chunk.isEndOfFile || !hasAnchor,
   });
   if (matchIndex < 0) {
     throw mcpBadRequest("apply_patch update context did not match the target file");
   }
 
   const oldCount = input.chunk.oldLines.length;
-  if (oldCount > 0) {
-    const endLine = matchIndex + oldCount;
-    const segment = segmentForLines({
-      normalized: input.source.normalized,
-      starts: input.starts,
-      lineCount: input.source.lines.length,
-      startLine: matchIndex,
-      endLine,
-    });
-    const preserveTrailingSeparator =
-      endLine < input.source.lines.length ||
-      (endLine === input.source.lines.length && input.source.hasTrailingNewline);
-    const newText = buildReplacement({
-      newLines: input.chunk.newLines,
-      preserveTrailingSeparator,
-    });
-    return {
-      edit:
-        segment.text === newText
-          ? undefined
-          : { oldText: segment.text, newText },
-      startLine: matchIndex,
-      endLine,
-      nextCursor: endLine,
-    };
-  }
-
-  if (input.source.lines.length === 0) {
-    return {
-      startLine: 0,
-      endLine: 0,
-      nextCursor: 0,
-    };
-  }
-
-  const insertionLine = Math.min(matchIndex, input.source.lines.length);
-  if (insertionLine < input.source.lines.length) {
-    const anchor = segmentForLines({
-      normalized: input.source.normalized,
-      starts: input.starts,
-      lineCount: input.source.lines.length,
-      startLine: insertionLine,
-      endLine: insertionLine + 1,
-    });
-    const inserted = input.chunk.newLines.join("\n");
-    const newText = inserted
-      ? `${inserted}\n${anchor.text}`
-      : anchor.text;
-    return {
-      edit:
-        anchor.text === newText
-          ? undefined
-          : { oldText: anchor.text, newText },
-      startLine: insertionLine,
-      endLine: insertionLine + 1,
-      nextCursor: insertionLine,
-    };
-  }
-
-  const anchorLine = input.source.lines.length - 1;
-  const anchor = segmentForLines({
+  const endLine = matchIndex + oldCount;
+  const segment = segmentForLines({
     normalized: input.source.normalized,
     starts: input.starts,
     lineCount: input.source.lines.length,
-    startLine: anchorLine,
-    endLine: input.source.lines.length,
+    startLine: matchIndex,
+    endLine,
   });
-  const inserted = input.chunk.newLines.join("\n");
-  const separator = anchor.text.endsWith("\n") ? "" : "\n";
-  const trailing = input.source.hasTrailingNewline ? "\n" : "";
-  const newText = inserted
-    ? `${anchor.text}${separator}${inserted}${trailing}`
-    : anchor.text;
+  const preserveTrailingSeparator =
+    endLine < input.source.lines.length ||
+    (endLine === input.source.lines.length && input.source.hasTrailingNewline);
+  const replacement = buildReplacement({
+    newLines: input.chunk.newLines,
+    preserveTrailingSeparator,
+  });
+
   return {
-    edit:
-      anchor.text === newText
-        ? undefined
-        : { oldText: anchor.text, newText },
-    startLine: anchorLine,
-    endLine: input.source.lines.length,
-    nextCursor: input.source.lines.length,
+    start: segment.start,
+    end: segment.end,
+    replacement,
+    startLine: matchIndex,
+    endLine,
+    nextCursor: Math.max(endLine, matchIndex),
   };
 };
 
@@ -321,35 +265,22 @@ const deriveUpdate = (
   sourceText: string,
   chunks: ApplyPatchChunk[],
 ): {
-  edits: EditMutation[];
-  emptyFileReplacement?: string;
+  content: string;
+  changed: boolean;
 } => {
   const source = splitNormalizedLines(sourceText);
   const starts = lineStarts(source.normalized, source.lines);
-
-  if (source.lines.length === 0) {
-    const inserted: string[] = [];
-    for (const chunk of chunks) {
-      if (chunk.changeContext || chunk.oldLines.length > 0) {
-        throw mcpBadRequest(
-          "apply_patch update context did not match the empty target file",
-        );
-      }
-      inserted.push(...chunk.newLines);
-    }
-    return {
-      edits: [],
-      emptyFileReplacement:
-        inserted.length > 0 ? `${inserted.join("\n")}\n` : "",
-    };
-  }
-
-  const edits: EditMutation[] = [];
-  const ranges: Array<{ startLine: number; endLine: number }> = [];
+  const replacements: Array<{
+    start: number;
+    end: number;
+    replacement: string;
+    startLine: number;
+    endLine: number;
+  }> = [];
   let cursor = 0;
 
   for (const chunk of chunks) {
-    const derived = deriveChunkEdit({
+    const derived = deriveChunkReplacement({
       chunk,
       source,
       starts,
@@ -357,23 +288,37 @@ const deriveUpdate = (
     });
     cursor = Math.max(cursor, derived.nextCursor);
 
-    if (!derived.edit) continue;
-    for (const range of ranges) {
+    for (const range of replacements) {
       if (
-        derived.startLine < range.endLine &&
-        derived.endLine > range.startLine
+        derived.start < range.end &&
+        derived.end > range.start
       ) {
         throw mcpBadRequest("apply_patch update chunks must not overlap");
       }
+      if (
+        derived.start === derived.end &&
+        range.start === range.end &&
+        derived.start === range.start
+      ) {
+        throw mcpBadRequest("apply_patch update chunks must not share an insertion point");
+      }
     }
-    ranges.push({
-      startLine: derived.startLine,
-      endLine: derived.endLine,
-    });
-    edits.push(derived.edit);
+
+    replacements.push(derived);
   }
 
-  return { edits };
+  let content = source.normalized;
+  for (const item of [...replacements].sort((left, right) => right.start - left.start)) {
+    content =
+      content.slice(0, item.start) +
+      item.replacement +
+      content.slice(item.end);
+  }
+
+  return {
+    content,
+    changed: content !== source.normalized,
+  };
 };
 
 const assertStablePreflight = (
@@ -486,10 +431,7 @@ const validateAndPrepare = (
     return {
       hunk: item.hunk,
       hunkIndex: item.hunkIndex,
-      edits: derived.edits,
-      ...(derived.emptyFileReplacement === undefined
-        ? {}
-        : { emptyFileReplacement: derived.emptyFileReplacement }),
+      ...(derived.changed ? { replacementContent: derived.content } : {}),
     };
   });
 
@@ -566,31 +508,12 @@ export const executeApplyPatchMutation = async (
             continue;
           }
 
-          if (item.emptyFileReplacement !== undefined) {
-            if (item.emptyFileReplacement) {
-              const mutation = await executeWriteMutation(
-                {
-                  path: item.hunk.path,
-                  content: item.emptyFileReplacement,
-                  overwrite: true,
-                },
-                batchContext,
-              );
-              committed.push({
-                hunkIndex: item.hunkIndex,
-                hunkType: item.hunk.type,
-                path: item.hunk.path,
-                ...(item.hunk.movePath
-                  ? { destinationPath: item.hunk.movePath }
-                  : {}),
-                mutation,
-              });
-            }
-          } else if ((item.edits?.length ?? 0) > 0) {
-            const mutation = await executeEditMutation(
+          if (item.replacementContent !== undefined) {
+            const mutation = await executeWriteMutation(
               {
                 path: item.hunk.path,
-                edits: item.edits!,
+                content: item.replacementContent,
+                overwrite: true,
               },
               batchContext,
             );
