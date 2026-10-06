@@ -17,6 +17,8 @@ import {
 } from "@/services/remote-relay-config.service.js";
 import { tailscaleRemoteAccessService } from "@/services/tailscale-remote-access.service.js";
 import { threadService } from "@/services/thread.service.js";
+import { hostNotificationIdentityService } from "@/services/host-notification-identity.service.js";
+import { getConfiguredPushBrokerBaseUrl } from "@/services/host-notification-config.js";
 import { successEnvelope, errorEnvelope } from "@/routes/schema-helpers.js";
 import { success } from "@/utils/index.js";
 import {
@@ -769,6 +771,148 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     }),
   );
 
+  app.post<{
+    Body: {
+      installationId: string;
+      sourceScope: string[];
+    };
+  }>(
+    "/remote/v1/push/binding-descriptor",
+    {
+      schema: {
+        tags: ["Remote Access"],
+        summary: "Create a one-time Host Push binding descriptor",
+        operationId: "createRemotePushBindingDescriptor",
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["installationId", "sourceScope"],
+          properties: {
+            installationId: { type: "string", minLength: 1, maxLength: 160 },
+            sourceScope: {
+              type: "array",
+              minItems: 1,
+              maxItems: 64,
+              uniqueItems: true,
+              items: { type: "string", minLength: 1, maxLength: 200 },
+            },
+          },
+        },
+        response: {
+          200: successEnvelope(looseObjectSchema),
+          400: errorEnvelope,
+          401: errorEnvelope,
+          403: errorEnvelope,
+          500: errorEnvelope,
+        },
+      },
+    },
+    routeHandler("Failed to create Push binding descriptor", async (request) => {
+      const user = request.authUser;
+      if (!request.remoteDevice || !user) {
+        throw forbidden("A paired remote device credential is required");
+      }
+
+      const sourceScope = Array.from(
+        new Set(request.body.sourceScope.map((value) => value.trim()).filter(Boolean)),
+      ).sort();
+      if (
+        sourceScope.length === 0 ||
+        sourceScope.some(
+          (sourceId) => !threadService.getThreadSummaryById(sourceId, user.id),
+        )
+      ) {
+        throw forbidden("Push source scope contains an unavailable conversation");
+      }
+
+      return success({
+        brokerBaseUrl: getConfiguredPushBrokerBaseUrl(),
+        descriptor: hostNotificationIdentityService.createBindingDescriptor({
+          installationId: request.body.installationId,
+          sourceScope,
+        }),
+      });
+    }),
+  );
+
+  app.post<{
+    Body: {
+      bindingNonce: string;
+      installationId: string;
+      deliveryToken: string;
+      sourceScope: string[];
+    };
+  }>(
+    "/remote/v1/push/bindings/accept",
+    {
+      schema: {
+        tags: ["Remote Access"],
+        summary: "Accept a Broker-issued Push delivery capability",
+        operationId: "acceptRemotePushBinding",
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "bindingNonce",
+            "installationId",
+            "deliveryToken",
+            "sourceScope",
+          ],
+          properties: {
+            bindingNonce: { type: "string", minLength: 1, maxLength: 160 },
+            installationId: { type: "string", minLength: 1, maxLength: 160 },
+            deliveryToken: { type: "string", minLength: 32, maxLength: 512 },
+            sourceScope: {
+              type: "array",
+              minItems: 1,
+              maxItems: 64,
+              uniqueItems: true,
+              items: { type: "string", minLength: 1, maxLength: 200 },
+            },
+          },
+        },
+        response: {
+          200: successEnvelope(looseObjectSchema),
+          400: errorEnvelope,
+          401: errorEnvelope,
+          403: errorEnvelope,
+          500: errorEnvelope,
+        },
+      },
+    },
+    routeHandler("Failed to accept Push binding", async (request) => {
+      const user = request.authUser;
+      if (!request.remoteDevice || !user) {
+        throw forbidden("A paired remote device credential is required");
+      }
+
+      const sourceScope = Array.from(
+        new Set(request.body.sourceScope.map((value) => value.trim()).filter(Boolean)),
+      ).sort();
+      if (
+        sourceScope.length === 0 ||
+        sourceScope.some(
+          (sourceId) => !threadService.getThreadSummaryById(sourceId, user.id),
+        )
+      ) {
+        throw forbidden("Push source scope contains an unavailable conversation");
+      }
+
+      const binding = hostNotificationIdentityService.acceptApprovedBinding({
+        bindingNonce: request.body.bindingNonce,
+        installationId: request.body.installationId,
+        deliveryToken: request.body.deliveryToken,
+        sourceScope,
+      });
+
+      return success({
+        installationId: binding.installationId,
+        sourceScope: binding.sourceScope,
+        status: binding.status,
+      });
+    }),
+  );
+
   app.get(
     "/remote/v1/manifest",
     {
@@ -820,6 +964,10 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
             "POST /remote/v1/tool-invocations/:invocationId/cancel",
           ],
           artifacts: ["GET /threads/:id/media/:mediaId/content"],
+          push: [
+            "POST /remote/v1/push/binding-descriptor",
+            "POST /remote/v1/push/bindings/accept",
+          ],
         },
         reconnect: {
           mode: "canonical-state-replay",
