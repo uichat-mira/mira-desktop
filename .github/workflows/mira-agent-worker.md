@@ -14,14 +14,13 @@ permissions:
   issues: read
   pull-requests: read
 engine:
-  id: opencode-go
-  version: "1.18.34"
+  id: opencode
+  version: "1.18.33"
   env:
     OPENAI_BASE_URL: https://opencode.ai/zen/go/v1
-    OPENAI_API_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
 model: openai/deepseek-v4-flash
 imports:
-  - shared/opencode-go.md
+  - github/gh-aw/.github/workflows/shared/opencode.md@0b51773949b848f20806599bfdcd5723310ac013
 skills:
   - uichat-mira/.github/skills/execute-work-item@765601f8bc9f67a726d425b2fad2e4101116d4b3
 checkout:
