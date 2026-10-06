@@ -13,7 +13,7 @@ permissions:
 engine:
   id: opencode
   version: "1.18.34"
-model: mira-opencode-go/deepseek-v4.1-flash
+model: opencode-go/deepseek-v4.1-flash
 imports:
   - shared/mira-opencode-go.md
 skills:
