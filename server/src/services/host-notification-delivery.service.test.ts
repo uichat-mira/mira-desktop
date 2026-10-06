@@ -39,6 +39,7 @@ const binding: HostNotificationBindingRecord = {
 const createHarness = (fetchImpl: typeof fetch) => {
   const calls = {
     delivered: [] as string[],
+    expired: [] as Array<{ id: string; reason: string }>,
     failed: [] as Array<{ id: string; message: string }>,
     retried: [] as Array<{
       id: string;
@@ -51,7 +52,12 @@ const createHarness = (fetchImpl: typeof fetch) => {
   const repository = {
     expireDue: () => 0,
     listPending: () => [event],
+    isCanonicalDeliveryEligible: () => true,
     getBinding: () => binding,
+    markExpired: (id: string, reason: string) => {
+      calls.expired.push({ id, reason });
+      return true;
+    },
     markDelivered: (id: string) => {
       calls.delivered.push(id);
       return true;
@@ -124,6 +130,37 @@ test("retryable Broker failures schedule bounded retry", async () => {
   assert.equal(calls.retried.length, 1);
   assert.equal(calls.retried[0]?.attemptCount, 1);
   assert.ok(Date.parse(calls.retried[0]!.nextAttemptAt) > NOW);
+});
+
+test("stale canonical events expire without calling the Broker", async () => {
+  let fetchCalls = 0;
+  const { service, calls } = createHarness(
+    (async () => {
+      fetchCalls += 1;
+      return new Response("{}", { status: 202 });
+    }) as typeof fetch,
+  );
+
+  const repository = (
+    service as unknown as {
+      dependencies: {
+        repository: {
+          isCanonicalDeliveryEligible: () => boolean;
+        };
+      };
+    }
+  ).dependencies.repository;
+  repository.isCanonicalDeliveryEligible = () => false;
+
+  const result = await service.drainOnce();
+  assert.deepEqual(result, { delivered: 0, retried: 0, failed: 0 });
+  assert.equal(fetchCalls, 0);
+  assert.deepEqual(calls.expired, [
+    {
+      id: "event-1",
+      reason: "Canonical message is no longer notification-eligible",
+    },
+  ]);
 });
 
 test("authorization failures are final and are not retried", async () => {
