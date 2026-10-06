@@ -1158,7 +1158,7 @@ test("metadata-only completion transition enqueues the canonical assistant once"
 });
 
 test("notification outbox failure rolls back the canonical assistant message", () => {
-  const { user, thread, installationId } = createNotificationThreadFixture();
+  const { user, thread } = createNotificationThreadFixture();
   const assistantMessageId = `assistant-rollback-${crypto.randomUUID()}`;
 
   const removeFailureTrigger = installOutboxInsertFailureTrigger();
@@ -1187,7 +1187,7 @@ test("notification outbox failure rolls back the canonical assistant message", (
 });
 
 test("notification failure leaves existing message descendants and media cleanup untouched", () => {
-  const { user, thread, installationId } = createNotificationThreadFixture();
+  const { user, thread } = createNotificationThreadFixture();
   const parent = threadService.createMessage(thread.id, user.id, {
     id: `user-parent-${crypto.randomUUID()}`,
     role: "user",
