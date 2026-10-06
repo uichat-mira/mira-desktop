@@ -26,6 +26,29 @@ jobs:
           fetch-depth: 1
           token: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
 
+      - name: Probe OpenCode Go provider
+        shell: bash
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/opencode-go-probe.json"
+          umask 077
+          status="$(curl --silent --show-error --max-time 20 \
+            --output "$response" \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer $AI_PROVIDER_OPENCODE_GO_KEY" \
+            --header "Content-Type: application/json" \
+            --data '{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"Reply with exactly pong."}],"max_tokens":16}' \
+            https://opencode.ai/zen/go/v1/chat/completions)"
+          echo "OpenCode Go probe HTTP status: $status"
+          if [[ "$status" != 2* ]]; then
+            echo "OpenCode Go provider probe failed." >&2
+            exit 1
+          fi
+          jq -e '.choices[0].message.content | type == "string" and length > 0' "$response" >/dev/null
+          rm -f "$response"
+
       - name: Install pinned gh-aw prerelease
         shell: bash
         run: |
