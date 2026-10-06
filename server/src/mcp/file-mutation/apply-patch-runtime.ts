@@ -246,10 +246,24 @@ const deriveChunkReplacement = (input: {
   const preserveTrailingSeparator =
     endLine < input.source.lines.length ||
     (endLine === input.source.lines.length && input.source.hasTrailingNewline);
-  const replacement = buildReplacement({
+  let replacement = buildReplacement({
     newLines: input.chunk.newLines,
     preserveTrailingSeparator,
   });
+
+  if (oldCount === 0 && matchIndex === input.source.lines.length) {
+    const inserted = input.chunk.newLines.join("\n");
+    const prefix =
+      input.source.normalized.length > 0 && !input.source.hasTrailingNewline
+        ? "\n"
+        : "";
+    const suffix =
+      inserted.length > 0 &&
+      (input.source.hasTrailingNewline || input.source.normalized.length === 0)
+        ? "\n"
+        : "";
+    replacement = inserted ? `${prefix}${inserted}${suffix}` : "";
+  }
 
   return {
     start: segment.start,
