@@ -14,7 +14,6 @@ export const expandHarnessToolCandidates = (input: {
 
   for (const match of input.matches) {
     const profile = profileMap.get(match.capabilityId);
-    const preferredToolId = match.preferredToolId ?? profile?.preferredToolId;
     const reason = toReason({
       title: match.title,
       embeddingScore: match.embeddingScore,

@@ -45,54 +45,6 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
       ...(typeof args.timeoutMs === "number" ? { timeoutMs: args.timeoutMs } : {}),
     }),
   },
-  {
-    id: "edit_create_file",
-    title: "Edit Create File",
-    description: "Create a new workspace file through managed editing.",
-    domain: "edit",
-    tags: ["workspace", "edit", "create", "file", "write"],
-    runtimeToolId: "write",
-    inputSchema: {
-      type: "object",
-      required: ["path"],
-      additionalProperties: false,
-      properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-      },
-    },
-    mapArgs: (args) => ({
-      path: args.path,
-      content: typeof args.content === "string" ? args.content : "",
-    }),
-  },
-  {
-    id: "edit_replace_block",
-    title: "Edit Replace Block",
-    description: "Replace a uniquely matched block inside a workspace file.",
-    domain: "edit",
-    tags: ["workspace", "edit", "replace", "block", "patch"],
-    runtimeToolId: "edit",
-    inputSchema: {
-      type: "object",
-      required: ["path", "expectedOldText", "newText"],
-      additionalProperties: false,
-      properties: {
-        path: { type: "string" },
-        expectedOldText: { type: "string" },
-        newText: { type: "string" },
-      },
-    },
-    mapArgs: (args) => ({
-      path: args.path,
-      edits: [
-        {
-          oldText: args.expectedOldText,
-          newText: args.newText,
-        },
-      ],
-    }),
-  },
 ];
 
 export const resolveHarnessActionProfiles = (

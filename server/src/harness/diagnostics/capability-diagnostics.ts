@@ -72,7 +72,7 @@ export interface HarnessCapabilityDiagnosticsResult {
   };
   profiles: Array<{
     capabilityId: string;
-    preferredToolId: string;
+    preferredToolId?: string;
     supportingToolIds: string[];
     actionProfileId?: string;
     actionProfileTitle?: string;
@@ -216,7 +216,7 @@ export const resolveHarnessCapabilityDiagnostics = async (
       : {}),
     profiles: profiles.map((profile) => ({
       capabilityId: profile.id,
-      preferredToolId: profile.preferredToolId,
+      ...(profile.preferredToolId ? { preferredToolId: profile.preferredToolId } : {}),
       supportingToolIds: profile.supportingToolIds,
       ...(profile.actionProfileId
         ? {
