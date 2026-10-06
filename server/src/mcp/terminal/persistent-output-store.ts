@@ -126,7 +126,7 @@ export const appendPersistentTerminalOutput = (
   if (!text) return;
   const record = getRecord(id);
   assertRecordHealthy(record);
-  if (record.completed) return;
+  if (record.completed || record.cancelled) return;
 
   const bytes = Buffer.from(text, "utf8");
   record.pendingBytes += bytes.byteLength;
