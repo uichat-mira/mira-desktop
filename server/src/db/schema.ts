@@ -1365,6 +1365,52 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
 
+export const hostNotificationIdentity = sqliteTable(
+  "host_notification_identity",
+  {
+    id: integer("id").primaryKey(),
+    hostId: text("host_id").notNull().unique(),
+    publicKey: text("public_key").notNull(),
+    privateKeyEncrypted: text("private_key_encrypted").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    rotatedAt: text("rotated_at"),
+  },
+);
+
+export type HostNotificationIdentityRow =
+  typeof hostNotificationIdentity.$inferSelect;
+export type NewHostNotificationIdentityRow =
+  typeof hostNotificationIdentity.$inferInsert;
+
+export const hostNotificationBindingRequests = sqliteTable(
+  "host_notification_binding_requests",
+  {
+    nonce: text("nonce").primaryKey(),
+    installationId: text("installation_id").notNull(),
+    sourceScopeJson: text("source_scope_json").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    consumedAt: text("consumed_at"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    installationIdx: index(
+      "idx_host_notification_binding_requests_installation",
+    ).on(table.installationId),
+    expiresIdx: index("idx_host_notification_binding_requests_expires").on(
+      table.expiresAt,
+    ),
+  }),
+);
+
+export type HostNotificationBindingRequestRow =
+  typeof hostNotificationBindingRequests.$inferSelect;
+export type NewHostNotificationBindingRequestRow =
+  typeof hostNotificationBindingRequests.$inferInsert;
+
 export const hostNotificationBindings = sqliteTable(
   "host_notification_bindings",
   {
