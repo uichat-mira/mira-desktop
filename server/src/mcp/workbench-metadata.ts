@@ -51,8 +51,6 @@ const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
   list: { path: "." },
   glob: { pattern: "**/*", path: "." },
   grep: { pattern: "", path: "." },
-  read_open: { path: "" },
-  read_extract: { path: "" },
   write: { path: "", content: "" },
   edit: { path: "", edits: [{ oldText: "", newText: "" }] },
   delete: { path: "" },

@@ -55,7 +55,7 @@ describe("resolveSubAgentExecutionProfile", () => {
 
     expect(profile.skillId).toBe("docx");
     expect(profile.workspaceBound).toBe(true);
-    expect(profile.allowedHarnessToolIds).toEqual(["read_open", "read_extract"]);
+    expect(profile.allowedHarnessToolIds).toEqual(["read"]);
     expect(profile.runtimeBindings).toEqual([
       expect.objectContaining({
         id: "office_document",
@@ -77,7 +77,7 @@ describe("resolveSubAgentExecutionProfile", () => {
       },
     });
 
-    expect(profile.allowedHarnessToolIds).toEqual(["read_open", "read_extract"]);
+    expect(profile.allowedHarnessToolIds).toEqual(["read"]);
     expect(profile.runtimeBindings).toEqual([
       expect.objectContaining({ id: "office_document", status: "ready" }),
     ]);
