@@ -9,7 +9,7 @@ engine:
   experimental: true
   auth:
     - role: api-key
-      secret: OPENCODE_GO_API_KEY
+      secret: AI_PROVIDER_OPENCODE_GO_KEY
   behaviors:
     capabilities:
       max-turns: true
@@ -51,7 +51,6 @@ engine:
             "read": "allow",
             "glob": "allow",
             "grep": "allow",
-            "list": "allow",
             "skill": "allow",
             "edit": "deny",
             "bash": "deny",
@@ -66,7 +65,7 @@ engine:
               "npm": "@ai-sdk/openai-compatible",
               "options": {
                 "baseURL": "https://opencode.ai/zen/go/v1",
-                "apiKey": "{env:OPENCODE_GO_API_KEY}"
+                "apiKey": "{env:AI_PROVIDER_OPENCODE_GO_KEY}"
               },
               "models": {
                 "deepseek-v4.1-flash": {
