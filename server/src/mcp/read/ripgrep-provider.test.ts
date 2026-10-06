@@ -168,6 +168,7 @@ describe("shared ripgrep provider", () => {
           args: {
             pattern: "alpha\\s+中文",
             path: ".",
+            includeIgnored: true,
             limit: 1,
           },
           environment: contentEnvironment(),
