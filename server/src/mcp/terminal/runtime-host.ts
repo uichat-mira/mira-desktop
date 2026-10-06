@@ -263,6 +263,8 @@ export const executeTerminalSessionRuntime = async ({
       sessionMode: "persistent",
       streamMode: "merged",
       stderrSeparated: false,
+      stdoutEncoding: "utf8",
+      stderrEncoding: "utf8",
       truncated: observed.truncated,
       violations: observed.violations,
       continuationId: observed.continuationId,
@@ -304,6 +306,9 @@ export const executeTerminalSessionRuntime = async ({
 
   if (!command) {
     throw mcpBadRequest("command is required");
+  }
+  if (args.outputOffset !== undefined) {
+    throw mcpBadRequest("outputOffset requires continuationId");
   }
 
   if (attachSessionId && (args.cwd !== undefined || env !== undefined)) {
@@ -404,6 +409,8 @@ export const executeTerminalSessionRuntime = async ({
       sessionMode: "persistent",
       streamMode: "merged",
       stderrSeparated: false,
+      stdoutEncoding: "utf8",
+      stderrEncoding: "utf8",
       truncated: result.truncated,
       violations: result.violations,
       continuationId: result.continuationId,

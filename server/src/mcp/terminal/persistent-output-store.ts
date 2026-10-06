@@ -167,8 +167,8 @@ export const completePersistentTerminalOutput = async (
   if (record.completed) return;
   record.completed = true;
   record.exitCode = exitCode;
-  await flushRecord(record);
   try {
+    await flushRecord(record);
     const handle = await record.handlePromise;
     await handle.close();
   } catch (error) {
@@ -217,7 +217,10 @@ export const readPersistentTerminalOutput = async (input: {
   ) {
     bytesToRead -= 1;
   }
-  if (requestedBytes > 0 && bytesToRead === 0) {
+  if (
+    requestedBytes > 0 &&
+    (bytesToRead === 0 || !isUtf8(buffer.subarray(0, bytesToRead)))
+  ) {
     throw mcpBadRequest(
       "outputOffset must use a previous nextOutputOffset and outputLimitBytes must fit at least one UTF-8 character",
     );

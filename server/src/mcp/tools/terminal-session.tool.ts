@@ -52,7 +52,7 @@ const terminalProperties = {
     type: "integer",
     minimum: 1,
     description:
-      "Maximum output bytes returned in this Tool result. Persistent output beyond this page remains reachable through continuationId.",
+      "Maximum output bytes returned in this Tool result. Persistent excess remains reachable through continuationId; ephemeral excess is truncated at this bound.",
   },
 } as const;
 
