@@ -17,6 +17,7 @@ type ToolsTracePanelProps = {
     sessionId?: string;
     streamMode?: "split" | "merged";
     stderrSeparated?: boolean;
+    state?: "running" | "completed" | "failed" | "cancelled";
   } | null;
 };
 
@@ -99,6 +100,7 @@ export default function ToolsTracePanel({
           runStatus,
           terminalSummary?.sessionId ? `session=${terminalSummary.sessionId}` : null,
           terminalSummary?.streamMode ? `stream=${terminalSummary.streamMode}` : null,
+          terminalSummary?.state ? `state=${terminalSummary.state}` : null,
           terminalSummary?.stderrSeparated === false ? "stderr=merged" : null,
         ]
           .filter(Boolean)

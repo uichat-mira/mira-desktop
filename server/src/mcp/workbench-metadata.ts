@@ -46,6 +46,52 @@ const DOMAIN_METADATA: Record<string, WorkbenchPresentation> = {
   },
 };
 
+const DEFAULT_CASES: Record<
+  string,
+  NonNullable<ToolDefinition["workbench"]>["cases"]
+> = {
+  terminal: [
+    {
+      id: "short-success",
+      title: "短命令成功",
+      description: "执行一个跨平台 Node 短命令并返回稳定输出。",
+      args: {
+        command: "node -e \"process.stdout.write('MIRA_TERMINAL_OK')\"",
+      },
+    },
+    {
+      id: "short-failure",
+      title: "短命令失败",
+      description: "执行一个退出码为 7 的短命令，验证失败状态和 exit code。",
+      args: {
+        command: "node -e \"process.exit(7)\"",
+      },
+    },
+    {
+      id: "persistent-start",
+      title: "持久任务",
+      description:
+        "启动持续输出的 Node 任务；观察窗口结束后，用 Continue / Status / Stop 验证持久会话合同。",
+      args: {
+        command:
+          "node -e \"let i=0; setInterval(()=>console.log('MIRA_TICK:'+ ++i),250)\"",
+        sessionMode: "persistent",
+        timeoutMs: 700,
+        outputLimitBytes: 4096,
+      },
+    },
+    {
+      id: "stale-session",
+      title: "失效会话",
+      description: "检查 unknown/stale sessionId 是否明确失败。",
+      args: {
+        operation: "status",
+        sessionId: "tool-lab-stale-session",
+      },
+    },
+  ],
+};
+
 const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
   read: { path: "" },
   list: { path: "." },
@@ -142,6 +188,9 @@ export const withWorkbenchMetadata = (
           fallbackDomainMetadata(definition.domain)),
         ...(DEFAULT_ARGS[definition.id]
           ? { defaultArgs: DEFAULT_ARGS[definition.id] }
+          : {}),
+        ...(DEFAULT_CASES[definition.id]?.length
+          ? { cases: DEFAULT_CASES[definition.id] }
           : {}),
       },
     };

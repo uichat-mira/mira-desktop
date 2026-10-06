@@ -90,6 +90,14 @@ export type TerminalResultSummary = {
   stderrSeparated?: boolean;
   stdout?: string;
   stderr?: string;
+  state?: "running" | "completed" | "failed" | "cancelled";
+  continuationId?: string;
+  continuationAvailable?: boolean;
+  nextOutputOffset?: number;
+  outputBytesAvailable?: number;
+  outputLimitBytes?: number;
+  commandCompleted?: boolean;
+  cleanupCompleted?: boolean;
 };
 
 export function getTerminalResultSummary(value: unknown): TerminalResultSummary | null {
@@ -126,6 +134,41 @@ export function getTerminalResultSummary(value: unknown): TerminalResultSummary 
       typeof candidate.stderrSeparated === "boolean" ? candidate.stderrSeparated : undefined,
     stdout: typeof candidate.stdout === "string" ? candidate.stdout : undefined,
     stderr: typeof candidate.stderr === "string" ? candidate.stderr : undefined,
+    state:
+      candidate.state === "running" ||
+      candidate.state === "completed" ||
+      candidate.state === "failed" ||
+      candidate.state === "cancelled"
+        ? candidate.state
+        : undefined,
+    continuationId:
+      typeof candidate.continuationId === "string"
+        ? candidate.continuationId
+        : undefined,
+    continuationAvailable:
+      typeof candidate.continuationAvailable === "boolean"
+        ? candidate.continuationAvailable
+        : undefined,
+    nextOutputOffset:
+      typeof candidate.nextOutputOffset === "number"
+        ? candidate.nextOutputOffset
+        : undefined,
+    outputBytesAvailable:
+      typeof candidate.outputBytesAvailable === "number"
+        ? candidate.outputBytesAvailable
+        : undefined,
+    outputLimitBytes:
+      typeof candidate.outputLimitBytes === "number"
+        ? candidate.outputLimitBytes
+        : undefined,
+    commandCompleted:
+      typeof candidate.commandCompleted === "boolean"
+        ? candidate.commandCompleted
+        : undefined,
+    cleanupCompleted:
+      typeof candidate.cleanupCompleted === "boolean"
+        ? candidate.cleanupCompleted
+        : undefined,
   };
 }
 

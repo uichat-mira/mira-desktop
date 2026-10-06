@@ -110,6 +110,44 @@ describe("withWorkbenchMetadata", () => {
     ).toBe("browser_computer_use");
   });
 
+  it("registers terminal acceptance cases without changing the runtime contract", () => {
+    const projected = withWorkbenchMetadata([
+      {
+        id: "terminal",
+        title: "Terminal",
+        description: "Run commands.",
+        domain: "terminal",
+        source: "internal",
+        mode: "stream",
+        inputSchema: {},
+        tags: ["terminal"],
+        capabilities: {
+          sideEffect: "process",
+          requiresApproval: true,
+          workspaceBound: true,
+          longRunning: true,
+        },
+      },
+    ]);
+
+    const cases = projected[0]?.workbench?.cases;
+    expect(cases?.map((item) => item.id)).toEqual([
+      "short-success",
+      "short-failure",
+      "persistent-start",
+      "stale-session",
+    ]);
+    expect(cases?.find((item) => item.id === "persistent-start")?.args).toMatchObject({
+      sessionMode: "persistent",
+      timeoutMs: 700,
+      outputLimitBytes: 4096,
+    });
+    expect(cases?.find((item) => item.id === "stale-session")?.args).toEqual({
+      operation: "status",
+      sessionId: "tool-lab-stale-session",
+    });
+  });
+
   it("groups exactly four GitHub domain tools and supplies operation drafts", () => {
     const projected = withWorkbenchMetadata([
       createGitHubTool("github_repository"),

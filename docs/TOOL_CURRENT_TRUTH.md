@@ -294,6 +294,14 @@ Persistent session 控制仍然通过同一个 `terminal` Tool 完成：
 - stop 不创建第二套进程 runtime，也不引入 `job_*` Tool；
 - unknown / stale `sessionId` 明确失败，不静默退化成新 session。
 
+Tool Lab 当前把 #236 的验收路径直接暴露出来：
+
+- Terminal 注册短命令成功、短命令失败、持久任务、失效会话四个固定 acceptance case；
+- approval-bound 调用在 Tool Lab 内使用现有 Approval API 显式批准/拒绝，不绕过治理；
+- persistent 结果出现 session 后，可直接 Continue output、Inspect status、Stop；
+- Continue 使用 runtime 返回的 continuation cursor，不会执行第二条命令；
+- 状态与 session identity 会同时显示在 Terminal package / execution stream 中，便于真人验收。
+
 它不是 generic integration container，但也不是已经退役的 command sandbox。
 
 ### Terminal 与 workspace 的真实边界
