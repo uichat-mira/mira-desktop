@@ -607,7 +607,7 @@ export const projectToolEvidence = (
     });
   }
 
-  if (definition.id === "terminal_session") {
+  if (definition.id === "terminal" || definition.id === "terminal_session") {
     const exitCode = typeof result.exitCode === "number" || result.exitCode === null ? result.exitCode : null;
     const timedOut = result.timedOut === true;
     const command = typeof result.command === "string" ? result.command : "unknown";

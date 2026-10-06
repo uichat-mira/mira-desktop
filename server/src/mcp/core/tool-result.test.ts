@@ -156,7 +156,7 @@ describe("ToolResult B-prime normalization", () => {
 
   it("preserves semantic terminal timeout evidence without changing invocation status", () => {
     const evidence = projectToolEvidence(
-      definition("terminal_session", "internal", "terminal"),
+      definition("terminal", "internal", "terminal"),
       normalizeToolResult({
         structuredContent: {
           command: "pnpm test",
@@ -177,6 +177,24 @@ describe("ToolResult B-prime normalization", () => {
       processCompleted: false,
       timedOut: true,
     });
+
+    const legacyEvidence = projectToolEvidence(
+      definition("terminal_session", "internal", "terminal"),
+      normalizeToolResult({
+        structuredContent: {
+          command: "pnpm test",
+          timedOut: true,
+          exitCode: null,
+          stdout: "partial output",
+          stderr: "",
+          stdoutEncoding: "utf8",
+          stderrEncoding: "utf8",
+          truncated: false,
+        },
+      }),
+    );
+    expect(legacyEvidence?.status).toBe("timed_out");
+    expect(legacyEvidence?.data).toMatchObject({ kind: "terminal_session" });
   });
 
   it("preserves degraded codebase exploration as partial evidence", () => {
