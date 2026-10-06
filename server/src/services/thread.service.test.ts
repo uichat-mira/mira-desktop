@@ -85,7 +85,7 @@ test("messages table foreign key targets threads after initialization", () => {
   assert.equal(rows.some((row) => row.table === "threads_legacy"), false);
 });
 
-test("notification outbox runtime foreign keys are enabled and cascade with canonical messages", () => {
+test("notification outbox survives canonical message deletion for explicit expiry", () => {
   const sqlite = getSqlite();
   const pragma = sqlite.prepare("PRAGMA foreign_keys").get() as {
     foreign_keys: number;
@@ -96,10 +96,8 @@ test("notification outbox runtime foreign keys are enabled and cascade with cano
     .prepare("PRAGMA foreign_key_list(notification_outbox)")
     .all() as Array<{ table: string; on_delete: string }>;
   assert.equal(
-    foreignKeys.some(
-      (row) => row.table === "messages" && row.on_delete === "CASCADE",
-    ),
-    true,
+    foreignKeys.some((row) => row.table === "messages"),
+    false,
   );
   assert.equal(
     foreignKeys.some(
@@ -120,6 +118,8 @@ test("notification outbox runtime foreign keys are enabled and cascade with cano
   const installationId = `installation-fk-${crypto.randomUUID()}`;
   hostNotificationRepository.upsertBinding({
     installationId,
+    originRemoteDeviceId: "device-fk",
+    ownerUserId: user.id,
     brokerBaseUrl: "https://push.example.test",
     deliveryToken:
       "delivery-fk-0123456789012345678901234567890123456789",
@@ -146,7 +146,7 @@ test("notification outbox runtime foreign keys are enabled and cascade with cano
       "SELECT COUNT(*) AS count FROM notification_outbox WHERE canonical_message_id = ?",
     )
     .get(assistant.id) as { count: number };
-  assert.equal(after.count, 0);
+  assert.equal(after.count, 1);
 });
 
 test("createChatWorkspace validates workspace root paths", () => {
@@ -836,6 +836,8 @@ const createNotificationThreadFixture = () => {
   const installationId = `installation-${crypto.randomUUID()}`;
   hostNotificationRepository.upsertBinding({
     installationId,
+    originRemoteDeviceId: `device-${crypto.randomUUID()}`,
+    ownerUserId: user.id,
     brokerBaseUrl: "https://push.example.test",
     deliveryToken: `delivery-${crypto.randomUUID()}-01234567890123456789012345678901`,
     sourceScope: [thread.id],
