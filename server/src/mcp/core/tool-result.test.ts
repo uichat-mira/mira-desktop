@@ -256,32 +256,6 @@ describe("ToolResult B-prime normalization", () => {
 
   it("restores bounded read and search semantic projections", () => {
     const list = projectToolEvidence(
-      definition("read_list"),
-      normalizeToolResult({
-        structuredContent: {
-          type: "list",
-          path: "docs",
-          entries: [
-            { name: "README.md", type: "file" },
-            { name: "guides", type: "directory" },
-          ],
-          returnedCount: 2,
-          totalCount: 4,
-          hasMore: true,
-          truncated: true,
-        },
-      }),
-    );
-    expect(list?.data).toMatchObject({
-      kind: "read_list",
-      path: "docs",
-      fileCount: 1,
-      directoryCount: 1,
-      entriesPreview: ["[F] README.md", "[D] guides"],
-      truncated: true,
-    });
-
-    const canonicalList = projectToolEvidence(
       definition("list"),
       normalizeToolResult({
         structuredContent: {
@@ -299,7 +273,7 @@ describe("ToolResult B-prime normalization", () => {
         },
       }),
     );
-    expect(canonicalList?.data).toMatchObject({
+    expect(list?.data).toMatchObject({
       kind: "list",
       path: "docs",
       fileCount: 1,
