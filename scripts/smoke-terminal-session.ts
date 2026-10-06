@@ -7,7 +7,7 @@ if (!resourcesRoot || !workspaceRoot) {
 
 process.env.UI_CHAT_DESKTOP_RESOURCES_ROOT = path.resolve(resourcesRoot);
 
-const [{ executeTerminalSessionRuntime }, { clearTerminalSessions, listTerminalSessions, writeTerminalSession }] =
+const [{ executeTerminalSessionRuntime }, { clearTerminalSessions, listTerminalSessions }] =
   await Promise.all([
     import("../server/src/mcp/terminal/runtime-host.js"),
     import("../server/src/mcp/terminal-sessions.js"),
@@ -85,9 +85,78 @@ try {
     throw new Error(`Persistent terminal continuation failed: ${second.contents.output}`);
   }
 
-  writeTerminalSession(first.contents.sessionId, "exit");
-  await new Promise((resolve) => setTimeout(resolve, 750));
-  clearTerminalSessions();
+  const completedStop = await run({
+    operation: "stop",
+    sessionId: first.contents.sessionId,
+  });
+  if (
+    completedStop.contents.state !== "cancelled" ||
+    completedStop.contents.cleanupCompleted !== true
+  ) {
+    throw new Error("Completed persistent session did not stop cleanly");
+  }
+
+  const controlled = await run({
+    command:
+      "1..40 | ForEach-Object { Write-Output ('MIRA_TICK:' + $_); Start-Sleep -Milliseconds 100 }",
+    cwd: workspaceRoot,
+    env: { PATH: systemPath },
+    sessionMode: "persistent",
+    timeoutMs: 350,
+    outputLimitBytes: 4096,
+  });
+  if (
+    controlled.contents.state !== "running" ||
+    controlled.contents.commandCompleted !== false ||
+    !controlled.contents.continuationId ||
+    typeof controlled.contents.nextOutputOffset !== "number"
+  ) {
+    throw new Error(
+      `Persistent observation did not return a running continuation: ${JSON.stringify(controlled.contents)}`,
+    );
+  }
+
+  const status = await run({
+    operation: "status",
+    sessionId: controlled.contents.sessionId,
+  });
+  if (
+    status.contents.state !== "running" ||
+    status.contents.sessionId !== controlled.contents.sessionId
+  ) {
+    throw new Error(
+      `Persistent status did not report the running session: ${JSON.stringify(status.contents)}`,
+    );
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  const continued = await run({
+    continuationId: controlled.contents.continuationId,
+    outputOffset: controlled.contents.nextOutputOffset,
+    outputLimitBytes: 4096,
+  });
+  if (
+    continued.contents.sessionId !== controlled.contents.sessionId ||
+    !continued.contents.output.includes("MIRA_TICK:")
+  ) {
+    throw new Error(
+      `Persistent continuation did not expose later output: ${JSON.stringify(continued.contents)}`,
+    );
+  }
+
+  const stopped = await run({
+    operation: "stop",
+    sessionId: controlled.contents.sessionId,
+  });
+  if (
+    stopped.contents.state !== "cancelled" ||
+    stopped.contents.cleanupCompleted !== true
+  ) {
+    throw new Error(
+      `Persistent stop did not verify cleanup: ${JSON.stringify(stopped.contents)}`,
+    );
+  }
+
   if (listTerminalSessions().length !== 0) {
     throw new Error("Persistent terminal process tree was not removed from the session registry");
   }
@@ -98,7 +167,15 @@ try {
       sessionId: first.contents.sessionId,
       reused: second.contents.reusedSession,
       processTreeMode: first.contents.processTreeMode,
-      cleaned: true,
+      completedSessionStopped: completedStop.contents.cleanupCompleted === true,
+    },
+    controlled: {
+      sessionId: controlled.contents.sessionId,
+      initialState: controlled.contents.state,
+      statusState: status.contents.state,
+      continuedBytes: continued.contents.output.length,
+      stoppedState: stopped.contents.state,
+      cleanupCompleted: stopped.contents.cleanupCompleted,
     },
   }));
 } finally {

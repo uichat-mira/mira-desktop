@@ -27,7 +27,6 @@ const [
     clearTerminalSessions,
     getTerminalSession,
     listTerminalSessions,
-    writeTerminalSession,
   },
 ] = await Promise.all([
   import("../server/src/harness/environment.js"),
@@ -129,37 +128,122 @@ try {
     );
   }
 
-  writeTerminalSession(persistentSessionId, "exit");
+  const completedStop = await run({
+    operation: "stop",
+    sessionId: persistentSessionId,
+  });
+  if (
+    completedStop.contents.state !== "cancelled" ||
+    completedStop.contents.cleanupCompleted !== true
+  ) {
+    throw new Error("Completed persistent session did not stop cleanly");
+  }
   if (persistentPid !== null) {
     await waitForPidExit(persistentPid);
   }
-  clearTerminalSessions();
+
+  const controlled = await run({
+    command:
+      "i=0; while :; do i=$((i+1)); printf 'MIRA_TICK:%s\\n' \"$i\"; sleep 0.1; done",
+    cwd: ".",
+    sessionMode: "persistent",
+    timeoutMs: 350,
+    outputLimitBytes: 4096,
+  });
+  const controlledPid =
+    getTerminalSession(controlled.contents.sessionId)?.process.pid ?? null;
+  if (
+    controlled.contents.state !== "running" ||
+    controlled.contents.commandCompleted !== false ||
+    !controlled.contents.continuationId ||
+    typeof controlled.contents.nextOutputOffset !== "number"
+  ) {
+    throw new Error(
+      `Persistent observation did not return a running continuation: ${JSON.stringify(controlled.contents)}`,
+    );
+  }
+
+  const status = await run({
+    operation: "status",
+    sessionId: controlled.contents.sessionId,
+  });
+  if (
+    status.contents.state !== "running" ||
+    status.contents.sessionId !== controlled.contents.sessionId
+  ) {
+    throw new Error(
+      `Persistent status did not report the running session: ${JSON.stringify(status.contents)}`,
+    );
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  const continued = await run({
+    continuationId: controlled.contents.continuationId,
+    outputOffset: controlled.contents.nextOutputOffset,
+    outputLimitBytes: 4096,
+  });
+  if (
+    continued.contents.sessionId !== controlled.contents.sessionId ||
+    !continued.contents.output.includes("MIRA_TICK:")
+  ) {
+    throw new Error(
+      `Persistent continuation did not expose later output: ${JSON.stringify(continued.contents)}`,
+    );
+  }
+
+  const stopped = await run({
+    operation: "stop",
+    sessionId: controlled.contents.sessionId,
+  });
+  if (
+    stopped.contents.state !== "cancelled" ||
+    stopped.contents.cleanupCompleted !== true
+  ) {
+    throw new Error(
+      `Persistent stop did not verify cleanup: ${JSON.stringify(stopped.contents)}`,
+    );
+  }
+  if (controlledPid !== null) {
+    await waitForPidExit(controlledPid);
+  }
+
   if (listTerminalSessions().length !== 0) {
     throw new Error("Persistent terminal session registry was not cleared");
   }
 
-  console.log(
-    JSON.stringify({
-      platform: process.platform,
-      architecture: process.arch,
-      workspace: {
-        root: workspaceRoot,
-        unicodePath: true,
-        fileWrite: true,
-      },
-      shell: environment.terminal.shellProfile.shell,
-      ephemeral: {
-        exitCode: ephemeral.contents.exitCode,
-        processTreeMode: ephemeral.contents.processTreeMode,
-      },
-      persistent: {
-        reused: second.contents.reusedSession,
-        processTreeMode: first.contents.processTreeMode,
-        processExited: persistentPid === null || !isPidAlive(persistentPid),
-        registryCleaned: true,
-      },
-    }),
+  const report = {
+    platform: process.platform,
+    architecture: process.arch,
+    workspace: {
+      root: workspaceRoot,
+      unicodePath: true,
+      fileWrite: true,
+    },
+    shell: environment.terminal.shellProfile.shell,
+    ephemeral: {
+      exitCode: ephemeral.contents.exitCode,
+      processTreeMode: ephemeral.contents.processTreeMode,
+    },
+    persistent: {
+      reused: second.contents.reusedSession,
+      processTreeMode: first.contents.processTreeMode,
+      processExited: persistentPid === null || !isPidAlive(persistentPid),
+      completedSessionStopped: completedStop.contents.cleanupCompleted === true,
+    },
+    controlled: {
+      initialState: controlled.contents.state,
+      statusState: status.contents.state,
+      continuedBytes: continued.contents.output.length,
+      stoppedState: stopped.contents.state,
+      cleanupCompleted: stopped.contents.cleanupCompleted,
+      processExited: controlledPid === null || !isPidAlive(controlledPid),
+    },
+  };
+  fs.writeFileSync(
+    path.join(testArtifactRoot, "terminal-contract-smoke-macos.json"),
+    `${JSON.stringify(report, null, 2)}\\n`,
   );
+  console.log(JSON.stringify(report));
 } finally {
   if (persistentSessionId && getTerminalSession(persistentSessionId)) {
     clearTerminalSessions();
