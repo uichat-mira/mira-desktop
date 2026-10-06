@@ -348,7 +348,7 @@ export default function CapabilitiesPage() {
                     disabled={
                       capabilities.isSelectionLocked ||
                       !capabilities.terminalContinuation ||
-                      capabilities.terminalSummary.continuationAvailable === false
+                      capabilities.terminalSummary?.continuationAvailable === false
                     }
                     onClick={() => {
                       setResultConsoleOpen(true);
