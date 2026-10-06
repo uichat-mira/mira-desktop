@@ -27,8 +27,8 @@ jobs:
         run: |
           set -euo pipefail
           binary="$RUNNER_TEMP/gh-aw"
-          curl -fsSL "https://github.com/github/gh-aw/releases/download/v0.89.21/linux-amd64" -o "$binary"
-          echo "1c74ff5fc28b1891d32b67f4348a9b7f750946b6d4a721e909187a848868016b  $binary" | sha256sum -c -
+          curl -fsSL "https://github.com/github/gh-aw/releases/download/v0.91.1/linux-amd64" -o "$binary"
+          echo "747c553f13c73e4d71f9aff6d5fd59926b3580cc1afd8d72632fed6604c7acf9  $binary" | sha256sum -c -
           chmod +x "$binary"
           "$binary" --version
 
