@@ -195,9 +195,9 @@ browser_attached_transfer
 
 所以下一步重点是 Search routing、progressive discovery 与副作用治理，不是再造浏览器入口。
 
-### 3.9 当前审批仍是 invocation-oriented
+### 3.9 当前 Authorization 仍以 invocation approval 为核心
 
-settled contract 以 frozen invocation 为对象，目标身份是：
+当前 settled contract 仍以 frozen invocation 为主要授权对象，目标身份是：
 
 ```text
 toolId + toolCallId + inputHash
@@ -205,7 +205,13 @@ toolId + toolCallId + inputHash
 
 当前实现仍存在 `toolCallId` 未进入 core grant match 的已知漂移。
 
-reusable capability grant 不能直接覆盖这条债。
+因此当前 Mira 还不能视为拥有完整的 Authorization Core：它已经有 Tool risk metadata、Policy gate、用户 Approval、Runtime boundary 与若干 domain ownership 检查，但这些机制仍以“一次 invocation 是否允许执行”为中心。
+
+Mira Next 的目标不是删除 exact approval，而是把它纳入更大的授权模型：
+
+> **Approval 是产生或确认 authority 的一种方式，不等同于 Permission / Authorization 本身。**
+
+reusable / derived authority 不能直接覆盖当前 exact approval identity 的债；这由 Phase 7 Authorization Core 继续研究。
 
 
 ### 3.10 Workspace ownership 采用 Thread-owned Workspace
@@ -289,7 +295,16 @@ Planner Decision
 Normalize
   冻结 exact invocation
         ↓
-Policy / Approval
+Authorization Core
+  ├─ Policy
+  ├─ Ownership
+  ├─ Exact Approval
+  ├─ Derived Authority
+  └─ Reusable Grant
+        ↓
+Authorization Decision
+  allow / ask / deny
+  + authority source
         ↓
 Execution Adapter
  ├─ Native Tool
@@ -308,11 +323,12 @@ Planner / Generate
 必须保留：
 
 1. `AgentRun` 继续是 Host Agent 产品运行真相；
-2. `Planner → Normalize → Policy → Tool → Evidence → Planner` 不被绕过；
+2. `Planner → Normalize → Authorization Core → Tool → Evidence → Planner` 不被绕过；
 3. capability match / tool search / MicroApp discovery 只能产出候选；
-4. Policy 只审批真实 frozen invocation 或未来明确定义的新授权对象；
-5. Remote / MicroApp / Browser 不因入口变化绕过副作用治理；
-6. Evidence 继续是 Planner 可使用的执行事实入口。
+4. Authorization Core 是唯一副作用授权入口；Approval 只是其中一种 authority source，不与 Permission / Grant 混为一谈；
+5. exact frozen invocation、未来明确定义的 derived authority / reusable grant 都必须经过同一 Authorization Core 判定；
+6. Remote / MicroApp / Browser 不因入口变化绕过 ownership、Policy 或副作用治理；
+7. Evidence 继续是 Planner 可使用的执行事实入口，并应能够解释一次执行为何被 allow / ask / deny。
 
 ## 5. 三种 Capability 必须分开
 
@@ -707,9 +723,57 @@ V0 不建立 App A → App B 的硬依赖；跨应用协作优先通过 Agent / 
 
 `MicroApp == Plugin System` 继续不定案。
 
-### Phase 7 — Capability Grant / Approval Research
+### Phase 7 — Authorization Core / Approval & Grant Research
 
-这一阶段不是“给某个 Tool 加一个 Allow always”或“减少几次确认框”，而是补齐 Mira 当前只有 **exact invocation approval**、缺少 **governed reusable / derived authority** 的授权模型。
+这一阶段不是“给某个 Tool 加一个 Allow always”或“减少几次确认框”，而是把 Mira 从当前的 **Invocation Approval Gate** 演进为真正的 **Authorization Core**。
+
+目标不是把所有权限都统一成一个超级 DSL，而是建立少量稳定授权概念，让 Agent、Tool、Terminal、Browser、MicroApp、Remote / Mobile 在同一个 authority model 下回答：
+
+> **谁，在什么上下文里，能对哪个真实资源执行什么动作，依据什么 authority，为什么现在允许 / 询问 / 拒绝？**
+
+目标抽象：
+
+```text
+Subject
+  user / thread / agent / device
+        ↓
+Resource / Target
+  workspace / file / terminal-session / browser-session
+  microapp / remote-host / external-target / credential
+        ↓
+Operation
+  observe / read / execute / mutate / send / publish / stop
+        ↓
+Context + RiskSignature
+  workspace / run / thread / device
+  side-effect / irreversibility / credential / external transfer
+        ↓
+Authorization Core
+  ├─ hard deny / ownership validation
+  ├─ baseline policy
+  ├─ exact approval
+  ├─ derived resource authority
+  └─ reusable grant
+        ↓
+Authorization Decision
+  allow / ask / deny
+  + authority source
+        ↓
+Runtime
+```
+
+这里必须明确：
+
+- **Capability** 回答“有什么能力 / 当前应该暴露什么”；
+- **Tool** 回答“模型具体调用什么动作”；
+- **RiskSignature** 描述这次动作的风险输入；
+- **Policy** 决定规则；
+- **Ownership** 决定 subject 是否有资格控制目标 resource；
+- **Approval** 是用户对具体请求作出授权决定的交互；
+- **Grant / Derived Authority** 是已经存在、可复用或资源绑定的 authority；
+- **Authorization Decision** 才是 Runtime 是否可以执行的最终治理结果。
+
+因此 Approval ≠ Permission，Capability ≠ Grant，Tool visibility ≠ Authority。
 
 当前方向继续保持：
 
@@ -1228,9 +1292,10 @@ P6 MicroApp Platform V0
       ↓
 P8 Remote Capability / Mobile
 
-P7 Approval Research
-  ├─ 可在 P2 后启动调研
-  └─ 在 MicroApp / Remote 高权限开放前完成对应合同
+P7 Authorization Core
+  ├─ 可在 P2 后启动研究与 contract hardening
+  ├─ Terminal / Browser 作为首批 resource-bound reference cases
+  └─ 在 MicroApp / Remote 高权限开放前完成对应 authority contract
 
 P9 Work Object / Board
   └─ 不阻塞 P1-P6
@@ -1251,11 +1316,11 @@ Mira Next 的长期设计稿不维护“当前第一批 / 下一批任务”或�
 4. Dynamic Tool 默认走 progressive disclosure，不把完整 catalog 一次性塞给 Planner；
 5. MCP 优先解决外部扩展与互操作，不反向决定 Mira 内部基础工具颗粒度；
 6. 为 Tool Discovery 增加 heavyweight retrieval infrastructure 前，必须证明简单分层披露不足；
-7. 任何 Tool 设计变化都要保护 Policy / Approval / Evidence / trace 边界。
+7. 任何 Tool 设计变化都要保护 Authorization Core / Policy / Approval / Evidence / Trace 边界，不得把 Tool metadata、Prompt 或 Runtime 特例升级成第二套权限系统。
 
 ## 10. 后续每个 Work Item 必须回答
 
-1. 它改哪一层：Product Capability、Discovery、Tool Core、Policy、MicroApp、Remote 还是 Work Object？
+1. 它改哪一层：Product Capability、Discovery、Tool Core、Authorization Core、MicroApp、Remote 还是 Work Object？
 2. 它保留哪些 current contract？
 3. 它明确替代什么真实 consumer / path？
 4. 用什么证据证明完成？
@@ -1278,8 +1343,10 @@ Mira Next 的稳定方向是：
 - Tool Exposure 默认采用 progressive disclosure；
 - Embedding / rerank 是可选检索实现，不再是 Tool Discovery 或 Desktop 打包的必需依赖；
 - Mira 内部 Tool Core 保持 protocol-neutral，MCP 作为外部扩展 / integration 的优先协议；
-- Browser / Search、MicroApp、Remote Capability 都通过同一套 Tool / Policy / Evidence 治理边界接入；
-- capability discovery 只能决定“看见什么候选”，不能直接获得 invocation authority；
+- Browser / Search、MicroApp、Remote Capability 都通过同一套 Tool / Authorization Core / Evidence 治理边界接入；
+- Mira Next 将当前 invocation-oriented Approval Gate 演进为 Authorization Core：统一表达 subject、resource、operation、scope、risk、ownership 与 authority source；
+- exact approval 继续保留，但只是 authority source 之一；derived resource authority 与 reusable grant 只能在同一 canonical Authorization Core 中生效；
+- capability discovery 只能决定“看见什么候选”，不能直接获得任何 invocation / resource authority；
 - Forge 继续作为专业持续工作流水线样本，只抽取被多个真实领域证明需要的通用对象。
 
 目标不是让 Mira 多长几层名词，而是让 Agent 在恰当的时刻看见恰当的工具面，并让这些能力通过少量稳定合同协作。
