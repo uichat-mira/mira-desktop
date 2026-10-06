@@ -103,7 +103,7 @@ export const terminalTool: ToolImplementation = {
         ? context.args.continuationId.trim()
         : "";
     if (!command && !continuationId) {
-      throw mcpBadRequest("command or continuationId is required");
+      throw mcpBadRequest("command is required");
     }
 
     const result = await executeTerminalSessionRuntime({
