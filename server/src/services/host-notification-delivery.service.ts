@@ -89,7 +89,6 @@ export class HostNotificationDeliveryService {
           binding,
           identity,
           fetchImpl,
-          nowMs,
         });
 
         if (outcome === "delivered") {
@@ -161,7 +160,6 @@ export class HostNotificationDeliveryService {
     binding: HostNotificationBindingRecord;
     identity: SigningIdentity;
     fetchImpl: typeof fetch;
-    nowMs: number;
   }): Promise<
     | "delivered"
     | {
