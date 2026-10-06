@@ -1,0 +1,57 @@
+name: Agent Dispatch POC Compile
+
+on:
+  push:
+    branches:
+      - feat/agent-dispatch-poc
+    paths:
+      - .github/workflows/mira-agent-worker.md
+      - .github/workflows/shared/opencode-go.md
+      - .github/workflows/agent-dispatch-poc-compile.yml
+
+permissions:
+  contents: write
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout POC branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/agent-dispatch-poc
+          fetch-depth: 1
+
+      - name: Install pinned gh-aw compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="$RUNNER_TEMP/gh-aw"
+          curl -fsSL "https://github.com/github/gh-aw/releases/download/v0.89.21/linux-amd64" -o "$binary"
+          echo "1c74ff5fc28b1891d32b67f4348a9b7f750946b6d4a721e909187a848868016b  $binary" | sha256sum -c -
+          chmod +x "$binary"
+          "$binary" --version
+
+      - name: Compile agentic workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gh-aw" compile .github/workflows/mira-agent-worker.md --strict
+
+      - name: Commit generated lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          lock=".github/workflows/mira-agent-worker.lock.yml"
+          test -f "$lock"
+          git add "$lock"
+          if git diff --cached --quiet; then
+            echo "Generated lock is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "poc: compile Mira agent worker"
+          git push origin HEAD:feat/agent-dispatch-poc
