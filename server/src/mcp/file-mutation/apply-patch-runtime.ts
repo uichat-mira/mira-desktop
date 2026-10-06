@@ -80,21 +80,12 @@ type HunkPreflight = {
   destination?: ResolvedMutationPath;
 };
 
-type PreparedHunk =
-  | {
-      hunk: Extract<ApplyPatchHunk, { type: "add" }>;
-      hunkIndex: number;
-    }
-  | {
-      hunk: Extract<ApplyPatchHunk, { type: "delete" }>;
-      hunkIndex: number;
-    }
-  | {
-      hunk: Extract<ApplyPatchHunk, { type: "update" }>;
-      hunkIndex: number;
-      edits: EditMutation[];
-      emptyFileReplacement?: string;
-    };
+type PreparedHunk = {
+  hunk: ApplyPatchHunk;
+  hunkIndex: number;
+  edits?: EditMutation[];
+  emptyFileReplacement?: string;
+};
 
 const canonicalLine = (value: string) =>
   value
@@ -605,11 +596,11 @@ export const executeApplyPatchMutation = async (
                 mutation,
               });
             }
-          } else if (item.edits.length > 0) {
+          } else if ((item.edits?.length ?? 0) > 0) {
             const mutation = await executeEditMutation(
               {
                 path: item.hunk.path,
-                edits: item.edits,
+                edits: item.edits!,
               },
               batchContext,
             );

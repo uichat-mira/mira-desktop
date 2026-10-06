@@ -376,26 +376,26 @@ const createBenchCases = (): ContextReadBenchCaseDefinition[] => [
     input: { path: "二进制样本.bin" },
     run: async (fixture) => {
       const environment = createBenchEnvironment();
-      const readResult = requireTextRead(
-        (
-          await executeGenericRead({
-            args: { path: fixture.paths.binaryFile },
-            environment,
-          })
-        ).contents,
-      );
-      const binaryDetected = readResult.source.metadata.binary === true;
-      return buildReadCaseResult({
+      const result = await executeGenericRead({
+        args: { path: fixture.paths.binaryFile },
+        environment,
+      });
+      const passed =
+        result.contents.type === "unsupported" &&
+        result.contents.reason === "binary";
+      return {
         caseId: "read-binary",
         operation: "read",
         input: { path: fixture.paths.binaryFile },
-        readResult,
-        absolutePath: path.join(fixture.rootPath, fixture.paths.binaryFile),
-        status: binaryDetected ? "passed" : "failed",
-        diagnostics: binaryDetected
-          ? ["二进制文件已被 binary summary 接管，没有展开原始字节。"]
-          : ["二进制文件没有被正确标记为 binaryDetected。"],
-      });
+        status: passed ? "passed" : "failed",
+        filesRead: 1,
+        charsRead: 0,
+        encoding: "binaryDetected",
+        truncated: false,
+        diagnostics: passed
+          ? ["canonical read 拒绝把二进制内容伪装成文本。"]
+          : [`binary read outcome unexpected: ${JSON.stringify(result.contents)}`],
+      };
     },
   },
   {
