@@ -118,7 +118,7 @@ type BindingRow = {
 
 export class SqlBrokerPersistence implements BrokerPersistence {
   constructor(private readonly storage: SqlStorageLike) {
-    this.storage.sql.exec(\`
+    this.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS installation (
         installation_id TEXT PRIMARY KEY,
         platform TEXT NOT NULL,
@@ -157,7 +157,7 @@ export class SqlBrokerPersistence implements BrokerPersistence {
       );
       CREATE INDEX IF NOT EXISTS notification_events_state_idx
         ON notification_events(state, expires_at);
-    \`);
+    `);
   }
 
   getRegistration(): RegistrationRecord | null {
@@ -187,11 +187,11 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         if (current?.revokedAt) return "revoked" as const;
         if (current) return "already_registered" as const;
         this.storage.sql.exec(
-          \`INSERT INTO installation (
+          `INSERT INTO installation (
             installation_id, platform, provider_token_ciphertext,
             installation_public_key, schema_version, registered_at,
             updated_at, revoked_at
-          ) VALUES (?, ?, ?, ?, 1, ?, ?, NULL)\`,
+          ) VALUES (?, ?, ?, ?, 1, ?, ?, NULL)`,
           input.installationId,
           input.platform,
           input.providerTokenCiphertext,
@@ -205,9 +205,9 @@ export class SqlBrokerPersistence implements BrokerPersistence {
           return "public_key_mismatch" as const;
         }
         this.storage.sql.exec(
-          \`UPDATE installation
+          `UPDATE installation
              SET platform = ?, provider_token_ciphertext = ?, updated_at = ?
-           WHERE installation_id = ? AND revoked_at IS NULL\`,
+           WHERE installation_id = ? AND revoked_at IS NULL`,
           input.platform,
           input.providerTokenCiphertext,
           input.now,
@@ -236,9 +236,9 @@ export class SqlBrokerPersistence implements BrokerPersistence {
       if (!current || current.revokedAt) return "not_registered" as const;
 
       this.storage.sql.exec(
-        \`UPDATE installation
+        `UPDATE installation
            SET provider_token_ciphertext = NULL, revoked_at = ?, updated_at = ?
-         WHERE installation_id = ?\`,
+         WHERE installation_id = ?`,
         input.now,
         input.now,
         current.installationId,
@@ -273,8 +273,8 @@ export class SqlBrokerPersistence implements BrokerPersistence {
   findActiveBindingByTokenHash(tokenHash: string): BindingRecord | null {
     const row = this.storage.sql
       .exec<BindingRow>(
-        \`SELECT * FROM host_bindings
-          WHERE delivery_token_hash = ? AND revoked_at IS NULL LIMIT 1\`,
+        `SELECT * FROM host_bindings
+          WHERE delivery_token_hash = ? AND revoked_at IS NULL LIMIT 1`,
         tokenHash,
       )
       .toArray()[0];
@@ -290,7 +290,7 @@ export class SqlBrokerPersistence implements BrokerPersistence {
       }
 
       this.storage.sql.exec(
-        \`INSERT INTO host_bindings (
+        `INSERT INTO host_bindings (
           host_id, host_public_key, source_scope_json,
           delivery_token_hash, authorized_at, revoked_at
         ) VALUES (?, ?, ?, ?, ?, NULL)
@@ -299,7 +299,7 @@ export class SqlBrokerPersistence implements BrokerPersistence {
           source_scope_json = excluded.source_scope_json,
           delivery_token_hash = excluded.delivery_token_hash,
           authorized_at = excluded.authorized_at,
-          revoked_at = NULL\`,
+          revoked_at = NULL`,
         input.hostId,
         input.hostPublicKey,
         JSON.stringify(input.sourceScope),
@@ -361,11 +361,11 @@ export class SqlBrokerPersistence implements BrokerPersistence {
       if (duplicate) return "duplicate" as const;
 
       this.storage.sql.exec(
-        \`INSERT INTO notification_events (
+        `INSERT INTO notification_events (
           event_id, host_id, source_id, canonical_message_id,
           eligibility_event, event_type, occurred_at, expires_at,
           state, accepted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         event.eventId,
         event.hostId,
         event.sourceId,

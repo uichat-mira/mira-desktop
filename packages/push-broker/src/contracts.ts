@@ -122,13 +122,13 @@ export const canonicalJson = (value: unknown): string => {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return \`[\${value.map(canonicalJson).join(",")}]\`;
+    return `[${value.map(canonicalJson).join(",")}]`;
   }
   if (isRecord(value)) {
     const keys = Object.keys(value).sort();
-    return \`{\${keys
-      .map((key) => \`\${JSON.stringify(key)}:\${canonicalJson(value[key])}\`)
-      .join(",")}}\`;
+    return `{${keys
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
   }
   throw new Error("Unsupported canonical value");
 };

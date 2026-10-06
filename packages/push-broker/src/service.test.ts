@@ -17,7 +17,7 @@ import { MemoryBrokerPersistence } from "./testing/memory-persistence";
 
 const NOW = Date.parse("2026-10-06T03:30:00.000Z");
 const INSTALLATION_ID = "installation-1";
-const BASE = \`https://push.example.test/v1/installations/\${INSTALLATION_ID}\`;
+const BASE = `https://push.example.test/v1/installations/${INSTALLATION_ID}`;
 
 const storageKey = exportBytesAsBase64Url(
   Uint8Array.from({ length: 32 }, (_, index) => index + 1),
@@ -53,11 +53,11 @@ const post = (
   token?: string,
 ) =>
   service.handle(
-    new Request(\`\${BASE}\${path}\`, {
+    new Request(`${BASE}${path}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...(token ? { authorization: \`Bearer \${token}\` } : {}),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(body),
     }),
@@ -80,10 +80,10 @@ const register = async (
     platform: "android" as const,
     providerToken: options.providerToken ?? "provider-token-secret",
     installationPublicKey: installationKey.publicKey,
-    requestNonce: options.nonce ?? \`\${action}-nonce\`,
+    requestNonce: options.nonce ?? `${action}-nonce`,
     issuedAt: new Date(NOW).toISOString(),
   };
-  return post(service, \`/\${action}\`, {
+  return post(service, `/${action}`, {
     ...unsigned,
     installationSignature: await sign(
       installationKey.privateKey,

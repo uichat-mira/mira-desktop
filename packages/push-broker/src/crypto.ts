@@ -91,9 +91,9 @@ export const sealSecret = async (
     key,
     encoder.encode(plaintext),
   );
-  return \`v1.\${bytesToBase64Url(iv)}.\${bytesToBase64Url(
+  return `v1.${bytesToBase64Url(iv)}.${bytesToBase64Url(
     new Uint8Array(ciphertext),
-  )}\`;
+  )}`;
 };
 
 export const openSecret = async (

@@ -79,7 +79,7 @@ export class BrokerService {
     if (request.method !== "POST") return error("method_not_allowed", 405);
 
     const url = new URL(request.url);
-    const prefix = \`/v1/installations/\${installationId}\`;
+    const prefix = `/v1/installations/${installationId}`;
     if (!url.pathname.startsWith(prefix)) return error("not_found", 404);
     const action = url.pathname.slice(prefix.length);
 
