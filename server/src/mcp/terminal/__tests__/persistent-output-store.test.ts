@@ -4,6 +4,7 @@ import {
   appendPersistentTerminalOutput,
   cancelPersistentTerminalOutputsForSession,
   clearAllPersistentTerminalOutputs,
+  clearPersistentTerminalOutput,
   completePersistentTerminalOutput,
   createPersistentTerminalOutput,
   getPersistentTerminalSessionStatus,
@@ -71,6 +72,38 @@ describe("persistent terminal output store", () => {
     expect(page.continuationAvailable).toBe(true);
     expect(page.state).toBe("running");
     expect(page.nextOutputOffset).toBe(Buffer.byteLength("ready\n", "utf8"));
+  });
+
+  it("ignores late collector output after its record was disposed", async () => {
+    const record = createPersistentTerminalOutput({
+      sessionId: "session-disposed-append",
+      command: "watch",
+    });
+    await clearPersistentTerminalOutput(record.id);
+
+    expect(() =>
+      appendPersistentTerminalOutput(record.id, "late output"),
+    ).not.toThrow();
+
+    await expect(
+      readPersistentTerminalOutput({ id: record.id }),
+    ).rejects.toThrow("terminal output continuation not found");
+  });
+
+  it("ignores late collector completion after its record was disposed", async () => {
+    const record = createPersistentTerminalOutput({
+      sessionId: "session-disposed-complete",
+      command: "watch",
+    });
+    await clearPersistentTerminalOutput(record.id);
+
+    await expect(
+      completePersistentTerminalOutput(record.id, 0),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      readPersistentTerminalOutput({ id: record.id }),
+    ).rejects.toThrow("terminal output continuation not found");
   });
 
   it("reports failed and cancelled persistent states", async () => {

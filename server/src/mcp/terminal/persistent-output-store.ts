@@ -124,9 +124,9 @@ export const appendPersistentTerminalOutput = (
   },
 ) => {
   if (!text) return;
-  const record = getRecord(id);
+  const record = records.get(id);
+  if (!record || record.completed || record.cancelled) return;
   assertRecordHealthy(record);
-  if (record.completed || record.cancelled) return;
 
   const bytes = Buffer.from(text, "utf8");
   record.pendingBytes += bytes.byteLength;
@@ -182,7 +182,8 @@ export const completePersistentTerminalOutput = (
   id: string,
   exitCode: number | null,
 ) => {
-  const record = getRecord(id);
+  const record = records.get(id);
+  if (!record) return Promise.resolve();
   if (record.completionPromise) return record.completionPromise;
   if (record.completed) return Promise.resolve();
 
