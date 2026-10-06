@@ -62,7 +62,7 @@
     "check:benchmark-runner": "node --test scripts/benchmark/agent-core-runner.test.mjs",
     "check:benchmark-recorder": "node --test scripts/benchmark/recorder/agent-core-recorder.test.mjs",
     "check:remote-relay": "tsc --noEmit -p packages/remote-relay/tsconfig.json",
-    "check": "pnpm check:ai-review-runner && pnpm check:benchmark-runner && pnpm check:benchmark-recorder && pnpm check:benchmark-scorer && pnpm check:forge-cutover && pnpm check:remote-relay && pnpm -r --workspace-concurrency=1 typecheck",
+    "check": "pnpm check:ai-review-runner && pnpm check:benchmark-runner && pnpm check:benchmark-recorder && pnpm check:benchmark-scorer && pnpm check:forge-cutover && pnpm check:remote-relay && pnpm check:push-broker && pnpm test:push-broker && pnpm -r --workspace-concurrency=1 typecheck",
     "check:tauri": "pnpm internal:prepare:tauri && cross-env CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo check --manifest-path tauri/Cargo.toml -j 1",
     "version:sync": "node scripts/sync-version.js",
     "internal:build:desktop": "pnpm --filter @ui-chat-mira/desktop build",
@@ -87,7 +87,9 @@
     "check:ai-review-runner": "node --test scripts/ai-review/opencode-review-routing.test.mjs scripts/ai-review/opencode-review-runner.test.mjs",
     "check:benchmark-scorer": "node --test scripts/benchmark/scoring/agent-core-scorer.test.mjs",
     "benchmark:score": "node scripts/benchmark/scoring/agent-core-scorer.mjs",
-    "benchmark:audit": "node scripts/benchmark/scoring/audit-package.mjs"
+    "benchmark:audit": "node scripts/benchmark/scoring/audit-package.mjs",
+    "check:push-broker": "tsc --noEmit -p packages/push-broker/tsconfig.json",
+    "test:push-broker": "node server/node_modules/tsx/dist/cli.mjs --test packages/push-broker/src/service.test.ts"
   },
   "engines": {
     "node": ">=22.19.0"
