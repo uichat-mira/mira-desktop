@@ -2,7 +2,8 @@ import fs from "node:fs";
 import type { McpResourceImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { assertReadEnvironment, assertPathExists } from "../document-readers.js";
-import { executeReadList, executeReadOpen } from "../read/runtime.js";
+import { executeGenericRead } from "../read/generic.js";
+import { executeList } from "../read/list.js";
 import { resolveWorkspacePath } from "../workspace.js";
 
 export const workspaceResource: McpResourceImplementation = {
@@ -26,13 +27,17 @@ export const workspaceResource: McpResourceImplementation = {
 
     const stat = fs.statSync(targetPath);
     if (stat.isDirectory()) {
-      return executeReadList({ args, environment, pushEvent });
+      return executeList({ args, environment, pushEvent });
     }
 
     if (!stat.isFile()) {
       throw mcpBadRequest("Only files and directories are supported");
     }
 
-    return executeReadOpen({ args, environment, pushEvent });
+    const result = await executeGenericRead({ args, environment, pushEvent });
+    return {
+      contents: result.contents,
+      artifacts: result.artifacts,
+    };
   },
 };
