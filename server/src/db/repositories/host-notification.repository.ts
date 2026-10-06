@@ -270,15 +270,13 @@ export const hostNotificationRepository = {
     }
     const now = input.now ?? new Date().toISOString();
     getSqlite().transaction(() => {
-      // One outstanding bootstrap per paired device. Minting a fresh descriptor
-      // invalidates older unconsumed descriptors from that device.
+      // Keep bootstrap storage bounded to one durable request per paired
+      // device. Replacing the row also makes every older nonce unusable.
       getSqlite()
         .prepare(
-          `UPDATE host_notification_binding_requests
-           SET consumed_at = ?
-           WHERE origin_remote_device_id = ? AND consumed_at IS NULL`,
+          "DELETE FROM host_notification_binding_requests WHERE origin_remote_device_id = ?",
         )
-        .run(now, input.originRemoteDeviceId.trim());
+        .run(input.originRemoteDeviceId.trim());
 
       getSqlite()
         .prepare(
