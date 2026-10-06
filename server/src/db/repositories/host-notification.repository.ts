@@ -571,17 +571,34 @@ export const hostNotificationRepository = {
     return created;
   },
 
-  isCanonicalDeliveryEligible(event: NotificationOutboxRecord) {
+  isCanonicalDeliveryEligible(
+    event: NotificationOutboxRecord,
+    binding: HostNotificationBindingRecord,
+  ) {
+    if (!binding.sourceScope.includes(event.sourceId)) return false;
+
     const row = getSqlite()
       .prepare(
         `SELECT m.id, m.role, m.content, m.parts_json, m.metadata,
-                m.thread_id, t.status AS thread_status
+                m.thread_id, t.status AS thread_status, t.user_id AS owner_user_id
          FROM messages m
          JOIN threads t ON t.id = m.thread_id
-         WHERE m.id = ? AND m.thread_id = ?
+         JOIN tailscale_remote_devices d
+           ON d.id = ?
+          AND d.user_id = ?
+          AND d.revoked_at IS NULL
+         WHERE m.id = ?
+           AND m.thread_id = ?
+           AND t.user_id = ?
          LIMIT 1`,
       )
-      .get(event.canonicalMessageId, event.sourceId) as
+      .get(
+        binding.originRemoteDeviceId,
+        binding.ownerUserId,
+        event.canonicalMessageId,
+        event.sourceId,
+        binding.ownerUserId,
+      ) as
       | {
           id: string;
           role: string;
@@ -590,6 +607,7 @@ export const hostNotificationRepository = {
           metadata: string | null;
           thread_id: string;
           thread_status: string;
+          owner_user_id: number;
         }
       | undefined;
 
