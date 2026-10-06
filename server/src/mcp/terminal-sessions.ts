@@ -17,6 +17,7 @@ import {
   getWindowsJobMarker,
 } from "./terminal/windows-job-object.js";
 import { killTerminalProcessTree } from "./terminal/process-tree.js";
+import { clearPersistentTerminalOutputsForSession } from "./terminal/persistent-output-store.js";
 
 export interface TerminalSessionRecord {
   id: string;
@@ -55,6 +56,7 @@ export const removeTerminalSession = (sessionId: string) => {
   }
 
   sessionMap.delete(sessionId);
+  void clearPersistentTerminalOutputsForSession(sessionId);
   void killTerminalProcessTree({
     pid: session.process.pid,
     mode: session.processTreeMode,

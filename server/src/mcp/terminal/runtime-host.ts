@@ -12,8 +12,13 @@ import {
 } from "./host-spawn-runtime.js";
 import {
   acquirePersistentSession,
+  observePersistentCommandOutput,
   runPersistentCommand,
 } from "./pty-command-runtime.js";
+import {
+  normalizeTerminalOutputLimitBytes,
+  normalizeTerminalOutputOffset,
+} from "./persistent-output-store.js";
 import {
   resolveTerminalRuntimeId,
   type HostWorkspaceRelation,
@@ -51,6 +56,14 @@ type TerminalContents = {
   truncated?: boolean;
   binaryDetected?: boolean;
   violations?: string[];
+  continuationId?: string;
+  continuationAvailable?: boolean;
+  outputOffset?: number;
+  outputEndOffset?: number;
+  nextOutputOffset?: number;
+  outputBytesAvailable?: number;
+  outputLimitBytes?: number;
+  commandCompleted?: boolean;
 };
 
 type TerminalExecutionResult = {
@@ -71,12 +84,17 @@ const assertTerminalEnvironment = (environment?: ToolExecutionEnvironment) => {
   return environment;
 };
 
-const normalizeCommand = (value: unknown) => {
-  const command = typeof value === "string" ? value.trim() : "";
-  if (!command) {
-    throw mcpBadRequest("command is required");
+const normalizeCommand = (value: unknown) =>
+  typeof value === "string" ? value.trim() : "";
+
+const normalizeContinuationId = (value: unknown) => {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
   }
-  return command;
+  if (typeof value !== "string") {
+    throw mcpBadRequest("continuationId must be a string");
+  }
+  return value;
 };
 
 const normalizeEnv = (value: unknown) => {
@@ -177,6 +195,9 @@ export const executeTerminalSessionRuntime = async ({
   const harnessEnvironment = assertTerminalEnvironment(environment);
   const shellProfile = harnessEnvironment.terminal.shellProfile;
   const command = normalizeCommand(args.command);
+  const continuationId = normalizeContinuationId(args.continuationId);
+  const outputLimitBytes = normalizeTerminalOutputLimitBytes(args.outputLimitBytes);
+  const outputOffset = normalizeTerminalOutputOffset(args.outputOffset);
   const env = normalizeEnv(args.env);
   const timeoutMs = normalizeTimeoutMs(args.timeoutMs);
   const attachSessionId = normalizeAttachSessionId(args.attachSessionId);
@@ -184,6 +205,86 @@ export const executeTerminalSessionRuntime = async ({
     ? "persistent"
     : normalizeSessionMode(args.sessionMode);
   const runtimeId = resolveTerminalRuntimeId();
+
+  if (continuationId) {
+    if (command) {
+      throw mcpBadRequest("continuationId cannot be combined with command");
+    }
+    if (
+      attachSessionId ||
+      args.cwd !== undefined ||
+      env !== undefined ||
+      args.sessionMode !== undefined ||
+      args.timeoutMs !== undefined
+    ) {
+      throw mcpBadRequest(
+        "continuationId only supports outputOffset and outputLimitBytes",
+      );
+    }
+
+    const observed = await observePersistentCommandOutput({
+      continuationId,
+      outputOffset,
+      outputLimitBytes,
+    });
+    const contents: TerminalContents = {
+      runtimeId: observed.runtimeId,
+      sessionId: observed.sessionId,
+      command: observed.command,
+      cwd: observed.cwd,
+      workspaceRelation: observed.workspaceRelation,
+      processTreeMode: observed.processTreeMode,
+      exitCode: observed.exitCode,
+      output: observed.output,
+      stdout: observed.stdout,
+      stderr: observed.stderr,
+      timedOut: !observed.commandCompleted,
+      reusedSession: true,
+      sessionMode: "persistent",
+      streamMode: "merged",
+      stderrSeparated: false,
+      truncated: observed.truncated,
+      violations: observed.violations,
+      continuationId: observed.continuationId,
+      continuationAvailable: observed.continuationAvailable,
+      outputOffset: observed.outputOffset,
+      outputEndOffset: observed.outputEndOffset,
+      nextOutputOffset: observed.nextOutputOffset,
+      outputBytesAvailable: observed.outputBytesAvailable,
+      outputLimitBytes: observed.outputLimitBytes,
+      commandCompleted: observed.commandCompleted,
+    };
+    return {
+      contents,
+      artifacts: [
+        createTerminalArtifact({
+          command: observed.command,
+          output: observed.output,
+          metadata: {
+            runtimeId: observed.runtimeId,
+            sessionId: observed.sessionId,
+            cwd: observed.cwd,
+            workspaceRelation: observed.workspaceRelation,
+            processTreeMode: observed.processTreeMode,
+            exitCode: observed.exitCode,
+            sessionMode: "persistent",
+            continuationId: observed.continuationId,
+            continuationAvailable: observed.continuationAvailable,
+            outputOffset: observed.outputOffset,
+            outputEndOffset: observed.outputEndOffset,
+            outputBytesAvailable: observed.outputBytesAvailable,
+            outputLimitBytes: observed.outputLimitBytes,
+            commandCompleted: observed.commandCompleted,
+            truncated: observed.truncated,
+          },
+        }),
+      ],
+    };
+  }
+
+  if (!command) {
+    throw mcpBadRequest("command is required");
+  }
 
   if (attachSessionId && (args.cwd !== undefined || env !== undefined)) {
     throw mcpBadRequest(
@@ -255,6 +356,7 @@ export const executeTerminalSessionRuntime = async ({
       shellProfile,
       reusedSession,
       timeoutMs,
+      outputLimitBytes,
       signal,
       pushEvent,
     });
@@ -282,7 +384,16 @@ export const executeTerminalSessionRuntime = async ({
       sessionMode: "persistent",
       streamMode: "merged",
       stderrSeparated: false,
+      truncated: result.truncated,
       violations: result.violations,
+      continuationId: result.continuationId,
+      continuationAvailable: result.continuationAvailable,
+      outputOffset: result.outputOffset,
+      outputEndOffset: result.outputEndOffset,
+      nextOutputOffset: result.nextOutputOffset,
+      outputBytesAvailable: result.outputBytesAvailable,
+      outputLimitBytes: result.outputLimitBytes,
+      commandCompleted: result.commandCompleted,
     };
     return {
       contents,
@@ -300,6 +411,14 @@ export const executeTerminalSessionRuntime = async ({
             timedOut: result.timedOut,
             reusedSession: result.reusedSession,
             sessionMode: "persistent",
+            truncated: result.truncated,
+            continuationId: result.continuationId,
+            continuationAvailable: result.continuationAvailable,
+            outputOffset: result.outputOffset,
+            outputEndOffset: result.outputEndOffset,
+            outputBytesAvailable: result.outputBytesAvailable,
+            outputLimitBytes: result.outputLimitBytes,
+            commandCompleted: result.commandCompleted,
           },
         }),
       ],
@@ -321,6 +440,7 @@ export const executeTerminalSessionRuntime = async ({
     signal,
     shellProfile: toHostShellProfile(shellProfile),
     workspaceRoot: harnessEnvironment.workspace.rootPath,
+    outputLimitBytes,
     pushStdout: (chunk) =>
       pushEvent?.({
         type: "invocation:stdout",

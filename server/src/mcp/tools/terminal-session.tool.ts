@@ -37,11 +37,29 @@ const terminalProperties = {
     description:
       "Use persistent for dev servers, watchers, REPLs, interactive shells, or commands that must remain available for later continuation.",
   },
+  continuationId: {
+    type: "string",
+    description:
+      "Opaque output continuation id returned by a persistent command. Use it without command to read later buffered output without starting another command.",
+  },
+  outputOffset: {
+    type: "number",
+    description:
+      "Byte offset used only with continuationId. Start from nextOutputOffset returned by the previous page.",
+  },
+  outputLimitBytes: {
+    type: "number",
+    description:
+      "Maximum output bytes returned in this Tool result. Persistent output beyond this page remains reachable through continuationId.",
+  },
 } as const;
 
 const terminalSessionLlmInputSchema = {
   type: "object",
-  required: ["command"],
+  anyOf: [
+    { required: ["command"] },
+    { required: ["continuationId"] },
+  ],
   properties: terminalProperties,
   additionalProperties: false,
 } as const;
@@ -51,7 +69,7 @@ export const terminalTool: ToolImplementation = {
     id: "terminal",
     title: "Terminal",
     description:
-      "Run full host shell commands or PTY-backed persistent sessions with process-tree ownership and streamed output.",
+      "Run full host shell commands or PTY-backed persistent sessions, and continue reading bounded persistent output without starting another command. Use semantic file/read/search Tools instead when they directly fit the task.",
     domain: "terminal",
     source: "internal",
     mode: "stream",
@@ -78,8 +96,12 @@ export const terminalTool: ToolImplementation = {
   execute: async (context) => {
     const command =
       typeof context.args.command === "string" ? context.args.command.trim() : "";
-    if (!command) {
-      throw mcpBadRequest("command is required");
+    const continuationId =
+      typeof context.args.continuationId === "string"
+        ? context.args.continuationId.trim()
+        : "";
+    if (!command && !continuationId) {
+      throw mcpBadRequest("command or continuationId is required");
     }
 
     const result = await executeTerminalSessionRuntime({
