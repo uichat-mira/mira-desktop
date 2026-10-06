@@ -54,10 +54,10 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          "$RUNNER_TEMP/gh-aw" run mira-agent-worker \\
-            --push \\
-            --ref feat/agent-dispatch-poc \\
-            --approve \\
+          "$RUNNER_TEMP/gh-aw" run mira-agent-worker \
+            --push \
+            --ref feat/agent-dispatch-poc \
+            --approve \
             --json | tee "$RUNNER_TEMP/mira-agent-worker-run.json"
 
       - name: Upload generated lock
