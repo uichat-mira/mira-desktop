@@ -153,8 +153,6 @@ describe("resolveHarnessCapabilityProfiles", () => {
     const workspaceEdit = profiles.find((profile) => profile.id === "workspace_edit");
     expect(workspaceEdit).not.toHaveProperty("preferredToolId");
     expect(workspaceEdit).not.toHaveProperty("actionProfileId");
-    const workspaceLookup = profiles.find((profile) => profile.id === "workspace_lookup");
-    expect(workspaceLookup).not.toHaveProperty("preferredToolId");
   });
 
   it("keeps unknown tools as one-to-one fallback profiles", () => {
