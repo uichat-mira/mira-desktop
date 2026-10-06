@@ -152,7 +152,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
         rerankScore: 0,
         finalScore: embeddingScore,
         candidateToolIds: profile.supportingToolIds,
-        preferredToolId: profile.preferredToolId,
+        ...(profile.preferredToolId ? { preferredToolId: profile.preferredToolId } : {}),
       } satisfies ResolvedHarnessCapabilityMatch;
     })
     .filter((match): match is NonNullable<typeof match> => match !== null)

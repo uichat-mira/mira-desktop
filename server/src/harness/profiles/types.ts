@@ -10,7 +10,7 @@ export interface HarnessCapabilityProfile {
   tags: string[];
   inputSchema?: Record<string, unknown>;
   sourceLabel?: string;
-  preferredToolId: string;
+  preferredToolId?: string;
   supportingToolIds: string[];
   actionProfileId?: string;
   actionProfileTitle?: string;
