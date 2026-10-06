@@ -40,18 +40,16 @@ jobs:
           set -euo pipefail
           "$RUNNER_TEMP/gh-aw" compile .github/workflows/mira-agent-worker.md --strict
 
-      - name: Commit generated lock
+      - name: Verify generated lock
         shell: bash
         run: |
           set -euo pipefail
-          lock=".github/workflows/mira-agent-worker.lock.yml"
-          test -f "$lock"
-          git add "$lock"
-          if git diff --cached --quiet; then
-            echo "Generated lock is already current."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "poc: compile Mira agent worker"
-          git push origin HEAD:feat/agent-dispatch-poc
+          test -s ".github/workflows/mira-agent-worker.lock.yml"
+
+      - name: Upload generated lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: mira-agent-worker-lock
+          path: .github/workflows/mira-agent-worker.lock.yml
+          if-no-files-found: error
+          retention-days: 1
