@@ -40,10 +40,19 @@ jobs:
           gh aw compile .github/workflows/agent-dispatch-poc.md --gh-aw-ref v0.89.21
           git diff --check
 
-      - name: Commit, push, and run smoke
+      - name: Publish compiled lock
+        run: |
+          git add .github/workflows/agent-dispatch-poc.lock.yml
+          if git diff --cached --quiet; then
+            echo "Compiled lock is already current."
+          else
+            git commit -m "chore: compile agent dispatch POC workflow"
+            git push origin HEAD:feat/agent-dispatch-poc
+          fi
+
+      - name: Dispatch read-only smoke
         run: |
           gh aw run agent-dispatch-poc \
-            --push \
             --ref feat/agent-dispatch-poc \
             --approve \
             --json
