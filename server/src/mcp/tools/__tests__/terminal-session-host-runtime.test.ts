@@ -30,6 +30,12 @@ describe("terminal host runtime metadata", () => {
     ).toBeUndefined();
   });
 
+  it("describes Terminal as process execution and an escape hatch rather than a default semantic API", () => {
+    expect(terminalTool.definition.description).toMatch(/process\/shell work/i);
+    expect(terminalTool.definition.description).toMatch(/execution escape hatch/i);
+    expect(terminalTool.definition.description).toMatch(/prefer an exposed semantic Tool/i);
+  });
+
   it("describes cwd as a host execution directory instead of a workspace-only jail", () => {
     const properties = terminalTool.definition.inputSchema
       .properties as Record<string, SchemaProperty>;
