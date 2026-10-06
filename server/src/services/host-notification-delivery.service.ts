@@ -22,7 +22,9 @@ type DeliveryRepository = Pick<
   typeof hostNotificationRepository,
   | "expireDue"
   | "listPending"
+  | "isCanonicalDeliveryEligible"
   | "getBinding"
+  | "markExpired"
   | "markDelivered"
   | "markFailed"
   | "scheduleRetry"
@@ -73,6 +75,15 @@ export class HostNotificationDeliveryService {
       repository.expireDue(now);
       const pending = repository.listPending(now, 100);
       for (const event of pending) {
+        if (!repository.isCanonicalDeliveryEligible(event)) {
+          repository.markExpired(
+            event.id,
+            "Canonical message is no longer notification-eligible",
+            now,
+          );
+          continue;
+        }
+
         const binding = repository.getBinding(event.installationId);
         if (!binding || binding.status !== "active") {
           repository.markFailed(
