@@ -93,6 +93,34 @@ describe("apply_patch File Mutation Runtime", () => {
     expect(fs.existsSync(path.join(tempRoot, "first.txt"))).toBe(false);
   });
 
+  it("reports unknown changed state when the first failed operation may have crossed commit", async () => {
+    const failingFilesystem = {
+      ...nodeFileMutationFilesystem,
+      async writeAtomic() {
+        throw new Error("simulated first write failure");
+      },
+    };
+
+    const result = await executeApplyPatchMutation(
+      parseApplyPatch(`*** Begin Patch
+*** Add File: first.txt
++first
+*** End Patch`),
+      { filesystem: failingFilesystem },
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      changed: "unknown",
+      committed: [],
+      committedDeltaExact: false,
+      failed: {
+        hunkIndex: 0,
+        stage: "add",
+      },
+    });
+  });
+
   it("reports a definitely committed prefix and uncertain failed operation", async () => {
     const failingFilesystem = {
       ...nodeFileMutationFilesystem,

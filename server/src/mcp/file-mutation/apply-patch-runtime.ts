@@ -60,7 +60,7 @@ export type ApplyPatchFailure = {
 export type ApplyPatchExecutionResult = {
   operation: "apply_patch";
   status: "completed" | "partial" | "failed";
-  changed: boolean;
+  changed: boolean | "unknown";
   hunkCount: number;
   committed: ApplyPatchCommittedStep[];
   failed?: ApplyPatchFailure;
@@ -646,7 +646,7 @@ export const executeApplyPatchMutation = async (
           return {
             operation: "apply_patch",
             status: committed.length > 0 ? "partial" : "failed",
-            changed: committed.length > 0,
+            changed: committed.length > 0 ? true : "unknown",
             hunkCount: prepared.length,
             committed,
             failed: {

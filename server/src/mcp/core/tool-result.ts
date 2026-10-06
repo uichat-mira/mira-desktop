@@ -513,7 +513,10 @@ const projectApplyPatchEvidence = (
     data: {
       kind: "file_mutation_patch",
       status,
-      changed: result.changed === true,
+      changed:
+        result.changed === "unknown"
+          ? "unknown"
+          : result.changed === true,
       hunkCount:
         typeof result.hunkCount === "number" ? result.hunkCount : 0,
       committedMutationCount: committed.length,

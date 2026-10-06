@@ -367,7 +367,7 @@ export interface AgentFileMutationEvidenceData {
 export interface AgentApplyPatchEvidenceData {
   kind: "file_mutation_patch";
   status: "completed" | "partial" | "failed";
-  changed: boolean;
+  changed: boolean | "unknown";
   hunkCount: number;
   committedMutationCount: number;
   unappliedHunkCount: number;

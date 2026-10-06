@@ -89,6 +89,38 @@ describe("generic MCP tool evidence", () => {
     expect(evidence?.gaps?.join(" ")).toMatch(/commit point/i);
   });
 
+  it("preserves unknown patch changed state instead of inventing no-op evidence", () => {
+    const evidence = projectToolEvidence(
+      { id: "apply_patch", source: "internal", domain: "edit" },
+      normalizeToolResult({
+        structuredContent: {
+          operation: "apply_patch",
+          status: "failed",
+          changed: "unknown",
+          hunkCount: 1,
+          committed: [],
+          failed: {
+            hunkIndex: 0,
+            hunkType: "add",
+            path: "a.txt",
+            stage: "add",
+            message: "commit outcome uncertain",
+          },
+          unapplied: [],
+          committedDeltaExact: false,
+        },
+        isError: true,
+      }),
+    );
+
+    expect(evidence?.data).toMatchObject({
+      kind: "file_mutation_patch",
+      status: "failed",
+      changed: "unknown",
+      committedDeltaExact: false,
+    });
+  });
+
   it("preserves a bounded generic list result without turning it into an empty result", () => {
     const summary = createToolExecutionEvidenceSummary({
       evidenceIndex: 0,
