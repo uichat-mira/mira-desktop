@@ -882,6 +882,65 @@ test("Agent running to completed produces one outbox event while waiting approva
   assert.equal(count.count, 1);
 });
 
+test("metadata-only completion transition enqueues the canonical assistant once", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-metadata-${crypto.randomUUID()}`;
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "final text already persisted",
+    parts: [{ type: "text", text: "final text already persisted" }],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+
+  let count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 0);
+
+  const completed = threadService.updateMessageMetadata(
+    thread.id,
+    assistantMessageId,
+    user.id,
+    { agent: { status: "completed" } },
+  );
+  assert.equal(
+    (completed?.metadata.agent as { status?: string } | undefined)?.status,
+    "completed",
+  );
+
+  count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 1);
+
+  threadService.updateMessageMetadata(
+    thread.id,
+    assistantMessageId,
+    user.id,
+    { agent: { status: "completed" }, refreshed: true },
+  );
+
+  count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 1);
+});
+
 test("notification outbox failure rolls back the canonical assistant message", () => {
   const { user, thread, installationId } = createNotificationThreadFixture();
   const assistantMessageId = `assistant-rollback-${crypto.randomUUID()}`;
