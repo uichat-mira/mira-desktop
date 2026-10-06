@@ -137,8 +137,9 @@ const createThreadTables = () => {
 
     CREATE TABLE IF NOT EXISTS notification_outbox (
       id TEXT PRIMARY KEY,
-      installation_id TEXT NOT NULL
-        REFERENCES host_notification_bindings(installation_id) ON DELETE CASCADE,
+      -- Opaque identity by design: no FK. Outbox history must survive
+      -- binding deletion/revocation until the worker records a terminal state.
+      installation_id TEXT NOT NULL,
       canonical_message_id TEXT NOT NULL,
       source_id TEXT NOT NULL,
       eligibility_event TEXT NOT NULL DEFAULT 'final_transition_first_seen'
@@ -159,6 +160,85 @@ const createThreadTables = () => {
     CREATE INDEX IF NOT EXISTS idx_notification_outbox_source
       ON notification_outbox(source_id);
   `);
+};
+
+
+const rebuildNotificationOutboxForDurableHistory = () => {
+  const sqlite = getSqlite();
+  if (!hasSqliteTable(sqlite, "notification_outbox")) return;
+
+  const foreignKeys = sqlite
+    .prepare("PRAGMA foreign_key_list(notification_outbox)")
+    .all() as Array<{ table: string }>;
+  if (foreignKeys.length === 0) return;
+
+  sqlite.exec("PRAGMA foreign_keys = OFF");
+  sqlite.exec("BEGIN");
+  try {
+    sqlite.exec(`
+      ALTER TABLE notification_outbox RENAME TO notification_outbox_legacy;
+
+      CREATE TABLE notification_outbox (
+        id TEXT PRIMARY KEY,
+        installation_id TEXT NOT NULL,
+        canonical_message_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        eligibility_event TEXT NOT NULL DEFAULT 'final_transition_first_seen'
+          CHECK (eligibility_event = 'final_transition_first_seen'),
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK (state IN ('pending', 'delivered', 'failed', 'expired')),
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        last_error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (installation_id, canonical_message_id, eligibility_event)
+      );
+
+      INSERT INTO notification_outbox (
+        id,
+        installation_id,
+        canonical_message_id,
+        source_id,
+        eligibility_event,
+        state,
+        attempt_count,
+        next_attempt_at,
+        expires_at,
+        last_error,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        installation_id,
+        canonical_message_id,
+        source_id,
+        eligibility_event,
+        state,
+        attempt_count,
+        next_attempt_at,
+        expires_at,
+        last_error,
+        created_at,
+        updated_at
+      FROM notification_outbox_legacy;
+
+      DROP TABLE notification_outbox_legacy;
+
+      CREATE INDEX IF NOT EXISTS idx_notification_outbox_delivery
+        ON notification_outbox(state, next_attempt_at);
+      CREATE INDEX IF NOT EXISTS idx_notification_outbox_source
+        ON notification_outbox(source_id);
+    `);
+    sqlite.exec("COMMIT");
+  } catch (error) {
+    sqlite.exec("ROLLBACK");
+    throw error;
+  } finally {
+    sqlite.exec("PRAGMA foreign_keys = ON");
+  }
 };
 
 
@@ -862,6 +942,7 @@ export const initializeThreadDatabase = () => {
     migrateConversationArtifactsOffWorkdirIdentity();
     ensureConversationArtifactIndexes();
     rebuildMessagesTableForThreadSupport();
+    rebuildNotificationOutboxForDurableHistory();
     ensureThreadWorkspaceColumn();
     ensureThreadKnowledgeBaseColumn();
     ensureThreadRoleColumn();
