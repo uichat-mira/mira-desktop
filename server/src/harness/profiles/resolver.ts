@@ -57,11 +57,11 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   {
     id: "web_research",
     title: "Web Research",
-    description: "Search current public web information and summarize the findings.",
+    description: "Search current public web information and retrieve known public URLs for the current task.",
     domain: "web_search",
-    tags: ["web", "search", "public", "current", "realtime", "research", "internet"],
+    tags: ["web", "search", "public", "current", "realtime", "research", "internet", "fetch", "url", "retrieve", "page"],
     preferredToolId: "web_search",
-    supportingToolIds: ["web_search"],
+    supportingToolIds: ["web_search", "web_fetch"],
   },
   {
     id: "browser_computer_use",

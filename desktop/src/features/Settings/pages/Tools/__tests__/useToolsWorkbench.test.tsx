@@ -526,7 +526,7 @@ describe("useToolsWorkbench", () => {
     });
 
     rerender({
-      handoff: { toolId: "web_search", args: { query: "capabilities" } },
+      handoff: { toolId: "web_search", args: { queries: ["capabilities"] } },
       handoffKey: "second",
     });
 
@@ -535,7 +535,7 @@ describe("useToolsWorkbench", () => {
     });
     expect(result.current.activeGroupId).toBe("web_search");
     expect(result.current.argsDraft).toBe(
-      JSON.stringify({ query: "capabilities" }, null, 2),
+      JSON.stringify({ queries: ["capabilities"] }, null, 2),
     );
   });
 

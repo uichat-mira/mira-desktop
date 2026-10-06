@@ -768,7 +768,90 @@ export const projectToolEvidence = (
   );
   if (fileMutationEvidence) return fileMutationEvidence;
 
-  if ((definition.id === "web_search" || definition.id === "news_search") && typeof result.query === "string" && Array.isArray(result.results)) {
+  if (definition.id === "web_search" && Array.isArray(result.queries) && Array.isArray(result.results)) {
+    const queries = result.queries.filter((query): query is string => typeof query === "string");
+    const results = result.results.filter(asRecord);
+    const topFindings = results.slice(0, 5).map((item) =>
+      textPreview([item.title, item.snippet].filter((part) => typeof part === "string").join(": "), 180),
+    );
+    return baseEvidence({
+      result,
+      isError: normalized.isError,
+      actionTaken: `Searched the web for ${queries.map((query) => `"${query}"`).join(", ")}.`,
+      facts: [
+        `queries=${queries.join(", ")}`,
+        `resultCount=${results.length}`,
+        ...topFindings,
+      ],
+      gaps: results.length === 0 ? ["No web results were returned."] : undefined,
+      data: {
+        kind: "web_search",
+        queries,
+        resultCount: results.length,
+        topFindings,
+        citationsPreview: results.slice(0, 5).map((item) => ({
+          title: typeof item.title === "string" ? textPreview(item.title, 180) : "",
+          link: typeof item.link === "string" ? item.link : "",
+        })),
+      },
+    });
+  }
+
+  if (
+    definition.id === "web_fetch" &&
+    typeof result.finalUrl === "string" &&
+    typeof result.status === "number"
+  ) {
+    const url = typeof result.url === "string" ? result.url : result.finalUrl;
+    const contentType = typeof result.contentType === "string" ? result.contentType : "";
+    const contentKind = typeof result.kind === "string" ? result.kind : "unknown";
+    const title = typeof result.title === "string" ? result.title : "";
+    const content = typeof result.content === "string" ? result.content : "";
+    const reason = typeof result.reason === "string" ? result.reason : "";
+    const byteLength = typeof result.byteLength === "number" ? result.byteLength : content.length;
+    const truncated = result.truncated === true;
+    const contentPreview = textPreview(content);
+    const hasContent = contentKind === "html" || contentKind === "text";
+    return baseEvidence({
+      result,
+      isError: normalized.isError,
+      actionTaken: hasContent
+        ? `Fetched ${url}.`
+        : `Fetched ${url} but could not extract readable content.`,
+      facts: [
+        `url=${url}`,
+        `finalUrl=${result.finalUrl}`,
+        `status=${result.status}`,
+        `kind=${contentKind}`,
+        ...(contentType ? [`contentType=${contentType}`] : []),
+        ...(title ? [`title=${textPreview(title, 180)}`] : []),
+        `byteLength=${byteLength}`,
+        `truncated=${truncated}`,
+        ...(reason ? [`reason=${reason}`] : []),
+        ...(contentPreview ? [contentPreview] : []),
+      ],
+      gaps: [
+        ...(truncated ? ["Fetched content is truncated."] : []),
+        ...(!hasContent && reason ? [reason] : []),
+      ],
+      status: truncated ? "truncated" : hasContent ? undefined : "partial",
+      data: {
+        kind: "web_fetch",
+        url,
+        finalUrl: result.finalUrl,
+        status: result.status,
+        ...(contentType ? { contentType } : {}),
+        contentKind,
+        ...(title ? { title } : {}),
+        byteLength,
+        truncated,
+        ...(reason ? { reason } : {}),
+        contentPreview,
+      },
+    });
+  }
+
+  if (definition.id === "news_search" && typeof result.query === "string" && Array.isArray(result.results)) {
     const results = result.results.filter(asRecord);
     const topFindings = results.slice(0, 5).map((item) =>
       textPreview([item.title, item.snippet].filter((part) => typeof part === "string").join(": "), 180),

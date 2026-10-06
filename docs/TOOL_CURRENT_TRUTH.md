@@ -235,13 +235,33 @@ Approval 只授权 frozen exact invocation；它不会扩大 workspace authority
 - 搜索当前公共互联网；
 - provider 在受信任 runtime config 中选择；
 - 当前支持 Tavily / SearXNG；
-- 模型只提供 `query` 与 `maxResults`；
-- 默认 4 条，限幅 1–10；
-- provider 失败按计划尝试下一可用 provider；
-- 所有 provider 失败才返回结构化错误；
+- 模型只提供 `queries`（1–4 条查询，去重非空字符串）与 `maxResults`；
+- Runtime 对所有 query 并发 fan-out，结果按 URL 归一化去重合并；
+- `maxResults` 是最终 merged 结果总上限，默认 4，限幅 1–10；
+- 当前 provider 任一 query 出现真实 provider failure 时，整批 queries 按既有计划尝试下一可用 provider；
+- provider 批次都失败时返回结构化错误；
 - `sideEffect = network`，但 definition 当前 `requiresApproval = false`。
 
 `apiKey`、`baseUrl` 和 provider 不是 LLM 参数。
+
+### `web_fetch`
+
+- 抓取并提取已知公网 `http` / `https` URL 的可读正文；
+- 模型只提供 `url`；
+- 仅允许公网 http/https 目标：内网 / loopback / link-local / 云元数据地址、非 http(s) 协议以及携带凭据的 URL 都会被拒绝；
+- 直连走 SSRF-safe 的 guarded transport；代理（SOCKS）路径在请求前重新校验目标，并对每个 redirect hop 重新校验；
+- 具备 timeout、caller cancellation 与响应体大小上限；
+- transport 返回有界原始字节；提取层按 `Content-Type` / charset（含 BOM 与 HTML meta 声明）用 `iconv-lite` 解码，不假定 UTF-8；
+- HTML 经 `jsdom → @mozilla/readability → turndown` 转为主正文 Markdown；`text/*`、JSON、XML 作为可靠文本输出；
+- 返回 `url` / `finalUrl` / `status` / `contentType` / `byteLength` / `truncated` / `kind`，以及 `title` / `content`（`html` / `text`）或 `reason`（非成功 outcome）；
+- 明确依赖 JS、登录或 anti-bot challenge 的页面优先返回结构化 `browser_required`，即使页面同时包含大段文本；
+- 无上述浏览器证据且无法获得可信正文时（如静态短页面）返回结构化 `unsupported`，既不返回整页导航 / 脚本垃圾，也不误报 `browser_required`；
+- 不支持的二进制内容返回结构化 `unsupported`；PDF / 文档暂不解析，返回 `unsupported`（deferred），不新建第二套文档解析器；
+- transport 结构化失败可区分 `blocked` / `http` / `network` / `timeout` / `cancelled`，caller cancel 的最终语义是 `cancelled`；
+- provider、proxy、parser 与安全实现细节不进入模型可见契约；
+- `sideEffect = network`，definition 当前 `requiresApproval = false`。
+
+`web_fetch` 不会因为页面依赖 JavaScript 或登录状态而自动升级为浏览器自动化；Attached / Managed Browser 仍是独立能力面。
 
 ### `news_search`
 

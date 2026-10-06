@@ -114,6 +114,8 @@ get Tool Lab workspace
 - 一个 Case 的审批/恢复属于同一次 Run，不在 Y/N resume 前再次 reset。
 - 这不是 workflow/steps DSL；Case 只声明依赖哪个 fixture，reset 实现由受控 Registry 提供。
 
+不需要 Workspace 的 Tool（例如 `web_search` / `web_fetch`）声明 `workspace: "none"` 且不绑定 fixture：它们的网络行为无法由文件 fixture 决定，因此确定性验收覆盖由受控 provider/transport doubles 的测试承担；Tool Lab Case 只保留人类 smoke 与确定性安全失败（例如私网 / 非 http(s) 目标被结构化拒绝），避免验收依赖任意实时公网可用性。
+
 运行顺序：
 
 ```text

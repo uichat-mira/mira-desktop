@@ -72,6 +72,10 @@ describe("Capability acceptance cases", () => {
       "terminal-stale-session",
       "core-read-controlled-failure",
       "core-approval-boundary",
+      "web-search-multi-query",
+      "web-fetch-known-url",
+      "web-fetch-blocked-private-destination",
+      "web-fetch-blocked-invalid-scheme",
     ]);
 
     expect(
@@ -200,6 +204,41 @@ describe("Capability acceptance cases", () => {
     ).toEqual({
       operation: "status",
       sessionId: "tool-lab-stale-session",
+    });
+  });
+
+  it("registers deterministic Universal Web acceptance cases that need no workspace", () => {
+    const webCases = nativeCapabilityAcceptanceCases.filter(
+      (item) => item.group === "Universal Web",
+    );
+
+    expect(webCases.map((item) => item.id)).toEqual([
+      "web-search-multi-query",
+      "web-fetch-known-url",
+      "web-fetch-blocked-private-destination",
+      "web-fetch-blocked-invalid-scheme",
+    ]);
+    expect(webCases.every((item) => item.workspace === "none")).toBe(true);
+    expect(webCases.every((item) => item.fixture === undefined)).toBe(true);
+    expect([...new Set(webCases.map((item) => item.toolId))].sort()).toEqual([
+      "web_fetch",
+      "web_search",
+    ]);
+
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "web-fetch-blocked-private-destination",
+      ),
+    ).toMatchObject({
+      toolId: "web_fetch",
+      args: { url: "http://127.0.0.1/" },
+      workspace: "none",
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "web-search-multi-query"),
+    ).toMatchObject({
+      toolId: "web_search",
+      args: { queries: ["mira desktop", "electron agent runtime"], maxResults: 5 },
     });
   });
 

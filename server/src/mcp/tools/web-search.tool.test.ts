@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
 import { webSearchTool } from "./web-search.tool.js";
 
 const webSearchSettingsMock = vi.hoisted(() => ({
@@ -13,6 +14,26 @@ const webSearchSettingsMock = vi.hoisted(() => ({
 vi.mock("@/db/repositories/web-search-settings.repository.js", () => ({
   webSearchSettingsRepository: webSearchSettingsMock,
 }));
+
+const createContext = (overrides?: Partial<ToolInvocationContext>): ToolInvocationContext => ({
+  invocationId: "test-invocation",
+  args: {},
+  signal: new AbortController().signal,
+  environment: createHarnessEnvironmentSnapshot(),
+  pushEvent() {},
+  addArtifact(artifact) {
+    return { id: "artifact-test", ...artifact };
+  },
+  trace: {
+    startSpan() {
+      return {
+        spanId: "span-test",
+        end() {},
+      };
+    },
+  },
+  ...overrides,
+});
 
 describe("web search tool", () => {
   afterEach(() => {
@@ -30,12 +51,88 @@ describe("web search tool", () => {
   it("does not expose provider configuration fields in the LLM-facing input schema", () => {
     expect(webSearchTool.definition.inputSchema).toEqual({
       type: "object",
-      required: ["query"],
+      required: ["queries"],
       properties: {
-        query: { type: "string" },
-        maxResults: { type: "number" },
+        queries: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          minItems: 1,
+          maxItems: 4,
+          description: "1-4 distinct search queries executed concurrently and merged.",
+        },
+        maxResults: {
+          type: "number",
+          description:
+            "Maximum number of merged results returned across all queries (1-10).",
+        },
       },
       additionalProperties: false,
+    });
+  });
+
+  it("keeps provider details out of the Agent-facing contract", () => {
+    expect(webSearchTool.definition.description).not.toMatch(/Tavily|SearXNG/i);
+    expect(webSearchTool.definition.outputSchema).toEqual({
+      type: "object",
+      required: ["queries", "results"],
+      properties: {
+        queries: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4 },
+        results: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["title", "link", "snippet"],
+            properties: {
+              title: { type: "string" },
+              link: { type: "string" },
+              snippet: { type: "string" },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it("validates queries args before contacting providers", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await expect(
+      webSearchTool.execute(createContext({ args: { queries: "example" } })),
+    ).rejects.toThrow("queries must be an array of 1-4 non-empty strings");
+
+    await expect(
+      webSearchTool.execute(createContext({ args: { queries: [] } })),
+    ).rejects.toThrow("queries must contain between 1 and 4 non-empty unique strings");
+
+    await expect(
+      webSearchTool.execute(createContext({ args: { queries: [42] } })),
+    ).rejects.toThrow("queries must contain only strings");
+
+    await expect(
+      webSearchTool.execute(createContext({ args: { queries: ["a", "b", "c", "d", "e"] } })),
+    ).rejects.toThrow("queries must contain between 1 and 4 non-empty unique strings");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("trims and dedupes query strings before execution", async () => {
+    webSearchSettingsMock.get.mockReturnValue({
+      tavilyApiKey: "stored-key",
+      searxngBaseUrl: "",
+      maxResults: 4,
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [] }),
+    } as Response);
+
+    const result = await webSearchTool.execute(
+      createContext({ args: { queries: ["  alpha  ", "", "alpha", "beta"] } }),
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(result.structuredContent).toMatchObject({
+      queries: ["alpha", "beta"],
     });
   });
 
@@ -53,44 +150,251 @@ describe("web search tool", () => {
       }),
     } as Response);
 
-    const result = await webSearchTool.execute({
-      invocationId: "1",
-      args: {
-        query: "example",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot({
-        toolConfig: {
-          web_search: {
-            apiKey: "runtime-key",
+    const result = await webSearchTool.execute(
+      createContext({
+        args: {
+          queries: ["example"],
+        },
+        environment: createHarnessEnvironmentSnapshot({
+          toolConfig: {
+            web_search: {
+              apiKey: "runtime-key",
+            },
           },
-        },
+        }),
       }),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "a", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-1",
-            end() {},
-          };
-        },
-      },
-    });
+    );
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     expect(fetchSpy.mock.calls[0]?.[0]).toBe("https://api.tavily.com/search");
     expect(result.structuredContent).toEqual({
-      query: "example",
-      provider: "tavily",
-      capabilityId: "tavily-search",
+      queries: ["example"],
       results: [
         {
           title: "Tavily Result",
           link: "https://example.com/tavily",
           snippet: "Snippet from Tavily",
+        },
+      ],
+    });
+    expect(result.content).toEqual([
+      {
+        type: "json",
+        json: {
+          results: [
+            {
+              title: "Tavily Result",
+              link: "https://example.com/tavily",
+              snippet: "Snippet from Tavily",
+            },
+          ],
+        },
+      },
+    ]);
+    expect(JSON.stringify(result.content)).not.toMatch(/tavily-search|provider/i);
+  });
+
+  it("fans out multiple queries concurrently and merges their results", async () => {
+    webSearchSettingsMock.get.mockReturnValue({
+      tavilyApiKey: "stored-key",
+      searxngBaseUrl: "",
+      maxResults: 4,
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = String(init?.body ?? "");
+      const query = body.includes('"query":"first query"') ? "first query" : "second query";
+      return {
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              title: `Result for ${query}`,
+              url: `https://example.com/${encodeURIComponent(query)}`,
+              content: `Snippet for ${query}`,
+            },
+          ],
+        }),
+      } as Response;
+    });
+
+    const result = await webSearchTool.execute(
+      createContext({ args: { queries: ["first query", "second query"] } }),
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(result.structuredContent).toEqual({
+      queries: ["first query", "second query"],
+      results: [
+        {
+          title: "Result for first query",
+          link: "https://example.com/first%20query",
+          snippet: "Snippet for first query",
+        },
+        {
+          title: "Result for second query",
+          link: "https://example.com/second%20query",
+          snippet: "Snippet for second query",
+        },
+      ],
+    });
+  });
+
+  it("dedupes merged results by normalized URL", async () => {
+    webSearchSettingsMock.get.mockReturnValue({
+      tavilyApiKey: "stored-key",
+      searxngBaseUrl: "",
+      maxResults: 4,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = String(init?.body ?? "");
+      return {
+        ok: true,
+        json: async () => ({
+          results:
+            body.includes('"query":"alpha"')
+              ? [
+                  { title: "Alpha One", url: "https://Example.com/a/", content: "one" },
+                  { title: "Alpha Two", url: "https://example.com/b", content: "two" },
+                ]
+              : [
+                  { title: "Beta One", url: "https://example.com/c", content: "three" },
+                  { title: "Beta Duplicate", url: "https://example.com/a#section", content: "dup" },
+                ],
+        }),
+      } as Response;
+    });
+
+    const result = await webSearchTool.execute(
+      createContext({ args: { queries: ["alpha", "beta"] } }),
+    );
+
+    expect(result.structuredContent.results).toEqual([
+      { title: "Alpha One", link: "https://Example.com/a/", snippet: "one" },
+      { title: "Beta One", link: "https://example.com/c", snippet: "three" },
+      { title: "Alpha Two", link: "https://example.com/b", snippet: "two" },
+    ]);
+  });
+
+  it("caps final merged results at maxResults", async () => {
+    webSearchSettingsMock.get.mockReturnValue({
+      tavilyApiKey: "stored-key",
+      searxngBaseUrl: "",
+      maxResults: 4,
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [
+          { title: "One", url: "https://example.com/1", content: "one" },
+          { title: "Two", url: "https://example.com/2", content: "two" },
+        ],
+      }),
+    } as Response);
+
+    const result = await webSearchTool.execute(
+      createContext({ args: { queries: ["alpha", "beta"], maxResults: 1 } }),
+    );
+
+    expect(result.structuredContent.results).toHaveLength(1);
+  });
+
+  it("falls back the whole query batch when one query fails on the current provider", async () => {
+    webSearchSettingsMock.get.mockReturnValue({
+      tavilyApiKey: "stored-key",
+      searxngBaseUrl: "http://localhost:8080",
+      maxResults: 4,
+    });
+    const artifacts: Array<Record<string, unknown>> = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      if (String(url) === "https://api.tavily.com/search") {
+        const body = String(init?.body ?? "");
+        if (body.includes('"query":"alpha"')) {
+          return {
+            ok: true,
+            json: async () => ({
+              results: [{ title: "Alpha Tavily", url: "https://example.com/tavily-a", content: "one" }],
+            }),
+          } as Response;
+        }
+        return { ok: false, status: 502 } as Response;
+      }
+
+      const query = new URL(String(url)).searchParams.get("q") ?? "";
+      return {
+        ok: true,
+        json: async () => ({
+          results: [{
+            title: `SearXNG ${query}`,
+            url: `https://example.com/searxng-${query}`,
+            content: `fallback ${query}`,
+          }],
+        }),
+      } as Response;
+    });
+
+    const result = await webSearchTool.execute(
+      createContext({
+        args: { queries: ["alpha", "beta"] },
+        addArtifact(artifact) {
+          artifacts.push(artifact as Record<string, unknown>);
+          return { id: "a", ...artifact };
+        },
+      }),
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    expect(result.structuredContent).toEqual({
+      queries: ["alpha", "beta"],
+      results: [
+        {
+          title: "SearXNG alpha",
+          link: "https://example.com/searxng-alpha",
+          snippet: "fallback alpha",
+        },
+        {
+          title: "SearXNG beta",
+          link: "https://example.com/searxng-beta",
+          snippet: "fallback beta",
+        },
+      ],
+    });
+    expect(artifacts[0]?.metadata).toMatchObject({
+      queries: ["alpha", "beta"],
+      provider: "searxng",
+      capabilityId: "searxng-search",
+    });
+  });
+
+  it("falls back to the next provider when every query fails on the current provider", async () => {
+    webSearchSettingsMock.get.mockReturnValue({
+      tavilyApiKey: "stored-key",
+      searxngBaseUrl: "http://localhost:8080",
+      maxResults: 4,
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      if (String(url) === "https://api.tavily.com/search") {
+        return { ok: false, status: 502 } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          results: [{ title: "SearXNG", url: "https://example.com/s", content: "snippet" }],
+        }),
+      } as Response;
+    });
+
+    const result = await webSearchTool.execute(
+      createContext({ args: { queries: ["alpha", "beta"] } }),
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    expect(result.structuredContent).toEqual({
+      queries: ["alpha", "beta"],
+      results: [
+        {
+          title: "SearXNG",
+          link: "https://example.com/s",
+          snippet: "snippet",
         },
       ],
     });
@@ -109,32 +413,20 @@ describe("web search tool", () => {
       }),
     } as Response);
 
-    await webSearchTool.execute({
-      invocationId: "stored-max-results",
-      args: {
-        query: "example",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot({
-        toolConfig: {
-          web_search: {
-            apiKey: "runtime-key",
+    await webSearchTool.execute(
+      createContext({
+        args: {
+          queries: ["example"],
+        },
+        environment: createHarnessEnvironmentSnapshot({
+          toolConfig: {
+            web_search: {
+              apiKey: "runtime-key",
+            },
           },
-        },
+        }),
       }),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "a", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-stored-max-results",
-            end() {},
-          };
-        },
-      },
-    });
+    );
 
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://api.tavily.com/search",
@@ -144,7 +436,7 @@ describe("web search tool", () => {
     );
   });
 
-  it("queries searxng when forced and baseUrl is available", async () => {
+  it("queries searxng when tavily is not configured and baseUrl is available", async () => {
     webSearchSettingsMock.get.mockReturnValue({
       tavilyApiKey: "",
       searxngBaseUrl: "http://localhost:8080",
@@ -162,35 +454,15 @@ describe("web search tool", () => {
       }),
     } as Response);
 
-    const result = await webSearchTool.execute({
-      invocationId: "2",
-      args: {
-        query: "example",
-        provider: "searxng",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "a", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-2",
-            end() {},
-          };
-        },
-      },
-    });
+    const result = await webSearchTool.execute(
+      createContext({ args: { queries: ["example"] } }),
+    );
 
     expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
       "http://localhost:8080/search?",
     );
     expect(result.structuredContent).toEqual({
-      query: "example",
-      provider: "searxng",
-      capabilityId: "searxng-search",
+      queries: ["example"],
       results: [
         {
           title: "SearXNG Result",
@@ -213,33 +485,15 @@ describe("web search tool", () => {
       }),
     } as Response);
 
-    const result = await webSearchTool.execute({
-      invocationId: "3",
-      args: {
-        query: "fallback search",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "a", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-3",
-            end() {},
-          };
-        },
-      },
-    });
+    const result = await webSearchTool.execute(
+      createContext({ args: { queries: ["fallback search"] } }),
+    );
 
     expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
       "http://localhost:8080/search?",
     );
     expect(result.structuredContent).toMatchObject({
-      provider: "searxng",
-      query: "fallback search",
+      queries: ["fallback search"],
     });
   });
 
@@ -260,26 +514,7 @@ describe("web search tool", () => {
     } as Response);
 
     await expect(
-      webSearchTool.execute({
-        invocationId: "3c",
-        args: {
-          query: "latest news",
-        },
-        signal: new AbortController().signal,
-        environment: createHarnessEnvironmentSnapshot(),
-        pushEvent() {},
-        addArtifact(artifact) {
-          return { id: "a", ...artifact };
-        },
-        trace: {
-          startSpan() {
-            return {
-              spanId: "span-3c",
-              end() {},
-            };
-          },
-        },
-      }),
+      webSearchTool.execute(createContext({ args: { queries: ["latest news"] } })),
     ).rejects.toThrow(
       /SearXNG returned no results because upstream engines were unavailable.*duckduckgo: CAPTCHA.*google: Suspended: CAPTCHA/s,
     );
@@ -310,26 +545,16 @@ describe("web search tool", () => {
         }),
       } as Response);
 
-    const result = await webSearchTool.execute({
-      invocationId: "3b",
-      args: {
-        query: "fallback search",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "a", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-3b",
-            end() {},
-          };
+    const artifacts: Array<Record<string, unknown>> = [];
+    const result = await webSearchTool.execute(
+      createContext({
+        args: { queries: ["fallback search"] },
+        addArtifact(artifact) {
+          artifacts.push(artifact as Record<string, unknown>);
+          return { id: "artifact-fallback", ...artifact };
         },
-      },
-    });
+      }),
+    );
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(String(fetchSpy.mock.calls[0]?.[0])).toBe("https://api.tavily.com/search");
@@ -337,8 +562,13 @@ describe("web search tool", () => {
       "http://localhost:8080/search?",
     );
     expect(result.structuredContent).toMatchObject({
+      queries: ["fallback search"],
+    });
+    expect(result.structuredContent).not.toHaveProperty("provider");
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.metadata).toMatchObject({
       provider: "searxng",
-      query: "fallback search",
+      capabilityId: "searxng-search",
     });
   });
 
@@ -362,26 +592,9 @@ describe("web search tool", () => {
       } as Response);
 
     try {
-      await webSearchTool.execute({
-        invocationId: "3d",
-        args: {
-          query: "latest news",
-        },
-        signal: new AbortController().signal,
-        environment: createHarnessEnvironmentSnapshot(),
-        pushEvent() {},
-        addArtifact(artifact) {
-          return { id: "a", ...artifact };
-        },
-        trace: {
-          startSpan() {
-            return {
-              spanId: "span-3d",
-              end() {},
-            };
-          },
-        },
-      });
+      await webSearchTool.execute(
+        createContext({ args: { queries: ["latest news"] } }),
+      );
       throw new Error("expected web search to fail");
     } catch (error) {
       expect(error).toMatchObject({
@@ -415,26 +628,7 @@ describe("web search tool", () => {
       searxngBaseUrl: "",
     });
     await expect(
-      webSearchTool.execute({
-        invocationId: "4",
-        args: {
-          query: "needs config",
-        },
-        signal: new AbortController().signal,
-        environment: createHarnessEnvironmentSnapshot(),
-        pushEvent() {},
-        addArtifact(artifact) {
-          return { id: "a", ...artifact };
-        },
-        trace: {
-          startSpan() {
-            return {
-              spanId: "span-4",
-              end() {},
-            };
-          },
-        },
-      }),
+      webSearchTool.execute(createContext({ args: { queries: ["needs config"] } })),
     ).rejects.toThrow(
       "No web search provider is available. Configure Tavily apiKey or SearXNG baseUrl.",
     );
@@ -453,27 +647,14 @@ describe("web search tool", () => {
       }),
     } as Response);
 
-    await webSearchTool.execute({
-      invocationId: "5",
-      args: {
-        query: "stored config wins",
-        apiKey: "tool-key",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "a", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-5",
-            end() {},
-          };
+    await webSearchTool.execute(
+      createContext({
+        args: {
+          queries: ["stored config wins"],
+          apiKey: "tool-key",
         },
-      },
-    });
+      }),
+    );
 
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://api.tavily.com/search",
@@ -496,27 +677,14 @@ describe("web search tool", () => {
       }),
     } as Response);
 
-    await webSearchTool.execute({
-      invocationId: "5b",
-      args: {
-        query: "stored searxng config wins",
-        baseUrl: "http://tool-arg-searxng:9999",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot(),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "a", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-5b",
-            end() {},
-          };
+    await webSearchTool.execute(
+      createContext({
+        args: {
+          queries: ["stored searxng config wins"],
+          baseUrl: "http://tool-arg-searxng:9999",
         },
-      },
-    });
+      }),
+    );
 
     expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
       "http://stored-searxng:8080/search?",
@@ -539,32 +707,20 @@ describe("web search tool", () => {
       }),
     } as Response);
 
-    await webSearchTool.execute({
-      invocationId: "6",
-      args: {
-        query: "runtime override wins",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot({
-        toolConfig: {
-          web_search: {
-            apiKey: "runtime-key",
+    await webSearchTool.execute(
+      createContext({
+        args: {
+          queries: ["runtime override wins"],
+        },
+        environment: createHarnessEnvironmentSnapshot({
+          toolConfig: {
+            web_search: {
+              apiKey: "runtime-key",
+            },
           },
-        },
+        }),
       }),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "a", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-6",
-            end() {},
-          };
-        },
-      },
-    });
+    );
 
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://api.tavily.com/search",
@@ -587,32 +743,20 @@ describe("web search tool", () => {
       }),
     } as Response);
 
-    await webSearchTool.execute({
-      invocationId: "6b",
-      args: {
-        query: "runtime baseUrl override wins",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot({
-        toolConfig: {
-          web_search: {
-            baseUrl: "http://runtime-searxng:8080",
+    await webSearchTool.execute(
+      createContext({
+        args: {
+          queries: ["runtime baseUrl override wins"],
+        },
+        environment: createHarnessEnvironmentSnapshot({
+          toolConfig: {
+            web_search: {
+              baseUrl: "http://runtime-searxng:8080",
+            },
           },
-        },
+        }),
       }),
-      pushEvent() {},
-      addArtifact(artifact) {
-        return { id: "a", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-6b",
-            end() {},
-          };
-        },
-      },
-    });
+    );
 
     expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
       "http://runtime-searxng:8080/search?",
@@ -636,39 +780,30 @@ describe("web search tool", () => {
       }),
     } as Response);
 
-    await webSearchTool.execute({
-      invocationId: "artifact-scrub",
-      args: {
-        query: "scrub artifact",
-      },
-      signal: new AbortController().signal,
-      environment: createHarnessEnvironmentSnapshot({
-        toolConfig: {
-          web_search: {
-            apiKey: "runtime-key",
-            baseUrl: "http://runtime-searxng:8080",
+    await webSearchTool.execute(
+      createContext({
+        args: {
+          queries: ["scrub artifact"],
+        },
+        environment: createHarnessEnvironmentSnapshot({
+          toolConfig: {
+            web_search: {
+              apiKey: "runtime-key",
+              baseUrl: "http://runtime-searxng:8080",
+            },
           },
+        }),
+        addArtifact(artifact) {
+          artifacts.push(artifact as Record<string, unknown>);
+          return { id: "artifact-1", ...artifact };
         },
       }),
-      pushEvent() {},
-      addArtifact(artifact) {
-        artifacts.push(artifact);
-        return { id: "artifact-1", ...artifact };
-      },
-      trace: {
-        startSpan() {
-          return {
-            spanId: "span-artifact-scrub",
-            end() {},
-          };
-        },
-      },
-    });
+    );
 
     expect(artifacts).toHaveLength(1);
     expect(artifacts[0]?.kind).toBe("search-results");
     expect(artifacts[0]?.metadata).toEqual({
-      query: "scrub artifact",
+      queries: ["scrub artifact"],
       provider: "tavily",
       capabilityId: "tavily-search",
       resultCount: 0,
@@ -681,4 +816,54 @@ describe("web search tool", () => {
     expect(JSON.stringify(artifacts[0])).not.toContain("headers");
   });
 
+  it("rejects without calling providers when the signal is already aborted", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      webSearchTool.execute(
+        createContext({
+          args: { queries: ["alpha"] },
+          signal: controller.signal,
+          environment: createHarnessEnvironmentSnapshot({
+            toolConfig: { web_search: { apiKey: "runtime-key" } },
+          }),
+        }),
+      ),
+    ).rejects.toThrow("Web search cancelled");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to the next provider when the invocation signal aborts mid-flight", async () => {
+    webSearchSettingsMock.get.mockReturnValue({
+      tavilyApiKey: "stored-key",
+      searxngBaseUrl: "http://localhost:8080",
+      maxResults: 4,
+    });
+    const controller = new AbortController();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(
+        (_url: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              const error = new Error("This operation was aborted");
+              error.name = "AbortError";
+              reject(error);
+            });
+          }),
+      );
+
+    const execution = webSearchTool.execute(
+      createContext({
+        args: { queries: ["alpha"] },
+        signal: controller.signal,
+      }),
+    );
+    controller.abort();
+
+    await expect(execution).rejects.toThrow("Web search cancelled");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });

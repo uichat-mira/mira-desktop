@@ -516,14 +516,30 @@ describe("ToolResult B-prime normalization", () => {
       definition("web_search", "internal", "web_search"),
       normalizeToolResult({
         structuredContent: {
-          query: "mira",
-          provider: "tavily",
-          capabilityId: "tavily-search",
+          queries: ["mira", "mira desktop"],
           results: [{ title: "Mira", link: "https://example.com", snippet: "A result" }],
         },
       }),
     );
     expect(search?.data).toMatchObject({
+      kind: "web_search",
+      queries: ["mira", "mira desktop"],
+      resultCount: 1,
+      citationsPreview: [{ title: "Mira", link: "https://example.com" }],
+    });
+
+    const newsSearch = projectToolEvidence(
+      definition("news_search", "internal", "news_search"),
+      normalizeToolResult({
+        structuredContent: {
+          query: "mira",
+          provider: "tavily",
+          capabilityId: "tavily-news",
+          results: [{ title: "Mira", link: "https://example.com", snippet: "A result" }],
+        },
+      }),
+    );
+    expect(newsSearch?.data).toMatchObject({
       kind: "web_search",
       query: "mira",
       resultCount: 1,
