@@ -557,6 +557,92 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
   return undefined;
 };
 
+const projectApplyPatchEvidence = (
+  toolId: string,
+  result: Record<string, unknown>,
+  isError: boolean,
+): ToolEvidence | undefined => {
+  if (toolId !== "apply_patch" || result.operation !== "apply_patch") {
+    return undefined;
+  }
+
+  const status =
+    result.status === "partial"
+      ? "partial"
+      : result.status === "failed"
+        ? "failed"
+        : "completed";
+  const committed = Array.isArray(result.committed)
+    ? result.committed.filter(asRecord)
+    : [];
+  const unapplied = Array.isArray(result.unapplied)
+    ? result.unapplied.filter(asRecord)
+    : [];
+  const failed = asRecord(result.failed);
+  const committedDeltaExact = result.committedDeltaExact === true;
+  const artifactId =
+    typeof result.artifactId === "string" ? result.artifactId : undefined;
+  const failedMessage =
+    failed && typeof failed.message === "string"
+      ? failed.message
+      : undefined;
+
+  return baseEvidence({
+    result,
+    isError,
+    actionTaken:
+      status === "completed"
+        ? `Applied patch with ${committed.length} committed mutation(s).`
+        : `Patch stopped after ${committed.length} definitely committed mutation(s).`,
+    facts: [
+      "operation=apply_patch",
+      `status=${status}`,
+      `hunkCount=${typeof result.hunkCount === "number" ? result.hunkCount : 0}`,
+      `committedMutationCount=${committed.length}`,
+      `unappliedHunkCount=${unapplied.length}`,
+      `committedDeltaExact=${committedDeltaExact}`,
+      ...(artifactId ? [`artifactId=${artifactId}`] : []),
+      ...(failed && typeof failed.hunkIndex === "number"
+        ? [`failedHunkIndex=${failed.hunkIndex}`]
+        : []),
+      ...(failed && typeof failed.stage === "string"
+        ? [`failedStage=${failed.stage}`]
+        : []),
+    ],
+    gaps: [
+      ...(status === "completed"
+        ? []
+        : [
+            failedMessage
+              ? `Patch failure: ${failedMessage}`
+              : "Patch execution did not complete.",
+          ]),
+      ...(!committedDeltaExact
+        ? [
+            "The failed mutation may have crossed its OS commit point; only the reported committed prefix is definitely known.",
+          ]
+        : []),
+      ...(unapplied.length > 0
+        ? [`${unapplied.length} later patch hunk(s) were not applied.`]
+        : []),
+    ],
+    error: status === "completed" ? undefined : failedMessage,
+    status,
+    data: {
+      kind: "file_mutation_patch",
+      status,
+      changed: result.changed === true,
+      hunkCount:
+        typeof result.hunkCount === "number" ? result.hunkCount : 0,
+      committedMutationCount: committed.length,
+      unappliedHunkCount: unapplied.length,
+      committedDeltaExact,
+      ...(artifactId ? { artifactId } : {}),
+      ...(failed ? { failed } : {}),
+    },
+  });
+};
+
 const FILE_MUTATION_TOOL_IDS = new Set([
   "write",
   "edit",
@@ -760,6 +846,13 @@ export const projectToolEvidence = (
 
   const readEvidence = projectReadEvidence(definition.id, result, normalized.isError);
   if (readEvidence) return readEvidence;
+
+  const applyPatchEvidence = projectApplyPatchEvidence(
+    definition.id,
+    result,
+    normalized.isError,
+  );
+  if (applyPatchEvidence) return applyPatchEvidence;
 
   const fileMutationEvidence = projectFileMutationEvidence(
     definition.id,

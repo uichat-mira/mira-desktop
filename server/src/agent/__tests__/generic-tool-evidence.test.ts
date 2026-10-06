@@ -31,6 +31,64 @@ describe("generic MCP tool evidence", () => {
     expect(summary.data).toEqual({ kind: "opaque-tool-data", title: "Example Domain" });
   });
 
+  it("projects partial apply_patch evidence without hiding the committed prefix", () => {
+    const evidence = projectToolEvidence(
+      {
+        id: "apply_patch",
+        source: "internal",
+        domain: "edit",
+      },
+      normalizeToolResult({
+        structuredContent: {
+          operation: "apply_patch",
+          status: "partial",
+          changed: true,
+          hunkCount: 3,
+          committed: [
+            {
+              hunkIndex: 0,
+              hunkType: "add",
+              path: "a.txt",
+              mutation: { operation: "write", path: "a.txt", changed: true },
+            },
+          ],
+          failed: {
+            hunkIndex: 1,
+            hunkType: "update",
+            path: "b.txt",
+            stage: "update",
+            message: "simulated write failure",
+          },
+          unapplied: [
+            {
+              hunkIndex: 2,
+              hunkType: "delete",
+              path: "c.txt",
+            },
+          ],
+          committedDeltaExact: false,
+          artifactId: "artifact-patch",
+        },
+        isError: true,
+      }),
+    );
+
+    expect(evidence).toMatchObject({
+      status: "partial",
+      actionTaken: "Patch stopped after 1 definitely committed mutation(s).",
+      data: {
+        kind: "file_mutation_patch",
+        status: "partial",
+        committedMutationCount: 1,
+        unappliedHunkCount: 1,
+        committedDeltaExact: false,
+        artifactId: "artifact-patch",
+      },
+    });
+    expect(evidence?.facts).toContain("failedHunkIndex=1");
+    expect(evidence?.gaps?.join(" ")).toMatch(/commit point/i);
+  });
+
   it("preserves a bounded generic list result without turning it into an empty result", () => {
     const summary = createToolExecutionEvidenceSummary({
       evidenceIndex: 0,

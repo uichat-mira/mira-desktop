@@ -360,6 +360,18 @@ export interface AgentFileMutationEvidenceData {
   diffUnavailableReason?: string;
 }
 
+export interface AgentApplyPatchEvidenceData {
+  kind: "file_mutation_patch";
+  status: "completed" | "partial" | "failed";
+  changed: boolean;
+  hunkCount: number;
+  committedMutationCount: number;
+  unappliedHunkCount: number;
+  committedDeltaExact: boolean;
+  artifactId?: string;
+  failed?: Record<string, unknown>;
+}
+
 export interface AgentExternalMcpEvidenceData {
   kind: "external_mcp";
   serverId: string;
@@ -399,6 +411,7 @@ export type AgentEvidenceSummaryData =
   | AgentObservationEvidenceData
   | AgentExternalMcpEvidenceData
   | AgentFileMutationEvidenceData
+  | AgentApplyPatchEvidenceData
   | AgentWorkspaceMutationEvidenceData
   | AgentEditFileEvidenceData;
 
