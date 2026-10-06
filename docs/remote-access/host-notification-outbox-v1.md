@@ -40,13 +40,20 @@ The outbox unique key is:
 
 where v1 eligibilityEvent is `final_transition_first_seen`.
 
+The active binding snapshot for that transition is read through the same process-wide
+`getSqlite()` handle while the canonical transaction is open. This is the v1
+single-process authority model; another connection's uncommitted binding changes
+are intentionally not part of that transition snapshot.
+
 If outbox evaluation/insertion fails, the canonical Assistant mutation rolls back.
 
 Branch-tail database deletion, canonical mutation, outbox enqueue, and any required
 filesystem/media cleanup journal entry are committed in the same SQLite transaction.
 This is the authoritative atomic boundary. Filesystem/media deletion cannot share a
 SQLite rollback boundary and is therefore an explicit durable eventual side effect,
-not claimed as atomic. It runs from `canonical_message_cleanup_jobs` after commit.
+not claimed as atomic. The request path only schedules an asynchronous microtask
+after commit; it never drains cleanup work inline. Actual cleanup runs from
+`canonical_message_cleanup_jobs`, with the Server lifecycle worker as recovery owner.
 Failures record `attempt_count`, `next_attempt_at`, and `last_error`; exhausted
 jobs remain durably in `failed` state and are surfaced in Server error logs on
 failure and again at startup until operators resolve the backlog.
