@@ -15,6 +15,7 @@ import {
   roleRepository,
   userRepository,
 } from "@/db/repositories";
+import { tailscaleRemoteAccessRepository } from "@/db/repositories/tailscale-remote-access.repository.js";
 import { threadService } from "./thread.service.js";
 import { privateAgentWorkspaceService } from "./agent-workspace.service.js";
 import { chatMediaService } from "./chat-media.service.js";
@@ -147,6 +148,84 @@ test("notification outbox survives canonical message deletion for explicit expir
     )
     .get(assistant.id) as { count: number };
   assert.equal(after.count, 1);
+});
+
+test("notification delivery authority follows current thread owner and paired-device revoke state", () => {
+  const owner = userRepository.create({
+    username: `notify-owner-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const otherOwner = userRepository.create({
+    username: `notify-other-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: owner.id });
+  const deviceId = `device-authority-${crypto.randomUUID()}`;
+  const installationId = `installation-authority-${crypto.randomUUID()}`;
+
+  tailscaleRemoteAccessRepository.createDevice({
+    id: deviceId,
+    userId: owner.id,
+    name: "Phone",
+    platform: "android",
+    permissions: ["threads:read"],
+    tokenHash: `hash-${crypto.randomUUID()}`,
+    createdAt: new Date().toISOString(),
+  });
+
+  hostNotificationRepository.upsertBinding({
+    installationId,
+    originRemoteDeviceId: deviceId,
+    ownerUserId: owner.id,
+    brokerBaseUrl: "https://push.example.test",
+    deliveryToken:
+      "delivery-authority-0123456789012345678901234567890123456789",
+    sourceScope: [thread.id],
+  });
+
+  const assistant = threadService.createMessage(thread.id, owner.id, {
+    id: `assistant-authority-${crypto.randomUUID()}`,
+    role: "assistant",
+    content: "final",
+    parts: [{ type: "text", text: "final" }],
+  });
+
+  const event = hostNotificationRepository
+    .listPending()
+    .find((item) => item.canonicalMessageId === assistant.id);
+  const binding = hostNotificationRepository.getBinding(installationId);
+  assert.ok(event);
+  assert.ok(binding);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    true,
+  );
+
+  getSqlite()
+    .prepare("UPDATE threads SET user_id = ? WHERE id = ?")
+    .run(otherOwner.id, thread.id);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    false,
+  );
+
+  getSqlite()
+    .prepare("UPDATE threads SET user_id = ? WHERE id = ?")
+    .run(owner.id, thread.id);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    true,
+  );
+
+  tailscaleRemoteAccessRepository.revokeDevice(deviceId, owner.id);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    false,
+  );
 });
 
 test("createChatWorkspace validates workspace root paths", () => {
