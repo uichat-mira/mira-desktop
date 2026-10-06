@@ -449,11 +449,15 @@ const projectApplyPatchEvidence = (
   }
 
   const status =
-    result.status === "partial"
-      ? "partial"
-      : result.status === "failed"
-        ? "failed"
-        : "completed";
+    result.status === "completed"
+      ? "completed"
+      : result.status === "partial"
+        ? "partial"
+        : result.status === "failed"
+          ? "failed"
+          : isError
+            ? "failed"
+            : "partial";
   const committed = Array.isArray(result.committed)
     ? result.committed.filter(asRecord)
     : [];
@@ -499,7 +503,7 @@ const projectApplyPatchEvidence = (
               ? `Patch failure: ${failedMessage}`
               : "Patch execution did not complete.",
           ]),
-      ...(!committedDeltaExact
+      ...(status !== "completed" && !committedDeltaExact
         ? [
             "The failed mutation may have crossed its OS commit point; only the reported committed prefix is definitely known.",
           ]
