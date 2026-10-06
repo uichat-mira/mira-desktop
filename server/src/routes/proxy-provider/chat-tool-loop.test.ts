@@ -186,6 +186,128 @@ test("executeDefaultChatToolLoop removes stale assistant tool prose before tool 
   }
 });
 
+test("executeDefaultChatToolLoop keeps ordinary assistant prose that mentions terminal", async () => {
+  clearHarnessRegistry();
+  resetHarnessRuntime();
+  initializeHarnessRuntime();
+
+  const resolveProviderForRoleSpy = vi
+    .spyOn(providerResolution, "resolveProviderForRole")
+    .mockReturnValue({
+      providerCode: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "test-key",
+      model: "gpt-4o-mini",
+      modelConfigId: "cfg-test",
+      params: {},
+    });
+
+  const originalFetch = globalThis.fetch;
+  const fetchBodies: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+  globalThis.fetch = (async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      messages?: Array<{ role: string; content: string }>;
+    };
+    fetchBodies.push({ messages: body.messages ?? [] });
+    return new Response(
+      JSON.stringify({
+        id: "chatcmpl-terminal-prose",
+        object: "chat.completion",
+        created: 0,
+        model: "mock-model",
+        choices: [{ index: 0, message: { role: "assistant", content: "final answer" }, finish_reason: "stop" }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+
+  try {
+    await executeDefaultChatToolLoop({
+      requestedProvider: "default",
+      threadId: "thread-terminal-prose",
+      userId: 1,
+      agentEnabled: true,
+      messages: [
+        { role: "assistant", content: "The terminal runtime is available when a real command is needed." },
+        { role: "user", content: "continue" },
+      ],
+    });
+
+    assert.equal(
+      fetchBodies[0]?.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.includes("terminal runtime"),
+      ),
+      true,
+    );
+  } finally {
+    resolveProviderForRoleSpy.mockRestore();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("executeDefaultChatToolLoop removes stale canonical terminal tool prose", async () => {
+  clearHarnessRegistry();
+  resetHarnessRuntime();
+  initializeHarnessRuntime();
+
+  const resolveProviderForRoleSpy = vi
+    .spyOn(providerResolution, "resolveProviderForRole")
+    .mockReturnValue({
+      providerCode: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "test-key",
+      model: "gpt-4o-mini",
+      modelConfigId: "cfg-test",
+      params: {},
+    });
+
+  const originalFetch = globalThis.fetch;
+  const fetchBodies: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+  globalThis.fetch = (async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      messages?: Array<{ role: string; content: string }>;
+    };
+    fetchBodies.push({ messages: body.messages ?? [] });
+    return new Response(
+      JSON.stringify({
+        id: "chatcmpl-terminal-clean",
+        object: "chat.completion",
+        created: 0,
+        model: "mock-model",
+        choices: [{ index: 0, message: { role: "assistant", content: "final answer" }, finish_reason: "stop" }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+
+  try {
+    await executeDefaultChatToolLoop({
+      requestedProvider: "default",
+      threadId: "thread-terminal-clean",
+      userId: 1,
+      agentEnabled: true,
+      messages: [
+        { role: "assistant", content: 'terminal <tool_input>{"command":"pwd"}</tool_input>' },
+        { role: "user", content: "continue" },
+      ],
+    });
+
+    assert.equal(
+      fetchBodies[0]?.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.includes("<tool_input>"),
+      ),
+      false,
+    );
+  } finally {
+    resolveProviderForRoleSpy.mockRestore();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("executeDefaultChatToolLoop forces a final synthesis answer after hitting the tool-step limit", async () => {
   clearHarnessRegistry();
   resetHarnessRuntime();

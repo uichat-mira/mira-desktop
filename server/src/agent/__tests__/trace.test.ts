@@ -90,6 +90,10 @@ test("summarizeToolExecutionFailure explains recoverable retry intent", () => {
     "read_open 执行失败：missing.md，正在重新判断下一步",
   );
   assert.equal(getToolTraceTargetPreview("terminal", { command: "pnpm check" }), "pnpm check");
+  assert.equal(
+    getToolTraceTargetPreview("terminal_session", { command: "pnpm check" }),
+    "pnpm check",
+  );
 });
 
 test("toAgentResumeExecutionNode emits a user-visible resume event", () => {
