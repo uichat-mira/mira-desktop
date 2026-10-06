@@ -4,14 +4,15 @@ engine:
   detection-engine: copilot
   version: "1.18.34"
   display-name: OpenCode Go
-  description: OpenCode CLI using the OpenCode Go API with a repository-provided model
+  description: OpenCode CLI routed through the gh-aw OpenAI-compatible firewall proxy to OpenCode Go.
   runtime-id: opencode
   experimental: true
-  auth:
-    - role: api-key
-      secret: AI_PROVIDER_OPENCODE_GO_KEY
+  provider:
+    name: openai
   behaviors:
+    secret-strategy: universal-llm-consumer
     capabilities:
+      tools-allowlist: true
       max-turns: true
     manifest:
       files:
@@ -27,7 +28,7 @@ engine:
         - raw.githubusercontent.com
         - opencode.ai
       provider-domains:
-        opencode-go: opencode.ai
+        openai: opencode.ai
     installation:
       package-manager: npm
       package-name: opencode-ai
@@ -54,16 +55,19 @@ engine:
         - INFO
       step-name: Execute OpenCode Go worker
       model-env-var: OPENCODE_MODEL
+      model-env-provider-prefix: awf-proxy
       model-flag: --model
       mcp-config-env-var: OPENCODE_CONFIG
       write-timestamp: true
+      provider-env-mode: universal-llm-consumer
       env:
         XDG_DATA_HOME: /tmp/opencode-data
         XDG_CONFIG_HOME: /tmp/opencode-config
         XDG_CACHE_HOME: /tmp/opencode-cache
         XDG_STATE_HOME: /tmp/opencode-state
         OPENCODE_CONFIG: /tmp/gh-aw/opencode-mcp.json
-        OPENCODE_CONFIG_CONTENT: '{"$schema":"https://opencode.ai/config.json","autoupdate":false,"share":"disabled","permission":"allow","provider":{"opencode-go":{"npm":"@ai-sdk/openai-compatible","name":"OpenCode Go","options":{"baseURL":"https://opencode.ai/zen/go/v1","apiKey":"{env:AI_PROVIDER_OPENCODE_GO_KEY}"},"models":{"deepseek-v4-flash":{"name":"DeepSeek V4 Flash"}}}}}'
+        OPENCODE_CONFIG_CONTENT: '{"$schema":"https://opencode.ai/config.json","autoupdate":false,"share":"disabled","snapshot":false,"formatter":false,"lsp":false,"permission":"allow","enabled_providers":["awf-proxy"],"provider":{"awf-proxy":{"npm":"@ai-sdk/openai-compatible","name":"GitHub Agentic Workflows / OpenCode Go","options":{"baseURL":"http://172.30.0.30:10000","apiKey":"awf-proxy"},"models":{"deepseek-v4-flash":{"name":"DeepSeek V4 Flash"}}}}}'
+        OPENCODE_AUTH_CONTENT: "{}"
         OPENCODE_DISABLE_AUTOUPDATE: "1"
         OPENCODE_DISABLE_DEFAULT_PLUGINS: "1"
         OPENCODE_DISABLE_LSP_DOWNLOAD: "1"
@@ -93,8 +97,8 @@ engine:
 
 POC-only declarative engine for GitHub Agentic Workflows.
 
-It deliberately uses the supported third-party engine extension point instead of
-forking `gh-aw`. The existing repository secret `AI_PROVIDER_OPENCODE_GO_KEY`
-is injected only at runtime. OpenCode receives the provider configuration through
-`OPENCODE_CONFIG_CONTENT`; no repository config file is written into the agent
-workspace.
+The real OpenCode Go credential is supplied to the gh-aw OpenAI-compatible
+firewall proxy through an `engine.env` override in the consuming workflow.
+The OpenCode process itself talks only to the internal AWF proxy with a
+placeholder key, so shell/tool execution inside the agent sandbox does not
+receive the upstream credential.
