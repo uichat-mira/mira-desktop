@@ -20,13 +20,12 @@ const capabilities = {
   cases: [
     {
       id: "core-approval-boundary",
-      toolId: "write_file",
+      toolId: "write",
       title: "写入审批边界",
       purpose: "确认真实 Policy 边界。",
       expectedObservation: "Awaiting Approval",
       args: {
         path: ".test-artifact/capabilities/approval-probe.txt",
-        dryRun: true,
       },
       group: "Native",
     },
@@ -43,7 +42,7 @@ const capabilities = {
     invocationId: "inv-approval",
     invocation: {
       id: "inv-approval",
-      toolId: "write_file",
+      toolId: "write",
       status: "awaiting_approval" as const,
       args: {},
       approval: {
@@ -58,7 +57,7 @@ const capabilities = {
     trace: {
       traceId: "trace-1",
       invocationId: "inv-approval",
-      toolId: "write_file",
+      toolId: "write",
       startedAt: "2026-10-05T00:00:00.000Z",
       spans: [],
     },
@@ -66,7 +65,7 @@ const capabilities = {
   },
   selectedCase: {
     id: "core-approval-boundary",
-    toolId: "write_file",
+    toolId: "write",
     title: "写入审批边界",
     purpose: "确认真实 Policy 边界。",
     expectedObservation: "Awaiting Approval",
@@ -77,9 +76,9 @@ const capabilities = {
     group: "Native",
   },
   selectedTool: {
-    id: "write_file",
-    title: "Write File",
-    description: "Write",
+    id: "write",
+    title: "Write",
+    description: "Write workspace files.",
     domain: "edit",
     source: "internal" as const,
     sourceInfo: {
@@ -411,7 +410,7 @@ describe("CapabilitiesPage", () => {
     expect(
       screen.getByLabelText("settings.development.capabilities.readiness.ready"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Write", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("Write workspace files.", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
     expect(
       document.querySelector(
@@ -425,7 +424,7 @@ describe("CapabilitiesPage", () => {
       }),
     );
 
-    expect(screen.getByText("Write", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("Write workspace files.", { exact: true })).toBeInTheDocument();
     expect(screen.getByText("Native")).toBeInTheDocument();
   });
 

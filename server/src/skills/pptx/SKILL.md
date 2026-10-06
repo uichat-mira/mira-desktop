@@ -138,7 +138,7 @@ For long decks, prepare all page files before creating. Do not validate and deli
 4. Unsupported inputs must be rejected explicitly rather than silently replaced, ignored, or guessed.
 5. Keep native text, shapes, tables and charts editable whenever supported.
 6. Do not claim arbitrary lossless editing of an existing complex PPTX.
-7. `write_file` may persist project/spec files, but it is not the presentation renderer.
+7. `write` may persist project/spec files, but it is not the presentation renderer.
 8. `terminal` must not invoke Python or the bundled runtime. Only the internal WenShu Runtime invocation may execute `pptx/pptx_runtime.py`.
 
 # Completion

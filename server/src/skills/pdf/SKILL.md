@@ -143,7 +143,7 @@ Split/image extraction use an `outputDir` and may produce multiple artifacts.
 
 # Hard rules
 
-1. Never edit PDF bytes with `edit_file` or arbitrary binary replacement.
+1. Never edit PDF bytes with the generic `edit` File Mutation tool or arbitrary binary replacement.
 2. Preserve the source PDF for transformations; write a distinct output artifact by default.
 3. Use the public Read surface to inspect context when needed, but use `office_pdf` for PDF-specific processing.
 4. Do not claim generation/processing succeeded until accepted Evidence confirms the output/result.

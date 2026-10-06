@@ -51,7 +51,7 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
     description: "Create a new workspace file through managed editing.",
     domain: "edit",
     tags: ["workspace", "edit", "create", "file", "write"],
-    runtimeToolId: "edit_file",
+    runtimeToolId: "write",
     inputSchema: {
       type: "object",
       required: ["path"],
@@ -59,38 +59,11 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
       properties: {
         path: { type: "string" },
         content: { type: "string" },
-        dryRun: { type: "boolean" },
       },
     },
     mapArgs: (args) => ({
-      operation: "write_file",
       path: args.path,
       content: typeof args.content === "string" ? args.content : "",
-      ...(args.dryRun === true ? { dryRun: true } : {}),
-    }),
-  },
-  {
-    id: "edit_overwrite_file",
-    title: "Edit Overwrite File",
-    description: "Overwrite an existing workspace file through managed editing.",
-    domain: "edit",
-    tags: ["workspace", "edit", "overwrite", "file", "write"],
-    runtimeToolId: "edit_file",
-    inputSchema: {
-      type: "object",
-      required: ["path", "content"],
-      additionalProperties: false,
-      properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-        dryRun: { type: "boolean" },
-      },
-    },
-    mapArgs: (args) => ({
-      operation: "write_file",
-      path: args.path,
-      content: args.content,
-      ...(args.dryRun === true ? { dryRun: true } : {}),
     }),
   },
   {
@@ -99,7 +72,7 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
     description: "Replace a uniquely matched block inside a workspace file.",
     domain: "edit",
     tags: ["workspace", "edit", "replace", "block", "patch"],
-    runtimeToolId: "edit_file",
+    runtimeToolId: "edit",
     inputSchema: {
       type: "object",
       required: ["path", "expectedOldText", "newText"],
@@ -108,15 +81,16 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
         path: { type: "string" },
         expectedOldText: { type: "string" },
         newText: { type: "string" },
-        dryRun: { type: "boolean" },
       },
     },
     mapArgs: (args) => ({
-      operation: "replace_block",
       path: args.path,
-      expectedOldText: args.expectedOldText,
-      newText: args.newText,
-      ...(args.dryRun === true ? { dryRun: true } : {}),
+      edits: [
+        {
+          oldText: args.expectedOldText,
+          newText: args.newText,
+        },
+      ],
     }),
   },
 ];

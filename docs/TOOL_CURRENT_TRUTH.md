@@ -45,21 +45,20 @@ Harness 是 concrete tool 的控制平面，不是 Planner、SubAgent 编排器�
 
 ## 2. Registry 与 Public Surface 必须分开
 
-`server/src/harness/runtime.ts` 注册内置能力，也保留部分历史兼容实现。
+`server/src/harness/runtime.ts` 注册当前可执行内置能力。历史 Evidence 可以继续读取旧 summary，但不会为了旧调用保留第二套 File Mutation runtime。
 
 **注册存在不等于 Planner 可见。**
 
-当前 exposure policy 会隐藏：
+当前 exposure policy 会隐藏 Universal Read 的内部 / 兼容 primitive，例如：
 
-- `read`
+- `read_discover`
+- `read_open`
 - `read_list`
 - `read_locate`
 - `read_extract`
 - `read_slice`
-- `edit_file`
-- `workspace_mutation`
 
-这些对象可以继续服务持久化旧调用、内部 primitive 或兼容逻辑，但不是当前 `agent_intent` 的公共 Planner 工具。
+这些 Read 对象可以继续服务已验证的 Skill / runtime consumer，但不是当前 canonical Universal Read 公共 Planner 工具。旧本地 mutation id 不再注册，因此不需要靠 exposure policy 隐藏。
 
 动态注册还包括：
 
@@ -173,41 +172,51 @@ grep   content query   -> matching content locations
 
 ## 4. 当前公共 Edit 面
 
-Planner 当前直接看到四个动作：
+Planner 当前直接看到四个 canonical File Mutation 动作：
 
 ```text
 Edit
-├─ write_file
-├─ replace_block
-├─ delete_path
-└─ move_path
+├─ write
+├─ edit
+├─ delete
+└─ move
 ```
 
-### `write_file`
+四个动作统一进入 `server/src/mcp/file-mutation/` 下的 File Mutation Runtime，不存在第二套本地写 runtime。
+
+### `write`
 
 - 新建文件；
-- 明确 `overwrite=true` 时整文件覆盖；
+- 只有显式 `overwrite=true` 才整文件覆盖；
 - `content` 是完整目标内容；
-- 不承担局部 patch。
+- 创建父目录；
+- 不承担局部 patch；
+- 覆盖既有文本时保留已识别的 BOM / encoding / dominant line ending。
 
-### `replace_block`
+### `edit`
 
-- 使用 exact `expectedOldText -> newText`；
-- 只允许唯一匹配；
+- 面向已存在文本文件；
+- 一次接受多个 `edits[]`；
+- exact match 优先；
+- 只允许有限、可解释的 whitespace / line-ending / 常见 Unicode quote-space-dash 容差；
 - 0 次或多次匹配都失败；
-- 不负责创建新文件。
+- 所有 edit 在 commit 前一起验证，重叠 edit 失败；
+- 不做 fuzzy distance、regex 猜测、AST 或 LLM repair。
 
-### `delete_path`
+### `delete`
 
 - 删除文件或目录；
-- 目录删除需要显式 `recursive=true`；
+- 非空目录需要显式 `recursive=true`；
+- final symlink / junction mutation target 被拒绝；
 - 不把失败伪装成成功。
 
-### `move_path`
+### `move`
 
 - 移动或重命名文件 / 目录；
-- 默认不覆盖目标；
-- 不创建目标父目录。
+- 默认不覆盖目标，覆盖必须显式 `overwrite=true`；
+- 支持 case-only rename；
+- 不采用 delete-destination-first；
+- `EXDEV` 不偷偷降级为 copy+delete，而是安全失败并保留 source / destination。
 
 四个公开 Edit 工具都声明：
 
@@ -215,7 +224,7 @@ Edit
 - `requiresApproval = true`；
 - `workspaceBound = true`。
 
-旧 `edit_file(operation=...)` 与 `workspace_mutation(operation=...)` 只保留兼容，不再是公共 Planner 合同。
+Approval 只授权 frozen exact invocation；它不会扩大 workspace authority。结果统一进入 Result / Artifact / `file_mutation` Evidence。旧 `write_file / replace_block / delete_path / move_path / edit_file / workspace_mutation` 已退出本地可执行 registry；旧 `edit_file / workspace_mutation` Evidence shape 仅用于读取历史持久化 run。
 
 ## 5. Search 不是一个含糊入口
 

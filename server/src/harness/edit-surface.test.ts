@@ -21,15 +21,19 @@ describe("public edit tool surface", () => {
     clearHarnessRegistry();
   });
 
-  it("exposes exactly four direct edit actions while keeping legacy wrappers compatibility-only", () => {
+  it("registers and exposes exactly four canonical edit actions", () => {
     initializeHarnessRuntime();
 
     const registeredEditToolIds = listToolDefinitions()
       .filter((definition) => definition.domain === "edit")
       .map((definition) => definition.id)
       .sort();
-    expect(registeredEditToolIds).toContain("edit_file");
-    expect(registeredEditToolIds).toContain("workspace_mutation");
+    expect(registeredEditToolIds).toEqual([
+      "delete",
+      "edit",
+      "move",
+      "write",
+    ]);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -42,13 +46,21 @@ describe("public edit tool surface", () => {
       .sort();
 
     expect(exposedEditToolIds).toEqual([
+      "delete",
+      "edit",
+      "move",
+      "write",
+    ]);
+    for (const legacyId of [
+      "write_file",
+      "replace_block",
       "delete_path",
       "move_path",
-      "replace_block",
-      "write_file",
-    ]);
-    expect(exposedEditToolIds).not.toContain("edit_file");
-    expect(exposedEditToolIds).not.toContain("workspace_mutation");
+      "edit_file",
+      "workspace_mutation",
+    ]) {
+      expect(exposedEditToolIds).not.toContain(legacyId);
+    }
 
     for (const definition of exposedEditDefinitions) {
       const properties = (definition.inputSchema.properties ?? {}) as Record<string, unknown>;

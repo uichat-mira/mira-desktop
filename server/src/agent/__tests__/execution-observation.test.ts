@@ -228,9 +228,9 @@ test("maps failed recoverable tool execution into a failed_recoverable execution
 test("maps terminal blocking tool execution into a failed_terminal execution observation", () => {
   const observation = toExecutionObservationFromToolExecution({
     toolCallId: "tool-call-denied",
-    toolId: "workspace_mutation",
+    toolId: "write",
     inputHash: "hash-write",
-    args: { targetPath: "README.md" },
+    args: { path: "README.md", content: "updated" },
     status: "denied",
     errorMessage: "Policy denied the write.",
     startedAt: "2026-07-06T10:00:00.000Z",

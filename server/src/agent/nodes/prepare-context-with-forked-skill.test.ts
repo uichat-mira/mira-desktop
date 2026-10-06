@@ -86,14 +86,14 @@ describe("prepareContextWithForkedSkillAgentNode", () => {
           "read_extract",
           "terminal",
           "codebase_explore",
-          "edit_file",
+          "edit",
         ],
         toolMeta: [
           { toolId: "read_open", title: "Read Open", description: "read" },
           { toolId: "read_extract", title: "Read Extract", description: "read" },
           { toolId: "terminal", title: "Terminal", description: "run" },
           { toolId: "codebase_explore", title: "Explore", description: "explore" },
-          { toolId: "edit_file", title: "Edit", description: "edit" },
+          { toolId: "edit", title: "Edit", description: "edit" },
         ],
       },
     });

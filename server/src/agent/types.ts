@@ -329,6 +329,8 @@ export interface AgentObservationEvidenceData {
   factsPreview: string[];
 }
 
+// Historical persisted-run compatibility only. No executable
+// workspace_mutation tool remains registered after #235.
 export interface AgentWorkspaceMutationEvidenceData {
   kind: "workspace_mutation";
   operation: "create" | "overwrite" | "replace" | "delete" | "move" | "unknown";
@@ -344,6 +346,28 @@ export interface AgentWorkspaceMutationEvidenceData {
   actionProfileId?: string;
 }
 
+export interface AgentFileMutationEvidenceData {
+  kind: "file_mutation";
+  operation: "write" | "edit" | "move" | "delete";
+  targetPath: string;
+  destinationPath?: string;
+  changed: boolean;
+  artifactId?: string;
+  created?: boolean;
+  overwritten?: boolean;
+  editsApplied?: number;
+  tolerantEdits?: number;
+  movedType?: "file" | "directory";
+  deletedType?: "file" | "directory";
+  recursive?: boolean;
+  bytesBefore?: number;
+  bytesAfter?: number;
+  diffAvailable?: boolean;
+  diffPreview?: string;
+  diffTruncated?: boolean;
+  diffUnavailableReason?: string;
+}
+
 export interface AgentExternalMcpEvidenceData {
   kind: "external_mcp";
   serverId: string;
@@ -353,6 +377,8 @@ export interface AgentExternalMcpEvidenceData {
   resultPreview?: string;
 }
 
+// Historical persisted-run compatibility only. No executable
+// edit_file tool remains registered after #235.
 export interface AgentEditFileEvidenceData {
   kind: "edit_file";
   operation: "create" | "overwrite" | "replace" | "delete" | "move" | "unknown";
@@ -380,6 +406,7 @@ export type AgentEvidenceSummaryData =
   | AgentRetrievalEvidenceData
   | AgentObservationEvidenceData
   | AgentExternalMcpEvidenceData
+  | AgentFileMutationEvidenceData
   | AgentWorkspaceMutationEvidenceData
   | AgentEditFileEvidenceData;
 

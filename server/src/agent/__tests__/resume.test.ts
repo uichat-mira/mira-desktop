@@ -734,8 +734,7 @@ test("resumeApprovedAgentRun keeps legacy terminal_session checkpoint identity w
 
 test("resumeApprovedAgentRun keeps a legacy root-relative workspace path and can continue without repeating approval", async () => {
   const approvedInput = {
-    operation: "delete",
-    targetPath: "/ONLY_ALT_WORKSPACE.txt",
+    path: "/ONLY_ALT_WORKSPACE.txt",
   };
   const goal = createAgentGoal("delete the workspace file");
   const run = agentRunStore.create({
@@ -763,7 +762,7 @@ test("resumeApprovedAgentRun keeps a legacy root-relative workspace path and can
       id: "approval-workspace-1",
       runId: run.id,
       stepId: "approval",
-      toolId: "workspace_mutation",
+      toolId: "delete",
       toolCallId: "pending-workspace-1",
       reason: "needs approval",
       input: approvedInput,
@@ -772,7 +771,7 @@ test("resumeApprovedAgentRun keeps a legacy root-relative workspace path and can
     },
     pendingToolCall: {
       id: "pending-workspace-1",
-      toolId: "workspace_mutation",
+      toolId: "delete",
       args: approvedInput,
       inputHash: createInvocationInputHash(approvedInput),
       source: "planner",
@@ -784,7 +783,7 @@ test("resumeApprovedAgentRun keeps a legacy root-relative workspace path and can
   const runSpy = vi.spyOn(agentGraph, "run").mockImplementation(async (input) => {
     assert.deepEqual(input.pendingToolCall, {
       id: "pending-workspace-1",
-      toolId: "workspace_mutation",
+      toolId: "delete",
       args: approvedInput,
       inputHash: createInvocationInputHash(approvedInput),
       source: "planner",

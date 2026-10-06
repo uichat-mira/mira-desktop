@@ -132,7 +132,7 @@ describe("browser-intent Harness candidate exposure", () => {
     }
     registerTool(
       createTool({
-        id: "write_file",
+        id: "write",
         domain: "edit",
         tags: ["edit", "write"],
         sideEffect: "local-write",
@@ -178,7 +178,7 @@ describe("browser-intent Harness candidate exposure", () => {
         "browser_observe",
         "browser_act",
         "browser_assert",
-        "write_file",
+        "write",
         "terminal",
       ]),
     );
@@ -221,7 +221,7 @@ describe("browser-intent Harness candidate exposure", () => {
       expect.arrayContaining([
         "browser_attached_look",
         "browser_attached_act",
-        "write_file",
+        "write",
       ]),
     );
   });

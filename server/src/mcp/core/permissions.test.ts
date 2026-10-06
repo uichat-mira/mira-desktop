@@ -53,7 +53,7 @@ describe("permissions exact approval reuse", () => {
 
     expect(
       hasExactApprovedInvocation({
-        toolId: "workspace_mutation",
+        toolId: "delete",
         inputHash: createInvocationInputHash(approvedArgs),
         approvedInvocations: [
           {

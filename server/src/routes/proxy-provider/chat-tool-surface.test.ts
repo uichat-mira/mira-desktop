@@ -86,7 +86,7 @@ describe("chat tool surface", () => {
           },
         },
       ],
-      blockedCapabilityIds: ["edit_file", "mcp:demo:tool:search"],
+      blockedCapabilityIds: ["edit", "mcp:demo:tool:search"],
       reasons: [],
     });
 
@@ -175,8 +175,8 @@ describe("chat tool surface", () => {
         },
       },
       {
-        id: "edit_file",
-        title: "Edit File",
+        id: "edit",
+        title: "Edit",
         description: "Edit workspace files.",
         domain: "edit",
         mode: "sync",
@@ -193,7 +193,7 @@ describe("chat tool surface", () => {
     });
 
     const tools = resolveChatToolSurface({
-      allowlist: ["read_list", "edit_file"],
+      allowlist: ["read_list", "edit"],
       maxTools: 1,
     });
 

@@ -224,13 +224,13 @@ codebase_explore
 ### Edit
 
 ```text
-write_file
-replace_block
-delete_path
-move_path
+write
+edit
+delete
+move
 ```
 
-四个公开 Edit 工具都要求审批。旧 `edit_file / workspace_mutation` 只保留兼容。
+四个 canonical File Mutation 工具都要求 exact invocation 审批，并统一经过同一个 File Mutation Runtime。旧 `write_file / replace_block / delete_path / move_path / edit_file / workspace_mutation` 已退出可执行 registry；仅历史持久化 Evidence 仍可读取旧 `edit_file / workspace_mutation` summary。
 
 ### Search
 

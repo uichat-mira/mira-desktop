@@ -66,12 +66,12 @@ Registry
 
 ### Edit
 
-- `write_file`
-- `replace_block`
-- `delete_path`
-- `move_path`
+- `write`
+- `edit`
+- `delete`
+- `move`
 
-四个公开写工具都要求审批。旧 `edit_file / workspace_mutation` 只保留兼容。
+四个 canonical File Mutation 工具统一经过 File Mutation Runtime，并要求 exact invocation 审批。旧 `write_file / replace_block / delete_path / move_path / edit_file / workspace_mutation` 已退出本地可执行 registry；只保留旧 Evidence summary 的历史读取兼容。
 
 ### Search
 
