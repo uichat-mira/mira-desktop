@@ -60,6 +60,7 @@ Mobile: installation key / provider token registration / explicit Host approval
 - installation / Host public key：Ed25519 raw 32 bytes，base64url 编码；
 - signature：Ed25519 64 bytes，base64url 编码；
 - request signing payload：`src/contracts.ts` 的 canonical JSON；
+- signed timestamp 字段必须使用 canonical UTC ISO 8601（`YYYY-MM-DDTHH:mm:ss.sssZ`），不接受等价 offset 表示；
 - object key 词典序；array 保持顺序；`sourceScope` 在验签前归一为排序去重。
 
 Broker 不持有 installation 或 Host 私钥。`BROKER_STORAGE_KEY` 仅通过 Worker secret 注入。
