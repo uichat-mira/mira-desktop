@@ -9,6 +9,8 @@ engine:
   experimental: true
   provider:
     name: openai
+    auth:
+      secret: OPENAI_API_KEY
   behaviors:
     secret-strategy: universal-llm-consumer
     capabilities:
