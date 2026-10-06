@@ -1502,11 +1502,10 @@ export const notificationOutbox = sqliteTable(
   "notification_outbox",
   {
     id: text("id").primaryKey(),
-    installationId: text("installation_id")
-      .notNull()
-      .references(() => hostNotificationBindings.installationId, {
-        onDelete: "cascade",
-      }),
+    // Opaque installation identity: intentionally no foreign key. Durable
+    // outbox history must survive binding deletion/revocation so delivery can
+    // make an explicit terminal-state decision.
+    installationId: text("installation_id").notNull(),
     // Opaque canonical identity: keep durable outbox history even if the
     // canonical message is later deleted. Delivery revalidates current truth.
     canonicalMessageId: text("canonical_message_id").notNull(),
