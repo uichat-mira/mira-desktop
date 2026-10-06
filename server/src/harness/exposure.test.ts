@@ -176,6 +176,40 @@ describe("resolveHarnessToolExposure", () => {
     expect(visible.exposedToolIds).toContain("external_fake_tool");
   });
 
+  it("reports an apply_patch downgrade when the requested facade is unavailable", () => {
+    registerTool({
+      definition: {
+        id: "write",
+        title: "Write",
+        description: "write",
+        domain: "edit",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object", properties: {} },
+        tags: ["edit"],
+        capabilities: {
+          sideEffect: "local-write",
+          requiresApproval: true,
+        },
+      },
+      execute() {
+        return {};
+      },
+    });
+
+    const decision = resolveHarnessToolExposure({
+      source: "agent_intent",
+      query: "apply this patch",
+      editFacade: "apply_patch",
+    });
+
+    expect(decision.exposedToolIds).toContain("write");
+    expect(decision.exposedToolIds).not.toContain("apply_patch");
+    expect(decision.reasons).toContain(
+      "Workspace Edit requested apply_patch, but apply_patch is not available; materialized as write/edit/move/delete.",
+    );
+  });
+
   it("does not create semantic or runtime policy reasons for public built-in tools", () => {
     registerTool(readTool);
     registerTool(webSearchTool);
