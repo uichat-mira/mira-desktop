@@ -262,38 +262,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       },
     });
   }
-  if (toolId === "read_open") {
-    const path = typeof result.path === "string" ? result.path : "unknown";
-    const source = asRecord(result.source);
-    const text = typeof source?.text === "string" ? source.text : "";
-    const contentPreview = textPreview(text);
-    const truncated = contentPreview.length < text.length;
-    return baseEvidence({
-      result,
-      isError,
-      actionTaken: `Opened file ${path}.`,
-      facts: [
-        `contentLength=${text.length}`,
-        ...(contentPreview ? [contentPreview] : []),
-      ],
-      gaps: truncated ? ["File content preview is truncated."] : undefined,
-      status: truncated ? "truncated" : undefined,
-      data: {
-        kind: "read_open",
-        path,
-        contentPreview,
-        contentLength: text.length,
-        truncated,
-        keySections: text
-          .split(/\r?\n+/)
-          .map((line) => line.trim())
-          .filter((line) => /^#{1,6}\s+/.test(line))
-          .slice(0, 5)
-          .map((line) => line.replace(/^#{1,6}\s+/, "")),
-      },
-    });
-  }
-  if (toolId === "list" || toolId === "read_list") {
+  if (toolId === "list") {
     const path = typeof result.path === "string" ? result.path : "unknown";
     const entries = Array.isArray(result.entries)
       ? result.entries.filter(asRecord).map((entry) => ({
@@ -347,7 +316,7 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
           : undefined,
       status: truncated ? "truncated" : undefined,
       data: {
-        kind: toolId === "list" ? "list" : "read_list",
+        kind: "list",
         path,
         entryCount: totalCount,
         fileCount,
@@ -413,55 +382,6 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
       },
     });
   }
-  if (toolId === "read_discover") {
-    const operation = typeof result.operation === "string" ? result.operation : "list";
-    const entries = Array.isArray(result.entries) ? result.entries : Array.isArray(result.matches) ? result.matches : [];
-    const returnedCount = typeof result.returnedCount === "number" ? result.returnedCount : entries.length;
-    const totalCount = typeof result.totalCount === "number" ? result.totalCount : undefined;
-    const truncated = result.truncated === true || result.hasMore === true || (totalCount !== undefined && returnedCount < totalCount);
-    const candidatePaths = toolId === "read_discover"
-      ? (operation === "list"
-        ? entries.filter(asRecord).map((entry) => typeof entry.name === "string" ? entry.name : "unknown")
-        : entries.filter(asRecord).map((entry) => typeof entry.path === "string" ? entry.path : "unknown"))
-      : [];
-    const candidatePreview = candidatePaths.slice(0, 5);
-    const path = typeof result.path === "string" ? result.path : undefined;
-    const root = typeof result.root === "string" ? result.root : typeof result.scope === "string" ? result.scope : undefined;
-    const query = typeof result.query === "string" ? result.query : undefined;
-    return baseEvidence({
-      result,
-      isError,
-      actionTaken: `Discovered ${returnedCount} workspace candidate(s) using ${operation}.`,
-      facts: [
-        `operation=${operation}`,
-        ...(path ? [`path=${path}`] : []),
-        ...(root ? [`root=${root}`] : []),
-        ...(query ? [`query=${query}`] : []),
-        `candidateCount=${returnedCount}`,
-        `returnedCount=${returnedCount}`,
-        ...(totalCount === undefined ? [] : [`totalCount=${totalCount}`]),
-        `hasMore=${result.hasMore === true || (totalCount !== undefined && returnedCount < totalCount)}`,
-        `truncated=${truncated}`,
-        ...candidatePreview.map((candidate) => `candidatePath=${candidate}`),
-      ],
-      gaps: truncated ? ["Discovery results are truncated; more candidates may exist."] : entries.length === 0 ? ["No workspace matches were returned."] : undefined,
-      status: truncated ? "truncated" : undefined,
-      data: {
-        kind: "read_discover",
-        mode: typeof result.mode === "string" ? result.mode : operation,
-        operation,
-        ...(path ? { path } : {}),
-        ...(root ? { root } : {}),
-        ...(query ? { query } : {}),
-        candidateCount: returnedCount,
-        candidatePaths: candidatePreview,
-        returnedCount,
-        ...(totalCount === undefined ? {} : { totalCount }),
-        hasMore: result.hasMore === true || (totalCount !== undefined && returnedCount < totalCount),
-        truncated,
-      },
-    });
-  }
   if (toolId === "grep") {
     const pattern = typeof result.pattern === "string" ? result.pattern : "";
     const path = typeof result.path === "string" ? result.path : ".";
@@ -512,44 +432,6 @@ const projectReadEvidence = (toolId: string, result: Record<string, unknown>, is
         matchedPaths,
         matchesPreview,
         provider,
-        truncated,
-      },
-    });
-  }
-  if (toolId === "read_locate") {
-    const query = typeof result.query === "string" ? result.query : "";
-    const matches = Array.isArray(result.matches) ? result.matches : [];
-    const sortedMatches = matches.filter(asRecord).map((match) => ({
-      path: typeof match.path === "string" ? match.path : "unknown",
-      matchType: match.matchType === "content" ? "content" : "path",
-      preview: typeof match.preview === "string" ? textPreview(match.preview, 120) : "",
-    })).sort((left, right) => {
-      const leftPriority = /^(docs[\\/]|readme\\.md$|agents\\.md$)/iu.test(left.path) ? 0 : 1;
-      const rightPriority = /^(docs[\\/]|readme\\.md$|agents\\.md$)/iu.test(right.path) ? 0 : 1;
-      return leftPriority - rightPriority || left.path.localeCompare(right.path);
-    });
-    const truncated = result.truncated === true || sortedMatches.length > 5;
-    const matchesPreview = sortedMatches.slice(0, 5).map((match) =>
-      match.preview ? `[${match.matchType}] ${match.path}: ${match.preview}` : `[${match.matchType}] ${match.path}`,
-    );
-    return baseEvidence({
-      result,
-      isError,
-      actionTaken: `Located ${sortedMatches.length} workspace match(es) for "${query}".`,
-      facts: [`matchCount=${sortedMatches.length}`, ...matchesPreview],
-      gaps: [
-        ...(sortedMatches.length === 0 ? ["No workspace matches were returned."] : []),
-        ...(truncated ? ["Search results are truncated."] : []),
-      ],
-      status: truncated ? "truncated" : undefined,
-      data: {
-        kind: "read_locate",
-        scope: typeof result.scope === "string" ? result.scope : "workspace",
-        query,
-        searchMode: result.searchMode === "path" || result.searchMode === "content" ? result.searchMode : "auto",
-        matchCount: sortedMatches.length,
-        matchedPaths: sortedMatches.map((match) => match.path),
-        matchesPreview,
         truncated,
       },
     });

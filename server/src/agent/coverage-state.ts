@@ -64,6 +64,8 @@ const WORKSPACE_READ_TOOL_IDS = new Set([
   "list",
   "glob",
   "grep",
+  // Historical persisted-run ids only. They remain readable for old Evidence
+  // and failure replay, but no current Tool registry can execute them.
   "read_list",
   "read_open",
   "read_locate",
@@ -136,6 +138,7 @@ const markCompletedSummary = (
   }
 
   switch (summary.data.kind) {
+    // Historical persisted-run summary. No current Tool emits this kind.
     case "read_locate":
       addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
@@ -161,6 +164,7 @@ const markCompletedSummary = (
       }
       return;
     }
+    // Historical persisted-run summary. No current Tool emits this kind.
     case "read_open": {
       const target = normalizeTaskTargetPath(summary.data.path);
       if (!target) {
@@ -331,6 +335,7 @@ const hasListEvidence = (input: {
     if (summary?.data?.kind === "list") {
       return summary.status === "completed";
     }
+    // Historical persisted-run summary compatibility only.
     if (summary?.data?.kind === "read_list") {
       return summary.status === "completed" || summary.status === "truncated";
     }

@@ -174,6 +174,7 @@ export interface AgentFinalizationPacket {
 }
 
 export interface AgentReadListEvidenceData {
+  // "read_list" is persisted-run compatibility only; current execution emits "list".
   kind: "list" | "read_list";
   path: string;
   entryCount: number;
@@ -186,6 +187,7 @@ export interface AgentReadListEvidenceData {
   truncated: boolean;
 }
 
+/** Historical persisted-run compatibility only. No current Tool emits this kind. */
 export interface AgentReadDiscoverEvidenceData {
   kind: "read_discover";
   mode: "list" | "locate";
@@ -222,6 +224,7 @@ export interface AgentReadEvidenceData {
   };
 }
 
+/** Historical persisted-run compatibility only. No current Tool emits this kind. */
 export interface AgentReadOpenEvidenceData {
   kind: "read_open";
   path: string;
@@ -263,6 +266,7 @@ export interface AgentGrepEvidenceData {
   truncated: boolean;
 }
 
+/** Historical persisted-run compatibility only. No current Tool emits this kind. */
 export interface AgentReadLocateEvidenceData {
   kind: "read_locate";
   scope: string;

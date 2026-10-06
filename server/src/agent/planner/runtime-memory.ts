@@ -62,8 +62,6 @@ const getSemanticActionKey = (observation: AgentExecutionObservation) => {
 
     if (
       (observation.actionType === "retrieve" ||
-        observation.toolId === "read_discover" ||
-        observation.toolId === "read_locate" ||
         observation.toolId === "codebase_explore") &&
       typeof query === "string" &&
       query.trim()
@@ -73,11 +71,21 @@ const getSemanticActionKey = (observation: AgentExecutionObservation) => {
 
     if (
       observation.actionType === "tool" &&
-      observation.toolId?.startsWith("read_") &&
+      (observation.toolId === "read" || observation.toolId === "list") &&
       typeof path === "string" &&
       path.trim()
     ) {
       return `${observation.actionType}:${observation.toolId}:path:${path.trim()}`;
+    }
+
+    const pattern = observation.argsPreview.pattern;
+    if (
+      observation.actionType === "tool" &&
+      (observation.toolId === "glob" || observation.toolId === "grep") &&
+      typeof pattern === "string" &&
+      pattern.trim()
+    ) {
+      return `${observation.actionType}:${observation.toolId}:pattern:${pattern.trim()}`;
     }
   }
 
