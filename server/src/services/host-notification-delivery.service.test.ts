@@ -104,11 +104,13 @@ const createHarness = (
 test("delivery posts identity-only Broker event and marks success", async () => {
   let capturedBody: Record<string, unknown> | null = null;
   let capturedAuth = "";
+  let capturedSignal: AbortSignal | null = null;
 
   const { service, calls } = createHarness(
     (async (_url, init) => {
       capturedAuth = new Headers(init?.headers).get("authorization") ?? "";
       capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      capturedSignal = init?.signal ?? null;
       return new Response("{}", { status: 202 });
     }) as typeof fetch,
   );
@@ -120,6 +122,8 @@ test("delivery posts identity-only Broker event and marks success", async () => 
   assert.equal(capturedBody?.canonicalMessageId, "assistant-1");
   assert.equal(capturedBody?.sourceId, "thread-1");
   assert.equal(capturedBody?.hostSignature, "host-signature");
+  assert.ok(capturedSignal instanceof AbortSignal);
+  assert.equal(capturedSignal.aborted, false);
   assert.equal("content" in (capturedBody ?? {}), false);
   assert.equal("body" in (capturedBody ?? {}), false);
   assert.equal("prompt" in (capturedBody ?? {}), false);
