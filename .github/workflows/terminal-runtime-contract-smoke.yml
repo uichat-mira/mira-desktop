@@ -85,7 +85,7 @@ jobs:
         run: pnpm prepare:terminal-runtime
 
       - name: Run real Terminal contract smoke
-        run: node scripts/smoke-terminal-runtime.mjs --quick
+        run: node scripts/smoke-terminal-runtime.mjs --terminal-only
 
       - name: Upload Terminal smoke evidence
         if: always()
