@@ -675,6 +675,19 @@ test("buildNextActionPlannerMessages gives Terminal exposure-aware alternatives 
       },
       baseToolExposure.toolMeta[0]!,
       baseToolExposure.toolMeta[1]!,
+      {
+        toolId: "write",
+        title: "Write",
+        description: "Write a workspace file.",
+        inputSchema: { type: "object" },
+        domain: "edit",
+        source: "internal" as const,
+        capabilities: {
+          sideEffect: "local-write" as const,
+          requiresApproval: true,
+          workspaceBound: true,
+        },
+      },
     ],
   };
 
