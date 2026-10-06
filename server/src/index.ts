@@ -109,6 +109,7 @@ import { imageGenerationJobsRepository } from "@/db/repositories/image-generatio
 import { microAppProviderConfigsRepository } from "@/db/repositories/micro-app-provider-configs.repository.js";
 import { chatMediaService } from "@/services/chat-media.service.js";
 import { hostNotificationDeliveryService } from "@/services/host-notification-delivery.service.js";
+import { canonicalMessageCleanupService } from "@/services/canonical-message-cleanup.service.js";
 import { managedMediaCleanupService } from "@/services/managed-media-cleanup.service.js";
 import { microAppCapabilityBindingsRepository } from "@/db/repositories/micro-app-capability-bindings.repository.js";
 import { ttsRefAudiosRepository } from "@/db/repositories/tts-ref-audios.repository.js";
@@ -189,6 +190,7 @@ const readSwaggerLogo = async () => {
 app.setErrorHandler(sendRouteError);
 
 app.addHook("onClose", async () => {
+  canonicalMessageCleanupService.stop();
   hostNotificationDeliveryService.stop();
   await shutdownForgeRuntime();
 });
@@ -900,6 +902,7 @@ const start = async () => {
     await setupDatabase();
     await setupRoutes();
     await startServer();
+    canonicalMessageCleanupService.start();
     hostNotificationDeliveryService.start();
     await setupForgeRuntime();
   } catch (error) {
