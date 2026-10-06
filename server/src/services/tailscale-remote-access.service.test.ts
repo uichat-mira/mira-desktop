@@ -4,11 +4,30 @@ const repositoryMock = vi.hoisted(() => ({
   getConfig: vi.fn(),
   updateConfig: vi.fn(),
   listDevices: vi.fn(),
+  getActiveDeviceById: vi.fn(),
   revokeDevice: vi.fn(),
+}));
+
+const hostNotificationMock = vi.hoisted(() => ({
+  revokeBindingsForRemoteDevice: vi.fn(),
+}));
+
+const sqliteMock = vi.hoisted(() => ({
+  transaction: vi.fn(
+    (callback: () => unknown) => () => callback(),
+  ),
 }));
 
 vi.mock("@/config/index.js", () => ({
   default: { PORT: 8787 },
+}));
+
+vi.mock("@/db/index.js", () => ({
+  getSqlite: () => sqliteMock,
+}));
+
+vi.mock("@/db/repositories/host-notification.repository.js", () => ({
+  hostNotificationRepository: hostNotificationMock,
 }));
 
 vi.mock(
@@ -61,7 +80,10 @@ beforeEach(() => {
   repositoryMock.getConfig.mockReset();
   repositoryMock.updateConfig.mockReset();
   repositoryMock.listDevices.mockReset();
+  repositoryMock.getActiveDeviceById.mockReset();
   repositoryMock.revokeDevice.mockReset();
+  hostNotificationMock.revokeBindingsForRemoteDevice.mockReset();
+  sqliteMock.transaction.mockClear();
   repositoryMock.getConfig.mockReturnValue({
     enabled: false,
     servePort: 443,
@@ -75,6 +97,7 @@ beforeEach(() => {
     }),
   );
   repositoryMock.listDevices.mockReturnValue([]);
+  repositoryMock.getActiveDeviceById.mockReturnValue(null);
 });
 
 describe("TailscaleRemoteAccessService", () => {
@@ -240,5 +263,48 @@ describe("TailscaleRemoteAccessService", () => {
     expect(checkHealth).toHaveBeenCalledWith(
       "https://mira-desktop.example.ts.net",
     );
+  });
+
+  it("revokes Push bindings with the paired device in one lifecycle transaction", () => {
+    repositoryMock.getActiveDeviceById.mockReturnValue({
+      id: "device-1",
+      userId: 7,
+      name: "Phone",
+      platform: "android",
+      publicKey: null,
+      tokenHash: "hash",
+      permissions: ["threads:read"],
+      createdAt: "2026-10-06T00:00:00.000Z",
+      lastSeenAt: null,
+    });
+    repositoryMock.revokeDevice.mockReturnValue(true);
+
+    const service = new TailscaleRemoteAccessService();
+    expect(service.revokeDevice("device-1", 7)).toBe(true);
+    expect(repositoryMock.revokeDevice).toHaveBeenCalledWith("device-1", 7);
+    expect(
+      hostNotificationMock.revokeBindingsForRemoteDevice,
+    ).toHaveBeenCalledWith("device-1", 7);
+  });
+
+  it("does not revoke Push bindings for another user's paired device", () => {
+    repositoryMock.getActiveDeviceById.mockReturnValue({
+      id: "device-2",
+      userId: 8,
+      name: "Other Phone",
+      platform: "android",
+      publicKey: null,
+      tokenHash: "hash",
+      permissions: ["threads:read"],
+      createdAt: "2026-10-06T00:00:00.000Z",
+      lastSeenAt: null,
+    });
+
+    const service = new TailscaleRemoteAccessService();
+    expect(service.revokeDevice("device-2", 7)).toBe(false);
+    expect(repositoryMock.revokeDevice).not.toHaveBeenCalled();
+    expect(
+      hostNotificationMock.revokeBindingsForRemoteDevice,
+    ).not.toHaveBeenCalled();
   });
 });
