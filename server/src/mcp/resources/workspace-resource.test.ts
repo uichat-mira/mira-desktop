@@ -29,7 +29,7 @@ describe("workspace resource", () => {
 
     const dirEvents: string[] = [];
     const dirResult = await workspaceResource.read!({
-      args: { path: "docs" },
+      args: { path: "docs", includeIgnored: true },
       environment: createHarnessEnvironmentSnapshot(),
       pushEvent(event) {
         dirEvents.push(event.type === "invocation:progress" ? event.message : event.type);
