@@ -49,11 +49,7 @@ Harness 是 concrete tool 的控制平面，不是 Planner、SubAgent 编排器�
 
 **注册存在不等于 Planner 可见。**
 
-旧 Universal Read executable compatibility surface 已退役。当前 registry 不再注册
-`read_discover / read_open / read_list / read_locate / read_extract / read_slice`，
-也不再靠 exposure policy 把它们“藏起来”。
-
-旧 Read ID 不保留运行时兼容。历史记录只存在于 archive / frozen evidence / old task documents，不进入当前 Agent/Harness/Evidence/Coverage 解释路径。旧本地 mutation id 的处理另按各自合同治理。
+Universal Read 当前只存在 canonical `read / list / glob / grep` executable surface，不保留第二套兼容 Tool、隐藏 Tool 或 Evidence 解释路径。旧本地 mutation id 的处理另按各自合同治理。
 
 动态注册还包括：
 
@@ -86,7 +82,6 @@ grep
 
 - canonical Universal Read 只暴露 `read / list / glob / grep`；
 - `codebase_explore`：独立 Code / Work Context 能力，不属于 Universal Read；
-- `read_discover / read_open / read_list / read_locate / read_extract / read_slice`：可执行实现已删除；仅保留必要的历史 Evidence / persisted-run 只读兼容类型。
 
 ### `read`
 
@@ -609,7 +604,6 @@ CodeGraph verified retrieval 会走 retrieval Evidence；普通工具、Mail、G
 当前不能这样描述 Tool 系统：
 
 - Planner 公共 Read 面仍是六个 `read_*` primitive；
-- grep 只是隐藏在 `read_locate` 里的实现；
 - 公共 Edit 只有一个 `edit_file` wrapper；
 - 删除、移动仍未实现；
 - Harness 会按任务语义隐藏“看起来用不到”的公开工具；
