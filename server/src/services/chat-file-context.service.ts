@@ -304,7 +304,7 @@ export const removeFileAttachmentsFromParts = (parts: unknown) => {
   }
 };
 
-export const removeFileAttachmentsRemovedFromParts = (
+export const getFileAttachmentsRemovedFromParts = (
   previousParts: unknown,
   nextParts: unknown,
 ) => {
@@ -321,16 +321,23 @@ export const removeFileAttachmentsRemovedFromParts = (
   );
 
   if (!Array.isArray(previousParts)) {
-    return;
+    return [];
   }
 
+  return previousParts.filter((part) => {
+    if (!part || typeof part !== "object" || (part as { type?: unknown }).type !== "file") {
+      return false;
+    }
+    const source = (part as { data?: unknown }).data;
+    return typeof source === "string" && !retainedSources.has(source);
+  });
+};
+
+export const removeFileAttachmentsRemovedFromParts = (
+  previousParts: unknown,
+  nextParts: unknown,
+) => {
   removeFileAttachmentsFromParts(
-    previousParts.filter((part) => {
-      if (!part || typeof part !== "object" || (part as { type?: unknown }).type !== "file") {
-        return false;
-      }
-      const source = (part as { data?: unknown }).data;
-      return typeof source === "string" && !retainedSources.has(source);
-    }),
+    getFileAttachmentsRemovedFromParts(previousParts, nextParts),
   );
 };
