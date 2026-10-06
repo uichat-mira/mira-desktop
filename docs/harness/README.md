@@ -222,7 +222,7 @@ pending request 和 frozen call 保存 `toolCallId`，批准在执行尝试后 o
 
 普通 Read / Edit file tools 使用严格 workspace path normalization。
 
-`terminal_session` 是 host shell / PTY runtime：
+`terminal` 是 host shell / PTY runtime：
 
 - 支持完整命令、Node、Python、Git、包管理器和长任务；
 - `cwd` 可以是 workspace-relative、父级或绝对路径；

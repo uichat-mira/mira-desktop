@@ -165,7 +165,9 @@ test("executeDefaultChatToolLoop removes stale assistant tool prose before tool 
       agentEnabled: true,
       messages: [
         { role: "system", content: "role context" },
+        { role: "assistant", content: "The terminal runtime is available when a real command is needed." },
         { role: "assistant", content: "read_list <tool_input>{\"path\":\"D:\\\\testData\"}</tool_input> empty directory" },
+        { role: "assistant", content: "terminal <tool_input>{\"command\":\"pwd\"}</tool_input>" },
         { role: "user", content: "帮我看看文件夹下有啥" },
       ],
     });
@@ -179,6 +181,22 @@ test("executeDefaultChatToolLoop removes stale assistant tool prose before tool 
           message.content.includes("read_list"),
       ),
       false,
+    );
+    assert.equal(
+      fetchBodies[0]?.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.includes("<tool_input>"),
+      ),
+      false,
+    );
+    assert.equal(
+      fetchBodies[0]?.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.includes("terminal runtime"),
+      ),
+      true,
     );
   } finally {
     resolveProviderForRoleSpy.mockRestore();

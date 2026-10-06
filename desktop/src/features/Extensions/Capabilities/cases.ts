@@ -337,6 +337,61 @@ export const nativeCapabilityAcceptanceCases: CapabilityAcceptanceCase[] = [
     fixture: FILE_MUTATION_FIXTURE,
   },
   {
+    id: "terminal-short-success",
+    toolId: "terminal",
+    title: "短命令成功",
+    purpose: "确认 canonical terminal 能执行跨平台短命令并返回稳定输出。",
+    expectedObservation: "Awaiting Approval；批准后 Completed，并返回 MIRA_TERMINAL_OK。",
+    args: {
+      command: "node -e \"process.stdout.write('MIRA_TERMINAL_OK')\"",
+    },
+    group: "Terminal",
+    workspace: "managed",
+  },
+  {
+    id: "terminal-short-failure",
+    toolId: "terminal",
+    title: "短命令失败",
+    purpose: "确认 canonical terminal 区分调用完成与命令失败，保留非零退出码。",
+    expectedObservation:
+      "Awaiting Approval；批准后 Invocation=Completed，但命令证据明确 exitCode=7、processCompleted=true、commandSucceeded=false。",
+    args: {
+      command: "node -e \"process.exit(7)\"",
+    },
+    group: "Terminal",
+    workspace: "managed",
+  },
+  {
+    id: "terminal-persistent-start",
+    toolId: "terminal",
+    title: "持久任务",
+    purpose: "启动持续输出的受控任务，并在同一会话上继续读取、查看状态与停止。",
+    expectedObservation:
+      "Awaiting Approval；批准后 state=running 且 sessionId 稳定，Continue 不重跑命令，Stop 返回 cancelled + cleanupCompleted。",
+    args: {
+      command:
+        "node -e \"let i=0; setInterval(()=>console.log('MIRA_TICK:'+ ++i),250)\"",
+      sessionMode: "persistent",
+      timeoutMs: 700,
+      outputLimitBytes: 4096,
+    },
+    group: "Terminal",
+    workspace: "managed",
+  },
+  {
+    id: "terminal-stale-session",
+    toolId: "terminal",
+    title: "失效会话",
+    purpose: "确认 unknown/stale sessionId 明确失败，不静默创建新会话。",
+    expectedObservation: "Failed；明确返回 unknown/stale session 错误，且没有新 session。",
+    args: {
+      operation: "status",
+      sessionId: "tool-lab-stale-session",
+    },
+    group: "Terminal",
+    workspace: "managed",
+  },
+  {
     id: "core-read-controlled-failure",
     toolId: "read",
     title: "读取不存在文件",

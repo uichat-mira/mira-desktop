@@ -322,6 +322,17 @@ export interface AgentTerminalSessionEvidenceData {
   violations: string[];
   outputInterpretable: boolean;
   unreadableReason?: string;
+  continuationId?: string;
+  continuationAvailable?: boolean;
+  outputOffset?: number;
+  outputEndOffset?: number;
+  nextOutputOffset?: number;
+  outputBytesAvailable?: number;
+  outputLimitBytes?: number;
+  commandCompleted?: boolean;
+  state?: "running" | "completed" | "failed" | "cancelled";
+  cleanupCompleted?: boolean;
+  operation?: "status" | "stop";
 }
 
 export interface AgentRetrievalEvidenceData {

@@ -196,7 +196,7 @@ SubAgent semantic runtime action
 - `PYTHONPATH`；
 - pip / conda；
 - 任意脚本拼接；
-- 通过 `terminal_session` 伪造文枢 Runtime。
+- 通过 `terminal` 伪造文枢 Runtime。
 
 ## 7. Result contract
 

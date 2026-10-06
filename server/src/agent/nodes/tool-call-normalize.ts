@@ -233,7 +233,7 @@ export const toolCallNormalizeNode = async (
     return failNormalize(state, emit, {
       reason: normalizedArgsResult.rejectReason,
       toolId: normalizedToolId,
-      schemaReplanEligible: normalizedToolId === "terminal_session",
+      schemaReplanEligible: normalizedToolId === "terminal",
     });
   }
 

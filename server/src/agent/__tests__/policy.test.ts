@@ -361,7 +361,7 @@ test("policyNode bypasses approval only for the exact approved frozen invocation
     .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
-        id: "terminal_session",
+        id: "terminal",
         domain: "terminal",
         capabilities: {
           sideEffect: "process",
@@ -371,7 +371,7 @@ test("policyNode bypasses approval only for the exact approved frozen invocation
         },
       }),
     ]);
-  const pendingToolCall = createPendingToolCall("terminal_session", {
+  const pendingToolCall = createPendingToolCall("terminal", {
     command: "dir",
     cwd: "D:\\workspace\\rag-demo",
   });
@@ -382,7 +382,7 @@ test("policyNode bypasses approval only for the exact approved frozen invocation
         pendingToolCall,
         approvedInvocations: [
           {
-            toolId: "terminal_session",
+            toolId: "terminal",
             input: pendingToolCall.args,
             inputHash: pendingToolCall.inputHash,
             approvedAt: "2026-07-04T00:00:00.000Z",
@@ -406,7 +406,7 @@ test("policyNode does not reuse approval when inputHash does not match", async (
     .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
-        id: "terminal_session",
+        id: "terminal",
         domain: "terminal",
         capabilities: {
           sideEffect: "process",
@@ -416,7 +416,7 @@ test("policyNode does not reuse approval when inputHash does not match", async (
         },
       }),
     ]);
-  const pendingToolCall = createPendingToolCall("terminal_session", {
+  const pendingToolCall = createPendingToolCall("terminal", {
     command: "dir /b",
   });
 
@@ -426,7 +426,7 @@ test("policyNode does not reuse approval when inputHash does not match", async (
         pendingToolCall,
         approvedInvocations: [
           {
-            toolId: "terminal_session",
+            toolId: "terminal",
             input: { command: "dir" },
             inputHash: "another-hash",
             approvedAt: "2026-07-04T00:00:00.000Z",
@@ -438,7 +438,7 @@ test("policyNode does not reuse approval when inputHash does not match", async (
 
     assert.equal(result.selectedToolId, undefined);
     assert.equal(result.policyDecision?.type, "require_approval");
-    assert.equal(result.pendingApproval?.toolId, "terminal_session");
+    assert.equal(result.pendingApproval?.toolId, "terminal");
     assert.equal(result.pendingApproval?.toolCallId, pendingToolCall.id);
     assert.equal(result.pendingApproval?.inputHash, pendingToolCall.inputHash);
   } finally {

@@ -1425,6 +1425,13 @@ const settingsPending = {
         terminalPtyMerged: "PTY merged",
         terminalSession: "Session {{sessionId}}",
         terminalCwd: "CWD {{cwd}}",
+        terminalState: "State {{state}}",
+        acceptanceCases: "Acceptance cases",
+        approve: "Approve & continue",
+        reject: "Reject",
+        continueOutput: "Continue output",
+        inspectStatus: "Inspect status",
+        stop: "Stop",
       },
       messages: {
         loadFailed: "Failed to load the tools workbench",
@@ -1435,6 +1442,7 @@ const settingsPending = {
         invalidArgsJson: "Invocation args must be valid JSON",
         webSearchConfigSaved: "Web Search config saved",
         runFailed: "Tool execution failed",
+        approvalFailed: "Failed to resolve tool approval",
       },
     },
     mcp: {
@@ -2513,6 +2521,9 @@ const settingsPending = {
         },
         actions: {
           run: "Run this case",
+          continueOutput: "Continue output",
+          inspectStatus: "Inspect status",
+          stopTerminal: "Stop task",
           viewCase: "View case",
           expandResult: "Expand result",
           collapseResult: "Collapse result",

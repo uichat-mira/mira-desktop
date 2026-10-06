@@ -215,7 +215,7 @@ beforeEach(() => {
   });
   mocks.toolGateway.approve.mockResolvedValue({
     invocationId: "inv-2",
-    toolId: "terminal_session",
+    toolId: "terminal",
     status: "completed",
     content: "approved result",
   });
@@ -560,7 +560,7 @@ describe("remote access routes", () => {
       url: "/remote/v1/tool-invocations/inv-1/approval",
       payload: {
         decision: "approved",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args: { command: "pwd" },
       },
     });
@@ -568,7 +568,7 @@ describe("remote access routes", () => {
     expect(mocks.toolGateway.approve).toHaveBeenCalledWith({
       invocationId: "inv-1",
       decision: "approved",
-      toolId: "terminal_session",
+      toolId: "terminal",
       args: { command: "pwd" },
       userId: user.id,
     });

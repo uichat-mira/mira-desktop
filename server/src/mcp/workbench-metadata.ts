@@ -92,7 +92,7 @@ const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
     limit: 20,
     page: 1,
   },
-  terminal_session: { command: "" },
+  terminal: { command: "" },
 };
 
 const fallbackDomainMetadata = (domain: string) => ({

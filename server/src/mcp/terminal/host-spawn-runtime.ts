@@ -16,6 +16,7 @@ import {
   getWindowsJobMarker,
 } from "./windows-job-object.js";
 import { resolveTerminalDevRuntimeEnvironment } from "./dev-runtime.js";
+import { normalizeTerminalOutputLimitBytes } from "./persistent-output-store.js";
 
 export interface HostShellProfile {
   shell: string;
@@ -55,8 +56,6 @@ export interface HostExecutionResult {
   violations: string[];
 }
 
-const DEFAULT_OUTPUT_LIMIT_BYTES = 8 * 1024 * 1024;
-const MAX_OUTPUT_LIMIT_BYTES = 64 * 1024 * 1024;
 const BINARY_PLACEHOLDER_TEXT = "[binary output omitted]";
 
 const normalizeOutputEncoding = (encoding: string): SandboxOutputEncoding => {
@@ -194,14 +193,6 @@ export const resolveHostEnv = (overrides?: Record<string, string>) =>
     ),
   );
 
-const normalizeOutputLimitBytes = (value?: number) => {
-  const normalized = value ?? DEFAULT_OUTPUT_LIMIT_BYTES;
-  if (!Number.isFinite(normalized) || normalized <= 0) {
-    throw mcpBadRequest("outputLimitBytes must be a positive finite number");
-  }
-  return Math.min(Math.trunc(normalized), MAX_OUTPUT_LIMIT_BYTES);
-};
-
 const buildNormalShellArgs = (profile: HostShellProfile, command: string) => {
   if (profile.argsMode === "powershell") return ["-NoProfile", "-Command", command];
   if (profile.argsMode === "cmd") return ["/d", "/s", "/c", command];
@@ -241,7 +232,9 @@ export const executeHostCommand = async (
     cwd: input.cwd,
     workspaceRoot: input.workspaceRoot,
   });
-  const outputLimitBytes = normalizeOutputLimitBytes(input.outputLimitBytes);
+  const outputLimitBytes = normalizeTerminalOutputLimitBytes(
+    input.outputLimitBytes,
+  );
   const launch = resolveLaunchSpec(input.shellProfile, input.command);
   const child: ChildProcess = spawn(launch.command, launch.args, {
     cwd,

@@ -10,6 +10,10 @@ const INTERNAL_READ_PRIMITIVE_TOOL_IDS = new Set([
   "read_slice",
 ]);
 
+const INTERNAL_TERMINAL_COMPAT_TOOL_IDS = new Set([
+  "terminal_session",
+]);
+
 export const isInternalIntentOnlyTool = (definition: ToolDefinition) =>
   definition.source === "internal" && INTERNAL_READ_PRIMITIVE_TOOL_IDS.has(definition.id);
 
@@ -25,6 +29,13 @@ export const getDefinitionBlockReason = (
   // These are implementation/compatibility primitives, not public Agent tools.
   if (isInternalIntentOnlyTool(definition)) {
     return "Internal read primitive is not part of the public Read contract.";
+  }
+
+  if (
+    definition.source === "internal" &&
+    INTERNAL_TERMINAL_COMPAT_TOOL_IDS.has(definition.id)
+  ) {
+    return "Legacy terminal alias is not part of the public Terminal contract.";
   }
 
   // External MCP exposure follows the user's explicit Agent Access switch only.

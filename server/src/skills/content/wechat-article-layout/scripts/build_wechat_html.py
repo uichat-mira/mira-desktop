@@ -8,7 +8,7 @@
 用法：
     python build_wechat_html.py --input a.md --output o.html --style minimal-light
 
-脚本只依赖 Python 标准库，可由 Mira 的 terminal_session 在受治理工作区内执行。
+脚本只依赖 Python 标准库，可由 Mira 的 terminal 在受治理工作区内执行。
 """
 
 import argparse

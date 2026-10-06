@@ -3,7 +3,7 @@ import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { evaluateInvocationApproval, hasExactApprovedInvocation } from "./permissions.js";
 
 const terminalDefinition = {
-  id: "terminal_session",
+  id: "terminal",
   title: "Terminal Session",
   description: "terminal",
   domain: "terminal" as const,
@@ -40,11 +40,11 @@ describe("permissions exact approval reuse", () => {
 
     expect(
       hasExactApprovedInvocation({
-        toolId: "terminal_session",
+        toolId: "terminal",
         inputHash: createInvocationInputHash(approvedArgs),
         approvedInvocations: [
           {
-            toolId: "terminal_session",
+            toolId: "terminal",
             inputHash: createInvocationInputHash(approvedArgs),
           },
         ],
@@ -57,7 +57,7 @@ describe("permissions exact approval reuse", () => {
         inputHash: createInvocationInputHash(approvedArgs),
         approvedInvocations: [
           {
-            toolId: "terminal_session",
+            toolId: "terminal",
             inputHash: createInvocationInputHash(approvedArgs),
           },
         ],
@@ -114,13 +114,13 @@ describe("permissions exact approval reuse", () => {
         timeoutMs: 5000,
       },
     },
-  ])("requires approval again when terminal_session receives $label", ({ approvedArgs, nextArgs }) => {
+  ])("requires approval again when terminal receives $label", ({ approvedArgs, nextArgs }) => {
     const result = evaluateInvocationApproval({
       definition: terminalDefinition,
       args: nextArgs,
       approvedInvocations: [
         {
-          toolId: "terminal_session",
+          toolId: "terminal",
           inputHash: createInvocationInputHash(approvedArgs),
         },
       ],
@@ -129,7 +129,7 @@ describe("permissions exact approval reuse", () => {
 
     expect(result).toEqual({
       type: "require_approval",
-      reason: "terminal_session requires explicit approval before execution.",
+      reason: "terminal requires explicit approval before execution.",
       scope: "terminal",
     });
   });

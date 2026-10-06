@@ -1,7 +1,7 @@
 ---
 status: current
 owner: runtime
-last_verified: 2026-07-30
+last_verified: 2026-10-06
 layer: wiki
 module: Tool
 feature: ToolRuntime
@@ -278,8 +278,10 @@ Approval 只授权 frozen exact invocation；它不会扩大 workspace authority
 当前唯一 Terminal 工具是：
 
 ```text
-terminal_session
+terminal
 ```
+
+兼容边界：旧 `terminal_session` 仅作为 persisted approval/run 的隐藏兼容 ID 保留，不进入新的 Agent Tool Exposure；待受支持的旧 checkpoint 不再可能引用该 ID 后删除。
 
 它支持：
 
@@ -294,11 +296,37 @@ terminal_session
 - Windows Job Object / taskkill fallback；
 - POSIX process group。
 
+Persistent 输出当前采用有界返回 + continuation：
+
+- 单次结果默认最多返回 8 MiB，最大可请求 64 MiB；
+- 未返回的 persistent 输出不会因为本轮结果截断而丢失，而是写入受 session 生命周期管理的临时 spool；
+- 返回 `continuationId / nextOutputOffset / outputBytesAvailable`，后续调用同一个 `terminal` 且只提供 continuation 参数即可继续读取，不会向 PTY 写入新命令；
+- observation timeout 只结束本轮等待，collector 继续接收该 persistent command 的后续输出；命令完成后 continuation 可以读取最终剩余日志与 exit code；
+- cursor 使用 UTF-8 byte offset，并由 runtime 返回稳定的 `nextOutputOffset`，避免分页切断多字节字符；
+- session 被移除时，对应 spool 会一并清理。
+
+Persistent session 控制仍然通过同一个 `terminal` Tool 完成：
+
+- `operation: "status" + sessionId` 只观察最新 persistent work 状态，不向 PTY 写入命令；
+- 状态为 `running / completed / failed / cancelled`，其中完成/失败由实际 exit code 驱动；
+- `operation: "stop" + sessionId` 停止该 session 所拥有的进程树；
+- stop 会等待现有 Windows Job Object / taskkill tree 或 POSIX process group cleanup 完成后，才返回 `state: "cancelled"` 与 `cleanupCompleted: true`；
+- stop 不创建第二套进程 runtime，也不引入 `job_*` Tool；
+- unknown / stale `sessionId` 明确失败，不静默退化成新 session。
+
+Tool Lab 当前把 #236 的验收路径直接暴露出来：
+
+- Terminal 注册短命令成功、短命令失败、持久任务、失效会话四个固定 acceptance case；
+- approval-bound 调用在 Tool Lab 内使用现有 Approval API 显式批准/拒绝，不绕过治理；
+- persistent 结果出现 session 后，可直接 Continue output、Inspect status、Stop；
+- Continue 使用 runtime 返回的 continuation cursor，不会执行第二条命令；
+- 状态与 session identity 会同时显示在 Terminal package / execution stream 中，便于真人验收。
+
 它不是 generic integration container，但也不是已经退役的 command sandbox。
 
 ### Terminal 与 workspace 的真实边界
 
-`terminal_session` 仍声明：
+`terminal` 仍声明：
 
 - `requiresApproval = true`；
 - `workspaceBound = true`；

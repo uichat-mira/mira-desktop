@@ -7,12 +7,14 @@ import { getHarnessInvocationTrace } from "../../harness/invocations.js";
 import { clearWorkspaceSelection } from "../workspace.js";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
+import { clearAllPersistentTerminalOutputs } from "../terminal/persistent-output-store.js";
 
 const terminalMocks = vi.hoisted(() => ({
   createTerminalSessionMock: vi.fn(),
   getTerminalSessionMock: vi.fn(),
   writeTerminalSessionMock: vi.fn(),
   removeTerminalSessionMock: vi.fn(),
+  stopTerminalSessionMock: vi.fn(),
   clearTerminalSessionsMock: vi.fn(),
   spawnMock: vi.fn(),
   killTerminalProcessTreeMock: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock("../terminal-sessions.js", () => ({
   getTerminalSession: terminalMocks.getTerminalSessionMock,
   writeTerminalSession: terminalMocks.writeTerminalSessionMock,
   removeTerminalSession: terminalMocks.removeTerminalSessionMock,
+  stopTerminalSession: terminalMocks.stopTerminalSessionMock,
   clearTerminalSessions: terminalMocks.clearTerminalSessionsMock,
 }));
 
@@ -48,6 +51,8 @@ type MockSession = {
     onData: (handler: (chunk: string) => void) => { dispose: () => void };
     onExit: (handler: (input: { exitCode: number }) => void) => { dispose: () => void };
     kill: () => void;
+    pause: () => void;
+    resume: () => void;
   };
 };
 
@@ -75,6 +80,8 @@ const createMockSession = (input?: {
         return { dispose() {} };
       },
       kill() {},
+      pause() {},
+      resume() {},
     },
   };
 
@@ -123,7 +130,7 @@ const waitForSpawnedProcess = async () => {
   });
 };
 
-describe("terminal_session tool", () => {
+describe("terminal tool", () => {
   const workspaceRoot = createTimestampedTestArtifactPath(
     "workspace",
     "rag-demo-terminal",
@@ -137,13 +144,15 @@ describe("terminal_session tool", () => {
     terminalMocks.getTerminalSessionMock.mockReset();
     terminalMocks.writeTerminalSessionMock.mockReset();
     terminalMocks.removeTerminalSessionMock.mockReset();
+    terminalMocks.stopTerminalSessionMock.mockReset();
     terminalMocks.clearTerminalSessionsMock.mockReset();
     terminalMocks.spawnMock.mockReset();
     terminalMocks.killTerminalProcessTreeMock.mockReset();
     terminalMocks.killTerminalProcessTreeMock.mockResolvedValue(undefined);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await clearAllPersistentTerminalOutputs();
     fs.rmSync(workspaceRoot, { recursive: true, force: true });
     delete process.env.UI_CHAT_WORKSPACE_ROOT;
     clearWorkspaceSelection();
@@ -157,11 +166,11 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     const events: Array<Record<string, unknown>> = [];
     const artifacts: Array<Record<string, unknown>> = [];
 
-    const promise = terminalSessionTool.execute({
+    const promise = terminalTool.execute({
       invocationId: "inv-ephemeral",
       args: {
         command: "node script.js",
@@ -205,8 +214,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-cwd-inside",
       args: {
         command: "pwd",
@@ -244,8 +253,8 @@ describe("terminal_session tool", () => {
       return mock.session;
     });
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const result = await terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const result = await terminalTool.execute({
       invocationId: "inv-reuse",
       args: {
         command: "pwd",
@@ -266,6 +275,295 @@ describe("terminal_session tool", () => {
     expect(terminalMocks.removeTerminalSessionMock).not.toHaveBeenCalled();
   });
 
+  it("bounds persistent output and reads the remaining bytes through continuation", async () => {
+    const mock = createMockSession({ id: "session-bounded-output" });
+    terminalMocks.createTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.writeTerminalSessionMock.mockImplementation((_sessionId: string) => {
+      queueMicrotask(() => {
+        const marker = extractMarker();
+        mock.emitData("abcdefghij");
+        mock.emitData(`\n${marker}:0\n`);
+      });
+      return mock.session;
+    });
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const first = await terminalTool.execute({
+      invocationId: "inv-bounded-output",
+      args: {
+        command: "emit ten bytes",
+        sessionMode: "persistent",
+        outputLimitBytes: 5,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    });
+
+    const firstContent = first.structuredContent as {
+      output: string;
+      truncated: boolean;
+      continuationId: string;
+      nextOutputOffset: number;
+      continuationAvailable: boolean;
+      commandCompleted: boolean;
+    };
+    expect(firstContent.output).toBe("abcde");
+    expect(firstContent.truncated).toBe(true);
+    expect(firstContent.nextOutputOffset).toBe(5);
+    expect(firstContent.continuationAvailable).toBe(true);
+    expect(firstContent.commandCompleted).toBe(true);
+    expect((first.structuredContent as { state: string }).state).toBe("completed");
+
+    terminalMocks.writeTerminalSessionMock.mockClear();
+    const second = await terminalTool.execute({
+      invocationId: "inv-bounded-output-read",
+      args: {
+        continuationId: firstContent.continuationId,
+        outputOffset: firstContent.nextOutputOffset,
+        outputLimitBytes: 16,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "b", ...artifact };
+      },
+    });
+
+    const secondContent = second.structuredContent as {
+      output: string;
+      truncated: boolean;
+      continuationAvailable: boolean;
+      commandCompleted: boolean;
+      outputOffset: number;
+    };
+    expect(secondContent.output).toContain("fghij");
+    expect(secondContent.outputOffset).toBe(5);
+    expect(secondContent.truncated).toBe(false);
+    expect(secondContent.continuationAvailable).toBe(false);
+    expect(secondContent.commandCompleted).toBe(true);
+    expect(terminalMocks.writeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps collecting persistent output after observation timeout", async () => {
+    vi.useFakeTimers();
+    const mock = createMockSession({ id: "session-timeout-continuation" });
+    terminalMocks.createTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.writeTerminalSessionMock.mockImplementation((_sessionId: string) => {
+      queueMicrotask(() => {
+        mock.emitData("first");
+      });
+      return mock.session;
+    });
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const pending = terminalTool.execute({
+      invocationId: "inv-timeout-continuation",
+      args: {
+        command: "long-running",
+        sessionMode: "persistent",
+        timeoutMs: 100,
+        outputLimitBytes: 32,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(120);
+    const first = await pending;
+    const firstContent = first.structuredContent as {
+      output: string;
+      timedOut: boolean;
+      continuationId: string;
+      nextOutputOffset: number;
+      continuationAvailable: boolean;
+      commandCompleted: boolean;
+    };
+    expect(firstContent.output).toBe("first");
+    expect(firstContent.timedOut).toBe(true);
+    expect(firstContent.continuationAvailable).toBe(true);
+    expect(firstContent.commandCompleted).toBe(false);
+    expect((first.structuredContent as { state: string }).state).toBe("running");
+
+    const marker = extractMarker();
+    mock.emitData("second");
+    mock.emitData(`\n${marker}:0\n`);
+    await vi.advanceTimersByTimeAsync(0);
+
+    terminalMocks.writeTerminalSessionMock.mockClear();
+    const second = await terminalTool.execute({
+      invocationId: "inv-timeout-continuation-read",
+      args: {
+        continuationId: firstContent.continuationId,
+        outputOffset: firstContent.nextOutputOffset,
+        outputLimitBytes: 32,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "b", ...artifact };
+      },
+    });
+
+    const secondContent = second.structuredContent as {
+      output: string;
+      timedOut: boolean;
+      continuationAvailable: boolean;
+      commandCompleted: boolean;
+      exitCode: number | null;
+    };
+    expect(secondContent.output).toContain("second");
+    expect(secondContent.timedOut).toBe(false);
+    expect(secondContent.continuationAvailable).toBe(false);
+    expect(secondContent.commandCompleted).toBe(true);
+    expect(secondContent.exitCode).toBe(0);
+    expect(terminalMocks.writeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("reports persistent status without writing another PTY command", async () => {
+    vi.useFakeTimers();
+    const mock = createMockSession({ id: "session-status" });
+    terminalMocks.createTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.writeTerminalSessionMock.mockImplementation((_sessionId: string) => {
+      queueMicrotask(() => {
+        mock.emitData("still running");
+      });
+      return mock.session;
+    });
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const pending = terminalTool.execute({
+      invocationId: "inv-status-start",
+      args: {
+        command: "long-running",
+        sessionMode: "persistent",
+        timeoutMs: 100,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(120);
+    const started = await pending;
+    const sessionId = (started.structuredContent as { sessionId: string }).sessionId;
+
+    terminalMocks.writeTerminalSessionMock.mockClear();
+    const status = await terminalTool.execute({
+      invocationId: "inv-status-read",
+      args: {
+        operation: "status",
+        sessionId,
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "b", ...artifact };
+      },
+    });
+
+    expect((status.structuredContent as { state: string }).state).toBe("running");
+    expect(
+      (status.structuredContent as { commandCompleted: boolean }).commandCompleted,
+    ).toBe(false);
+    expect(terminalMocks.writeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("stops a persistent session and returns cancelled only after cleanup completes", async () => {
+    const mock = createMockSession({ id: "session-stop" });
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    let releaseCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    terminalMocks.stopTerminalSessionMock.mockImplementation(async () => {
+      await cleanup;
+      return {
+        sessionId: "session-stop",
+        command: "watch",
+        cwd: mock.session.cwd,
+        runtimeId: "host_spawn",
+        workspaceRelation: "inside",
+        processTreeMode:
+          process.platform === "win32"
+            ? "windows_taskkill_tree"
+            : "posix_process_group",
+        state: "cancelled",
+        cleanupCompleted: true,
+      };
+    });
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    let settled = false;
+    const pending = terminalTool.execute({
+      invocationId: "inv-stop",
+      args: {
+        operation: "stop",
+        sessionId: "session-stop",
+      },
+      signal: new AbortController().signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    }).then((result) => {
+      settled = true;
+      return result;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    releaseCleanup();
+    const result = await pending;
+
+    expect((result.structuredContent as { state: string }).state).toBe("cancelled");
+    expect(
+      (result.structuredContent as { cleanupCompleted: boolean }).cleanupCompleted,
+    ).toBe(true);
+    expect(terminalMocks.stopTerminalSessionMock).toHaveBeenCalledWith(
+      "session-stop",
+    );
+    expect(terminalMocks.writeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects status for an unknown persistent session", async () => {
+    terminalMocks.getTerminalSessionMock.mockReturnValue(undefined);
+    const { terminalTool } = await import("./terminal-session.tool.js");
+
+    await expect(
+      terminalTool.execute({
+        invocationId: "inv-status-missing",
+        args: {
+          operation: "status",
+          sessionId: "missing-session",
+        },
+        signal: new AbortController().signal,
+        environment: createHarnessEnvironmentSnapshot(),
+        pushEvent() {},
+        addArtifact(artifact) {
+          return { id: "a", ...artifact };
+        },
+      }),
+    ).rejects.toThrow("terminal session not found: missing-session");
+  });
+
   it("supports creating a persistent terminal session without auto-removing it", async () => {
     const mock = createMockSession({ id: "session-persistent" });
     terminalMocks.createTerminalSessionMock.mockReturnValue(mock.session);
@@ -278,9 +576,9 @@ describe("terminal_session tool", () => {
       return mock.session;
     });
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     const events: Array<Record<string, unknown>> = [];
-    const result = await terminalSessionTool.execute({
+    const result = await terminalTool.execute({
       invocationId: "inv-persistent",
       args: {
         command: "pwd",
@@ -316,14 +614,14 @@ describe("terminal_session tool", () => {
 
     const { clearHarnessRegistry, registerTool } = await import("../../harness/registry.js");
     const { clearHarnessInvocations, executeHarnessInvocation } = await import("../../harness/invocations.js");
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
 
     clearHarnessRegistry();
     clearHarnessInvocations();
-    registerTool(terminalSessionTool);
+    registerTool(terminalTool);
 
     const record = await executeHarnessInvocation({
-      toolId: "terminal_session",
+      toolId: "terminal",
       args: {
         command: "pwd",
         sessionMode: "persistent",
@@ -331,7 +629,7 @@ describe("terminal_session tool", () => {
       environment: createHarnessEnvironmentSnapshot(),
       approvedInvocations: [
         {
-          toolId: "terminal_session",
+          toolId: "terminal",
           inputHash: createInvocationInputHash({
             command: "pwd",
             sessionMode: "persistent",
@@ -363,10 +661,10 @@ describe("terminal_session tool", () => {
       return mock.session;
     });
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     const events: Array<Record<string, unknown>> = [];
 
-    await terminalSessionTool.execute({
+    await terminalTool.execute({
       invocationId: "inv-progress-order",
       args: {
         command: "pwd",
@@ -399,8 +697,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-timeout",
       args: {
         command: "sleep",
@@ -431,8 +729,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-timeout-default",
       args: {
         command: "sleep",
@@ -459,8 +757,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-timeout-min",
       args: {
         command: "sleep",
@@ -488,8 +786,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-timeout-max",
       args: {
         command: "sleep",
@@ -513,10 +811,10 @@ describe("terminal_session tool", () => {
   });
 
   it("rejects empty commands", async () => {
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
 
     await expect(
-      terminalSessionTool.execute({
+      terminalTool.execute({
         invocationId: "inv-empty",
         args: { command: "   " },
         signal: new AbortController().signal,
@@ -533,8 +831,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-env",
       args: {
         command: "echo hi",
@@ -582,8 +880,8 @@ describe("terminal_session tool", () => {
     });
 
     try {
-      const { terminalSessionTool } = await import("./terminal-session.tool.js");
-      const promise = terminalSessionTool.execute({
+      const { terminalTool } = await import("./terminal-session.tool.js");
+      const promise = terminalTool.execute({
         invocationId: "inv-win-pwd",
         args: {
           command: "pwd",
@@ -628,8 +926,8 @@ describe("terminal_session tool", () => {
     });
 
     try {
-      const { terminalSessionTool } = await import("./terminal-session.tool.js");
-      const promise = terminalSessionTool.execute({
+      const { terminalTool } = await import("./terminal-session.tool.js");
+      const promise = terminalTool.execute({
         invocationId: "inv-win-encoding",
         args: {
           command: "echo hello",
@@ -668,9 +966,9 @@ describe("terminal_session tool", () => {
     const mock = createMockSession({ id: "session-existing" });
     terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     await expect(
-      terminalSessionTool.execute({
+      terminalTool.execute({
         invocationId: "inv-bad-attach",
         args: {
           command: "pwd",
@@ -687,13 +985,44 @@ describe("terminal_session tool", () => {
     ).rejects.toThrow("attachSessionId cannot be combined with cwd or env overrides");
   });
 
+  it("aborting an attached persistent invocation does not remove the reused session", async () => {
+    const mock = createMockSession({ id: "session-reused-abort" });
+    terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
+    terminalMocks.writeTerminalSessionMock.mockReturnValue(mock.session);
+
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const controller = new AbortController();
+    const promise = terminalTool.execute({
+      invocationId: "inv-reused-abort",
+      args: {
+        command: "long-running",
+        attachSessionId: "session-reused-abort",
+        timeoutMs: 10_000,
+      },
+      signal: controller.signal,
+      environment: createHarnessEnvironmentSnapshot(),
+      pushEvent() {},
+      addArtifact(artifact) {
+        return { id: "a", ...artifact };
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(terminalMocks.writeTerminalSessionMock).toHaveBeenCalledTimes(1);
+    });
+    controller.abort();
+
+    await expect(promise).rejects.toThrow("Terminal session aborted");
+    expect(terminalMocks.removeTerminalSessionMock).not.toHaveBeenCalled();
+  });
+
   it.skipIf(process.platform !== "win32")("aborts and cleans up ephemeral sessions", async () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     const controller = new AbortController();
-    const promise = terminalSessionTool.execute({
+    const promise = terminalTool.execute({
       invocationId: "inv-abort",
       args: { command: "sleep" },
       signal: controller.signal,

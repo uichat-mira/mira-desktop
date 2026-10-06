@@ -88,7 +88,7 @@ const readOpenTool = () =>
 
 const terminalTool = () =>
   makeToolDefinition({
-    id: "terminal_session",
+    id: "terminal",
     domain: "terminal",
     inputSchema: {
       type: "object",
@@ -190,11 +190,11 @@ const completedTimedOutTerminalInvocation = () => {
   };
   return ({
     id: "invocation-terminal-timeout-1",
-    toolId: "terminal_session",
+    toolId: "terminal",
     status: "completed" as const,
     result,
     evidence: projectToolEvidence(
-      { id: "terminal_session", source: "internal", domain: "terminal" },
+      { id: "terminal", source: "internal", domain: "terminal" },
       normalizeToolResult({ structuredContent: result }),
     ),
     startedAt: "2026-07-05T00:00:00.000Z",
@@ -389,7 +389,7 @@ test("toolCall loop policy approval stops at waiting_approval without ToolNode e
   setupToolExposure("run dir", [terminalSession]);
   vi.spyOn(providerProxyService, "streamTaskChatText").mockImplementation(
     async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"dir"},"reason":"Need command output."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"dir"},"reason":"Need command output."}';
     },
   );
   const executeSpy = vi.spyOn(harnessInvocations, "executeHarnessInvocation");
@@ -554,7 +554,7 @@ test("toolCall loop timedOut tool evidence is not marked answer-ready", async ()
   setupToolExposure("execute shell command pwd and show stdout", [terminalSession]);
   vi.spyOn(providerProxyService, "streamTaskChatText")
     .mockImplementationOnce(async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"pwd"},"reason":"Need command output."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"pwd"},"reason":"Need command output."}';
     })
     .mockImplementationOnce(async function* () {
       yield '{"type":"answer","reason":"Timeout evidence is not enough for a grounded command result.","completionProof":[{"criterion":"report the command outcome","evidenceRefs":["tool:0"]}],"unresolvedGaps":[]}';
@@ -585,7 +585,7 @@ test("toolCall loop timedOut tool evidence is not marked answer-ready", async ()
   assert.equal(generateSpy.mock.calls.length, 1);
   assert.equal(result.lastToolExecution?.status, "completed");
   assert.equal(result.evidence.latestSummary?.status, "timed_out");
-  assert.equal(result.evidence.latestSummary?.toolId, "terminal_session");
+  assert.equal(result.evidence.latestSummary?.toolId, "terminal");
   assert.equal(result.evidence.latestSummary?.answerReadiness, undefined);
   assert.match(result.evidence.latestSummary?.gaps?.join(" ") ?? "", /finish|complete|stable/i);
   assert.equal(result.evidence.latestSummary?.data?.kind, "terminal_session");
