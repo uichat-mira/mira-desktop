@@ -53,6 +53,7 @@
     "fast-glob": "^3.3.3",
     "fast-xml-parser": "^5.10.1",
     "fastify": "^4.28.1",
+    "guarded-fetch": "0.1.5",
     "iconv-lite": "^0.7.2",
     "imapflow": "^1.4.6",
     "jsdom": "^26.1.0",

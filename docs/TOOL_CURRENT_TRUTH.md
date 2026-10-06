@@ -244,6 +244,21 @@ Approval 只授权 frozen exact invocation；它不会扩大 workspace authority
 
 `apiKey`、`baseUrl` 和 provider 不是 LLM 参数。
 
+### `web_fetch`
+
+- 抓取已知公网 `http` / `https` URL 的正文；
+- 模型只提供 `url`；
+- 仅允许公网 http/https 目标：内网 / loopback / link-local / 云元数据地址、非 http(s) 协议以及携带凭据的 URL 都会被拒绝；
+- 直连走 SSRF-safe 的 guarded transport；代理（SOCKS）路径在请求前重新校验目标，并对每个 redirect hop 重新校验；
+- 具备 timeout、caller cancellation 与响应体大小上限；
+- 返回 `url` / `finalUrl` / `status` / `contentType` / `content`（有界文本）/ `byteLength` / `truncated`；
+- 结构化失败可区分 `blocked` / `http` / `network` / `timeout` / `cancelled`，caller cancel 的最终语义是 `cancelled`；
+- provider、proxy 与安全实现细节不进入模型可见契约；
+- `sideEffect = network`，definition 当前 `requiresApproval = false`；
+- 本阶段只建立安全 transport 与有界正文返回，不包含 HTML 正文抽取 / charset 识别 / browser-required 判断。
+
+`web_fetch` 不会因为页面依赖 JavaScript 或登录状态而自动升级为浏览器自动化；Attached / Managed Browser 仍是独立能力面。
+
 ### `news_search`
 
 - 查询本地 News Hub 已收集缓存；

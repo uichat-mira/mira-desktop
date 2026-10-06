@@ -797,6 +797,45 @@ export const projectToolEvidence = (
     });
   }
 
+  if (
+    definition.id === "web_fetch" &&
+    typeof result.finalUrl === "string" &&
+    typeof result.status === "number"
+  ) {
+    const url = typeof result.url === "string" ? result.url : result.finalUrl;
+    const contentType = typeof result.contentType === "string" ? result.contentType : "";
+    const content = typeof result.content === "string" ? result.content : "";
+    const byteLength = typeof result.byteLength === "number" ? result.byteLength : content.length;
+    const truncated = result.truncated === true;
+    const contentPreview = textPreview(content);
+    return baseEvidence({
+      result,
+      isError: normalized.isError,
+      actionTaken: `Fetched ${url}.`,
+      facts: [
+        `url=${url}`,
+        `finalUrl=${result.finalUrl}`,
+        `status=${result.status}`,
+        ...(contentType ? [`contentType=${contentType}`] : []),
+        `byteLength=${byteLength}`,
+        `truncated=${truncated}`,
+        ...(contentPreview ? [contentPreview] : []),
+      ],
+      gaps: truncated ? ["Fetched content is truncated."] : undefined,
+      status: truncated ? "truncated" : undefined,
+      data: {
+        kind: "web_fetch",
+        url,
+        finalUrl: result.finalUrl,
+        status: result.status,
+        ...(contentType ? { contentType } : {}),
+        byteLength,
+        truncated,
+        contentPreview,
+      },
+    });
+  }
+
   if (definition.id === "news_search" && typeof result.query === "string" && Array.isArray(result.results)) {
     const results = result.results.filter(asRecord);
     const topFindings = results.slice(0, 5).map((item) =>

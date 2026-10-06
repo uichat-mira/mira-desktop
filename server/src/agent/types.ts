@@ -287,6 +287,17 @@ export type AgentWebSearchEvidenceData = {
   | { query: string; queries?: never }
 );
 
+export interface AgentWebFetchEvidenceData {
+  kind: "web_fetch";
+  url: string;
+  finalUrl: string;
+  status: number;
+  contentType?: string;
+  byteLength: number;
+  truncated: boolean;
+  contentPreview: string;
+}
+
 export type AgentEvidenceResolution =
   | "true"
   | "false"
@@ -396,6 +407,7 @@ export type AgentEvidenceSummaryData =
   | AgentGrepEvidenceData
   | AgentReadLocateEvidenceData
   | AgentWebSearchEvidenceData
+  | AgentWebFetchEvidenceData
   | AgentTerminalSessionEvidenceData
   | AgentRetrievalEvidenceData
   | AgentObservationEvidenceData

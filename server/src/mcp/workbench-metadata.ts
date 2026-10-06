@@ -58,6 +58,7 @@ const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
   delete: { path: "" },
   move: { path: "", destinationPath: "" },
   web_search: { queries: [""] },
+  web_fetch: { url: "" },
   news_search: { query: "" },
   github_repository: {
     operation: "get",

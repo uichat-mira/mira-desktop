@@ -21,6 +21,7 @@ import { readOpenTool } from "../mcp/tools/read-open.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
+import { webFetchTool } from "../mcp/tools/web-fetch.tool.js";
 import { mailQueryTool } from "../mcp/tools/mail-query.tool.js";
 import { createBrowserAttachedTools } from "../mcp/tools/browser-attached.tool.js";
 import { askExternalExpertTool } from "../mcp/tools/ask-external-expert.tool.js";
@@ -63,6 +64,7 @@ export const initializeHarnessRuntime = () => {
   reconcileWenshuOfficeHarnessCapabilities();
 
   registerTool(webSearchTool);
+  registerTool(webFetchTool);
   registerTool(newsSearchTool);
   registerTool(mailQueryTool);
 
