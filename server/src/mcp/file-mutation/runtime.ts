@@ -15,7 +15,11 @@ import {
   nodeFileMutationFilesystem,
   type FileMutationFilesystem,
 } from "./filesystem.js";
-import { withMutationLocks } from "./locks.js";
+import {
+  normalizeMutationLockKeys,
+  withMutationLocks,
+  type MutationLockScope,
+} from "./locks.js";
 import {
   assertMutationPathVersion,
   assertStableMutationPath,
@@ -38,6 +42,11 @@ export type FileMutationRuntimeContext = {
   signal?: AbortSignal;
   pushEvent?: (event: ToolInvocationEventInput) => void;
   filesystem?: FileMutationFilesystem;
+  /**
+   * Internal batch scope used only after the File Mutation Runtime has acquired
+   * every path needed by a compound operation such as apply_patch.
+   */
+  lockScope?: MutationLockScope;
 };
 
 export type WriteMutationInput = {
@@ -126,6 +135,27 @@ const requireNonEmptyPath = (value: string, field: string) => {
 const mutationFilesystem = (context: FileMutationRuntimeContext) =>
   context.filesystem ?? nodeFileMutationFilesystem;
 
+const withRuntimeMutationLocks = async <T>(
+  rawKeys: string[],
+  context: FileMutationRuntimeContext,
+  run: () => Promise<T> | T,
+): Promise<T> => {
+  if (context.lockScope) {
+    const requiredKeys = normalizeMutationLockKeys(rawKeys);
+    for (const key of requiredKeys) {
+      if (!context.lockScope.has(key)) {
+        throw mcpInternalError(
+          "file mutation attempted a path outside the held batch lock scope",
+        );
+      }
+    }
+    assertNotAborted(context.signal);
+    return await run();
+  }
+
+  return await withMutationLocks(rawKeys, context.signal, async () => run());
+};
+
 const preparePath = (
   inputPath: string,
   filesystem: FileMutationFilesystem,
@@ -197,9 +227,9 @@ export const executeWriteMutation = async (
     throw mcpBadRequest("path already exists; set overwrite=true to replace it");
   }
 
-  return await withMutationLocks(
+  return await withRuntimeMutationLocks(
     [preflight.canonicalPath],
-    context.signal,
+    context,
     async () => {
       const current = preparePath(inputPath, filesystem);
       if (!isSameMutationIdentity(preflight, current)) {
@@ -535,9 +565,9 @@ export const executeEditMutation = async (
     expectedType: "file",
   });
 
-  return await withMutationLocks(
+  return await withRuntimeMutationLocks(
     [preflight.canonicalPath],
-    context.signal,
+    context,
     async () => {
       const current = preparePath(inputPath, filesystem, {
         mustExist: true,
@@ -685,9 +715,9 @@ export const executeMoveMutation = async (
     );
   }
 
-  return await withMutationLocks(
+  return await withRuntimeMutationLocks(
     [sourcePreflight.canonicalPath, destinationPreflight.canonicalPath],
-    context.signal,
+    context,
     async () => {
       const source = preparePath(sourcePath, filesystem, {
         mustExist: true,
@@ -819,9 +849,9 @@ export const executeDeleteMutation = async (
     mustExist: true,
   });
 
-  return await withMutationLocks(
+  return await withRuntimeMutationLocks(
     [preflight.canonicalPath],
-    context.signal,
+    context,
     async () => {
       const target = preparePath(inputPath, filesystem, {
         mustExist: true,
