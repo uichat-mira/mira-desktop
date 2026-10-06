@@ -49,16 +49,12 @@ Harness 是 concrete tool 的控制平面，不是 Planner、SubAgent 编排器�
 
 **注册存在不等于 Planner 可见。**
 
-当前 exposure policy 会隐藏 Universal Read 的内部 / 兼容 primitive，例如：
+旧 Universal Read executable compatibility surface 已退役。当前 registry 不再注册
+`read_discover / read_open / read_list / read_locate / read_extract / read_slice`，
+也不再靠 exposure policy 把它们“藏起来”。
 
-- `read_discover`
-- `read_open`
-- `read_list`
-- `read_locate`
-- `read_extract`
-- `read_slice`
-
-这些 Read 对象可以继续服务已验证的 Skill / runtime consumer，但不是当前 canonical Universal Read 公共 Planner 工具。旧本地 mutation id 不再注册，因此不需要靠 exposure policy 隐藏。
+历史持久化 Run 中已经形成的旧 Read Evidence shape 仍可被只读解释，用于恢复和展示历史事实；
+这种兼容不会重新注册 Tool，也不会参与新的 Planner tool selection。旧本地 mutation id 同理。
 
 动态注册还包括：
 
@@ -91,7 +87,7 @@ grep
 
 - canonical Universal Read 只暴露 `read / list / glob / grep`；
 - `codebase_explore`：独立 Code / Work Context 能力，不属于 Universal Read；
-- `read_discover / read_open / read_list / read_locate / read_extract / read_slice`：兼容实现，当前不进入新的 Agent exposure；是否删除取决于已验证的 Skill / runtime / persisted consumer。
+- `read_discover / read_open / read_list / read_locate / read_extract / read_slice`：可执行实现已删除；仅保留必要的历史 Evidence / persisted-run 只读兼容类型。
 
 ### `read`
 
@@ -155,9 +151,11 @@ grep   content query   -> matching content locations
 
 它们追求首选意图清晰，不追求为了“绝对互斥”而削弱能力。
 
-### `read_discover`
+### Legacy Read compatibility
 
-当前仅作为兼容实现保留，已退出新的 Agent exposure。新 Planner / Skill / consumer 不再以它承载目录观察或路径发现；对应新语义分别使用 `list` / `glob` / `grep`。
+`read_discover / read_open / read_list / read_locate / read_extract / read_slice`
+不再有 executable Tool/runtime。新 Planner、Skill、Workbench 和 Context Read Bench 只使用
+`read / list / glob / grep`。旧 Evidence kind 仅用于读取历史持久化事实，不能反向扩大当前 Tool Exposure。
 
 ### `codebase_explore`
 
@@ -172,17 +170,23 @@ grep   content query   -> matching content locations
 
 ## 4. 当前公共 Edit 面
 
-Planner 当前直接看到四个 canonical File Mutation 动作：
+Workspace Edit 当前注册两种 model-facing facade，但单个 Agent turn 只 materialize 一种：
 
 ```text
-Edit
+primitive facade
 ├─ write
 ├─ edit
 ├─ delete
 └─ move
+
+compound facade
+└─ apply_patch
 ```
 
-四个动作统一进入 `server/src/mcp/file-mutation/` 下的 File Mutation Runtime，不存在第二套本地写 runtime。
+`tools_list` / Tool Lab 可以查看两种 facade 以便验收；Main Agent 不会同时拿到两套重叠入口。
+当前 model adapter 对 patch-friendly GPT/Codex family materialize `apply_patch`，其他模型保持
+`write / edit / delete / move`。无论 facade 如何选择，唯一执行权都落在
+`server/src/mcp/file-mutation/` 的 File Mutation Runtime，不存在第二套本地写 runtime。
 
 ### `write`
 
@@ -218,13 +222,22 @@ Edit
 - 不采用 delete-destination-first；
 - `EXDEV` 不偷偷降级为 copy+delete，而是安全失败并保留 source / destination。
 
-四个公开 Edit 工具都声明：
+两种 Edit facade 都声明 `sideEffect = local-write`、`requiresApproval = true`、`workspaceBound = true`。
+Approval 只授权 frozen exact invocation；它不会扩大 workspace authority。
 
-- `sideEffect = local-write`；
-- `requiresApproval = true`；
-- `workspaceBound = true`。
+### `apply_patch`
 
-Approval 只授权 frozen exact invocation；它不会扩大 workspace authority。结果统一进入 Result / Artifact / `file_mutation` Evidence。旧 `write_file / replace_block / delete_path / move_path / edit_file / workspace_mutation` 已退出本地可执行 registry；旧 `edit_file / workspace_mutation` Evidence shape 仅用于读取历史持久化 run。
+- 接受 Codex-compatible `*** Begin Patch ... *** End Patch` grammar；
+- 支持 Add / Update / Delete / `Move to`；
+- parser 纯解析，不直接写盘；
+- 整包路径先解析和预验证，再按确定顺序获取 multi-path locks；
+- commit 仍复用 canonical write/edit/move/delete runtime；
+- 中途失败不伪造事务回滚：明确报告 definitely committed prefix、failed hunk、unapplied remainder；
+- 若失败动作是否跨过 OS commit point 无法确定，`committedDeltaExact=false` 明示不确定性；
+- 每个已提交 mutation 继续产生其 File Mutation Artifact，同时 patch 产生 patch-level summary Artifact；
+- Evidence 使用 `file_mutation_patch`，不会把 partial 当 completed。
+
+primitive 结果统一进入 `file_mutation` Evidence。旧 `write_file / replace_block / delete_path / move_path / edit_file / workspace_mutation` 已退出本地可执行 registry；旧 `edit_file / workspace_mutation` Evidence shape 仅用于读取历史持久化 run。
 
 ## 5. Search 不是一个含糊入口
 
@@ -555,6 +568,7 @@ CodeGraph verified retrieval 会走 retrieval Evidence；普通工具、Mail、G
 当前不能这样描述 Tool 系统：
 
 - Planner 公共 Read 面仍是六个 `read_*` primitive；
+- 旧 `read_*` executable runtime 仍为了兼容而注册；
 - grep 只是隐藏在 `read_locate` 里的实现；
 - 公共 Edit 只有一个 `edit_file` wrapper；
 - 删除、移动仍未实现；
