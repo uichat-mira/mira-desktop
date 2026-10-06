@@ -25,6 +25,8 @@ export const cosineSimilarity = (left: number[], right: number[]) => {
 export const matchToolCandidatesByEmbedding = async (input: {
   query: string;
   config?: AgentIntentEmbeddingConfig;
+  modelHint?: string;
+  editFacade?: import("@/harness/edit-facade.js").WorkspaceEditFacade;
 }): Promise<ToolIntentResult> => {
   const eligibleExternalToolIds = resolveAgentEligibleExternalMcpCapabilities().map(
     (definition) => definition.id,
@@ -36,6 +38,8 @@ export const matchToolCandidatesByEmbedding = async (input: {
     minScore: input.config?.minScore,
     allowExternal: true,
     allowedExternalToolIds: eligibleExternalToolIds,
+    modelHint: input.modelHint,
+    editFacade: input.editFacade,
   });
   const topK = Math.max(1, input.config?.topK ?? 10);
   const topCandidates: ToolIntentCandidate[] = (candidateResolution.toolCandidates ?? [])

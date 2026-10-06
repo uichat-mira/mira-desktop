@@ -46,6 +46,8 @@ export interface HarnessToolExposure {
 
 export interface ResolveHarnessToolCandidatesForTurnInput {
   query: string;
+  modelHint?: string;
+  editFacade?: import("../edit-facade.js").WorkspaceEditFacade;
   source?: HarnessTurnSource;
   maxTools?: number;
   topK?: number;

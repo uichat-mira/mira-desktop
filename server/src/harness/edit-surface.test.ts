@@ -21,7 +21,7 @@ describe("public edit tool surface", () => {
     clearHarnessRegistry();
   });
 
-  it("registers and exposes exactly four canonical edit actions", () => {
+  it("registers both edit facades while default Agent exposure keeps only primitives", () => {
     initializeHarnessRuntime();
 
     const registeredEditToolIds = listToolDefinitions()
@@ -29,6 +29,7 @@ describe("public edit tool surface", () => {
       .map((definition) => definition.id)
       .sort();
     expect(registeredEditToolIds).toEqual([
+      "apply_patch",
       "delete",
       "edit",
       "move",
@@ -62,10 +63,50 @@ describe("public edit tool surface", () => {
       expect(exposedEditToolIds).not.toContain(legacyId);
     }
 
+    expect(exposedEditToolIds).not.toContain("apply_patch");
+
     for (const definition of exposedEditDefinitions) {
       const properties = (definition.inputSchema.properties ?? {}) as Record<string, unknown>;
       expect(properties).not.toHaveProperty("operation");
     }
+  });
+
+  it("materializes only apply_patch when the patch facade is requested", () => {
+    initializeHarnessRuntime();
+
+    const decision = resolveHarnessToolExposure({
+      source: "agent_intent",
+      query: "apply this code patch",
+      editFacade: "apply_patch",
+    });
+    const exposedEditToolIds = decision.exposedDefinitions
+      .filter((definition) => definition.domain === "edit")
+      .map((definition) => definition.id);
+
+    expect(exposedEditToolIds).toEqual(["apply_patch"]);
+    expect(decision.reason).toContain(
+      "Workspace Edit materialized as apply_patch for this exposure.",
+    );
+  });
+
+  it("keeps both facades visible only on tools_list surfaces", () => {
+    initializeHarnessRuntime();
+
+    const decision = resolveHarnessToolExposure({
+      source: "tools_list",
+    });
+    const exposedEditToolIds = decision.exposedDefinitions
+      .filter((definition) => definition.domain === "edit")
+      .map((definition) => definition.id)
+      .sort();
+
+    expect(exposedEditToolIds).toEqual([
+      "apply_patch",
+      "delete",
+      "edit",
+      "move",
+      "write",
+    ]);
   });
 
   it("keeps neighboring edit-tool choices explicit without narrowing schemas", () => {
