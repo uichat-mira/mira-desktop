@@ -8,7 +8,7 @@ describe("resolveHarnessActionProfiles", () => {
   it("returns only independently justified action profiles", () => {
     const profiles = resolveHarnessActionProfiles([
       {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "terminal",
         domain: "terminal",
@@ -56,13 +56,13 @@ describe("resolveHarnessActionProfiles", () => {
     ]);
     expect(profiles[0]).toMatchObject({
       id: "terminal_execute_command",
-      runtimeToolId: "terminal_session",
+      runtimeToolId: "terminal",
     });
   });
 });
 
 describe("resolveActionProfileInvocation", () => {
-  it("maps terminal_execute_command to terminal_session", () => {
+  it("maps terminal_execute_command to terminal", () => {
     expect(
       resolveActionProfileInvocation({
         actionProfileId: "terminal_execute_command",
@@ -73,7 +73,7 @@ describe("resolveActionProfileInvocation", () => {
         },
       }),
     ).toEqual({
-      toolId: "terminal_session",
+      toolId: "terminal",
       args: {
         command: "pwd",
         cwd: "server",

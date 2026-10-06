@@ -110,6 +110,33 @@ describe("withWorkbenchMetadata", () => {
     ).toBe("browser_computer_use");
   });
 
+  it("keeps Tool Lab acceptance cases out of the ordinary Settings workbench", () => {
+    const projected = withWorkbenchMetadata([
+      {
+        id: "terminal",
+        title: "Terminal",
+        description: "Run commands.",
+        domain: "terminal",
+        source: "internal",
+        mode: "stream",
+        inputSchema: {},
+        tags: ["terminal"],
+        capabilities: {
+          sideEffect: "process",
+          requiresApproval: true,
+          workspaceBound: true,
+          longRunning: true,
+        },
+      },
+    ]);
+
+    expect(projected[0]?.workbench).toMatchObject({
+      groupId: "terminal",
+      groupLabel: "终端",
+    });
+    expect(projected[0]?.workbench?.cases).toBeUndefined();
+  });
+
   it("groups exactly four GitHub domain tools and supplies operation drafts", () => {
     const projected = withWorkbenchMetadata([
       createGitHubTool("github_repository"),

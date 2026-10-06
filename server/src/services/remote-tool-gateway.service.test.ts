@@ -46,7 +46,7 @@ import {
 } from "./remote-tool-gateway.service.js";
 
 const terminalDefinition = {
-  id: "terminal_session",
+  id: "terminal",
   title: "Terminal",
   description: "Run a command",
   domain: "terminal",
@@ -95,8 +95,8 @@ describe("mobile remote tool gateway service", () => {
     const manifests = await listRemoteToolManifests();
 
     expect(manifests[0]).toMatchObject({
-      id: "terminal_session",
-      name: "terminal_session",
+      id: "terminal",
+      name: "terminal",
       requiresApproval: true,
     });
     expect(manifests[1]?.id).toBe("mcp:server-1:tool:lookup");
@@ -137,14 +137,14 @@ describe("mobile remote tool gateway service", () => {
     const originalArgs = { command: "pwd" };
     mocks.getInvocation.mockReturnValue({
       id: "inv-original",
-      toolId: "terminal_session",
+      toolId: "terminal",
       userId: 7,
       status: "awaiting_approval",
       args: originalArgs,
       inputHash: createInvocationInputHash(originalArgs),
       approval: {
         required: true,
-        reason: "terminal_session requires explicit approval",
+        reason: "terminal requires explicit approval",
       },
       artifacts: [],
     });
@@ -153,7 +153,7 @@ describe("mobile remote tool gateway service", () => {
       resolveRemoteToolApproval({
         invocationId: "inv-original",
         decision: "approved",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args: { command: "echo changed" },
         userId: 7,
       }),
@@ -167,14 +167,14 @@ describe("mobile remote tool gateway service", () => {
     const args = { command: "pwd" };
     mocks.getInvocation.mockReturnValue({
       id: "inv-other-user",
-      toolId: "terminal_session",
+      toolId: "terminal",
       userId: 99,
       status: "awaiting_approval",
       args,
       inputHash: createInvocationInputHash(args),
       approval: {
         required: true,
-        reason: "terminal_session requires explicit approval",
+        reason: "terminal requires explicit approval",
       },
       artifacts: [],
     });
@@ -183,7 +183,7 @@ describe("mobile remote tool gateway service", () => {
       resolveRemoteToolApproval({
         invocationId: "inv-other-user",
         decision: "approved",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args,
         userId: 7,
       }),
@@ -196,14 +196,14 @@ describe("mobile remote tool gateway service", () => {
     const inputHash = createInvocationInputHash(args);
     mocks.getInvocation.mockReturnValue({
       id: "inv-original",
-      toolId: "terminal_session",
+      toolId: "terminal",
       userId: 7,
       status: "awaiting_approval",
       args,
       inputHash,
       approval: {
         required: true,
-        reason: "terminal_session requires explicit approval",
+        reason: "terminal requires explicit approval",
       },
       artifacts: [],
     });
@@ -215,7 +215,7 @@ describe("mobile remote tool gateway service", () => {
       resolveRemoteToolApproval({
         invocationId: "inv-original",
         decision: "approved",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args,
         userId: 7,
       }),
@@ -229,14 +229,14 @@ describe("mobile remote tool gateway service", () => {
     const inputHash = createInvocationInputHash(args);
     mocks.getInvocation.mockReturnValue({
       id: "inv-failing",
-      toolId: "terminal_session",
+      toolId: "terminal",
       userId: 7,
       status: "awaiting_approval",
       args,
       inputHash,
       approval: {
         required: true,
-        reason: "terminal_session requires explicit approval",
+        reason: "terminal requires explicit approval",
       },
       artifacts: [],
     });
@@ -246,7 +246,7 @@ describe("mobile remote tool gateway service", () => {
       resolveRemoteToolApproval({
         invocationId: "inv-failing",
         decision: "approved",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args,
         userId: 7,
       }),
@@ -264,20 +264,20 @@ describe("mobile remote tool gateway service", () => {
     const inputHash = createInvocationInputHash(args);
     mocks.getInvocation.mockReturnValue({
       id: "inv-cancelled",
-      toolId: "terminal_session",
+      toolId: "terminal",
       userId: 7,
       status: "awaiting_approval",
       args,
       inputHash,
       approval: {
         required: true,
-        reason: "terminal_session requires explicit approval",
+        reason: "terminal requires explicit approval",
       },
       artifacts: [],
     });
     mocks.execute.mockResolvedValueOnce({
       id: "inv-resumed-cancelled",
-      toolId: "terminal_session",
+      toolId: "terminal",
       status: "cancelled",
       args,
       inputHash,
@@ -289,7 +289,7 @@ describe("mobile remote tool gateway service", () => {
       resolveRemoteToolApproval({
         invocationId: "inv-cancelled",
         decision: "approved",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args,
         userId: 7,
       }),
@@ -310,20 +310,20 @@ describe("mobile remote tool gateway service", () => {
     const inputHash = createInvocationInputHash(args);
     mocks.getInvocation.mockReturnValue({
       id: "inv-original",
-      toolId: "terminal_session",
+      toolId: "terminal",
       userId: 7,
       status: "awaiting_approval",
       args,
       inputHash,
       approval: {
         required: true,
-        reason: "terminal_session requires explicit approval",
+        reason: "terminal requires explicit approval",
       },
       artifacts: [],
     });
     mocks.execute.mockResolvedValue({
       id: "inv-resumed",
-      toolId: "terminal_session",
+      toolId: "terminal",
       status: "completed",
       args,
       inputHash,
@@ -336,7 +336,7 @@ describe("mobile remote tool gateway service", () => {
       resolveRemoteToolApproval({
         invocationId: "inv-original",
         decision: "approved",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args,
         userId: 7,
       }),
@@ -352,9 +352,9 @@ describe("mobile remote tool gateway service", () => {
     });
     expect(mocks.execute).toHaveBeenCalledWith(
       expect.objectContaining({
-        toolId: "terminal_session",
+        toolId: "terminal",
         args,
-        approvedInvocations: [{ toolId: "terminal_session", inputHash }],
+        approvedInvocations: [{ toolId: "terminal", inputHash }],
       }),
     );
     expect(mocks.finalizeApproval).toHaveBeenCalledWith({

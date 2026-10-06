@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessToolExposure } from "./exposure.js";
-import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
+import { terminalSessionCompatibilityTool, terminalTool } from "../mcp/tools/terminal-session.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
@@ -13,6 +13,11 @@ const terminalSchemaKeys = [
   "timeoutMs",
   "attachSessionId",
   "sessionMode",
+  "continuationId",
+  "outputOffset",
+  "outputLimitBytes",
+  "operation",
+  "sessionId",
 ];
 
 const externalFakeTool = {
@@ -41,7 +46,7 @@ describe("resolveHarnessToolExposure", () => {
   });
 
   it("keeps the full terminal runtime schema", () => {
-    registerTool(terminalSessionTool);
+    registerTool(terminalTool);
 
     const [definition] = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -53,13 +58,26 @@ describe("resolveHarnessToolExposure", () => {
     expect(definition?.capabilities.requiresApproval).toBe(true);
   });
 
+  it("hides the legacy terminal_session alias from new Agent exposure", () => {
+    registerTool(terminalTool);
+    registerTool(terminalSessionCompatibilityTool);
+
+    const decision = resolveHarnessToolExposure({
+      source: "agent_intent",
+      query: "run pnpm check",
+    });
+
+    expect(decision.exposedToolIds).toContain("terminal");
+    expect(decision.exposedToolIds).not.toContain("terminal_session");
+  });
+
   it.each([
     "README.md 里写了什么",
     "你好",
     "打开网页然后保存文件",
     "run pnpm check",
-  ])("does not use user wording to hide terminal_session: %s", (query) => {
-    registerTool(terminalSessionTool);
+  ])("does not use user wording to hide terminal: %s", (query) => {
+    registerTool(terminalTool);
     registerTool(readTool);
 
     const decision = resolveHarnessToolExposure({
@@ -67,12 +85,12 @@ describe("resolveHarnessToolExposure", () => {
       query,
     });
 
-    expect(decision.exposedToolIds).toContain("terminal_session");
+    expect(decision.exposedToolIds).toContain("terminal");
     expect(decision.exposedToolIds).toContain("read");
   });
 
   it("does not use sandbox profile state to hide registered public tools", () => {
-    registerTool(terminalSessionTool);
+    registerTool(terminalTool);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -82,12 +100,12 @@ describe("resolveHarnessToolExposure", () => {
       },
     });
 
-    expect(decision.exposedToolIds).toContain("terminal_session");
+    expect(decision.exposedToolIds).toContain("terminal");
     expect(decision.reasons).toEqual([]);
   });
 
   it("does not use chat_surface domain heuristics to hide registered public tools", () => {
-    registerTool(terminalSessionTool);
+    registerTool(terminalTool);
     registerTool(readTool);
     registerTool(webSearchTool);
 
@@ -97,17 +115,17 @@ describe("resolveHarnessToolExposure", () => {
     });
 
     expect(decision.exposedToolIds).toEqual(
-      expect.arrayContaining(["terminal_session", "read", "web_search"]),
+      expect.arrayContaining(["terminal", "read", "web_search"]),
     );
   });
 
   it("preserves approval metadata but does not use it as an exposure heuristic", () => {
     registerTool({
-      ...terminalSessionTool,
+      ...terminalTool,
       definition: {
-        ...terminalSessionTool.definition,
+        ...terminalTool.definition,
         capabilities: {
-          ...terminalSessionTool.definition.capabilities,
+          ...terminalTool.definition.capabilities,
           requiresApproval: false,
         },
       },
@@ -118,7 +136,7 @@ describe("resolveHarnessToolExposure", () => {
       query: "run pnpm check",
     });
     const terminalDefinition = decision.visibleDefinitions.find(
-      (definition) => definition.id === "terminal_session",
+      (definition) => definition.id === "terminal",
     );
 
     expect(terminalDefinition).toBeDefined();
@@ -161,7 +179,7 @@ describe("resolveHarnessToolExposure", () => {
   it("does not create semantic or runtime policy reasons for public built-in tools", () => {
     registerTool(readTool);
     registerTool(webSearchTool);
-    registerTool(terminalSessionTool);
+    registerTool(terminalTool);
 
     const decision = resolveHarnessToolExposure({
       source: "agent_intent",
@@ -170,7 +188,7 @@ describe("resolveHarnessToolExposure", () => {
     });
 
     expect(decision.exposedToolIds).toEqual(
-      expect.arrayContaining(["read", "web_search", "terminal_session"]),
+      expect.arrayContaining(["read", "web_search", "terminal"]),
     );
     expect(decision.reasons).toEqual([]);
   });

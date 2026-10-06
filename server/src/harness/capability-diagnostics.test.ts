@@ -6,7 +6,7 @@ import { resolveHarnessCapabilityDiagnostics } from "./capability-diagnostics.js
 import { readTool } from "../mcp/tools/read.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
-import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
+import { terminalTool } from "../mcp/tools/terminal-session.tool.js";
 import { resolveAgentEligibleExternalMcpCapabilities } from "@/mcp/external";
 
 vi.mock("@/mcp/external", () => ({
@@ -171,7 +171,7 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
   });
 
   it("returns action profile metadata for terminal capability diagnostics", async () => {
-    registerTool(terminalSessionTool);
+    registerTool(terminalTool);
 
     vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
       embeddingModel: "test",
@@ -206,15 +206,15 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
         expect.objectContaining({
           capabilityId: "terminal_execution",
           actionProfileId: "terminal_execute_command",
-          preferredToolId: "terminal_session",
+          preferredToolId: "terminal",
         }),
       ]),
     );
     expect(result.candidates[0]).toMatchObject({
-      toolId: "terminal_session",
+      toolId: "terminal",
       actionProfileId: "terminal_execute_command",
     });
-    expect(result.toolExposure.exposedToolIds).toContain("terminal_session");
+    expect(result.toolExposure.exposedToolIds).toContain("terminal");
   });
 
   it("keeps exposure reasons and candidate facts for workspace diagnostics", async () => {
@@ -276,9 +276,9 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
       label: "chat surface keeps safe built-in domains only",
       query: "今天最新新闻是什么",
       source: "chat_surface" as const,
-      tools: [readTool, webSearchTool, terminalSessionTool, externalFakeTool],
-      rerankOrder: ["web_research", "read"],
-      expectedExposedToolIds: ["read", "web_search", "terminal_session"],
+      tools: [readTool, webSearchTool, terminalTool, externalFakeTool],
+      rerankOrder: ["web", "read"],
+      expectedExposedToolIds: ["read", "web_search", "terminal"],
       expectedBlockedCapabilityIds: ["external_fake_tool"],
       expectedReason:
         "All public tools are exposed because the tool set is at most 20 tools.",
@@ -288,13 +288,13 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
       label: "non-command turn keeps terminal visible in diagnostics",
       query: "帮我总结 README.md",
       source: "agent_intent" as const,
-      tools: [terminalSessionTool, externalFakeTool],
+      tools: [terminalTool, externalFakeTool],
       rerankOrder: [],
-      expectedExposedToolIds: ["terminal_session"],
+      expectedExposedToolIds: ["terminal"],
       expectedBlockedCapabilityIds: ["external_fake_tool"],
       expectedReason:
         "All public tools are exposed because the tool set is at most 20 tools.",
-      expectedTopToolId: "terminal_session",
+      expectedTopToolId: "terminal",
     },
     {
       label: "allowExternal propagates to diagnostics",
@@ -313,14 +313,14 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
       label: "sandbox-unavailable profile does not block host terminal",
       query: "run pnpm check",
       source: "agent_intent" as const,
-      tools: [terminalSessionTool, externalFakeTool],
+      tools: [terminalTool, externalFakeTool],
       sandboxProfiles: { command: false },
       rerankOrder: ["terminal_execution"],
-      expectedExposedToolIds: ["terminal_session"],
+      expectedExposedToolIds: ["terminal"],
       expectedBlockedCapabilityIds: ["external_fake_tool"],
       expectedReason:
         "All public tools are exposed because the tool set is at most 20 tools.",
-      expectedTopToolId: "terminal_session",
+      expectedTopToolId: "terminal",
     },
   ])(
     "mirrors the exposure regression pack in diagnostics: $label",

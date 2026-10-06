@@ -89,7 +89,7 @@
     "benchmark:score": "node scripts/benchmark/scoring/agent-core-scorer.mjs",
     "benchmark:audit": "node scripts/benchmark/scoring/audit-package.mjs",
     "check:push-broker": "tsc --noEmit -p packages/push-broker/tsconfig.json",
-    "test:push-broker": "node server/node_modules/tsx/dist/cli.mjs --test packages/push-broker/src/service.test.ts"
+    "test:push-broker": "node server/node_modules/tsx/dist/cli.mjs --test packages/push-broker/src/service.test.ts packages/push-broker/src/provider-delivery.test.ts packages/push-broker/src/delivery.test.ts"
   },
   "engines": {
     "node": ">=22.19.0"

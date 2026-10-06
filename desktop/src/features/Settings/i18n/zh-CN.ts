@@ -1418,6 +1418,13 @@ const settingsPending = {
         terminalPtyMerged: "PTY 合流",
         terminalSession: "会话 {{sessionId}}",
         terminalCwd: "目录 {{cwd}}",
+        terminalState: "状态 {{state}}",
+        acceptanceCases: "验收用例",
+        approve: "批准并继续",
+        reject: "拒绝",
+        continueOutput: "继续读取",
+        inspectStatus: "查看状态",
+        stop: "停止",
       },
       messages: {
         loadFailed: "加载工具工作台失败",
@@ -1428,6 +1435,7 @@ const settingsPending = {
         invalidArgsJson: "调用参数不是合法 JSON",
         webSearchConfigSaved: "Web Search 配置已保存",
         runFailed: "工具执行失败",
+        approvalFailed: "处理工具审批失败",
       },
     },
     mcp: {
@@ -2375,9 +2383,9 @@ const settingsPending = {
             label: "终端",
             description: "执行受控的终端操作。",
           },
-          webSearch: {
-            label: "网络搜索",
-            description: "搜索并获取网络内容。",
+          web: {
+            label: "网络",
+            description: "访问公开 Web 信息。",
           },
         },
         detailTabs: {
@@ -2472,6 +2480,9 @@ const settingsPending = {
         },
         actions: {
           run: "运行这个用例",
+          continueOutput: "继续读取",
+          inspectStatus: "查看状态",
+          stopTerminal: "停止任务",
           viewCase: "查看用例",
           expandResult: "展开本次结果",
           collapseResult: "收起本次结果",

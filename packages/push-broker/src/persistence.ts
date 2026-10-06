@@ -1,7 +1,19 @@
+export type ProviderPlatform = "android" | "ios";
+export type ProviderTokenStatus = "active" | "refresh_required";
+export type ProviderName = "fcm" | "apns";
+export type DeliveryEventState =
+  | "pending"
+  | "waiting_token_refresh"
+  | "delivered"
+  | "failed"
+  | "expired"
+  | "cancelled";
+
 export type RegistrationRecord = {
   installationId: string;
-  platform: "android" | "ios";
+  platform: ProviderPlatform;
   providerTokenCiphertext: string | null;
+  providerTokenStatus: ProviderTokenStatus;
   installationPublicKey: string;
   schemaVersion: number;
   registeredAt: string;
@@ -27,14 +39,35 @@ export type EventRecord = {
   eventType: string;
   occurredAt: string;
   expiresAt: string;
-  state: "pending" | "cancelled";
+  state: DeliveryEventState;
+  attemptCount: number;
+  nextAttemptAt: string | null;
+  lastError: string | null;
+  providerRequestId: string | null;
   acceptedAt: string;
+  deliveredAt: string | null;
+};
+
+export type DeliveryAttemptRecord = {
+  eventId: string;
+  attemptNo: number;
+  provider: ProviderName;
+  outcome:
+    | "accepted"
+    | "retryable"
+    | "invalid_token"
+    | "rejected"
+    | "configuration_error";
+  providerRequestId: string | null;
+  httpStatus: number | null;
+  errorCode: string | null;
+  attemptedAt: string;
 };
 
 export type CommitRegistrationInput = {
   action: "register" | "refresh";
   installationId: string;
-  platform: "android" | "ios";
+  platform: ProviderPlatform;
   providerTokenCiphertext: string;
   installationPublicKey: string;
   requestNonce: string;
@@ -51,6 +84,21 @@ export type CommitBindingInput = {
   nonceExpiresAt: string;
   now: string;
 };
+
+export type RecordDeliveryAttemptInput = DeliveryAttemptRecord & {
+  eventState: DeliveryEventState;
+  nextAttemptAt: string | null;
+  lastError: string | null;
+};
+
+export type InvalidProviderTokenAttemptInput = DeliveryAttemptRecord & {
+  expectedProviderTokenCiphertext: string;
+};
+
+export type InvalidProviderTokenAttemptResult =
+  | "invalidated"
+  | "rotated"
+  | "inactive";
 
 export type BrokerPersistence = {
   getRegistration(): RegistrationRecord | null;
@@ -82,6 +130,15 @@ export type BrokerPersistence = {
   commitEvent(
     event: EventRecord,
   ): "inserted" | "duplicate" | "not_registered";
+  getEvent(eventId: string): EventRecord | null;
+  listDueEvents(now: string, limit: number): EventRecord[];
+  expireDue(now: string): number;
+  pausePendingForTokenRefresh(now: string): number;
+  recordDeliveryAttempt(input: RecordDeliveryAttemptInput): void;
+  recordInvalidProviderTokenAttempt(
+    input: InvalidProviderTokenAttemptInput,
+  ): InvalidProviderTokenAttemptResult;
+  getNextWakeAt(now: string): string | null;
 };
 
 type SqlCursor<T> = { toArray(): T[] };
@@ -98,8 +155,9 @@ export type SqlStorageLike = {
 
 type RegistrationRow = {
   installation_id: string;
-  platform: "android" | "ios";
+  platform: ProviderPlatform;
   provider_token_ciphertext: string | null;
+  provider_token_status: ProviderTokenStatus;
   installation_public_key: string;
   schema_version: number;
   registered_at: string;
@@ -116,6 +174,24 @@ type BindingRow = {
   revoked_at: string | null;
 };
 
+type EventRow = {
+  event_id: string;
+  host_id: string;
+  source_id: string;
+  canonical_message_id: string;
+  eligibility_event: string;
+  event_type: string;
+  occurred_at: string;
+  expires_at: string;
+  state: DeliveryEventState;
+  attempt_count: number;
+  next_attempt_at: string | null;
+  last_error: string | null;
+  provider_request_id: string | null;
+  accepted_at: string;
+  delivered_at: string | null;
+};
+
 export class SqlBrokerPersistence implements BrokerPersistence {
   constructor(private readonly storage: SqlStorageLike) {
     this.storage.sql.exec(`
@@ -123,6 +199,7 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         installation_id TEXT PRIMARY KEY,
         platform TEXT NOT NULL,
         provider_token_ciphertext TEXT,
+        provider_token_status TEXT NOT NULL DEFAULT 'active',
         installation_public_key TEXT NOT NULL,
         schema_version INTEGER NOT NULL,
         registered_at TEXT NOT NULL,
@@ -153,11 +230,41 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         occurred_at TEXT NOT NULL,
         expires_at TEXT NOT NULL,
         state TEXT NOT NULL,
-        accepted_at TEXT NOT NULL
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT,
+        last_error TEXT,
+        provider_request_id TEXT,
+        accepted_at TEXT NOT NULL,
+        delivered_at TEXT
       );
       CREATE INDEX IF NOT EXISTS notification_events_state_idx
         ON notification_events(state, expires_at);
+      CREATE TABLE IF NOT EXISTS provider_delivery_attempts (
+        event_id TEXT NOT NULL,
+        attempt_no INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        provider_request_id TEXT,
+        http_status INTEGER,
+        error_code TEXT,
+        attempted_at TEXT NOT NULL,
+        PRIMARY KEY (event_id, attempt_no)
+      );
     `);
+    this.ensureColumn(
+      "installation",
+      "provider_token_status",
+      "TEXT NOT NULL DEFAULT 'active'",
+    );
+    this.ensureColumn(
+      "notification_events",
+      "attempt_count",
+      "INTEGER NOT NULL DEFAULT 0",
+    );
+    this.ensureColumn("notification_events", "next_attempt_at", "TEXT");
+    this.ensureColumn("notification_events", "last_error", "TEXT");
+    this.ensureColumn("notification_events", "provider_request_id", "TEXT");
+    this.ensureColumn("notification_events", "delivered_at", "TEXT");
   }
 
   getRegistration(): RegistrationRecord | null {
@@ -169,6 +276,7 @@ export class SqlBrokerPersistence implements BrokerPersistence {
           installationId: row.installation_id,
           platform: row.platform,
           providerTokenCiphertext: row.provider_token_ciphertext,
+          providerTokenStatus: row.provider_token_status ?? "active",
           installationPublicKey: row.installation_public_key,
           schemaVersion: row.schema_version,
           registeredAt: row.registered_at,
@@ -189,9 +297,9 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         this.storage.sql.exec(
           `INSERT INTO installation (
             installation_id, platform, provider_token_ciphertext,
-            installation_public_key, schema_version, registered_at,
-            updated_at, revoked_at
-          ) VALUES (?, ?, ?, ?, 1, ?, ?, NULL)`,
+            provider_token_status, installation_public_key, schema_version,
+            registered_at, updated_at, revoked_at
+          ) VALUES (?, ?, ?, 'active', ?, 1, ?, ?, NULL)`,
           input.installationId,
           input.platform,
           input.providerTokenCiphertext,
@@ -206,12 +314,27 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         }
         this.storage.sql.exec(
           `UPDATE installation
-             SET platform = ?, provider_token_ciphertext = ?, updated_at = ?
+             SET platform = ?, provider_token_ciphertext = ?,
+                 provider_token_status = 'active', updated_at = ?
            WHERE installation_id = ? AND revoked_at IS NULL`,
           input.platform,
           input.providerTokenCiphertext,
           input.now,
           input.installationId,
+        );
+        this.storage.sql.exec(
+          `UPDATE notification_events
+             SET state = 'expired', next_attempt_at = NULL,
+                 last_error = 'event_ttl_expired'
+           WHERE state = 'waiting_token_refresh' AND expires_at <= ?`,
+          input.now,
+        );
+        this.storage.sql.exec(
+          `UPDATE notification_events
+             SET state = 'pending', next_attempt_at = ?, last_error = NULL
+           WHERE state = 'waiting_token_refresh' AND expires_at > ?`,
+          input.now,
+          input.now,
         );
       }
 
@@ -237,7 +360,9 @@ export class SqlBrokerPersistence implements BrokerPersistence {
 
       this.storage.sql.exec(
         `UPDATE installation
-           SET provider_token_ciphertext = NULL, revoked_at = ?, updated_at = ?
+           SET provider_token_ciphertext = NULL,
+               provider_token_status = 'refresh_required',
+               revoked_at = ?, updated_at = ?
          WHERE installation_id = ?`,
         input.now,
         input.now,
@@ -248,7 +373,7 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         input.now,
       );
       this.storage.sql.exec(
-        "UPDATE notification_events SET state = 'cancelled' WHERE state = 'pending'",
+        "UPDATE notification_events SET state = 'cancelled', next_attempt_at = NULL WHERE state IN ('pending', 'waiting_token_refresh')",
       );
       this.insertNonce(
         input.requestNonce,
@@ -336,6 +461,14 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         input.now,
         input.hostId,
       );
+      this.storage.sql.exec(
+        `UPDATE notification_events
+         SET state = 'cancelled', next_attempt_at = NULL,
+             last_error = 'host_binding_revoked'
+         WHERE host_id = ?
+           AND state IN ('pending', 'waiting_token_refresh')`,
+        input.hostId,
+      );
       this.insertNonce(
         input.requestNonce,
         "revoke-binding",
@@ -364,8 +497,9 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         `INSERT INTO notification_events (
           event_id, host_id, source_id, canonical_message_id,
           eligibility_event, event_type, occurred_at, expires_at,
-          state, accepted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          state, attempt_count, next_attempt_at, last_error,
+          provider_request_id, accepted_at, delivered_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         event.eventId,
         event.hostId,
         event.sourceId,
@@ -375,10 +509,250 @@ export class SqlBrokerPersistence implements BrokerPersistence {
         event.occurredAt,
         event.expiresAt,
         event.state,
+        event.attemptCount,
+        event.nextAttemptAt,
+        event.lastError,
+        event.providerRequestId,
         event.acceptedAt,
+        event.deliveredAt,
       );
       return "inserted" as const;
     });
+  }
+
+  getEvent(eventId: string): EventRecord | null {
+    const row = this.storage.sql
+      .exec<EventRow>(
+        "SELECT * FROM notification_events WHERE event_id = ? LIMIT 1",
+        eventId,
+      )
+      .toArray()[0];
+    return row ? this.mapEvent(row) : null;
+  }
+
+  listDueEvents(now: string, limit: number): EventRecord[] {
+    return this.storage.sql
+      .exec<EventRow>(
+        `SELECT * FROM notification_events
+         WHERE state = 'pending'
+           AND expires_at > ?
+           AND COALESCE(next_attempt_at, accepted_at) <= ?
+         ORDER BY COALESCE(next_attempt_at, accepted_at) ASC, accepted_at ASC
+         LIMIT ?`,
+        now,
+        now,
+        Math.max(1, Math.min(limit, 100)),
+      )
+      .toArray()
+      .map((row) => this.mapEvent(row));
+  }
+
+  expireDue(now: string) {
+    const before = this.storage.sql
+      .exec<{ count: number }>(
+        `SELECT COUNT(*) AS count FROM notification_events
+         WHERE state IN ('pending', 'waiting_token_refresh')
+           AND expires_at <= ?`,
+        now,
+      )
+      .toArray()[0]?.count ?? 0;
+    if (before > 0) {
+      this.storage.sql.exec(
+        `UPDATE notification_events
+         SET state = 'expired', next_attempt_at = NULL,
+             last_error = 'event_ttl_expired'
+         WHERE state IN ('pending', 'waiting_token_refresh')
+           AND expires_at <= ?`,
+        now,
+      );
+    }
+    return before;
+  }
+
+  pausePendingForTokenRefresh(now: string) {
+    const before = this.storage.sql
+      .exec<{ count: number }>(
+        `SELECT COUNT(*) AS count FROM notification_events
+         WHERE state = 'pending' AND expires_at > ?`,
+        now,
+      )
+      .toArray()[0]?.count ?? 0;
+    if (before > 0) {
+      this.storage.sql.exec(
+        `UPDATE notification_events
+         SET state = 'waiting_token_refresh', next_attempt_at = NULL,
+             last_error = 'provider_token_refresh_required'
+         WHERE state = 'pending' AND expires_at > ?`,
+        now,
+      );
+    }
+    return before;
+  }
+
+  recordDeliveryAttempt(input: RecordDeliveryAttemptInput) {
+    this.storage.transactionSync(() => {
+      this.insertDeliveryAttempt(input);
+      const currentEvent = this.getEvent(input.eventId);
+      if (
+        currentEvent?.state === "cancelled" &&
+        input.eventState !== "delivered"
+      ) {
+        this.storage.sql.exec(
+          `UPDATE notification_events
+           SET attempt_count = ?, provider_request_id = ?
+           WHERE event_id = ?`,
+          input.attemptNo,
+          input.providerRequestId,
+          input.eventId,
+        );
+        return;
+      }
+      this.storage.sql.exec(
+        `UPDATE notification_events
+         SET state = ?, attempt_count = ?, next_attempt_at = ?,
+             last_error = ?, provider_request_id = ?,
+             delivered_at = ?
+         WHERE event_id = ?`,
+        input.eventState,
+        input.attemptNo,
+        input.nextAttemptAt,
+        input.lastError,
+        input.providerRequestId,
+        input.eventState === "delivered" ? input.attemptedAt : null,
+        input.eventId,
+      );
+    });
+  }
+
+  recordInvalidProviderTokenAttempt(
+    input: InvalidProviderTokenAttemptInput,
+  ): InvalidProviderTokenAttemptResult {
+    return this.storage.transactionSync(() => {
+      this.insertDeliveryAttempt(input);
+      const registration = this.getRegistration();
+      const currentEvent = this.getEvent(input.eventId);
+
+      if (
+        !registration ||
+        registration.revokedAt ||
+        !currentEvent ||
+        currentEvent.state === "cancelled"
+      ) {
+        if (currentEvent) {
+          this.storage.sql.exec(
+            `UPDATE notification_events
+             SET attempt_count = ?, provider_request_id = ?
+             WHERE event_id = ?`,
+            input.attemptNo,
+            input.providerRequestId,
+            input.eventId,
+          );
+        }
+        return "inactive" as const;
+      }
+
+      if (
+        registration.providerTokenStatus !== "active" ||
+        registration.providerTokenCiphertext !==
+          input.expectedProviderTokenCiphertext
+      ) {
+        this.storage.sql.exec(
+          `UPDATE notification_events
+           SET state = 'pending', attempt_count = ?, next_attempt_at = ?,
+               last_error = 'provider_token_rotated_during_attempt',
+               provider_request_id = ?, delivered_at = NULL
+           WHERE event_id = ?`,
+          input.attemptNo,
+          input.attemptedAt,
+          input.providerRequestId,
+          input.eventId,
+        );
+        return "rotated" as const;
+      }
+
+      this.storage.sql.exec(
+        `UPDATE notification_events
+         SET state = 'waiting_token_refresh', attempt_count = ?,
+             next_attempt_at = NULL, last_error = ?,
+             provider_request_id = ?, delivered_at = NULL
+         WHERE event_id = ?`,
+        input.attemptNo,
+        input.errorCode,
+        input.providerRequestId,
+        input.eventId,
+      );
+      this.storage.sql.exec(
+        `UPDATE installation
+         SET provider_token_ciphertext = NULL,
+             provider_token_status = 'refresh_required',
+             updated_at = ?
+         WHERE revoked_at IS NULL
+           AND provider_token_ciphertext = ?`,
+        input.attemptedAt,
+        input.expectedProviderTokenCiphertext,
+      );
+      this.storage.sql.exec(
+        `UPDATE notification_events
+         SET state = 'waiting_token_refresh', next_attempt_at = NULL,
+             last_error = 'provider_token_refresh_required'
+         WHERE state = 'pending' AND expires_at > ?`,
+        input.attemptedAt,
+      );
+      return "invalidated" as const;
+    });
+  }
+
+  private insertDeliveryAttempt(input: DeliveryAttemptRecord) {
+    this.storage.sql.exec(
+      `INSERT INTO provider_delivery_attempts (
+        event_id, attempt_no, provider, outcome, provider_request_id,
+        http_status, error_code, attempted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.eventId,
+      input.attemptNo,
+      input.provider,
+      input.outcome,
+      input.providerRequestId,
+      input.httpStatus,
+      input.errorCode,
+      input.attemptedAt,
+    );
+  }
+
+  getNextWakeAt(now: string): string | null {
+    const rows = this.storage.sql
+      .exec<{
+        state: DeliveryEventState;
+        next_attempt_at: string | null;
+        accepted_at: string;
+        expires_at: string;
+      }>(
+        `SELECT state, next_attempt_at, accepted_at, expires_at
+         FROM notification_events
+         WHERE state IN ('pending', 'waiting_token_refresh')`,
+      )
+      .toArray();
+    let next: string | null = null;
+    for (const row of rows) {
+      const candidate =
+        row.state === "waiting_token_refresh"
+          ? row.expires_at
+          : row.next_attempt_at ?? row.accepted_at;
+      if (candidate <= now) return now;
+      if (!next || candidate < next) next = candidate;
+    }
+    return next;
+  }
+
+  private ensureColumn(table: string, name: string, definition: string) {
+    const columns = this.storage.sql
+      .exec<{ name: string }>(`PRAGMA table_info(${table})`)
+      .toArray();
+    if (!columns.some((column) => column.name === name)) {
+      this.storage.sql.exec(
+        `ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`,
+      );
+    }
   }
 
   private hasNonce(nonce: string) {
@@ -419,6 +793,26 @@ export class SqlBrokerPersistence implements BrokerPersistence {
       deliveryTokenHash: row.delivery_token_hash,
       authorizedAt: row.authorized_at,
       revokedAt: row.revoked_at,
+    };
+  }
+
+  private mapEvent(row: EventRow): EventRecord {
+    return {
+      eventId: row.event_id,
+      hostId: row.host_id,
+      sourceId: row.source_id,
+      canonicalMessageId: row.canonical_message_id,
+      eligibilityEvent: row.eligibility_event,
+      eventType: row.event_type,
+      occurredAt: row.occurred_at,
+      expiresAt: row.expires_at,
+      state: row.state,
+      attemptCount: row.attempt_count ?? 0,
+      nextAttemptAt: row.next_attempt_at,
+      lastError: row.last_error,
+      providerRequestId: row.provider_request_id,
+      acceptedAt: row.accepted_at,
+      deliveredAt: row.delivered_at,
     };
   }
 }

@@ -94,7 +94,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
   it("keeps coarse workspace capabilities free of action defaults", () => {
     const profiles = resolveHarnessCapabilityProfiles([
       {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "terminal",
         domain: "terminal",
@@ -141,7 +141,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "terminal_execution",
-          preferredToolId: "terminal_session",
+          preferredToolId: "terminal",
           actionProfileId: "terminal_execute_command",
         }),
         expect.objectContaining({
@@ -221,7 +221,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
 
     expect(profiles).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "web_research", preferredToolId: "web_search" }),
+        expect.objectContaining({ id: "web", preferredToolId: "web_search" }),
         expect.objectContaining({ id: "news_research", preferredToolId: "news_search" }),
         expect.objectContaining({ id: "mail_reading", preferredToolId: "mail_query" }),
       ]),

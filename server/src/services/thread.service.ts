@@ -1,22 +1,27 @@
 import {
+  canonicalMessageCleanupRepository,
   chatWorkspaceRepository,
+  hostNotificationRepository,
   messageRepository,
   knowledgeBaseRepository,
   threadRepository,
   type ThreadListFilters,
   type ThreadWithMessageCount,
 } from "@/db/repositories";
+import { getSqlite } from "@/db/index.js";
 import type { Message, MessageRole, Thread, ThreadStatus } from "@/db/schema";
 import { threadContextSummaryNode } from "@/services/shared-nodes/thread-context-summary.node.js";
 import { isValidWorkspaceRootPath } from "@/services/workspace-path-validation.js";
 import { THREAD_ACCESS_ERROR_MESSAGE } from "@/utils/errors.js";
 import { chatMediaService } from "@/services/chat-media.service.js";
+import { canonicalMessageCleanupService } from "@/services/canonical-message-cleanup.service.js";
 import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
 import { getHarnessEnvironmentSnapshot } from "@/harness/environment.js";
 import {
+  getFileAttachmentsRemovedFromParts,
   removeFileAttachmentsFromParts,
-  removeFileAttachmentsRemovedFromParts,
 } from "@/services/chat-file-context.service.js";
+import type { NotificationCanonicalMessage } from "@/services/notification-eligibility.js";
 
 export interface ThreadResponse {
   id: string;
@@ -161,7 +166,7 @@ const parsePartsJson = (
 const serializeParts = (parts: CreateMessageInput["parts"]) =>
   parts ? JSON.stringify(parts) : undefined;
 
-const pruneThreadTail = (
+const getThreadTailMessages = (
   threadId: string,
   anchorMessageId: string | null,
   preserveMessageId?: string,
@@ -173,20 +178,36 @@ const pruneThreadTail = (
       : threadMessages.findIndex((message) => message.id === anchorMessageId);
 
   if (anchorMessageId !== null && anchorIndex < 0) {
-    return;
+    return [];
   }
 
-  const trailingMessages = threadMessages.slice(anchorIndex + 1);
+  return threadMessages
+    .slice(anchorIndex + 1)
+    .filter((message) => message.id !== preserveMessageId);
+};
 
-  for (const message of trailingMessages) {
-    if (message.id === preserveMessageId) {
-      continue;
-    }
+const buildCanonicalCleanupPayload = (
+  mediaMessageIds: string[],
+  attachmentParts: unknown[],
+) => ({
+  media: chatMediaService.createCleanupSnapshot(mediaMessageIds),
+  attachmentParts,
+});
 
+const deleteCanonicalMessages = (messages: Message[]) => {
+  for (const message of messages) {
     messageRepository.deleteById(message.id);
-    removeFileAttachmentsFromParts(parsePartsJson(message.partsJson));
-    chatMediaService.removeForMessages([message.id]);
   }
+};
+
+const scheduleCanonicalMessageCleanup = () => {
+  queueMicrotask(() => {
+    try {
+      canonicalMessageCleanupService.drainOnce();
+    } catch (error) {
+      console.error("[canonical-cleanup] scheduled drain failed", { error });
+    }
+  });
 };
 
 const getBranchParentIdFromMetadata = (
@@ -335,6 +356,21 @@ const toMessageResponse = (message: Message): MessageResponse => {
     createdAt: message.createdAt,
   };
 };
+
+const toNotificationCanonicalMessage = (
+  message: MessageResponse,
+): NotificationCanonicalMessage => ({
+  id: message.id,
+  role: message.role,
+  content: message.content,
+  parts: message.parts
+    .filter(
+      (part): part is { type: "text"; text: string } =>
+        part.type === "text",
+    )
+    .map((part) => ({ type: part.type, text: part.text })),
+  metadata: message.metadata,
+});
 
 export interface GetThreadInput {
   id: string;
@@ -808,7 +844,6 @@ export const threadService = {
     userId: number,
     input: CreateMessageInput,
   ): MessageResponse {
-    // 验证线程属于当前用户
     const thread = threadRepository.findById(threadId, userId);
     if (!thread) {
       throw new Error(THREAD_ACCESS_ERROR_MESSAGE);
@@ -822,8 +857,12 @@ export const threadService = {
     );
     const hasDataPart = normalizedParts.some((part) => part.type === "data");
     const hasSupportedContent = hasTextPart || hasAttachmentPart || hasDataPart;
-    const normalizedMetadata = input.metadata ? JSON.stringify(input.metadata) : "{}";
-    const existing = input.id ? messageRepository.findById(input.id) : undefined;
+    const normalizedMetadata = input.metadata
+      ? JSON.stringify(input.metadata)
+      : "{}";
+    const existing = input.id
+      ? messageRepository.findById(input.id)
+      : undefined;
     const effectiveParentId =
       input.parentId !== undefined
         ? input.parentId
@@ -833,52 +872,91 @@ export const threadService = {
       throw new Error("Message id already exists on a different thread");
     }
 
-    if (
-      effectiveParentId !== undefined &&
-      (!existing || !input.preserveDescendants)
-    ) {
-      pruneThreadTail(
-        threadId,
-        existing ? existing.id : effectiveParentId ?? null,
-        existing?.id,
-      );
-    }
-
     if (existing) {
-      if (
-      existing.role !== input.role ||
-      existing.content !== normalizedContent ||
-      (existing.metadata || "{}") !== normalizedMetadata ||
-      JSON.stringify(
-        parsePartsJson(
-            (existing as Message & { partsJson?: string | null }).partsJson,
-          ) ?? [],
-        ) !== JSON.stringify(input.parts ?? [])
-      ) {
-        const mediaCleanup = chatMediaService.removeForMessages([existing.id]);
-        if (mediaCleanup.failed > 0) {
-          throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s): ${mediaCleanup.errors.map((item) => item.mediaId).join(", ")}`);
-        }
-        removeFileAttachmentsRemovedFromParts(
-          parsePartsJson(existing.partsJson),
-          input.parts,
+      const existingParts = parsePartsJson(existing.partsJson);
+      const changed =
+        existing.role !== input.role ||
+        existing.content !== normalizedContent ||
+        (existing.metadata || "{}") !== normalizedMetadata ||
+        JSON.stringify(existingParts ?? []) !==
+          JSON.stringify(input.parts ?? []);
+
+      if (changed) {
+        const staleMessages =
+          effectiveParentId !== undefined && !input.preserveDescendants
+            ? getThreadTailMessages(threadId, existing.id, existing.id)
+            : [];
+        const removedAttachmentParts = [
+          ...getFileAttachmentsRemovedFromParts(existingParts, input.parts),
+          ...staleMessages.flatMap(
+            (message) => parsePartsJson(message.partsJson) ?? [],
+          ),
+        ];
+        const cleanupMediaIds = [
+          existing.id,
+          ...staleMessages.map((message) => message.id),
+        ];
+        const cleanupPayload = buildCanonicalCleanupPayload(
+          cleanupMediaIds,
+          removedAttachmentParts,
         );
-        const updated = messageRepository.updateById(existing.id, {
-          role: input.role,
-          content: normalizedContent,
-          partsJson: serializeParts(input.parts),
-          metadata: normalizedMetadata,
-        });
+        const previous = toMessageResponse(existing);
 
-        if (!updated) {
-          throw new Error("Failed to update existing message");
+        const updatedResponse = getSqlite().transaction(() => {
+          deleteCanonicalMessages(staleMessages);
+
+          const updated = messageRepository.updateById(existing.id, {
+            role: input.role,
+            content: normalizedContent,
+            partsJson: serializeParts(input.parts),
+            metadata: normalizedMetadata,
+          });
+          if (!updated) {
+            throw new Error("Failed to update existing message");
+          }
+
+          threadRepository.updateById(threadId, {});
+          const next = toMessageResponse(updated);
+          hostNotificationRepository.enqueueEligibleTransition({
+            previous: toNotificationCanonicalMessage(previous),
+            next: toNotificationCanonicalMessage(next),
+            sourceId: threadId,
+          });
+          canonicalMessageCleanupRepository.enqueue(cleanupPayload);
+          return next;
+        })();
+
+        if (
+          cleanupPayload.media.length > 0 ||
+          cleanupPayload.attachmentParts.length > 0
+        ) {
+          scheduleCanonicalMessageCleanup();
         }
-
-        threadRepository.updateById(threadId, {});
-        return toMessageResponse(updated);
+        return updatedResponse;
       }
 
-      threadRepository.updateById(threadId, {});
+      const staleMessages =
+        effectiveParentId !== undefined && !input.preserveDescendants
+          ? getThreadTailMessages(threadId, existing.id, existing.id)
+          : [];
+      const cleanupPayload = buildCanonicalCleanupPayload(
+        staleMessages.map((message) => message.id),
+        staleMessages.flatMap(
+          (message) => parsePartsJson(message.partsJson) ?? [],
+        ),
+      );
+
+      getSqlite().transaction(() => {
+        deleteCanonicalMessages(staleMessages);
+        threadRepository.updateById(threadId, {});
+        canonicalMessageCleanupRepository.enqueue(cleanupPayload);
+      })();
+      if (
+        cleanupPayload.media.length > 0 ||
+        cleanupPayload.attachmentParts.length > 0
+      ) {
+        scheduleCanonicalMessageCleanup();
+      }
       return toMessageResponse(existing);
     }
 
@@ -897,19 +975,47 @@ export const threadService = {
       throw new Error("Message content is missing");
     }
 
-    const created = messageRepository.create({
-      ...(input.id ? { id: input.id } : {}),
-      threadId,
-      role: input.role,
-      content: normalizedContent,
-      partsJson: serializeParts(input.parts),
-      metadata: normalizedMetadata,
-    });
+    const staleMessages =
+      effectiveParentId !== undefined
+        ? getThreadTailMessages(threadId, effectiveParentId ?? null)
+        : [];
+    const cleanupPayload = buildCanonicalCleanupPayload(
+      staleMessages.map((message) => message.id),
+      staleMessages.flatMap(
+        (message) => parsePartsJson(message.partsJson) ?? [],
+      ),
+    );
 
-    // 更新 thread 的 updatedAt
-    threadRepository.updateById(threadId, {});
+    const createdResponse = getSqlite().transaction(() => {
+      deleteCanonicalMessages(staleMessages);
 
-    return toMessageResponse(created);
+      const created = messageRepository.create({
+        ...(input.id ? { id: input.id } : {}),
+        threadId,
+        role: input.role,
+        content: normalizedContent,
+        partsJson: serializeParts(input.parts),
+        metadata: normalizedMetadata,
+      });
+
+      threadRepository.updateById(threadId, {});
+      const next = toMessageResponse(created);
+      hostNotificationRepository.enqueueEligibleTransition({
+        previous: null,
+        next: toNotificationCanonicalMessage(next),
+        sourceId: threadId,
+      });
+      canonicalMessageCleanupRepository.enqueue(cleanupPayload);
+      return next;
+    })();
+
+    if (
+      cleanupPayload.media.length > 0 ||
+      cleanupPayload.attachmentParts.length > 0
+    ) {
+      scheduleCanonicalMessageCleanup();
+    }
+    return createdResponse;
   },
 
   updateMessageMetadata(
@@ -921,10 +1027,24 @@ export const threadService = {
     const thread = threadRepository.findById(threadId, userId);
     const existing = messageRepository.findById(messageId);
     if (!thread || !existing || existing.threadId !== threadId) return null;
-    const updated = messageRepository.updateById(messageId, {
-      metadata: JSON.stringify(metadata),
-    });
-    return updated ? toMessageResponse(updated) : null;
+
+    const previous = toMessageResponse(existing);
+    return getSqlite().transaction(() => {
+      const updated = messageRepository.updateById(messageId, {
+        metadata: JSON.stringify(metadata),
+      });
+      if (!updated) {
+        throw new Error("Failed to update message metadata");
+      }
+
+      const nextMessage = toMessageResponse(updated);
+      hostNotificationRepository.enqueueEligibleTransition({
+        previous: toNotificationCanonicalMessage(previous),
+        next: toNotificationCanonicalMessage(nextMessage),
+        sourceId: threadId,
+      });
+      return nextMessage;
+    })();
   },
 
   createMessages(

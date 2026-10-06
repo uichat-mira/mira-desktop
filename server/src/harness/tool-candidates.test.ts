@@ -5,7 +5,7 @@ import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessToolCandidatesForTurn } from "./tool-candidates.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
-import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
+import { terminalTool } from "../mcp/tools/terminal-session.tool.js";
 
 const createEligibleTool = (id: string) => ({
   definition: {
@@ -81,7 +81,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
   it("does not let caller topK/maxTools/minScore shrink a <=20 public tool set", async () => {
     registerTool(readTool);
     registerTool(webSearchTool);
-    registerTool(terminalSessionTool);
+    registerTool(terminalTool);
 
     const result = await resolveHarnessToolCandidatesForTurn({
       query: "README",
@@ -92,7 +92,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     });
 
     expect(result.toolExposure.exposedToolIds).toEqual(
-      expect.arrayContaining(["read", "web_search", "terminal_session"]),
+      expect.arrayContaining(["read", "web_search", "terminal"]),
     );
     expect(result.toolCandidates).toHaveLength(3);
   });
@@ -264,7 +264,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
 
     registerTool(browserObserve);
     registerTool(writeFile);
-    registerTool(terminalSessionTool);
+    registerTool(terminalTool);
 
     const result = await resolveHarnessToolCandidatesForTurn({
       query: "打开公众号网页，整理成 HTML，保存到工作区，必要时运行终端脚本",
@@ -272,7 +272,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     });
 
     expect(result.toolExposure.exposedToolIds).toEqual(
-      expect.arrayContaining(["browser_observe", "write", "terminal_session"]),
+      expect.arrayContaining(["browser_observe", "write", "terminal"]),
     );
   });
 

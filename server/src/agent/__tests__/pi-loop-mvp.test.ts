@@ -34,7 +34,7 @@ const createState = (): AgentNodeState => {
       coveredProgress: ["Opened file README.md."],
     },
     toolExposure: {
-      exposedTools: ["read_open", "edit", "terminal_session"],
+      exposedTools: ["read_open", "edit", "terminal"],
       toolMeta: [
         {
           toolId: "read_open",
@@ -67,7 +67,7 @@ const createState = (): AgentNodeState => {
           },
         },
         {
-          toolId: "terminal_session",
+          toolId: "terminal",
           title: "Terminal Session",
           description: "Run a workspace command.",
           inputSchema: { type: "object", properties: {} },

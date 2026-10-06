@@ -1,7 +1,7 @@
 ---
 status: current
 owner: runtime
-last_verified: 2026-07-30
+last_verified: 2026-10-06
 layer: wiki
 module: Tool
 feature: ToolRuntime
@@ -248,13 +248,33 @@ primitive 结果统一进入 `file_mutation` Evidence。旧 `write_file / replac
 - 搜索当前公共互联网；
 - provider 在受信任 runtime config 中选择；
 - 当前支持 Tavily / SearXNG；
-- 模型只提供 `query` 与 `maxResults`；
-- 默认 4 条，限幅 1–10；
-- provider 失败按计划尝试下一可用 provider；
-- 所有 provider 失败才返回结构化错误；
+- 模型只提供 `queries`（1–4 条查询，去重非空字符串）与 `maxResults`；
+- Runtime 对所有 query 并发 fan-out，结果按 URL 归一化去重合并；
+- `maxResults` 是最终 merged 结果总上限，默认 4，限幅 1–10；
+- 当前 provider 任一 query 出现真实 provider failure 时，整批 queries 按既有计划尝试下一可用 provider；
+- provider 批次都失败时返回结构化错误；
 - `sideEffect = network`，但 definition 当前 `requiresApproval = false`。
 
 `apiKey`、`baseUrl` 和 provider 不是 LLM 参数。
+
+### `web_fetch`
+
+- 抓取并提取已知公网 `http` / `https` URL 的可读正文；
+- 模型只提供 `url`；
+- 仅允许公网 http/https 目标：内网 / loopback / link-local / 云元数据地址、非 http(s) 协议以及携带凭据的 URL 都会被拒绝；
+- 直连走 SSRF-safe 的 guarded transport；代理（SOCKS）路径在请求前重新校验目标，并对每个 redirect hop 重新校验；
+- 具备 timeout、caller cancellation 与响应体大小上限；
+- transport 返回有界原始字节；提取层按 `Content-Type` / charset（含 BOM 与 HTML meta 声明）用 `iconv-lite` 解码，不假定 UTF-8；
+- HTML 经 `jsdom → @mozilla/readability → turndown` 转为主正文 Markdown；`text/*`、JSON、XML 作为可靠文本输出；
+- 返回 `url` / `finalUrl` / `status` / `contentType` / `byteLength` / `truncated` / `kind`，以及 `title` / `content`（`html` / `text`）或 `reason`（非成功 outcome）；
+- 明确依赖 JS、登录或 anti-bot challenge 的页面优先返回结构化 `browser_required`，即使页面同时包含大段文本；
+- 无上述浏览器证据且无法获得可信正文时（如静态短页面）返回结构化 `unsupported`，既不返回整页导航 / 脚本垃圾，也不误报 `browser_required`；
+- 不支持的二进制内容返回结构化 `unsupported`；PDF / 文档暂不解析，返回 `unsupported`（deferred），不新建第二套文档解析器；
+- transport 结构化失败可区分 `blocked` / `http` / `network` / `timeout` / `cancelled`，caller cancel 的最终语义是 `cancelled`；
+- provider、proxy、parser 与安全实现细节不进入模型可见契约；
+- `sideEffect = network`，definition 当前 `requiresApproval = false`。
+
+`web_fetch` 不会因为页面依赖 JavaScript 或登录状态而自动升级为浏览器自动化；Attached / Managed Browser 仍是独立能力面。
 
 ### `news_search`
 
@@ -271,8 +291,10 @@ primitive 结果统一进入 `file_mutation` Evidence。旧 `write_file / replac
 当前唯一 Terminal 工具是：
 
 ```text
-terminal_session
+terminal
 ```
+
+兼容边界：旧 `terminal_session` 仅作为 persisted approval/run 的隐藏兼容 ID 保留，不进入新的 Agent Tool Exposure；待受支持的旧 checkpoint 不再可能引用该 ID 后删除。
 
 它支持：
 
@@ -287,11 +309,37 @@ terminal_session
 - Windows Job Object / taskkill fallback；
 - POSIX process group。
 
+Persistent 输出当前采用有界返回 + continuation：
+
+- 单次结果默认最多返回 8 MiB，最大可请求 64 MiB；
+- 未返回的 persistent 输出不会因为本轮结果截断而丢失，而是写入受 session 生命周期管理的临时 spool；
+- 返回 `continuationId / nextOutputOffset / outputBytesAvailable`，后续调用同一个 `terminal` 且只提供 continuation 参数即可继续读取，不会向 PTY 写入新命令；
+- observation timeout 只结束本轮等待，collector 继续接收该 persistent command 的后续输出；命令完成后 continuation 可以读取最终剩余日志与 exit code；
+- cursor 使用 UTF-8 byte offset，并由 runtime 返回稳定的 `nextOutputOffset`，避免分页切断多字节字符；
+- session 被移除时，对应 spool 会一并清理。
+
+Persistent session 控制仍然通过同一个 `terminal` Tool 完成：
+
+- `operation: "status" + sessionId` 只观察最新 persistent work 状态，不向 PTY 写入命令；
+- 状态为 `running / completed / failed / cancelled`，其中完成/失败由实际 exit code 驱动；
+- `operation: "stop" + sessionId` 停止该 session 所拥有的进程树；
+- stop 会等待现有 Windows Job Object / taskkill tree 或 POSIX process group cleanup 完成后，才返回 `state: "cancelled"` 与 `cleanupCompleted: true`；
+- stop 不创建第二套进程 runtime，也不引入 `job_*` Tool；
+- unknown / stale `sessionId` 明确失败，不静默退化成新 session。
+
+Tool Lab 当前把 #236 的验收路径直接暴露出来：
+
+- Terminal 注册短命令成功、短命令失败、持久任务、失效会话四个固定 acceptance case；
+- approval-bound 调用在 Tool Lab 内使用现有 Approval API 显式批准/拒绝，不绕过治理；
+- persistent 结果出现 session 后，可直接 Continue output、Inspect status、Stop；
+- Continue 使用 runtime 返回的 continuation cursor，不会执行第二条命令；
+- 状态与 session identity 会同时显示在 Terminal package / execution stream 中，便于真人验收。
+
 它不是 generic integration container，但也不是已经退役的 command sandbox。
 
 ### Terminal 与 workspace 的真实边界
 
-`terminal_session` 仍声明：
+`terminal` 仍声明：
 
 - `requiresApproval = true`；
 - `workspaceBound = true`；

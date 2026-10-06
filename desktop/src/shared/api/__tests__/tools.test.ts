@@ -18,7 +18,6 @@ vi.mock("@/shared/platform/desktopRuntime", () => ({
 
 import { get, post, put, patch, del } from "@/shared/lib/request";
 import {
-  getTools,
   getMcpMarketplaceServers,
   getMcpMarketplaceSyncStatus,
   requestMcpMarketplaceSync,
@@ -42,7 +41,6 @@ import {
   getMcpInvocation,
   getMcpInvocationTrace,
   executeMcpInvocationStream,
-  type ToolDefinition,
   type McpMarketplaceServer,
   type ExternalMcpServerRecord,
   type McpWorkspaceSelection,
@@ -51,18 +49,6 @@ import {
   type ToolInvocation,
   type ToolTrace,
 } from "../tools";
-
-const sampleTool: ToolDefinition = {
-  id: "tool-1",
-  name: "Search",
-  description: "search docs",
-  version: "1",
-  category: "tool",
-  tags: ["rag"],
-  author: "team",
-  parameters: {},
-  runtime: {},
-};
 
 const sampleMarketplaceServer: McpMarketplaceServer = {
   id: "srv-1",
@@ -149,15 +135,6 @@ describe("tools api", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
-  });
-
-  it("getTools 返回工具列表", async () => {
-    vi.mocked(get).mockResolvedValueOnce([sampleTool]);
-
-    const result = await getTools();
-
-    expect(get).toHaveBeenCalledWith("/tools");
-    expect(result).toEqual([sampleTool]);
   });
 
   it("getMcpMarketplaceServers 支持查询参数", async () => {

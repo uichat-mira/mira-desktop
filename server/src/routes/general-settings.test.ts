@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getSnapshot: vi.fn(),
   check: vi.fn(),
   updateEnabled: vi.fn(),
+  revokeLifecycleDevice: vi.fn(),
 }));
 
 vi.mock("@/db/repositories/general-settings.repository.js", () => ({
@@ -28,6 +29,7 @@ vi.mock("@/services/tailscale-remote-access.service.js", () => ({
     getSnapshot: mocks.getSnapshot,
     check: mocks.check,
     updateEnabled: mocks.updateEnabled,
+    revokeDevice: mocks.revokeLifecycleDevice,
   },
 }));
 vi.mock("@/routes/remote-access.js", () => ({ default: async () => undefined }));
@@ -81,6 +83,7 @@ describe("general settings routes", () => {
     mocks.update.mockReturnValue(settings);
     mocks.listDevices.mockReturnValue([]);
     mocks.revokeDevice.mockReturnValue(true);
+    mocks.revokeLifecycleDevice.mockReturnValue(true);
     mocks.getSnapshot.mockResolvedValue(snapshot);
     mocks.check.mockResolvedValue(snapshot);
     mocks.updateEnabled.mockResolvedValue(snapshot);
@@ -140,14 +143,14 @@ describe("general settings routes", () => {
   });
 
   it("returns 404 when revoking a device outside the user's visible set", async () => {
-    mocks.revokeDevice.mockReturnValue(false);
+    mocks.revokeLifecycleDevice.mockReturnValue(false);
     const app = await createApp();
     const response = await app.inject({
       method: "DELETE",
       url: "/general-settings/tailscale-remote-access/devices/device-2",
     });
     expect(response.statusCode).toBe(404);
-    expect(mocks.revokeDevice).toHaveBeenCalledWith("device-2", 7);
+    expect(mocks.revokeLifecycleDevice).toHaveBeenCalledWith("device-2", 7);
     await app.close();
   });
 });

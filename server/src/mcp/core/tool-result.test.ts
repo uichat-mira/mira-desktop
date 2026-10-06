@@ -156,6 +156,51 @@ describe("ToolResult B-prime normalization", () => {
 
   it("preserves semantic terminal timeout evidence without changing invocation status", () => {
     const evidence = projectToolEvidence(
+      definition("terminal", "internal", "terminal"),
+      normalizeToolResult({
+        structuredContent: {
+          command: "pnpm test",
+          timedOut: true,
+          exitCode: null,
+          stdout: "partial output",
+          stderr: "",
+          stdoutEncoding: "utf8",
+          stderrEncoding: "utf8",
+          truncated: true,
+          continuationId: "continuation-1",
+          continuationAvailable: true,
+          outputOffset: 0,
+          outputEndOffset: 1024,
+          nextOutputOffset: 1024,
+          outputBytesAvailable: 4096,
+          outputLimitBytes: 1024,
+          commandCompleted: false,
+          state: "running",
+        },
+      }),
+    );
+    expect(evidence?.status).toBe("timed_out");
+    expect(evidence?.data).toMatchObject({
+      kind: "terminal_session",
+      commandSucceeded: "unknown",
+      processCompleted: false,
+      timedOut: true,
+      truncated: true,
+      continuationId: "continuation-1",
+      continuationAvailable: true,
+      nextOutputOffset: 1024,
+      outputBytesAvailable: 4096,
+      outputLimitBytes: 1024,
+      commandCompleted: false,
+      state: "running",
+    });
+    expect(evidence?.facts).toContain("continuationId=continuation-1");
+    expect(evidence?.facts).toContain("nextOutputOffset=1024");
+    expect(evidence?.facts).toContain("state=running");
+    expect(evidence?.gaps?.join(" ")).toMatch(/continuationId=continuation-1/);
+    expect(evidence?.gaps?.join(" ")).toMatch(/outputOffset=1024/);
+
+    const legacyEvidence = projectToolEvidence(
       definition("terminal_session", "internal", "terminal"),
       normalizeToolResult({
         structuredContent: {
@@ -170,47 +215,70 @@ describe("ToolResult B-prime normalization", () => {
         },
       }),
     );
-    expect(evidence?.status).toBe("timed_out");
-    expect(evidence?.data).toMatchObject({
-      kind: "terminal_session",
-      commandSucceeded: "unknown",
-      processCompleted: false,
-      timedOut: true,
-    });
+    expect(legacyEvidence?.status).toBe("timed_out");
+    expect(legacyEvidence?.data).toMatchObject({ kind: "terminal_session" });
   });
 
-
-
-  it("marks committed move cleanup failures as partial file-mutation evidence", () => {
+  it("projects terminal status running state without claiming completion", () => {
     const evidence = projectToolEvidence(
-      definition("move", "internal", "edit"),
+      definition("terminal", "internal", "terminal"),
       normalizeToolResult({
         structuredContent: {
-          operation: "move",
-          path: "source-dir",
-          destinationPath: "destination-dir",
-          movedType: "directory",
-          overwritten: true,
-          changed: true,
-          cleanupIncomplete: true,
-          cleanupBackupPath: "/workspace/.destination-dir.mira-backup-test",
-          cleanupError: "EPERM",
-          diffAvailable: false,
+          operation: "status",
+          command: "watch",
+          timedOut: false,
+          exitCode: null,
+          stdout: "",
+          stderr: "",
+          stdoutEncoding: "utf8",
+          stderrEncoding: "utf8",
+          state: "running",
+          commandCompleted: false,
+          continuationId: "continuation-running",
+          continuationAvailable: true,
+          outputBytesAvailable: 12,
         },
       }),
     );
 
-    expect(evidence?.status).toBe("partial");
-    expect(evidence?.facts).toContain("cleanupIncomplete=true");
-    expect(evidence?.gaps?.join(" ")).toContain("backup cleanup is incomplete");
     expect(evidence?.data).toMatchObject({
-      kind: "file_mutation",
-      operation: "move",
-      changed: true,
-      cleanupIncomplete: true,
-      cleanupBackupPath: "/workspace/.destination-dir.mira-backup-test",
-      cleanupError: "EPERM",
+      kind: "terminal_session",
+      operation: "status",
+      state: "running",
+      processCompleted: false,
+      commandCompleted: false,
     });
+    expect(evidence?.actionTaken).toMatch(/Observed terminal session/);
+  });
+
+  it("projects terminal stop state and verified cleanup", () => {
+    const evidence = projectToolEvidence(
+      definition("terminal", "internal", "terminal"),
+      normalizeToolResult({
+        structuredContent: {
+          operation: "stop",
+          command: "watch",
+          timedOut: false,
+          exitCode: null,
+          stdout: "",
+          stderr: "",
+          state: "cancelled",
+          cleanupCompleted: true,
+          commandCompleted: true,
+        },
+      }),
+    );
+
+    expect(evidence?.data).toMatchObject({
+      kind: "terminal_session",
+      operation: "stop",
+      state: "cancelled",
+      cleanupCompleted: true,
+      commandCompleted: true,
+    });
+    expect(evidence?.facts).toContain("operation=stop");
+    expect(evidence?.facts).toContain("state=cancelled");
+    expect(evidence?.facts).toContain("cleanupCompleted=true");
   });
 
   it("preserves degraded codebase exploration as partial evidence", () => {
@@ -422,14 +490,30 @@ describe("ToolResult B-prime normalization", () => {
       definition("web_search", "internal", "web_search"),
       normalizeToolResult({
         structuredContent: {
-          query: "mira",
-          provider: "tavily",
-          capabilityId: "tavily-search",
+          queries: ["mira", "mira desktop"],
           results: [{ title: "Mira", link: "https://example.com", snippet: "A result" }],
         },
       }),
     );
     expect(search?.data).toMatchObject({
+      kind: "web_search",
+      queries: ["mira", "mira desktop"],
+      resultCount: 1,
+      citationsPreview: [{ title: "Mira", link: "https://example.com" }],
+    });
+
+    const newsSearch = projectToolEvidence(
+      definition("news_search", "internal", "news_search"),
+      normalizeToolResult({
+        structuredContent: {
+          query: "mira",
+          provider: "tavily",
+          capabilityId: "tavily-news",
+          results: [{ title: "Mira", link: "https://example.com", snippet: "A result" }],
+        },
+      }),
+    );
+    expect(newsSearch?.data).toMatchObject({
       kind: "web_search",
       query: "mira",
       resultCount: 1,

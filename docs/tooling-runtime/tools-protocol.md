@@ -162,7 +162,7 @@ edit
 move
 delete
 web_search
-terminal_session
+terminal
 browser_observe
 github_repository
 ```
@@ -256,7 +256,7 @@ Read / Edit file args 走严格 workspace path normalization：
 
 ### Terminal
 
-`terminal_session.cwd` 是 host-process cwd：
+`terminal.cwd` 是 host-process cwd：
 
 - 相对 workspace 路径可用；
 - 父级与绝对路径可在审批后使用；
@@ -279,7 +279,7 @@ Definition 可声明：
 当前静态审批例子：
 
 - public Edit；
-- `terminal_session`；
+- `terminal`；
 - `browser_act`；
 - `browser_attached_act`；
 - `browser_attached_transfer`；

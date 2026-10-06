@@ -57,7 +57,7 @@ test("resumeApprovedAgentRun resumes a pending run and keeps approval state", as
 
   agentRunStore.update(run.id, {
     status: "waiting_approval",
-    selectedCapabilityId: "web_research",
+    selectedCapabilityId: "web",
     pendingApproval: {
       id: "approval-1",
       runId: run.id,
@@ -288,7 +288,7 @@ test("resumeApprovedAgentRun updates assistant message when run returns waiting 
         id: "approval-2",
         runId: run.id,
         stepId: "approval-2",
-        toolId: "terminal_session",
+        toolId: "terminal",
         toolCallId: "pending-approval-2",
         reason: "needs more approval",
         inputHash: "hash-2",
@@ -315,7 +315,7 @@ test("resumeApprovedAgentRun updates assistant message when run returns waiting 
     const result = await resumeApprovedAgentRun(run.id);
 
     assert.equal(result.run?.status, "waiting_approval");
-    assert.equal(result.run?.selectedToolId, "terminal_session");
+    assert.equal(result.run?.selectedToolId, "terminal");
     assert.equal(persistAssistantMessageSpy.mock.calls.length, 1);
     assert.deepEqual(withoutEmittedAt(persistAssistantMessageSpy.mock.calls[0]?.[0]), {
       threadId: "thread-1",
@@ -365,7 +365,7 @@ test("resumeApprovedAgentRun updates assistant message when run returns waiting 
             id: "approval-2",
             runId: run.id,
             stepId: "approval-2",
-            toolId: "terminal_session",
+            toolId: "terminal",
             toolCallId: "pending-approval-2",
             reason: "needs more approval",
             inputHash: "hash-2",
@@ -656,7 +656,7 @@ test("resumeApprovedAgentRun blocks execution when approval toolCallId does not 
   }
 });
 
-test("resumeApprovedAgentRun blocks terminal_session when the approved inputHash belongs to a different command", async () => {
+test("resumeApprovedAgentRun keeps legacy terminal_session checkpoint identity when approval input mismatches", async () => {
   const approvedInput = {
     command: "dir",
     cwd: "D:\\workspace\\rag-demo",
@@ -682,6 +682,8 @@ test("resumeApprovedAgentRun blocks terminal_session when the approved inputHash
     },
   });
 
+  // This intentionally models a persisted run created before terminal became
+  // the canonical public Tool id. Resume must preserve its frozen legacy id.
   agentRunStore.update(run.id, {
     status: "waiting_approval",
     pendingApproval: {

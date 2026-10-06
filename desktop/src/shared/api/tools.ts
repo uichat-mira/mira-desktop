@@ -2,22 +2,6 @@ import { del, get, patch, post, put } from "@/shared/lib/request";
 import { getSession } from "@/shared/lib/sessionStorage";
 import { getApiBaseUrl } from "@/shared/platform/desktopRuntime";
 
-export interface ToolDefinition {
-  id: string;
-  name: string;
-  description: string;
-  version?: string;
-  category: "rag" | "system" | "tool";
-  tags: string[];
-  author?: string;
-  parameters?: Record<string, unknown>;
-  runtime?: Record<string, unknown>;
-}
-
-export function getTools() {
-  return get<ToolDefinition[]>("/tools");
-}
-
 export type ToolDomain =
   | "read"
   | "edit"
@@ -52,6 +36,12 @@ export type HarnessToolDefinition = {
     groupOrder: number;
     icon: string;
     defaultArgs?: Record<string, unknown>;
+    cases?: Array<{
+      id: string;
+      title: string;
+      description: string;
+      args: Record<string, unknown>;
+    }>;
   };
 };
 

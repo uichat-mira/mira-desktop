@@ -80,7 +80,7 @@ Registry
 
 ### Terminal
 
-- `terminal_session`
+- `terminal`
 
 这是完整 host shell / PTY runtime，不是 command sandbox，也不是第三方集成容器。
 

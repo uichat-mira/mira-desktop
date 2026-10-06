@@ -114,7 +114,7 @@ describe("chat file context", () => {
     expect(goalContext).toContain("canonical read");
     expect(goalContext).not.toContain("read_open");
     expect(goalContext).toContain(
-      "真实命令、进程、git、build 或 test 才需要 terminal_session",
+      "真实命令、进程、git、build 或 test 才需要 terminal",
     );
   });
 

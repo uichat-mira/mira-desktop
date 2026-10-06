@@ -84,7 +84,7 @@ UIChat.exe
   ├─ Electron main process
   ├─ preload bridge
   └─ bundled Node backend
-       └─ terminal_session -> bundled Terminal Dev Runtime + system PATH fallback
+       └─ terminal -> bundled Terminal Dev Runtime + system PATH fallback
 ```
 
 Tauri 形态下同样复用前端构建产物和 backend bundle，只是壳层实现不同。

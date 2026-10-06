@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, test } from "vitest";
+import { afterAll, test, vi } from "vitest";
 import { initializeAuthDatabase } from "@/db/auth.db";
 import { getSqlite } from "@/db/index.js";
 import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
@@ -9,13 +9,17 @@ import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import {
+  canonicalMessageCleanupRepository,
+  hostNotificationRepository,
   knowledgeBaseRepository,
   messageRepository,
   roleRepository,
   userRepository,
 } from "@/db/repositories";
+import { tailscaleRemoteAccessRepository } from "@/db/repositories/tailscale-remote-access.repository.js";
 import { threadService } from "./thread.service.js";
 import { privateAgentWorkspaceService } from "./agent-workspace.service.js";
+import { chatMediaService } from "./chat-media.service.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 
 const testDbPath = createTimestampedTestArtifactPath("db", "rag-demo-thread-service", ".sqlite");
@@ -81,6 +85,176 @@ test("messages table foreign key targets threads after initialization", () => {
   assert.ok(rows.length > 0);
   assert.equal(rows.some((row) => row.table === "threads"), true);
   assert.equal(rows.some((row) => row.table === "threads_legacy"), false);
+});
+
+test("notification outbox survives canonical message deletion for explicit expiry", () => {
+  const sqlite = getSqlite();
+  const pragma = sqlite.prepare("PRAGMA foreign_keys").get() as {
+    foreign_keys: number;
+  };
+  assert.equal(pragma.foreign_keys, 1);
+
+  const foreignKeys = sqlite
+    .prepare("PRAGMA foreign_key_list(notification_outbox)")
+    .all() as Array<{ table: string; on_delete: string }>;
+  assert.equal(
+    foreignKeys.some((row) => row.table === "messages"),
+    false,
+  );
+  assert.equal(
+    foreignKeys.some((row) => row.table === "host_notification_bindings"),
+    false,
+  );
+
+  const user = userRepository.create({
+    username: `fk-notify-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id });
+  const installationId = `installation-fk-${crypto.randomUUID()}`;
+  const deviceId = `device-fk-${crypto.randomUUID()}`;
+  tailscaleRemoteAccessRepository.createDevice({
+    id: deviceId,
+    userId: user.id,
+    name: "Phone",
+    platform: "android",
+    permissions: ["threads:read"],
+    tokenHash: `hash-${crypto.randomUUID()}`,
+    createdAt: new Date().toISOString(),
+  });
+  hostNotificationRepository.upsertBinding({
+    installationId,
+    originRemoteDeviceId: deviceId,
+    ownerUserId: user.id,
+    brokerBaseUrl: "https://push.example.test",
+    deliveryToken:
+      "delivery-fk-0123456789012345678901234567890123456789",
+    sourceScope: [thread.id],
+  });
+  const assistant = threadService.createMessage(thread.id, user.id, {
+    id: `assistant-fk-${crypto.randomUUID()}`,
+    role: "assistant",
+    content: "final",
+    parts: [{ type: "text", text: "final" }],
+  });
+
+  const event = hostNotificationRepository
+    .listPending()
+    .find((item) => item.canonicalMessageId === assistant.id);
+  const binding = hostNotificationRepository.getBinding(installationId);
+  assert.ok(event);
+  assert.ok(binding);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    true,
+  );
+
+  messageRepository.deleteById(assistant.id);
+
+  const after = sqlite
+    .prepare(
+      "SELECT COUNT(*) AS count FROM notification_outbox WHERE canonical_message_id = ?",
+    )
+    .get(assistant.id) as { count: number };
+  assert.equal(after.count, 1);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    false,
+  );
+
+  assert.equal(
+    hostNotificationRepository.markExpired(
+      event.id,
+      "Canonical message or binding authority is no longer eligible",
+    ),
+    true,
+  );
+  const expired = sqlite
+    .prepare(
+      "SELECT state FROM notification_outbox WHERE id = ?",
+    )
+    .get(event.id) as { state: string };
+  assert.equal(expired.state, "expired");
+});
+
+test("notification delivery authority follows current thread owner and paired-device revoke state", () => {
+  const owner = userRepository.create({
+    username: `notify-owner-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const otherOwner = userRepository.create({
+    username: `notify-other-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: owner.id });
+  const deviceId = `device-authority-${crypto.randomUUID()}`;
+  const installationId = `installation-authority-${crypto.randomUUID()}`;
+
+  tailscaleRemoteAccessRepository.createDevice({
+    id: deviceId,
+    userId: owner.id,
+    name: "Phone",
+    platform: "android",
+    permissions: ["threads:read"],
+    tokenHash: `hash-${crypto.randomUUID()}`,
+    createdAt: new Date().toISOString(),
+  });
+
+  hostNotificationRepository.upsertBinding({
+    installationId,
+    originRemoteDeviceId: deviceId,
+    ownerUserId: owner.id,
+    brokerBaseUrl: "https://push.example.test",
+    deliveryToken:
+      "delivery-authority-0123456789012345678901234567890123456789",
+    sourceScope: [thread.id],
+  });
+
+  const assistant = threadService.createMessage(thread.id, owner.id, {
+    id: `assistant-authority-${crypto.randomUUID()}`,
+    role: "assistant",
+    content: "final",
+    parts: [{ type: "text", text: "final" }],
+  });
+
+  const event = hostNotificationRepository
+    .listPending()
+    .find((item) => item.canonicalMessageId === assistant.id);
+  const binding = hostNotificationRepository.getBinding(installationId);
+  assert.ok(event);
+  assert.ok(binding);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    true,
+  );
+
+  getSqlite()
+    .prepare("UPDATE threads SET user_id = ? WHERE id = ?")
+    .run(otherOwner.id, thread.id);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    false,
+  );
+
+  getSqlite()
+    .prepare("UPDATE threads SET user_id = ? WHERE id = ?")
+    .run(owner.id, thread.id);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    true,
+  );
+
+  tailscaleRemoteAccessRepository.revokeDevice(deviceId, owner.id);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    false,
+  );
 });
 
 test("createChatWorkspace validates workspace root paths", () => {
@@ -211,6 +385,28 @@ test("updateThread stores and clears context summary", () => {
   });
   assert.equal(cleared?.contextSummary, null);
   assert.equal(cleared?.contextSummaryUpdatedAt, null);
+});
+
+test("thread summary lookup enforces the requested owner", () => {
+  const owner = userRepository.create({
+    username: `thread-owner-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const otherUser = userRepository.create({
+    username: `thread-other-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: owner.id });
+
+  assert.ok(threadService.getThreadSummaryById(thread.id, owner.id));
+  assert.equal(
+    threadService.getThreadSummaryById(thread.id, otherUser.id),
+    null,
+  );
 });
 
 test("thread summary responses do not expose legacy RAG flags", () => {
@@ -756,4 +952,480 @@ test("thread service updateThread with no changes returns current snapshot and d
   });
 
   assert.equal(threadService.deleteMessage(message.id, user.id), true);
+});
+
+
+const createNotificationThreadFixture = () => {
+  const user = userRepository.create({
+    username: `notify-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id });
+  const installationId = `installation-${crypto.randomUUID()}`;
+  hostNotificationRepository.upsertBinding({
+    installationId,
+    originRemoteDeviceId: `device-${crypto.randomUUID()}`,
+    ownerUserId: user.id,
+    brokerBaseUrl: "https://push.example.test",
+    deliveryToken: `delivery-${crypto.randomUUID()}-01234567890123456789012345678901`,
+    sourceScope: [thread.id],
+  });
+  return { user, thread, installationId };
+};
+
+const installOutboxInsertFailureTrigger = () => {
+  const sqlite = getSqlite();
+  sqlite.exec(`
+    CREATE TRIGGER fail_notification_outbox_insert
+    BEFORE INSERT ON notification_outbox
+    BEGIN
+      SELECT RAISE(ABORT, 'injected notification outbox failure');
+    END;
+  `);
+  return () => {
+    sqlite.exec("DROP TRIGGER IF EXISTS fail_notification_outbox_insert");
+  };
+};
+
+test("canonical assistant insert atomically creates one notification outbox row", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-${crypto.randomUUID()}`;
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "ordinary final reply",
+    parts: [{ type: "text", text: "ordinary final reply" }],
+  });
+
+  const rows = getSqlite()
+    .prepare(
+      `SELECT installation_id, canonical_message_id, source_id,
+              eligibility_event, state
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .all(installationId, assistantMessageId) as Array<Record<string, unknown>>;
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.canonical_message_id, assistantMessageId);
+  assert.equal(rows[0]?.source_id, thread.id);
+  assert.equal(rows[0]?.eligibility_event, "final_transition_first_seen");
+  assert.equal(rows[0]?.state, "pending");
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "ordinary final reply with refreshed metadata",
+    parts: [
+      { type: "text", text: "ordinary final reply with refreshed metadata" },
+    ],
+  });
+
+  const count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 1);
+});
+
+test("corrupt delivery token does not block canonical Assistant persistence", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-token-${crypto.randomUUID()}`;
+
+  getSqlite()
+    .prepare(
+      "UPDATE host_notification_bindings SET delivery_token_encrypted = ? WHERE installation_id = ?",
+    )
+    .run("bad.bad.bad", installationId);
+
+  const created = threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "final reply still persists",
+    parts: [{ type: "text", text: "final reply still persists" }],
+  });
+
+  assert.equal(created.id, assistantMessageId);
+  const outbox = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(outbox.count, 1);
+});
+
+test("Agent running to completed produces one outbox event while waiting approval does not", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-agent-${crypto.randomUUID()}`;
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "Agent 正在运行…",
+    parts: [{ type: "text", text: "Agent 正在运行…" }],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "等待审批",
+    parts: [{ type: "text", text: "等待审批" }],
+    metadata: { agent: { status: "waiting_approval" } },
+    preserveDescendants: true,
+  });
+
+  let count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 0);
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "等待审批",
+    parts: [{ type: "text", text: "等待审批" }],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "批准后的最终答案",
+    parts: [{ type: "text", text: "批准后的最终答案" }],
+    metadata: { agent: { status: "completed" } },
+    preserveDescendants: true,
+  });
+
+  count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 1);
+});
+
+test("metadata-only completion transition enqueues the canonical assistant once", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-metadata-${crypto.randomUUID()}`;
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "final text already persisted",
+    parts: [{ type: "text", text: "final text already persisted" }],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+
+  let count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 0);
+
+  const completed = threadService.updateMessageMetadata(
+    thread.id,
+    assistantMessageId,
+    user.id,
+    { agent: { status: "completed" } },
+  );
+  assert.equal(
+    (completed?.metadata.agent as { status?: string } | undefined)?.status,
+    "completed",
+  );
+
+  count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 1);
+
+  threadService.updateMessageMetadata(
+    thread.id,
+    assistantMessageId,
+    user.id,
+    { agent: { status: "completed" }, refreshed: true },
+  );
+
+  count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 1);
+});
+
+test("notification outbox failure rolls back the canonical assistant message", () => {
+  const { user, thread } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-rollback-${crypto.randomUUID()}`;
+
+  const removeFailureTrigger = installOutboxInsertFailureTrigger();
+  try {
+    assert.throws(
+      () =>
+        threadService.createMessage(thread.id, user.id, {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "must roll back with outbox",
+          parts: [{ type: "text", text: "must roll back with outbox" }],
+        }),
+      /injected notification outbox failure/,
+    );
+
+    assert.equal(messageRepository.findById(assistantMessageId), undefined);
+    const outbox = getSqlite()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM notification_outbox WHERE canonical_message_id = ?",
+      )
+      .get(assistantMessageId) as { count: number };
+    assert.equal(outbox.count, 0);
+  } finally {
+    removeFailureTrigger();
+  }
+});
+
+test("notification failure leaves existing message descendants and media cleanup untouched", () => {
+  const { user, thread } = createNotificationThreadFixture();
+  const parent = threadService.createMessage(thread.id, user.id, {
+    id: `user-parent-${crypto.randomUUID()}`,
+    role: "user",
+    content: "parent",
+    parts: [{ type: "text", text: "parent" }],
+  });
+  const assistantMessageId = `assistant-existing-${crypto.randomUUID()}`;
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    parentId: parent.id,
+    role: "assistant",
+    content: "Agent 正在运行…",
+    parts: [{ type: "text", text: "Agent 正在运行…" }],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+  const descendant = threadService.createMessage(thread.id, user.id, {
+    id: `user-descendant-${crypto.randomUUID()}`,
+    parentId: assistantMessageId,
+    role: "user",
+    content: "keep me",
+    parts: [{ type: "text", text: "keep me" }],
+  });
+
+  const removeFailureTrigger = installOutboxInsertFailureTrigger();
+  const cleanupSpy = vi.spyOn(chatMediaService, "removeCleanupSnapshot");
+  try {
+    assert.throws(
+      () =>
+        threadService.createMessage(thread.id, user.id, {
+          id: assistantMessageId,
+          parentId: parent.id,
+          role: "assistant",
+          content: "最终答案",
+          parts: [{ type: "text", text: "最终答案" }],
+          metadata: { agent: { status: "completed" } },
+        }),
+      /injected notification outbox failure/,
+    );
+
+    const persisted = threadService.getMessageById(assistantMessageId, user.id);
+    assert.equal(persisted?.content, "Agent 正在运行…");
+    assert.equal(
+      (persisted?.metadata.agent as { status?: string } | undefined)?.status,
+      "running",
+    );
+    assert.equal(
+      threadService.getMessageById(descendant.id, user.id)?.content,
+      "keep me",
+    );
+    assert.equal(cleanupSpy.mock.calls.length, 0);
+  } finally {
+    cleanupSpy.mockRestore();
+    removeFailureTrigger();
+  }
+});
+
+test("cleanup repository quarantines malformed pending payloads without blocking valid jobs", () => {
+  const sqlite = getSqlite();
+  const now = new Date().toISOString();
+  const malformedId = `cleanup-malformed-${crypto.randomUUID()}`;
+
+  sqlite
+    .prepare(
+      `INSERT INTO canonical_message_cleanup_jobs (
+        id, payload_json, state, attempt_count, next_attempt_at,
+        last_error, created_at, updated_at
+      ) VALUES (?, ?, 'pending', 0, ?, NULL, ?, ?)`,
+    )
+    .run(malformedId, "{not-json", now, now, now);
+
+  const validJob = canonicalMessageCleanupRepository.enqueue(
+    {
+      media: [],
+      attachmentParts: [{ type: "file", data: "/attachments/keep-going.txt" }],
+    },
+    now,
+  );
+  assert.ok(validJob);
+
+  try {
+    const jobs = canonicalMessageCleanupRepository.listPending(now, 100);
+    assert.equal(jobs.some((job) => job.id === validJob.id), true);
+
+    const malformed = sqlite
+      .prepare(
+        `SELECT state, last_error
+         FROM canonical_message_cleanup_jobs
+         WHERE id = ?`,
+      )
+      .get(malformedId) as
+      | { state: string; last_error: string | null }
+      | undefined;
+    assert.equal(malformed?.state, "failed");
+    assert.match(
+      malformed?.last_error ?? "",
+      /Stored canonical cleanup payload is invalid/,
+    );
+  } finally {
+    sqlite
+      .prepare(
+        "DELETE FROM canonical_message_cleanup_jobs WHERE id IN (?, ?)",
+      )
+      .run(malformedId, validJob.id);
+  }
+});
+
+test("post-commit cleanup failure stays off the canonical request path and is journaled for retry", async () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-cleanup-${crypto.randomUUID()}`;
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "Agent 正在运行…",
+    parts: [
+      { type: "text", text: "Agent 正在运行…" },
+      {
+        type: "file",
+        data: "/attachments/old-file.txt",
+        filename: "old-file.txt",
+        mimeType: "text/plain",
+      },
+    ],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+
+  const cleanupSpy = vi
+    .spyOn(chatMediaService, "removeCleanupSnapshot")
+    .mockImplementation(() => {
+      throw new Error("injected cleanup failure");
+    });
+
+  try {
+    const completed = threadService.createMessage(thread.id, user.id, {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "最终答案",
+      parts: [{ type: "text", text: "最终答案" }],
+      metadata: { agent: { status: "completed" } },
+      preserveDescendants: true,
+    });
+
+    assert.equal(completed.content, "最终答案");
+    assert.equal(
+      (completed.metadata.agent as { status?: string } | undefined)?.status,
+      "completed",
+    );
+    assert.equal(cleanupSpy.mock.calls.length, 0);
+
+    const outbox = getSqlite()
+      .prepare(
+        `SELECT state
+         FROM notification_outbox
+         WHERE installation_id = ? AND canonical_message_id = ?`,
+      )
+      .get(installationId, assistantMessageId) as { state: string } | undefined;
+    assert.equal(outbox?.state, "pending");
+
+    let cleanupJob = getSqlite()
+      .prepare(
+        `SELECT state, attempt_count, last_error
+         FROM canonical_message_cleanup_jobs
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get() as
+      | {
+          state: string;
+          attempt_count: number;
+          last_error: string | null;
+        }
+      | undefined;
+
+    assert.ok(cleanupJob);
+    assert.equal(cleanupJob.state, "pending");
+    assert.equal(cleanupJob.attempt_count, 0);
+    assert.equal(cleanupJob.last_error, null);
+
+    await Promise.resolve();
+
+    assert.equal(cleanupSpy.mock.calls.length, 1);
+    cleanupJob = getSqlite()
+      .prepare(
+        `SELECT state, attempt_count, last_error
+         FROM canonical_message_cleanup_jobs
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get() as
+      | {
+          state: string;
+          attempt_count: number;
+          last_error: string | null;
+        }
+      | undefined;
+
+    assert.ok(cleanupJob);
+    assert.equal(cleanupJob.state, "pending");
+    assert.equal(cleanupJob.attempt_count, 1);
+    assert.match(cleanupJob.last_error ?? "", /injected cleanup failure/);
+  } finally {
+    cleanupSpy.mockRestore();
+  }
+});
+
+test("notification outbox stores identity only and never persists Assistant text", () => {
+  const columns = getSqlite()
+    .prepare("PRAGMA table_info(notification_outbox)")
+    .all() as Array<{ name: string }>;
+
+  const names = new Set(columns.map((column) => column.name));
+  assert.equal(names.has("content"), false);
+  assert.equal(names.has("body"), false);
+  assert.equal(names.has("prompt"), false);
+  assert.equal(names.has("tool_output"), false);
 });

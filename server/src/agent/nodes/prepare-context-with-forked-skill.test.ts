@@ -83,13 +83,13 @@ describe("prepareContextWithForkedSkillAgentNode", () => {
       toolExposure: {
         exposedTools: [
           "read",
-          "terminal_session",
+          "terminal",
           "codebase_explore",
           "edit",
         ],
         toolMeta: [
           { toolId: "read", title: "Read", description: "read" },
-          { toolId: "terminal_session", title: "Terminal", description: "run" },
+          { toolId: "terminal", title: "Terminal", description: "run" },
           { toolId: "codebase_explore", title: "Explore", description: "explore" },
           { toolId: "edit", title: "Edit", description: "edit" },
         ],

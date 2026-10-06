@@ -37,7 +37,7 @@ test("createPersistedChatStream emits tool lifecycle events before the final ans
       await emitToolEvent({
         toolName: "web_search",
         status: "requested",
-        input: { query: "hello" },
+        input: { queries: ["hello"] },
       });
       await emitToolEvent({
         toolName: "web_search",

@@ -333,6 +333,62 @@ export default function CapabilitiesPage() {
               </div>
             </section>
 
+            {selectedTool.id === "terminal" && capabilities.terminalSessionId ? (
+              <section className="flex flex-wrap items-center justify-between gap-3 rounded-ui-control border border-border bg-surface-secondary px-3 py-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-text-secondary">
+                  <span>session :: {capabilities.terminalSessionId}</span>
+                  {capabilities.terminalSummary?.state ? (
+                    <span>state :: {capabilities.terminalSummary.state}</span>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={
+                      capabilities.isSelectionLocked ||
+                      !capabilities.terminalContinuation ||
+                      capabilities.terminalSummary?.continuationAvailable === false
+                    }
+                    onClick={() => {
+                      setResultConsoleOpen(true);
+                      void capabilities.runTerminalContinuation();
+                    }}
+                  >
+                    {t("settings.development.capabilities.actions.continueOutput")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={
+                      capabilities.isSelectionLocked ||
+                      capabilities.terminalSummary?.state === "cancelled"
+                    }
+                    onClick={() => {
+                      setResultConsoleOpen(true);
+                      void capabilities.runTerminalStatus();
+                    }}
+                  >
+                    {t("settings.development.capabilities.actions.inspectStatus")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger-outline"
+                    disabled={
+                      capabilities.isSelectionLocked ||
+                      capabilities.terminalSummary?.state === "cancelled"
+                    }
+                    onClick={() => {
+                      setResultConsoleOpen(true);
+                      void capabilities.runTerminalStop();
+                    }}
+                  >
+                    {t("settings.development.capabilities.actions.stopTerminal")}
+                  </Button>
+                </div>
+              </section>
+            ) : null}
+
           </div>
 
           <ToolRunConsole

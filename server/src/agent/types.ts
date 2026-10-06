@@ -278,15 +278,31 @@ export interface AgentReadLocateEvidenceData {
   truncated: boolean;
 }
 
-export interface AgentWebSearchEvidenceData {
+export type AgentWebSearchEvidenceData = {
   kind: "web_search";
-  query: string;
   resultCount: number;
   topFindings: string[];
   citationsPreview: Array<{
     title: string;
     link: string;
   }>;
+} & (
+  | { queries: string[]; query?: never }
+  | { query: string; queries?: never }
+);
+
+export interface AgentWebFetchEvidenceData {
+  kind: "web_fetch";
+  url: string;
+  finalUrl: string;
+  status: number;
+  contentType?: string;
+  contentKind: string;
+  title?: string;
+  byteLength: number;
+  truncated: boolean;
+  reason?: string;
+  contentPreview: string;
 }
 
 export type AgentEvidenceResolution =
@@ -310,6 +326,17 @@ export interface AgentTerminalSessionEvidenceData {
   violations: string[];
   outputInterpretable: boolean;
   unreadableReason?: string;
+  continuationId?: string;
+  continuationAvailable?: boolean;
+  outputOffset?: number;
+  outputEndOffset?: number;
+  nextOutputOffset?: number;
+  outputBytesAvailable?: number;
+  outputLimitBytes?: number;
+  commandCompleted?: boolean;
+  state?: "running" | "completed" | "failed" | "cancelled";
+  cleanupCompleted?: boolean;
+  operation?: "status" | "stop";
 }
 
 export interface AgentRetrievalEvidenceData {
@@ -410,6 +437,7 @@ export type AgentEvidenceSummaryData =
   | AgentGrepEvidenceData
   | AgentReadLocateEvidenceData
   | AgentWebSearchEvidenceData
+  | AgentWebFetchEvidenceData
   | AgentTerminalSessionEvidenceData
   | AgentRetrievalEvidenceData
   | AgentObservationEvidenceData

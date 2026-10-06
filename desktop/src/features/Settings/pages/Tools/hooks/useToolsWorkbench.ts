@@ -7,10 +7,12 @@ import {
   getMcpTools,
   getMcpWebSearchConfig,
   getMcpWorkspaceSelection,
+  resolveMcpInvocationApproval,
   saveMcpWebSearchConfig,
   selectMcpWorkspaceRoot,
   type HarnessToolDefinition,
   type ToolArtifact,
+  type ToolInvocation,
   type ToolInvocationEvent,
   type ToolTrace,
 } from "@/shared/api/tools";
@@ -81,9 +83,17 @@ export function useToolsWorkbench(
   const [runError, setRunError] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<
     "idle" | "completed" | "failed" | "cancelled" | "awaiting_approval"
-  >(
-    "idle",
-  );
+  >("idle");
+  const [pendingApproval, setPendingApproval] = useState<{
+    invocationId: string;
+    toolId: string;
+    args: Record<string, unknown>;
+  } | null>(null);
+  const [terminalContinuation, setTerminalContinuation] = useState<{
+    continuationId: string;
+    nextOutputOffset: number;
+    outputLimitBytes?: number;
+  } | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -201,6 +211,23 @@ export function useToolsWorkbench(
     setArtifacts([]);
     setRunError(null);
     setRunStatus("idle");
+    setPendingApproval(null);
+  };
+
+  const rememberTerminalContinuation = (value: unknown) => {
+    const summary = getTerminalResultSummary(value);
+    if (
+      summary?.continuationId &&
+      typeof summary.nextOutputOffset === "number"
+    ) {
+      setTerminalContinuation({
+        continuationId: summary.continuationId,
+        nextOutputOffset: summary.nextOutputOffset,
+        ...(summary.outputLimitBytes
+          ? { outputLimitBytes: summary.outputLimitBytes }
+          : {}),
+      });
+    }
   };
 
   const appendEvent = (event: ToolInvocationEvent) => {
@@ -212,6 +239,7 @@ export function useToolsWorkbench(
 
     if (event.type === "invocation:result") {
       setResult(event.result);
+      rememberTerminalContinuation(event.result);
     }
 
     if (event.type === "invocation:error") {
@@ -230,6 +258,7 @@ export function useToolsWorkbench(
   };
 
   const selectTool = (tool: WorkbenchToolDefinition) => {
+    setTerminalContinuation(null);
     setSelectedToolId(tool.id);
     setActiveGroupId(tool.workbench.groupId);
     setArgsDraft(buildToolDraft(tool));
@@ -260,7 +289,63 @@ export function useToolsWorkbench(
     }
   };
 
-  const runSelectedTool = async () => {
+  const applyResolvedInvocation = async (invocation: ToolInvocation) => {
+    setResult(invocation.result ?? null);
+    rememberTerminalContinuation(invocation.result);
+    setArtifacts(invocation.artifacts ?? []);
+    setRunError(invocation.error?.message ?? null);
+
+    if (
+      invocation.status === "completed" ||
+      invocation.status === "failed" ||
+      invocation.status === "cancelled" ||
+      invocation.status === "awaiting_approval"
+    ) {
+      setRunStatus(invocation.status);
+    }
+
+    const at = new Date().toISOString();
+    const syntheticEvents: ToolInvocationEvent[] = [
+      ...(invocation.artifacts ?? []).map(
+        (artifact): ToolInvocationEvent => ({
+          type: "invocation:artifact",
+          invocationId: invocation.id,
+          artifact,
+          at,
+        }),
+      ),
+      ...(invocation.result !== undefined
+        ? [
+            {
+              type: "invocation:result" as const,
+              invocationId: invocation.id,
+              result: invocation.result,
+              at,
+            },
+          ]
+        : []),
+      ...(invocation.status === "completed" ||
+      invocation.status === "failed" ||
+      invocation.status === "cancelled"
+        ? [
+            {
+              type: "invocation:finish" as const,
+              invocationId: invocation.id,
+              status: invocation.status,
+              at,
+            },
+          ]
+        : []),
+    ];
+    setEvents((current) => [...current, ...syntheticEvents]);
+
+    const nextTrace = await getMcpInvocationTrace(invocation.id).catch(() => null);
+    if (nextTrace) {
+      setTrace(nextTrace);
+    }
+  };
+
+  const executeToolArgs = async (args: Record<string, unknown>) => {
     if (!selectedTool) {
       message.error(t("settings.tools.messages.selectToolFirst"));
       return;
@@ -271,21 +356,6 @@ export function useToolsWorkbench(
       return;
     }
 
-    let parsedArgs: Record<string, unknown> = {};
-    try {
-      parsedArgs = JSON.parse(argsDraft) as Record<string, unknown>;
-    } catch {
-      message.error(t("settings.tools.messages.invalidArgsJson"));
-      return;
-    }
-
-    if (selectedTool.id === "web_search") {
-      parsedArgs = {
-        ...parsedArgs,
-        maxResults: normalizeWebSearchMaxResults(webSearchConfig.maxResults),
-      };
-    }
-
     resetRunState();
     setIsRunning(true);
     try {
@@ -293,7 +363,7 @@ export function useToolsWorkbench(
       await executeMcpInvocationStream(
         {
           toolId: selectedTool.id,
-          args: parsedArgs,
+          args,
         },
         async (event) => {
           if (event.type === "invocation:done") {
@@ -301,6 +371,13 @@ export function useToolsWorkbench(
           }
           if (!invocationId && event.type === "invocation:start") {
             invocationId = event.invocationId;
+          }
+          if (event.type === "invocation:approval_required" && invocationId) {
+            setPendingApproval({
+              invocationId,
+              toolId: selectedTool.id,
+              args,
+            });
           }
           appendEvent(event);
         },
@@ -319,7 +396,97 @@ export function useToolsWorkbench(
     }
   };
 
+  const runSelectedTool = async () => {
+    if (!selectedTool) {
+      message.error(t("settings.tools.messages.selectToolFirst"));
+      return;
+    }
+
+    let parsedArgs: Record<string, unknown> = {};
+    try {
+      parsedArgs = JSON.parse(argsDraft) as Record<string, unknown>;
+    } catch {
+      message.error(t("settings.tools.messages.invalidArgsJson"));
+      return;
+    }
+
+    if (selectedTool.id === "web_search") {
+      parsedArgs = {
+        ...parsedArgs,
+        maxResults: normalizeWebSearchMaxResults(webSearchConfig.maxResults),
+      };
+    }
+
+    if (selectedTool.id === "terminal") {
+      setTerminalContinuation(null);
+    }
+    await executeToolArgs(parsedArgs);
+  };
+
+  const resolvePendingApproval = async (decision: "approved" | "rejected") => {
+    if (!pendingApproval) {
+      return;
+    }
+
+    setIsRunning(true);
+    try {
+      const resolution = await resolveMcpInvocationApproval(
+        pendingApproval.invocationId,
+        {
+          decision,
+          toolId: pendingApproval.toolId,
+          args: pendingApproval.args,
+        },
+      );
+      setPendingApproval(null);
+      await applyResolvedInvocation(
+        resolution.resumedInvocation ?? resolution.originalInvocation,
+      );
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : t("settings.tools.messages.approvalFailed"),
+      );
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const runTerminalArgs = async (args: Record<string, unknown>) => {
+    setArgsDraft(JSON.stringify(args, null, 2));
+    await executeToolArgs(args);
+  };
+
+  const runTerminalContinuation = async () => {
+    if (!terminalContinuation) return;
+    await runTerminalArgs({
+      continuationId: terminalContinuation.continuationId,
+      outputOffset: terminalContinuation.nextOutputOffset,
+      ...(terminalContinuation.outputLimitBytes
+        ? { outputLimitBytes: terminalContinuation.outputLimitBytes }
+        : {}),
+    });
+  };
+
+  const runTerminalStatus = async () => {
+    if (!terminalSummary?.sessionId) return;
+    await runTerminalArgs({
+      operation: "status",
+      sessionId: terminalSummary.sessionId,
+    });
+  };
+
+  const runTerminalStop = async () => {
+    if (!terminalSummary?.sessionId) return;
+    await runTerminalArgs({
+      operation: "stop",
+      sessionId: terminalSummary.sessionId,
+    });
+  };
+
   const selectGroup = (groupId: ToolWorkbenchGroupId) => {
+    setTerminalContinuation(null);
     setActiveGroupId(groupId);
     const nextTool = tools.find((tool) => tool.workbench.groupId === groupId) ?? null;
     if (nextTool) {
@@ -346,6 +513,8 @@ export function useToolsWorkbench(
     isWorkspaceLoading,
     primaryArtifact,
     result,
+    pendingApproval,
+    terminalContinuation,
     runError,
     runStatus,
     selectedTool,
@@ -364,8 +533,17 @@ export function useToolsWorkbench(
     setWebSearchConfig,
     setWorkspaceRootInput,
     runSelectedTool,
+    runTerminalContinuation,
+    runTerminalStatus,
+    runTerminalStop,
+    resolvePendingApproval,
     selectGroup,
     selectTool,
+    selectCase: (args: Record<string, unknown>) => {
+      setTerminalContinuation(null);
+      setArgsDraft(JSON.stringify(args, null, 2));
+      resetRunState();
+    },
     updateWorkspaceRoot,
     saveWebSearchConfig: async () => {
       const saved = await saveMcpWebSearchConfig(webSearchConfig);

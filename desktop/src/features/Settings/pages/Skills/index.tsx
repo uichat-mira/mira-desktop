@@ -151,7 +151,7 @@ const METADATA_TOOL_KEYS: Record<string, string> = {
   list: "settings.skills.metadata.values.tools.list",
   glob: "settings.skills.metadata.values.tools.glob",
   grep: "settings.skills.metadata.values.tools.grep",
-  terminal_session: "settings.skills.metadata.values.tools.terminalSession",
+  terminal: "settings.skills.metadata.values.tools.terminalSession",
   github_repository: "settings.skills.metadata.values.tools.githubRepository",
   github_pull_request: "settings.skills.metadata.values.tools.githubPullRequest",
   github_actions: "settings.skills.metadata.values.tools.githubActions",

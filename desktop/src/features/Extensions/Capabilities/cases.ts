@@ -337,6 +337,61 @@ export const nativeCapabilityAcceptanceCases: CapabilityAcceptanceCase[] = [
     fixture: FILE_MUTATION_FIXTURE,
   },
   {
+    id: "terminal-short-success",
+    toolId: "terminal",
+    title: "短命令成功",
+    purpose: "确认 canonical terminal 能执行跨平台短命令并返回稳定输出。",
+    expectedObservation: "Awaiting Approval；批准后 Completed，并返回 MIRA_TERMINAL_OK。",
+    args: {
+      command: "node -e \"process.stdout.write('MIRA_TERMINAL_OK')\"",
+    },
+    group: "Terminal",
+    workspace: "managed",
+  },
+  {
+    id: "terminal-short-failure",
+    toolId: "terminal",
+    title: "短命令失败",
+    purpose: "确认 canonical terminal 区分调用完成与命令失败，保留非零退出码。",
+    expectedObservation:
+      "Awaiting Approval；批准后 Invocation=Completed，但命令证据明确 exitCode=7、processCompleted=true、commandSucceeded=false。",
+    args: {
+      command: "node -e \"process.exit(7)\"",
+    },
+    group: "Terminal",
+    workspace: "managed",
+  },
+  {
+    id: "terminal-persistent-start",
+    toolId: "terminal",
+    title: "持久任务",
+    purpose: "启动持续输出的受控任务，并在同一会话上继续读取、查看状态与停止。",
+    expectedObservation:
+      "Awaiting Approval；批准后 state=running 且 sessionId 稳定，Continue 不重跑命令，Stop 返回 cancelled + cleanupCompleted。",
+    args: {
+      command:
+        "node -e \"let i=0; setInterval(()=>console.log('MIRA_TICK:'+ ++i),250)\"",
+      sessionMode: "persistent",
+      timeoutMs: 700,
+      outputLimitBytes: 4096,
+    },
+    group: "Terminal",
+    workspace: "managed",
+  },
+  {
+    id: "terminal-stale-session",
+    toolId: "terminal",
+    title: "失效会话",
+    purpose: "确认 unknown/stale sessionId 明确失败，不静默创建新会话。",
+    expectedObservation: "Failed；明确返回 unknown/stale session 错误，且没有新 session。",
+    args: {
+      operation: "status",
+      sessionId: "tool-lab-stale-session",
+    },
+    group: "Terminal",
+    workspace: "managed",
+  },
+  {
     id: "core-read-controlled-failure",
     toolId: "read",
     title: "读取不存在文件",
@@ -362,6 +417,62 @@ export const nativeCapabilityAcceptanceCases: CapabilityAcceptanceCase[] = [
     group: "Native",
     workspace: "managed",
     fixture: "platform-approval-boundary",
+  },
+  {
+    id: "web-search-multi-query",
+    toolId: "web_search",
+    title: "多查询网络搜索",
+    purpose:
+      "确认 web_search 在真实 Harness 中执行 1–4 条查询并合并去重，不向模型暴露 provider。",
+    expectedObservation:
+      "Completed；返回合并去重后的结果（需已配置 Tavily/SearXNG）；未配置时明确报 provider 不可用，而不是空成功。",
+    args: {
+      queries: ["mira desktop", "electron agent runtime"],
+      maxResults: 5,
+    },
+    group: "Universal Web",
+    workspace: "none",
+  },
+  {
+    id: "web-fetch-known-url",
+    toolId: "web_fetch",
+    title: "抓取已知 URL",
+    purpose:
+      "确认 web_fetch 对已知公网 URL 返回有界可读正文与 retrieval metadata。",
+    expectedObservation:
+      "Completed；kind 为 html 或 text，并返回 url/finalUrl/status/contentType/truncated；页面依赖 JS/登录时返回 browser_required。",
+    args: {
+      url: "https://example.com/",
+    },
+    group: "Universal Web",
+    workspace: "none",
+  },
+  {
+    id: "web-fetch-blocked-private-destination",
+    toolId: "web_fetch",
+    title: "拒绝私网目标",
+    purpose:
+      "确认 SSRF 防护在真实 Runtime 中拒绝私网 / loopback 目标，而不是发起请求。",
+    expectedObservation:
+      "Failed；结构化 blocked，明确目标不被允许，且不发起真实请求。",
+    args: {
+      url: "http://127.0.0.1/",
+    },
+    group: "Universal Web",
+    workspace: "none",
+  },
+  {
+    id: "web-fetch-blocked-invalid-scheme",
+    toolId: "web_fetch",
+    title: "拒绝非 http(s) 协议",
+    purpose:
+      "确认 web_fetch 只接受公网 http/https，其他协议在请求前被拒绝。",
+    expectedObservation: "Failed；结构化 blocked，明确仅支持 http/https。",
+    args: {
+      url: "file:///etc/passwd",
+    },
+    group: "Universal Web",
+    workspace: "none",
   },
 ];
 

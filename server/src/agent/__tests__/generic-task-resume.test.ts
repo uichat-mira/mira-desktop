@@ -10,7 +10,7 @@ import type { AgentToolCallRequest } from "../types.js";
 
 const createGenericPendingToolCall = () =>
   ({
-    toolId: "terminal_session",
+    toolId: "terminal",
     args: { command: "pnpm test" },
     inputHash: "hash-generic-task",
     source: "llm_tool_call",
@@ -25,7 +25,7 @@ const createGenericPendingToolCall = () =>
           execution: {
             allowedTools: [
               "read_open",
-              "terminal_session",
+              "terminal",
               GENERIC_TASK_DELEGATE_TOOL_ID,
             ],
           },
@@ -57,7 +57,7 @@ test("generic approval resume restores the frozen child tool ids", () => {
   assert.deepEqual(resumed.exposedTools, [
     "web_search",
     "read_open",
-    "terminal_session",
+    "terminal",
   ]);
   assert.equal(
     resumed.exposedTools.includes(GENERIC_TASK_DELEGATE_TOOL_ID),
@@ -93,7 +93,7 @@ test("delegated approval goes from Evidence directly to Approval", () => {
       id: "approval-generic-task",
       runId: "run-generic-task",
       stepId: `subagent:${GENERIC_TASK_SUBAGENT_SKILL_ID}`,
-      toolId: "terminal_session",
+      toolId: "terminal",
       reason: "Command execution requires approval.",
       createdAt: "2026-07-27T00:00:00.000Z",
     },

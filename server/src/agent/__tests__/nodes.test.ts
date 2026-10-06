@@ -72,7 +72,7 @@ const normalizedEvidence = (toolId: string, result: unknown) =>
     {
       id: toolId,
       source: "internal",
-      domain: toolId === "terminal_session" ? "terminal" : toolId === "edit_file" ? "edit" : toolId === "workspace_mutation" ? "edit" : "read",
+      domain: toolId === "terminal" ? "terminal" : toolId === "edit_file" ? "edit" : toolId === "workspace_mutation" ? "edit" : "read",
     },
     normalizeToolResult({ structuredContent: result }),
   );
@@ -866,7 +866,7 @@ test("generateNode leaves semantic wording to the model after Planner finalizati
     observations: [],
     toolExecutions: [
       {
-        toolId: "terminal_session",
+        toolId: "terminal",
         args: { command: "Get-Content README.md" },
         status: "completed",
         inputHash: "hash-terminal-garbled",
@@ -874,7 +874,7 @@ test("generateNode leaves semantic wording to the model after Planner finalizati
         summary: {
           source: "tool",
           status: "blocked",
-          toolId: "terminal_session",
+          toolId: "terminal",
           inputHash: "hash-terminal-garbled",
           actionTaken: 'Executed terminal command "Get-Content README.md".',
           keyFindings: ["stdout=锟斤拷锟斤拷", "stdoutEncoding=unknown"],
@@ -925,7 +925,7 @@ test("terminal evidence quality flags remain available to Generate without outpu
   const state = createBaseState("执行命令并说明中文输出是否可读");
   const execution = {
     toolCallId: "tool-call-real-terminal-evidence",
-    toolId: "terminal_session",
+    toolId: "terminal",
     inputHash: "hash-real-terminal-evidence",
     args: { command: "Get-Content README.md" },
     status: "completed" as const,
@@ -940,7 +940,7 @@ test("terminal evidence quality flags remain available to Generate without outpu
       truncated: false,
       binaryDetected: false,
     },
-    evidence: normalizedEvidence("terminal_session", {
+    evidence: normalizedEvidence("terminal", {
       command: "Get-Content README.md",
       exitCode: 0,
       stdout: "锟斤拷锟斤拷",
@@ -986,7 +986,7 @@ test("Generate does not become a second semantic judge over non-zero exit eviden
     observations: [],
     toolExecutions: [
       {
-        toolId: "terminal_session",
+        toolId: "terminal",
         args: { command: "pnpm test" },
         status: "completed",
         inputHash: "hash-terminal-nonzero",
@@ -994,7 +994,7 @@ test("Generate does not become a second semantic judge over non-zero exit eviden
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "terminal_session",
+          toolId: "terminal",
           inputHash: "hash-terminal-nonzero",
           actionTaken: 'Executed terminal command "pnpm test".',
           keyFindings: [

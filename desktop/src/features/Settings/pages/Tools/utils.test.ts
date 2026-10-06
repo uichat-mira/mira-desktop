@@ -79,6 +79,13 @@ describe("getTerminalResultSummary", () => {
       exitCode: 0,
       timedOut: false,
       stdout: "file.txt",
+      state: "running",
+      continuationId: "continuation-1",
+      continuationAvailable: true,
+      nextOutputOffset: 12,
+      outputBytesAvailable: 24,
+      outputLimitBytes: 12,
+      commandCompleted: false,
     });
 
     expect(result).toEqual({
@@ -88,6 +95,13 @@ describe("getTerminalResultSummary", () => {
       exitCode: 0,
       timedOut: false,
       stdout: "file.txt",
+      state: "running",
+      continuationId: "continuation-1",
+      continuationAvailable: true,
+      nextOutputOffset: 12,
+      outputBytesAvailable: 24,
+      outputLimitBytes: 12,
+      commandCompleted: false,
     });
   });
 
@@ -127,7 +141,7 @@ describe("buildToolDraft", () => {
     ["read", "{}"],
     ["read_list", "{}"],
     ["web_search", "{}"],
-    ["terminal_session", "{}"],
+    ["terminal", "{}"],
   ])("builds draft for %s", (id, expected) => {
     expect(buildToolDraft(createTool(id as HarnessToolDefinition["id"]))).toBe(expected);
   });
