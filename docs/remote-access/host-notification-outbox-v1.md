@@ -42,6 +42,13 @@ where v1 eligibilityEvent is `final_transition_first_seen`.
 
 If outbox evaluation/insertion fails, the canonical Assistant mutation rolls back.
 
+Branch-tail database deletion, canonical mutation, outbox enqueue, and any required
+filesystem/media cleanup journal entry are committed in the same SQLite transaction.
+Filesystem/media deletion itself runs from the durable
+`canonical_message_cleanup_jobs` journal after commit. A cleanup failure records
+`attempt_count`, `next_attempt_at`, and `last_error` and is retried by the
+Server lifecycle worker instead of creating an unowned partial-success state.
+
 Outbox rows contain identities/status only; Assistant text, prompt and tool output
 are not columns in the table or fields in the Broker event.
 
@@ -73,6 +80,9 @@ Threads owned by the paired device's owner user.
 The Host worker starts with Mira Server and drains pending durable outbox rows.
 
 - Broker event uses #267 identity-only event shape and stable outbox `id` as eventId.
+- Before each Broker POST, Host re-reads the canonical message and owning thread.
+  Missing/deleted/non-final canonical state, or an archived thread, expires the
+  outbox row without network delivery.
 - Host signs every event with its Ed25519 private key.
 - 2xx => delivered.
 - authorization/contract 4xx => final failure.
