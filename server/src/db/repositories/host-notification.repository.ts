@@ -108,7 +108,13 @@ const normalizeSourceScope = (sourceScope: string[]) =>
   ).sort();
 
 const parseSourceScope = (value: string) => {
-  const parsed = JSON.parse(value) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    throw new Error("Stored notification source scope is invalid");
+  }
+
   if (
     !Array.isArray(parsed) ||
     parsed.some((item) => typeof item !== "string")
