@@ -8,14 +8,11 @@ export const resolveWorkspaceEditFacadeForModel = (
     return "primitives";
   }
 
-  // Follow the mature OpenCode materialization principle: newer GPT/Codex
-  // model families get the compound patch facade, while GPT-4, OSS and
-  // unrelated model families keep the primitive edit vocabulary.
-  const patchFriendly =
-    model.includes("codex") ||
-    (model.includes("gpt-") &&
-      !model.includes("gpt-4") &&
-      !model.includes("oss"));
+  // Only opt in model identifiers that explicitly advertise Codex-style patch
+  // behavior. Unknown/general GPT model families stay on the primitive facade;
+  // a false negative preserves capability, while a false positive can expose a
+  // grammar the model was never validated to use.
+  const patchFriendly = model.includes("codex");
 
   return patchFriendly ? "apply_patch" : "primitives";
 };
