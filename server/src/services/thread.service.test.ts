@@ -1318,7 +1318,7 @@ test("cleanup repository quarantines malformed pending payloads without blocking
   }
 });
 
-test("post-commit cleanup failure is journaled for retry without corrupting canonical notification state", () => {
+test("post-commit cleanup failure stays off the canonical request path and is journaled for retry", async () => {
   const { user, thread, installationId } = createNotificationThreadFixture();
   const assistantMessageId = `assistant-cleanup-${crypto.randomUUID()}`;
 
@@ -1360,17 +1360,41 @@ test("post-commit cleanup failure is journaled for retry without corrupting cano
       (completed.metadata.agent as { status?: string } | undefined)?.status,
       "completed",
     );
+    assert.equal(cleanupSpy.mock.calls.length, 0);
 
     const outbox = getSqlite()
       .prepare(
-        `SELECT COUNT(*) AS count
+        `SELECT state
          FROM notification_outbox
          WHERE installation_id = ? AND canonical_message_id = ?`,
       )
-      .get(installationId, assistantMessageId) as { count: number };
-    assert.equal(outbox.count, 1);
+      .get(installationId, assistantMessageId) as { state: string } | undefined;
+    assert.equal(outbox?.state, "pending");
 
-    const cleanupJob = getSqlite()
+    let cleanupJob = getSqlite()
+      .prepare(
+        `SELECT state, attempt_count, last_error
+         FROM canonical_message_cleanup_jobs
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get() as
+      | {
+          state: string;
+          attempt_count: number;
+          last_error: string | null;
+        }
+      | undefined;
+
+    assert.ok(cleanupJob);
+    assert.equal(cleanupJob.state, "pending");
+    assert.equal(cleanupJob.attempt_count, 0);
+    assert.equal(cleanupJob.last_error, null);
+
+    await Promise.resolve();
+
+    assert.equal(cleanupSpy.mock.calls.length, 1);
+    cleanupJob = getSqlite()
       .prepare(
         `SELECT state, attempt_count, last_error
          FROM canonical_message_cleanup_jobs
