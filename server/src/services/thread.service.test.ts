@@ -113,9 +113,19 @@ test("notification outbox survives canonical message deletion for explicit expir
   });
   const thread = threadService.createThread({ userId: user.id });
   const installationId = `installation-fk-${crypto.randomUUID()}`;
+  const deviceId = `device-fk-${crypto.randomUUID()}`;
+  tailscaleRemoteAccessRepository.createDevice({
+    id: deviceId,
+    userId: user.id,
+    name: "Phone",
+    platform: "android",
+    permissions: ["threads:read"],
+    tokenHash: `hash-${crypto.randomUUID()}`,
+    createdAt: new Date().toISOString(),
+  });
   hostNotificationRepository.upsertBinding({
     installationId,
-    originRemoteDeviceId: "device-fk",
+    originRemoteDeviceId: deviceId,
     ownerUserId: user.id,
     brokerBaseUrl: "https://push.example.test",
     deliveryToken:
@@ -129,12 +139,16 @@ test("notification outbox survives canonical message deletion for explicit expir
     parts: [{ type: "text", text: "final" }],
   });
 
-  const before = sqlite
-    .prepare(
-      "SELECT COUNT(*) AS count FROM notification_outbox WHERE canonical_message_id = ?",
-    )
-    .get(assistant.id) as { count: number };
-  assert.equal(before.count, 1);
+  const event = hostNotificationRepository
+    .listPending()
+    .find((item) => item.canonicalMessageId === assistant.id);
+  const binding = hostNotificationRepository.getBinding(installationId);
+  assert.ok(event);
+  assert.ok(binding);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    true,
+  );
 
   messageRepository.deleteById(assistant.id);
 
@@ -144,6 +158,24 @@ test("notification outbox survives canonical message deletion for explicit expir
     )
     .get(assistant.id) as { count: number };
   assert.equal(after.count, 1);
+  assert.equal(
+    hostNotificationRepository.isCanonicalDeliveryEligible(event, binding),
+    false,
+  );
+
+  assert.equal(
+    hostNotificationRepository.markExpired(
+      event.id,
+      "Canonical message or binding authority is no longer eligible",
+    ),
+    true,
+  );
+  const expired = sqlite
+    .prepare(
+      "SELECT state FROM notification_outbox WHERE id = ?",
+    )
+    .get(event.id) as { state: string };
+  assert.equal(expired.state, "expired");
 });
 
 test("notification delivery authority follows current thread owner and paired-device revoke state", () => {
