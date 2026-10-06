@@ -916,7 +916,12 @@ export const threadService = {
           return next;
         })();
 
-        canonicalMessageCleanupService.drainOnce();
+        if (
+          cleanupPayload.media.length > 0 ||
+          cleanupPayload.attachmentParts.length > 0
+        ) {
+          canonicalMessageCleanupService.drainOnce();
+        }
         return updatedResponse;
       }
 
@@ -936,7 +941,12 @@ export const threadService = {
         threadRepository.updateById(threadId, {});
         canonicalMessageCleanupRepository.enqueue(cleanupPayload);
       })();
-      canonicalMessageCleanupService.drainOnce();
+      if (
+        cleanupPayload.media.length > 0 ||
+        cleanupPayload.attachmentParts.length > 0
+      ) {
+        canonicalMessageCleanupService.drainOnce();
+      }
       return toMessageResponse(existing);
     }
 
@@ -989,7 +999,12 @@ export const threadService = {
       return next;
     })();
 
-    canonicalMessageCleanupService.drainOnce();
+    if (
+      cleanupPayload.media.length > 0 ||
+      cleanupPayload.attachmentParts.length > 0
+    ) {
+      canonicalMessageCleanupService.drainOnce();
+    }
     return createdResponse;
   },
 
