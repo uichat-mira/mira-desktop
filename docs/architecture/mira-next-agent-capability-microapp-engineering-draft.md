@@ -153,7 +153,7 @@ Embedding / rerank 可以作为某些 search backend 的可选实现，但不再
 
 ### 3.5 已存在 Harness Capability Profile
 
-当前 `HarnessCapabilityProfile` 已把 concrete tools 组织成 Workspace Lookup、Web Research、Browser、Terminal 等能力面。
+当前 `HarnessCapabilityProfile` 已把 concrete tools 组织成 Workspace Lookup、Web Research、Browser、Terminal 等能力面。其中 **Web Research 是当前实现命名**；Mira Next 的目标 Capability 合同将其收口为更中性的 `web`，避免把多轮研究编排误塞进基础 Web 访问语义。
 
 它回答“怎样发现一组可执行工具”，不等于草案中的一级产品能力分类，也不等于授权模型。
 
@@ -514,7 +514,9 @@ Core Tool hardening 至少要固定：
 Universal Core
   filesystem primitives
   process execution
-  basic web access
+  web
+    -> web_search
+    -> web_fetch
 
 Context Core
   activated by current work context
@@ -531,6 +533,24 @@ Code / Work Workspace 是第一类明确的 Context Core。进入代码工作上
 其中 code graph 可以是 LSP、AST、semantic index、static analysis 等多种实现的组合，不要求暴露一个巨大的 `code_graph` 万能接口。Agent-facing surface 应优先保持“查定义、找引用、诊断、代码搜索”等可理解动作。
 
 Context Core 不可用时可以降级到 Universal Core，例如 `grep + read + bash`，但降级不应成为放弃代码语义能力的默认路径。
+
+Universal Web 的 Capability 合同固定为：
+
+```text
+web
+  -> web_search
+  -> web_fetch
+```
+
+这里的 `web` 表示**访问公开 Web 信息**，不是一个自动研究工作流：
+
+- 来源 / URL 尚未知时，披露并使用 `web_search` 做公开来源发现；
+- 已知具体公开 URL 时，披露并使用 `web_fetch` 获取与提取内容；
+- `news_search` 仍属于本地 News Hub，不与公开 Web 访问混同；
+- 登录态、点击、表单、交互和必须由浏览器渲染的页面继续属于 Browser capability family；
+- 多轮检索策略、交叉验证、来源综合、深度研究属于 Search Guide / Skill / Planner orchestration，可消费 `web`，但不进入 `web` Capability 本身。
+
+渐进式披露应先判断 `web` 是否相关且当前 Runtime 是否可用，再披露具体 Tool facade；Capability 名称本身不得暗示默认选择 `web_search`。
 
 #### 4.3 Protocol-neutral Tool Core
 
