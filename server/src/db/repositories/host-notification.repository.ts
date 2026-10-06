@@ -446,6 +446,20 @@ export const hostNotificationRepository = {
           now,
           now,
         );
+
+      getSqlite()
+        .prepare(
+          "DELETE FROM host_notification_binding_scopes WHERE installation_id = ?",
+        )
+        .run(input.installationId.trim());
+      const insertScope = getSqlite().prepare(
+        `INSERT INTO host_notification_binding_scopes (
+          installation_id, source_id
+        ) VALUES (?, ?)`,
+      );
+      for (const sourceId of sourceScope) {
+        insertScope.run(input.installationId.trim(), sourceId);
+      }
     })();
 
     const record = this.getBinding(input.installationId);
@@ -499,18 +513,19 @@ export const hostNotificationRepository = {
   ): HostNotificationBindingRecord[] {
     const rows = getSqlite()
       .prepare(
-        `SELECT installation_id, origin_remote_device_id, owner_user_id,
-                broker_base_url, delivery_token_encrypted,
-                source_scope_json, status, created_at, updated_at
-         FROM host_notification_bindings
-         WHERE status = 'active'
-         ORDER BY installation_id ASC`,
+        `SELECT b.installation_id, b.origin_remote_device_id, b.owner_user_id,
+                b.broker_base_url, b.delivery_token_encrypted,
+                b.source_scope_json, b.status, b.created_at, b.updated_at
+         FROM host_notification_bindings b
+         JOIN host_notification_binding_scopes s
+           ON s.installation_id = b.installation_id
+         WHERE b.status = 'active'
+           AND s.source_id = ?
+         ORDER BY b.installation_id ASC`,
       )
-      .all() as BindingRow[];
+      .all(sourceId) as BindingRow[];
 
-    return rows
-      .map(toBindingRecord)
-      .filter((binding) => binding.sourceScope.includes(sourceId));
+    return rows.map(toBindingRecord);
   },
 
   enqueueEligibleTransition(input: {
