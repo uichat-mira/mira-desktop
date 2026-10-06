@@ -1,21 +1,29 @@
 import { describe, expect, it } from "vitest";
+import { applyPatchTool } from "./apply-patch.tool.js";
 import { deleteTool } from "./delete.tool.js";
 import { editTool } from "./edit.tool.js";
 import { moveTool } from "./move.tool.js";
 import { writeTool } from "./write.tool.js";
 
 describe("canonical file mutation tool contracts", () => {
-  it("defines the Phase 2 public names without changing legacy tools", () => {
+  it("keeps the four canonical primitives and one compound facade", () => {
     expect([
       writeTool.definition.id,
       editTool.definition.id,
       moveTool.definition.id,
       deleteTool.definition.id,
     ]).toEqual(["write", "edit", "move", "delete"]);
+    expect(applyPatchTool.definition.id).toBe("apply_patch");
   });
 
-  it("keeps all four actions approval-bound and workspace-bound", () => {
-    for (const tool of [writeTool, editTool, moveTool, deleteTool]) {
+  it("keeps every mutation facade approval-bound and workspace-bound", () => {
+    for (const tool of [
+      writeTool,
+      editTool,
+      moveTool,
+      deleteTool,
+      applyPatchTool,
+    ]) {
       expect(tool.definition.domain).toBe("edit");
       expect(tool.definition.capabilities).toMatchObject({
         sideEffect: "local-write",
@@ -44,5 +52,8 @@ describe("canonical file mutation tool contracts", () => {
       "path",
       "recursive",
     ]);
+    expect(
+      Object.keys(applyPatchTool.definition.inputSchema.properties ?? {}),
+    ).toEqual(["patchText"]);
   });
 });

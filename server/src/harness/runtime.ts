@@ -6,6 +6,7 @@ import { writeTool } from "../mcp/tools/write.tool.js";
 import { editTool } from "../mcp/tools/edit.tool.js";
 import { moveTool } from "../mcp/tools/move.tool.js";
 import { deleteTool } from "../mcp/tools/delete.tool.js";
+import { applyPatchTool } from "../mcp/tools/apply-patch.tool.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
 import { globTool } from "../mcp/tools/glob.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
@@ -56,6 +57,7 @@ export const initializeHarnessRuntime = () => {
   registerTool(editTool);
   registerTool(moveTool);
   registerTool(deleteTool);
+  registerTool(applyPatchTool);
 
   // WenShu document types are exposed as Skills, not duplicate Harness tools.
   // Keep runtime-pack readiness observable while ensuring legacy office_* wrappers

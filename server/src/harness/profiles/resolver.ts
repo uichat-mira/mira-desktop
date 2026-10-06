@@ -48,7 +48,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
       "Modify workspace files or path identity when governed local file mutation is relevant.",
     domain: "edit",
     tags: ["workspace", "edit", "write", "replace", "delete", "move", "rename"],
-    supportingToolIds: ["write", "edit", "delete", "move"],
+    supportingToolIds: ["write", "edit", "delete", "move", "apply_patch"],
   },
   {
     id: "web_research",
