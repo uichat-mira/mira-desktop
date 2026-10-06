@@ -89,6 +89,11 @@ export function useToolsWorkbench(
     toolId: string;
     args: Record<string, unknown>;
   } | null>(null);
+  const [terminalContinuation, setTerminalContinuation] = useState<{
+    continuationId: string;
+    nextOutputOffset: number;
+    outputLimitBytes?: number;
+  } | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -209,6 +214,22 @@ export function useToolsWorkbench(
     setPendingApproval(null);
   };
 
+  const rememberTerminalContinuation = (value: unknown) => {
+    const summary = getTerminalResultSummary(value);
+    if (
+      summary?.continuationId &&
+      typeof summary.nextOutputOffset === "number"
+    ) {
+      setTerminalContinuation({
+        continuationId: summary.continuationId,
+        nextOutputOffset: summary.nextOutputOffset,
+        ...(summary.outputLimitBytes
+          ? { outputLimitBytes: summary.outputLimitBytes }
+          : {}),
+      });
+    }
+  };
+
   const appendEvent = (event: ToolInvocationEvent) => {
     setEvents((current) => [...current, event]);
 
@@ -218,6 +239,7 @@ export function useToolsWorkbench(
 
     if (event.type === "invocation:result") {
       setResult(event.result);
+      rememberTerminalContinuation(event.result);
     }
 
     if (event.type === "invocation:error") {
@@ -236,6 +258,7 @@ export function useToolsWorkbench(
   };
 
   const selectTool = (tool: WorkbenchToolDefinition) => {
+    setTerminalContinuation(null);
     setSelectedToolId(tool.id);
     setActiveGroupId(tool.workbench.groupId);
     setArgsDraft(buildToolDraft(tool));
@@ -268,6 +291,7 @@ export function useToolsWorkbench(
 
   const applyResolvedInvocation = async (invocation: ToolInvocation) => {
     setResult(invocation.result ?? null);
+    rememberTerminalContinuation(invocation.result);
     setArtifacts(invocation.artifacts ?? []);
     setRunError(invocation.error?.message ?? null);
 
@@ -393,6 +417,9 @@ export function useToolsWorkbench(
       };
     }
 
+    if (selectedTool.id === "terminal") {
+      setTerminalContinuation(null);
+    }
     await executeToolArgs(parsedArgs);
   };
 
@@ -432,12 +459,12 @@ export function useToolsWorkbench(
   };
 
   const runTerminalContinuation = async () => {
-    if (!terminalSummary?.continuationId) return;
+    if (!terminalContinuation) return;
     await runTerminalArgs({
-      continuationId: terminalSummary.continuationId,
-      outputOffset: terminalSummary.nextOutputOffset ?? 0,
-      ...(terminalSummary.outputLimitBytes
-        ? { outputLimitBytes: terminalSummary.outputLimitBytes }
+      continuationId: terminalContinuation.continuationId,
+      outputOffset: terminalContinuation.nextOutputOffset,
+      ...(terminalContinuation.outputLimitBytes
+        ? { outputLimitBytes: terminalContinuation.outputLimitBytes }
         : {}),
     });
   };
@@ -459,6 +486,7 @@ export function useToolsWorkbench(
   };
 
   const selectGroup = (groupId: ToolWorkbenchGroupId) => {
+    setTerminalContinuation(null);
     setActiveGroupId(groupId);
     const nextTool = tools.find((tool) => tool.workbench.groupId === groupId) ?? null;
     if (nextTool) {
@@ -486,6 +514,7 @@ export function useToolsWorkbench(
     primaryArtifact,
     result,
     pendingApproval,
+    terminalContinuation,
     runError,
     runStatus,
     selectedTool,
@@ -511,6 +540,7 @@ export function useToolsWorkbench(
     selectGroup,
     selectTool,
     selectCase: (args: Record<string, unknown>) => {
+      setTerminalContinuation(null);
       setArgsDraft(JSON.stringify(args, null, 2));
       resetRunState();
     },

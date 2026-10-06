@@ -190,6 +190,39 @@ describe("useToolsWorkbench", () => {
         input: { toolId: string; args: Record<string, unknown> },
         onEvent: (event: Record<string, unknown>) => Promise<void>,
       ) => {
+        if (input.args.operation === "status") {
+          await onEvent({
+            type: "invocation:start",
+            invocationId: "inv-status",
+            toolId: "terminal",
+            at: "2026-10-06T00:00:02.500Z",
+          });
+          await onEvent({
+            type: "invocation:result",
+            invocationId: "inv-status",
+            result: {
+              command: persistentArgs.command,
+              cwd: "D:/workspace/rag-demo",
+              sessionId: "session-1",
+              streamMode: "merged",
+              sessionMode: "persistent",
+              state: "running",
+              continuationId: "continuation-1",
+              continuationAvailable: true,
+              outputBytesAvailable: 24,
+              commandCompleted: false,
+            },
+            at: "2026-10-06T00:00:02.750Z",
+          });
+          await onEvent({
+            type: "invocation:finish",
+            invocationId: "inv-status",
+            status: "completed",
+            at: "2026-10-06T00:00:02.900Z",
+          });
+          return;
+        }
+
         if ("continuationId" in input.args) {
           await onEvent({
             type: "invocation:start",
@@ -321,6 +354,16 @@ describe("useToolsWorkbench", () => {
       continuationId: "continuation-1",
       nextOutputOffset: 12,
     });
+
+    await act(async () => {
+      await result.current.runTerminalStatus();
+    });
+    expect(result.current.terminalSummary).toMatchObject({
+      state: "running",
+      continuationId: "continuation-1",
+      outputBytesAvailable: 24,
+    });
+    expect(result.current.terminalSummary?.nextOutputOffset).toBeUndefined();
 
     await act(async () => {
       await result.current.runTerminalContinuation();
