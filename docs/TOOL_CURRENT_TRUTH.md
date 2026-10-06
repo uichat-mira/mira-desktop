@@ -285,6 +285,15 @@ Persistent 输出当前采用有界返回 + continuation：
 - cursor 使用 UTF-8 byte offset，并由 runtime 返回稳定的 `nextOutputOffset`，避免分页切断多字节字符；
 - session 被移除时，对应 spool 会一并清理。
 
+Persistent session 控制仍然通过同一个 `terminal` Tool 完成：
+
+- `operation: "status" + sessionId` 只观察最新 persistent work 状态，不向 PTY 写入命令；
+- 状态为 `running / completed / failed / cancelled`，其中完成/失败由实际 exit code 驱动；
+- `operation: "stop" + sessionId` 停止该 session 所拥有的进程树；
+- stop 会等待现有 Windows Job Object / taskkill tree 或 POSIX process group cleanup 完成后，才返回 `state: "cancelled"` 与 `cleanupCompleted: true`；
+- stop 不创建第二套进程 runtime，也不引入 `job_*` Tool；
+- unknown / stale `sessionId` 明确失败，不静默退化成新 session。
+
 它不是 generic integration container，但也不是已经退役的 command sandbox。
 
 ### Terminal 与 workspace 的真实边界
