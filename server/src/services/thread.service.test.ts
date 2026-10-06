@@ -1068,7 +1068,7 @@ test("notification failure leaves existing message descendants and media cleanup
     )
     .run("{invalid-json", installationId);
 
-  const cleanupSpy = vi.spyOn(chatMediaService, "removeForMessages");
+  const cleanupSpy = vi.spyOn(chatMediaService, "removeCleanupSnapshot");
   try {
     assert.throws(
       () =>
@@ -1094,6 +1094,82 @@ test("notification failure leaves existing message descendants and media cleanup
       "keep me",
     );
     assert.equal(cleanupSpy.mock.calls.length, 0);
+  } finally {
+    cleanupSpy.mockRestore();
+  }
+});
+
+test("post-commit cleanup failure is journaled for retry without corrupting canonical notification state", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-cleanup-${crypto.randomUUID()}`;
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "Agent 正在运行…",
+    parts: [
+      { type: "text", text: "Agent 正在运行…" },
+      {
+        type: "file",
+        data: "/attachments/old-file.txt",
+        filename: "old-file.txt",
+        mimeType: "text/plain",
+      },
+    ],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+
+  const cleanupSpy = vi
+    .spyOn(chatMediaService, "removeCleanupSnapshot")
+    .mockImplementation(() => {
+      throw new Error("injected cleanup failure");
+    });
+
+  try {
+    const completed = threadService.createMessage(thread.id, user.id, {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "最终答案",
+      parts: [{ type: "text", text: "最终答案" }],
+      metadata: { agent: { status: "completed" } },
+      preserveDescendants: true,
+    });
+
+    assert.equal(completed.content, "最终答案");
+    assert.equal(
+      (completed.metadata.agent as { status?: string } | undefined)?.status,
+      "completed",
+    );
+
+    const outbox = getSqlite()
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM notification_outbox
+         WHERE installation_id = ? AND canonical_message_id = ?`,
+      )
+      .get(installationId, assistantMessageId) as { count: number };
+    assert.equal(outbox.count, 1);
+
+    const cleanupJob = getSqlite()
+      .prepare(
+        `SELECT state, attempt_count, last_error
+         FROM canonical_message_cleanup_jobs
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get() as
+      | {
+          state: string;
+          attempt_count: number;
+          last_error: string | null;
+        }
+      | undefined;
+
+    assert.ok(cleanupJob);
+    assert.equal(cleanupJob.state, "pending");
+    assert.equal(cleanupJob.attempt_count, 1);
+    assert.match(cleanupJob.last_error ?? "", /injected cleanup failure/);
   } finally {
     cleanupSpy.mockRestore();
   }
