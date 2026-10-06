@@ -1,0 +1,27 @@
+name: Mira External Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Open GitHub Issue number to execute
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  worker:
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@d7ee764090c69726db4771f684a9eff2142db170
+    with:
+      issue_number: ${{ fromJSON(inputs.issue_number) }}
+      base_branch: dev
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm check
+    secrets:
+      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
