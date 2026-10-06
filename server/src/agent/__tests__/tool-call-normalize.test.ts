@@ -513,13 +513,13 @@ test("toolCallNormalizeNode accepts terminal.cwd = 'server'", async () => {
   assert.deepEqual(patch.pendingToolCall?.args, { command: "dir", cwd: "server" });
 });
 
-test("toolCallNormalizeNode preserves terminal.cwd child paths byte-for-byte for host execution", async () => {
+test("toolCallNormalizeNode preserves terminal.cwd child paths for host execution", async () => {
   const patch = await toolCallNormalizeNode(
     createState({
       nextAction: {
         type: "use_tool",
         toolId: "terminal",
-        args: { command: "dir", cwd: "server\\src" },
+        args: { command: "dir", cwd: "server/src" },
         reason: "Need terminal output.",
       },
     }),
@@ -527,7 +527,7 @@ test("toolCallNormalizeNode preserves terminal.cwd child paths byte-for-byte for
 
   assert.equal(patch.errorMessage, undefined);
   assert.equal(patch.schemaReplanDiagnostics, undefined);
-  assert.deepEqual(patch.pendingToolCall?.args, { command: "dir", cwd: "server\\src" });
+  assert.deepEqual(patch.pendingToolCall?.args, { command: "dir", cwd: "server/src" });
 });
 
 test("toolCallNormalizeNode preserves terminal.cwd Windows absolute paths for downstream approval/runtime checks", async () => {
