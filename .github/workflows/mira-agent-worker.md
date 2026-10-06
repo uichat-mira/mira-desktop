@@ -33,13 +33,7 @@ network:
 tools:
   github:
     toolsets: [repos, issues, pull_requests]
-  edit:
-  bash:
-    - git
-    - pwd
-    - ls
-    - find
-    - cat
+  bash: false
 safe-outputs:
   # A harmless non-builtin output prevents gh-aw v0.89.21 from auto-injecting
   # create-issue as its default fallback. The probe does not call this tool.
@@ -70,8 +64,8 @@ update, close, or accept any GitHub work item.
 
 Prove the following chain using real evidence from this run:
 
-1. Confirm the checked-out repository is `uichat-mira/mira-desktop` at `dev`.
-2. Read the repository root `AGENTS.md`.
+1. Read the checked-out repository root `AGENTS.md` and confirm ordinary workspace read access.
+2. Confirm from the workflow context and trusted checkout configuration that this worker is bound to `uichat-mira/mira-desktop` at `dev`.
 3. Through the GitHub tool, fetch the current `main` version of
    `uichat-mira/.github/AGENTS.md` and identify its current `Policy revision`.
 4. Locate the installed `execute-work-item` portable Agent Skill under the
