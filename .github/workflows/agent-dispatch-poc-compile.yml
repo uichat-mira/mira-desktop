@@ -21,6 +21,7 @@ jobs:
         with:
           ref: feat/agent-dispatch-poc
           fetch-depth: 1
+          token: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
 
       - name: Install pinned gh-aw compiler
         shell: bash
@@ -35,7 +36,7 @@ jobs:
       - name: Compile agentic workflow
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
         run: |
           set -euo pipefail
           "$RUNNER_TEMP/gh-aw" compile .github/workflows/mira-agent-worker.md --strict
@@ -49,7 +50,7 @@ jobs:
       - name: Launch read-only agent probe
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
