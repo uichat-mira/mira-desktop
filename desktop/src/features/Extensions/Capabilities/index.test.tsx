@@ -558,6 +558,65 @@ describe("CapabilitiesPage", () => {
     expect(runTerminalStop).toHaveBeenCalledOnce();
   });
 
+  it("keeps persistent Terminal controls renderable when the latest status has no summary", () => {
+    const terminalTool = {
+      ...capabilities.selectedTool,
+      id: "terminal",
+      title: "Terminal",
+      domain: "terminal",
+      capabilities: {
+        sideEffect: "process" as const,
+        requiresApproval: true,
+        workspaceBound: true,
+        longRunning: true,
+      },
+    };
+    const terminalCase = {
+      ...capabilities.selectedCase,
+      id: "terminal-persistent-start",
+      toolId: "terminal",
+      title: "持久任务",
+      group: "Terminal",
+    };
+    capabilities.tools = [terminalTool];
+    capabilities.cases = [terminalCase];
+    capabilities.toolCases = [terminalCase];
+    capabilities.selectedTool = terminalTool;
+    capabilities.selectedCase = terminalCase;
+    capabilities.terminalSessionId = "session-1";
+    capabilities.terminalContinuation = {
+      continuationId: "continuation-1",
+      nextOutputOffset: 24,
+      outputLimitBytes: 4096,
+    };
+    capabilities.terminalSummary = null;
+
+    expect(() =>
+      render(
+        <MemoryRouter>
+          <CapabilitiesPage />
+        </MemoryRouter>,
+      ),
+    ).not.toThrow();
+
+    expect(screen.getByText("session :: session-1")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.actions.continueOutput",
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.actions.inspectStatus",
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.actions.stopTerminal",
+      }),
+    ).toBeEnabled();
+  });
+
   it("does not render navigation buttons in the Tool surface", () => {
     render(
       <MemoryRouter>
