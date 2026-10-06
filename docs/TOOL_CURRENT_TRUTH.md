@@ -249,8 +249,10 @@ Edit
 当前唯一 Terminal 工具是：
 
 ```text
-terminal_session
+terminal
 ```
+
+兼容边界：旧 `terminal_session` 仅作为 persisted approval/run 的隐藏兼容 ID 保留，不进入新的 Agent Tool Exposure；待受支持的旧 checkpoint 不再可能引用该 ID 后删除。
 
 它支持：
 
@@ -269,7 +271,7 @@ terminal_session
 
 ### Terminal 与 workspace 的真实边界
 
-`terminal_session` 仍声明：
+`terminal` 仍声明：
 
 - `requiresApproval = true`；
 - `workspaceBound = true`；

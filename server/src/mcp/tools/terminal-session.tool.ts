@@ -46,10 +46,10 @@ const terminalSessionLlmInputSchema = {
   additionalProperties: false,
 } as const;
 
-export const terminalSessionTool: ToolImplementation = {
+export const terminalTool: ToolImplementation = {
   definition: {
-    id: "terminal_session",
-    title: "Terminal Session",
+    id: "terminal",
+    title: "Terminal",
     description:
       "Run full host shell commands or PTY-backed persistent sessions with process-tree ownership and streamed output.",
     domain: "terminal",
@@ -97,4 +97,15 @@ export const terminalSessionTool: ToolImplementation = {
       structuredContent: result.contents,
     };
   },
+};
+
+export const terminalSessionCompatibilityTool: ToolImplementation = {
+  definition: {
+    ...terminalTool.definition,
+    id: "terminal_session",
+    title: "Terminal Session (Compatibility)",
+    description:
+      "Compatibility alias for persisted runs created before the canonical terminal Tool migration.",
+  },
+  execute: terminalTool.execute,
 };

@@ -185,11 +185,11 @@ const terminalSessionResult = spawnSync(
 );
 if (terminalSessionResult.error || terminalSessionResult.status !== 0) {
   throw new Error(
-    `terminal_session smoke failed: ${terminalSessionResult.error?.message ?? ""}${terminalSessionResult.stdout ?? ""}${terminalSessionResult.stderr ?? ""}`,
+    `terminal smoke failed: ${terminalSessionResult.error?.message ?? ""}${terminalSessionResult.stdout ?? ""}${terminalSessionResult.stderr ?? ""}`,
   );
 }
 evidence.push({
-  label: "terminal_session ephemeral and persistent",
+  label: "terminal ephemeral and persistent",
   output: `${terminalSessionResult.stdout ?? ""}${terminalSessionResult.stderr ?? ""}`.trim(),
 });
 

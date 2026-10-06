@@ -150,7 +150,7 @@ Split/image extraction use an `outputDir` and may produce multiple artifacts.
 5. Generated factual reports must use real, verifiable information and citations when citations are required.
 6. Match the user's requested language, outline and document structure.
 7. Do not silently use lossy conversion when a native PDF operation exists.
-8. Do not use `terminal_session` to invoke any PDF Python script.
+8. Do not use `terminal` to invoke any PDF Python script.
 9. Never use a content `table` to imitate a table of contents; use `spec.toc`.
 
 # Completion

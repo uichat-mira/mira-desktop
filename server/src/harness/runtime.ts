@@ -22,7 +22,7 @@ import { newsSearchTool } from "../mcp/tools/news-search.tool.js";
 import { readExtractTool } from "../mcp/tools/read-extract.tool.js";
 import { readOpenTool } from "../mcp/tools/read-open.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
-import { terminalSessionTool } from "../mcp/tools/terminal-session.tool.js";
+import { terminalSessionCompatibilityTool, terminalTool } from "../mcp/tools/terminal-session.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
 import { mailQueryTool } from "../mcp/tools/mail-query.tool.js";
 import { workspaceMutationTool } from "../mcp/tools/workspace-mutation.tool.js";
@@ -82,7 +82,12 @@ export const initializeHarnessRuntime = () => {
   registerTool(githubPullRequestTool);
   registerTool(githubActionsTool);
 
-  registerTool(terminalSessionTool);
+  registerTool(terminalTool);
+  // Compatibility-only alias for persisted approvals/runs created before the
+  // canonical terminal Tool migration. Exposure policy hides this alias from
+  // new Agent planning. Remove it once no supported persisted run can contain
+  // toolId "terminal_session" in pending approval/tool-call state.
+  registerTool(terminalSessionCompatibilityTool);
   for (const tool of createBrowserAttachedTools()) {
     registerTool(tool);
   }

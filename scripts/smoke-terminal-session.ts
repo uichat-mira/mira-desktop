@@ -62,7 +62,7 @@ try {
     timeoutMs: 30_000,
   });
   if (ephemeral.contents.exitCode !== 0 || !ephemeral.contents.output.includes("ephemeral-ok")) {
-    throw new Error(`Ephemeral terminal_session failed: ${ephemeral.contents.output}`);
+    throw new Error(`Ephemeral terminal failed: ${ephemeral.contents.output}`);
   }
 
   const first = await run({

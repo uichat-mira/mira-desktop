@@ -15,11 +15,19 @@ const INTERNAL_EDIT_COMPAT_TOOL_IDS = new Set([
   "workspace_mutation",
 ]);
 
+const INTERNAL_TERMINAL_COMPAT_TOOL_IDS = new Set([
+  "terminal_session",
+]);
+
 export const isInternalIntentOnlyTool = (definition: ToolDefinition) =>
   definition.source === "internal" && INTERNAL_READ_PRIMITIVE_TOOL_IDS.has(definition.id);
 
 export const isInternalEditCompatibilityTool = (definition: ToolDefinition) =>
   definition.source === "internal" && INTERNAL_EDIT_COMPAT_TOOL_IDS.has(definition.id);
+
+export const isInternalTerminalCompatibilityTool = (definition: ToolDefinition) =>
+  definition.source === "internal" &&
+  INTERNAL_TERMINAL_COMPAT_TOOL_IDS.has(definition.id);
 
 export const shouldIncludeDefinition = (
   definition: ToolDefinition,
@@ -37,6 +45,10 @@ export const getDefinitionBlockReason = (
 
   if (isInternalEditCompatibilityTool(definition)) {
     return "Legacy edit wrapper is not part of the public Edit contract.";
+  }
+
+  if (isInternalTerminalCompatibilityTool(definition)) {
+    return "Legacy terminal alias is not part of the public Terminal contract.";
   }
 
   // External MCP exposure follows the user's explicit Agent Access switch only.

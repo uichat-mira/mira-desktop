@@ -239,7 +239,7 @@ move_path
 
 ### Terminal
 
-`terminal_session` 是完整 host shell / PTY runtime：
+`terminal` 是完整 host shell / PTY runtime：
 
 - 支持 Node、Python、Git、包管理器、脚本和长任务；
 - workspace 外 `cwd` 可以在 exact approval 后执行；

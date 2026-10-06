@@ -13,7 +13,7 @@ office_presentation
 
 Do not expose `add_slide`, `add_text`, raw OOXML, `python-pptx`, or renderer primitives as the presentation method. The Agent produces a complete Kimi PPTD project; WenShu checks and renders it.
 
-SkillContext does not expand canonical ToolExposure. The Skill runtime owns execution through the internal WenShu Python invocation contract. The Agent may materialize the native PPTD project with the exposed file capability, but it must never invoke Python, `kimi_ppt_dsl`, or a renderer through `terminal_session`.
+SkillContext does not expand canonical ToolExposure. The Skill runtime owns execution through the internal WenShu Python invocation contract. The Agent may materialize the native PPTD project with the exposed file capability, but it must never invoke Python, `kimi_ppt_dsl`, or a renderer through `terminal`.
 
 The internal invocation contains only:
 
@@ -139,7 +139,7 @@ For long decks, prepare all page files before creating. Do not validate and deli
 5. Keep native text, shapes, tables and charts editable whenever supported.
 6. Do not claim arbitrary lossless editing of an existing complex PPTX.
 7. `write_file` may persist project/spec files, but it is not the presentation renderer.
-8. `terminal_session` must not invoke Python or the bundled runtime. Only the internal WenShu Runtime invocation may execute `pptx/pptx_runtime.py`.
+8. `terminal` must not invoke Python or the bundled runtime. Only the internal WenShu Runtime invocation may execute `pptx/pptx_runtime.py`.
 
 # Completion
 

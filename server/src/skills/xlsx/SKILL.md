@@ -11,7 +11,7 @@ metadata:
 
 This Skill uses the MiniMax XLSX workflow as its implementation baseline.
 
-SkillContext provides execution instructions and package resources only. It does not expand canonical ToolExposure. The Skill runtime owns all Python-backed XLSX execution through the internal WenShu Python invocation contract. The Agent may materialize OOXML with the exposed file capability, but it must not run package scripts through `terminal_session` or route XLSX work back through the legacy openpyxl `office_spreadsheet` capability.
+SkillContext provides execution instructions and package resources only. It does not expand canonical ToolExposure. The Skill runtime owns all Python-backed XLSX execution through the internal WenShu Python invocation contract. The Agent may materialize OOXML with the exposed file capability, but it must not run package scripts through `terminal` or route XLSX work back through the legacy openpyxl `office_spreadsheet` capability.
 
 The invocation contains only `runtime: "wenshu-office"`, a registered script identifier, operation arguments, and workspace input/output paths. The launcher owns Python selection, managed Runtime Pack `PYTHONPATH`, script resolution, and result status. Never emit a Python executable, `PYTHONPATH`, shell command, `python -m`, `pip install`, or `conda install` instruction.
 
@@ -100,7 +100,7 @@ Read `skill://xlsx/references/format.md` before building a styled financial work
 5. Never fabricate source citations or business data.
 6. Never treat model visual/readback judgment as an execution-success gate.
 7. Always write the requested final workbook artifact, not only intermediate XML/spec files.
-8. Never invoke `server/src/skills/xlsx/scripts/*.py` or any WenShu Python script through `terminal_session`.
+8. Never invoke `server/src/skills/xlsx/scripts/*.py` or any WenShu Python script through `terminal`.
 
 ## Completion
 

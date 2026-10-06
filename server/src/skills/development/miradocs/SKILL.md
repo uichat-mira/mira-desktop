@@ -9,7 +9,7 @@ source: Mira
 status: review
 execution.context: fork
 execution.agent: miradocs
-execution.allowedTools: list, glob, grep, read, terminal_session, github_repository, github_pull_request, github_actions
+execution.allowedTools: list, glob, grep, read, terminal, github_repository, github_pull_request, github_actions
 ---
 
 # MiraDocs Skill V1
@@ -242,7 +242,7 @@ MiraDocs Skill 负责：
 | 按路径模式定位站点或文件 | `glob` |
 | 按正文定位配置或内容 | `grep` |
 | 打开已知文件与 Skill 参考资源 | `read` |
-| 本地写入、修改、删除、重命名、安装、检查、构建和预览 | `terminal_session` |
+| 本地写入、修改、删除、重命名、安装、检查、构建和预览 | `terminal` |
 | GitHub 仓库、installation、分支、远程文件和 Pages | `github_repository` |
 | 创建或维护 PR | `github_pull_request` |
 | 检查或操作 CI / workflow | `github_actions` |
@@ -253,30 +253,30 @@ MiraDocs Skill 负责：
 
 ```text
 create_site / local
-→ list + glob + read + terminal_session
+→ list + glob + read + terminal
 
 create_site / github
 → github_repository：仓库、installation、远程文件和 Pages
-→ terminal_session：受管本地 staging、模板落盘、依赖安装、类型检查和静态构建
+→ terminal：受管本地 staging、模板落盘、依赖安装、类型检查和静态构建
 → github_actions：默认 GitHub Pages 建站的 workflow / run / job 验证
 → 用户要求 PR 或仓库策略要求 PR 时再取 github_pull_request
 
 publish_content / local
-→ read + terminal_session
+→ read + terminal
 
 publish_content / github
 → github_repository：读取和写入远程内容
-→ terminal_session：需要本地内容发现、构建或路由验证时使用受管 staging
+→ terminal：需要本地内容发现、构建或路由验证时使用受管 staging
 → 需要 PR 时再取 github_pull_request
 → 需要上线验证时再取 github_actions
 
 maintain_site / local
 → list / glob / grep / read
-→ 需要实际修改、诊断或构建时取 terminal_session
+→ 需要实际修改、诊断或构建时取 terminal
 
 maintain_site / github
 → github_repository
-→ 需要本地复现、修改或构建时取 terminal_session 与受管 staging
+→ 需要本地复现、修改或构建时取 terminal 与受管 staging
 → 只在 PR、CI 或部署步骤分别取 github_pull_request / github_actions
 ```
 
@@ -316,7 +316,7 @@ GitHub 模式需要一个独立的本地施工现场，用于：
 - 未完成交付前不得自动清空现场；
 - 清理 staging 是显式生命周期动作，不得掩盖失败证据。
 
-如果没有有效 Workspace 或 `terminal_session` 未进入当前步骤的真实 ToolExposure，则本地验证能力缺失。此时不得声称站点已经完成构建；按 completion criteria 返回 capability 缺口。
+如果没有有效 Workspace 或 `terminal` 未进入当前步骤的真实 ToolExposure，则本地验证能力缺失。此时不得声称站点已经完成构建；按 completion criteria 返回 capability 缺口。
 
 ## 3. 默认空间
 
@@ -328,7 +328,7 @@ GitHub 模式需要一个独立的本地施工现场，用于：
 
 # 本地文件施工
 
-本地文件施工统一由 `terminal_session` 承担，不要求 Skill 感知 `write_file`、`replace_block`、`delete_path`、`move_path` 或兼容层 `edit_file` 等实现细节。具体命令仍走终端审批、Workspace 边界和执行回读。
+本地文件施工统一由 `terminal` 承担，不要求 Skill 感知 `write_file`、`replace_block`、`delete_path`、`move_path` 或兼容层 `edit_file` 等实现细节。具体命令仍走终端审批、Workspace 边界和执行回读。
 
 Skill 命中不代表工具已经进入本轮 ToolExposure。Planner 只能使用当前真实暴露并通过 Policy 的能力。当前环境已经真实暴露的能力，不应被 Skill 人为回避；当前步骤需要时应实际调用。
 

@@ -91,7 +91,7 @@ try {
     !ephemeral.contents.output.includes("mac-workspace-ok") ||
     !ephemeral.contents.output.includes(`cwd=${workspaceRoot}`)
   ) {
-    throw new Error(`Ephemeral terminal_session failed: ${ephemeral.contents.output}`);
+    throw new Error(`Ephemeral terminal failed: ${ephemeral.contents.output}`);
   }
 
   const first = await run({

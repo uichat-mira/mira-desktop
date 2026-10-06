@@ -130,7 +130,7 @@ describe("SkillsSettings detail actions", () => {
         "---",
         "execution.context: fork",
         "execution.agent: subAgent",
-        "execution.allowedTools: read_open, terminal_session",
+        "execution.allowedTools: read_open, terminal",
         "execution.workspaceBound: true",
         "customField: keep-me",
         "---",

@@ -123,7 +123,7 @@ const waitForSpawnedProcess = async () => {
   });
 };
 
-describe("terminal_session tool", () => {
+describe("terminal tool", () => {
   const workspaceRoot = createTimestampedTestArtifactPath(
     "workspace",
     "rag-demo-terminal",
@@ -157,11 +157,11 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     const events: Array<Record<string, unknown>> = [];
     const artifacts: Array<Record<string, unknown>> = [];
 
-    const promise = terminalSessionTool.execute({
+    const promise = terminalTool.execute({
       invocationId: "inv-ephemeral",
       args: {
         command: "node script.js",
@@ -205,8 +205,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-cwd-inside",
       args: {
         command: "pwd",
@@ -244,8 +244,8 @@ describe("terminal_session tool", () => {
       return mock.session;
     });
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const result = await terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const result = await terminalTool.execute({
       invocationId: "inv-reuse",
       args: {
         command: "pwd",
@@ -278,9 +278,9 @@ describe("terminal_session tool", () => {
       return mock.session;
     });
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     const events: Array<Record<string, unknown>> = [];
-    const result = await terminalSessionTool.execute({
+    const result = await terminalTool.execute({
       invocationId: "inv-persistent",
       args: {
         command: "pwd",
@@ -316,14 +316,14 @@ describe("terminal_session tool", () => {
 
     const { clearHarnessRegistry, registerTool } = await import("../../harness/registry.js");
     const { clearHarnessInvocations, executeHarnessInvocation } = await import("../../harness/invocations.js");
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
 
     clearHarnessRegistry();
     clearHarnessInvocations();
-    registerTool(terminalSessionTool);
+    registerTool(terminalTool);
 
     const record = await executeHarnessInvocation({
-      toolId: "terminal_session",
+      toolId: "terminal",
       args: {
         command: "pwd",
         sessionMode: "persistent",
@@ -331,7 +331,7 @@ describe("terminal_session tool", () => {
       environment: createHarnessEnvironmentSnapshot(),
       approvedInvocations: [
         {
-          toolId: "terminal_session",
+          toolId: "terminal",
           inputHash: createInvocationInputHash({
             command: "pwd",
             sessionMode: "persistent",
@@ -363,10 +363,10 @@ describe("terminal_session tool", () => {
       return mock.session;
     });
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     const events: Array<Record<string, unknown>> = [];
 
-    await terminalSessionTool.execute({
+    await terminalTool.execute({
       invocationId: "inv-progress-order",
       args: {
         command: "pwd",
@@ -399,8 +399,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-timeout",
       args: {
         command: "sleep",
@@ -431,8 +431,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-timeout-default",
       args: {
         command: "sleep",
@@ -459,8 +459,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-timeout-min",
       args: {
         command: "sleep",
@@ -488,8 +488,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-timeout-max",
       args: {
         command: "sleep",
@@ -513,10 +513,10 @@ describe("terminal_session tool", () => {
   });
 
   it("rejects empty commands", async () => {
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
 
     await expect(
-      terminalSessionTool.execute({
+      terminalTool.execute({
         invocationId: "inv-empty",
         args: { command: "   " },
         signal: new AbortController().signal,
@@ -533,8 +533,8 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
-    const promise = terminalSessionTool.execute({
+    const { terminalTool } = await import("./terminal-session.tool.js");
+    const promise = terminalTool.execute({
       invocationId: "inv-env",
       args: {
         command: "echo hi",
@@ -582,8 +582,8 @@ describe("terminal_session tool", () => {
     });
 
     try {
-      const { terminalSessionTool } = await import("./terminal-session.tool.js");
-      const promise = terminalSessionTool.execute({
+      const { terminalTool } = await import("./terminal-session.tool.js");
+      const promise = terminalTool.execute({
         invocationId: "inv-win-pwd",
         args: {
           command: "pwd",
@@ -628,8 +628,8 @@ describe("terminal_session tool", () => {
     });
 
     try {
-      const { terminalSessionTool } = await import("./terminal-session.tool.js");
-      const promise = terminalSessionTool.execute({
+      const { terminalTool } = await import("./terminal-session.tool.js");
+      const promise = terminalTool.execute({
         invocationId: "inv-win-encoding",
         args: {
           command: "echo hello",
@@ -668,9 +668,9 @@ describe("terminal_session tool", () => {
     const mock = createMockSession({ id: "session-existing" });
     terminalMocks.getTerminalSessionMock.mockReturnValue(mock.session);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     await expect(
-      terminalSessionTool.execute({
+      terminalTool.execute({
         invocationId: "inv-bad-attach",
         args: {
           command: "pwd",
@@ -691,9 +691,9 @@ describe("terminal_session tool", () => {
     const child = createMockSpawnProcess();
     terminalMocks.spawnMock.mockReturnValue(child);
 
-    const { terminalSessionTool } = await import("./terminal-session.tool.js");
+    const { terminalTool } = await import("./terminal-session.tool.js");
     const controller = new AbortController();
-    const promise = terminalSessionTool.execute({
+    const promise = terminalTool.execute({
       invocationId: "inv-abort",
       args: { command: "sleep" },
       signal: controller.signal,

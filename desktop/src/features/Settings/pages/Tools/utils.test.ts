@@ -127,7 +127,7 @@ describe("buildToolDraft", () => {
     ["read", "{}"],
     ["read_list", "{}"],
     ["web_search", "{}"],
-    ["terminal_session", "{}"],
+    ["terminal", "{}"],
   ])("builds draft for %s", (id, expected) => {
     expect(buildToolDraft(createTool(id as HarnessToolDefinition["id"]))).toBe(expected);
   });

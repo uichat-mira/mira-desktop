@@ -91,7 +91,7 @@ export const getToolTraceTargetPreview = (
     return getTraceValuePreview(args.pattern);
   }
 
-  if (toolId === "terminal_session" && typeof args.command === "string") {
+  if (toolId === "terminal" && typeof args.command === "string") {
     return getTraceValuePreview(args.command);
   }
 

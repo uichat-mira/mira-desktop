@@ -96,7 +96,7 @@ export default function ToolsPackagePanel({
               />
             </div>
 
-            {selectedTool?.id === "terminal_session" && terminalSummary ? (
+            {selectedTool?.id === "terminal" && terminalSummary ? (
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-secondary">
                 <Badge variant="muted">
                   {terminalSummary.streamMode === "merged"

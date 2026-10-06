@@ -8,7 +8,7 @@ describe("resolveHarnessActionProfiles", () => {
   it("returns terminal and edit action profiles when the backing runtime tools exist", () => {
     const profiles = resolveHarnessActionProfiles([
       {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "terminal",
         domain: "terminal",
@@ -45,7 +45,7 @@ describe("resolveHarnessActionProfiles", () => {
     ]);
     expect(profiles[0]).toMatchObject({
       id: "terminal_execute_command",
-      runtimeToolId: "terminal_session",
+      runtimeToolId: "terminal",
     });
     expect(profiles[1]).toMatchObject({
       id: "edit_create_file",
@@ -55,7 +55,7 @@ describe("resolveHarnessActionProfiles", () => {
 });
 
 describe("resolveActionProfileInvocation", () => {
-  it("maps terminal_execute_command to terminal_session", () => {
+  it("maps terminal_execute_command to terminal", () => {
     expect(
       resolveActionProfileInvocation({
         actionProfileId: "terminal_execute_command",
@@ -66,7 +66,7 @@ describe("resolveActionProfileInvocation", () => {
         },
       }),
     ).toEqual({
-      toolId: "terminal_session",
+      toolId: "terminal",
       args: {
         command: "pwd",
         cwd: "server",

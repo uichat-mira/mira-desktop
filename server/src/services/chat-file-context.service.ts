@@ -210,7 +210,7 @@ export const buildAgentAttachmentGoalContext = (
       (attachment) =>
         `- ${attachment.filename} (${attachment.mimeType}) -> ${attachment.relativePath}`,
     ),
-    "这些路径位于当前工作区内，已知文件应直接交给 canonical read；只有真实命令、进程、git、build 或 test 才需要 terminal_session。用户若明确指定工作区已有文件，仍按用户提供的路径处理，不要改用上传附件。",
+    "这些路径位于当前工作区内，已知文件应直接交给 canonical read；只有真实命令、进程、git、build 或 test 才需要 terminal。用户若明确指定工作区已有文件，仍按用户提供的路径处理，不要改用上传附件。",
   ].join("\n");
 };
 

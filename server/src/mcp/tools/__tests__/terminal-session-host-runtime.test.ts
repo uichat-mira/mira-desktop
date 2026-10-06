@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { terminalSessionTool } from "../terminal-session.tool.js";
+import { terminalSessionCompatibilityTool, terminalTool } from "../terminal-session.tool.js";
 
 type SchemaProperty = {
   description?: string;
@@ -8,24 +8,30 @@ type SchemaProperty = {
 };
 
 const getExposedProperties = (exposure: "agent_intent" | "chat_surface") =>
-  terminalSessionTool.definition.inputSchemaByExposure?.[exposure]
+  terminalTool.definition.inputSchemaByExposure?.[exposure]
     ?.properties as Record<string, SchemaProperty>;
 
-describe("terminal_session host runtime metadata", () => {
+describe("terminal host runtime metadata", () => {
+  it("uses terminal as the canonical id while preserving the legacy persisted-run alias", () => {
+    expect(terminalTool.definition.id).toBe("terminal");
+    expect(terminalSessionCompatibilityTool.definition.id).toBe("terminal_session");
+    expect(terminalSessionCompatibilityTool.execute).toBe(terminalTool.execute);
+  });
+
   it("keeps approval but no longer requires sandbox execution", () => {
     expect(
-      terminalSessionTool.definition.capabilities.requiresApproval,
+      terminalTool.definition.capabilities.requiresApproval,
     ).toBe(true);
     expect(
-      terminalSessionTool.definition.capabilities.sandboxRequired,
+      terminalTool.definition.capabilities.sandboxRequired,
     ).toBe(false);
     expect(
-      terminalSessionTool.definition.capabilities.sandboxProfile,
+      terminalTool.definition.capabilities.sandboxProfile,
     ).toBeUndefined();
   });
 
   it("describes cwd as a host execution directory instead of a workspace-only jail", () => {
-    const properties = terminalSessionTool.definition.inputSchema
+    const properties = terminalTool.definition.inputSchema
       .properties as Record<string, SchemaProperty>;
 
     expect(properties.cwd?.description).toMatch(/absolute paths/i);
