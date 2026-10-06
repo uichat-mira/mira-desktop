@@ -1420,6 +1420,8 @@ export const hostNotificationBindingRequests = sqliteTable(
   {
     nonce: text("nonce").primaryKey(),
     installationId: text("installation_id").notNull(),
+    originRemoteDeviceId: text("origin_remote_device_id").notNull(),
+    ownerUserId: integer("owner_user_id").notNull(),
     sourceScopeJson: text("source_scope_json").notNull(),
     expiresAt: text("expires_at").notNull(),
     consumedAt: text("consumed_at"),
@@ -1431,6 +1433,9 @@ export const hostNotificationBindingRequests = sqliteTable(
     installationIdx: index(
       "idx_host_notification_binding_requests_installation",
     ).on(table.installationId),
+    deviceIdx: index(
+      "idx_host_notification_binding_requests_device",
+    ).on(table.originRemoteDeviceId),
     expiresIdx: index("idx_host_notification_binding_requests_expires").on(
       table.expiresAt,
     ),
@@ -1446,6 +1451,8 @@ export const hostNotificationBindings = sqliteTable(
   "host_notification_bindings",
   {
     installationId: text("installation_id").primaryKey(),
+    originRemoteDeviceId: text("origin_remote_device_id").notNull(),
+    ownerUserId: integer("owner_user_id").notNull(),
     brokerBaseUrl: text("broker_base_url").notNull(),
     deliveryTokenEncrypted: text("delivery_token_encrypted").notNull(),
     sourceScopeJson: text("source_scope_json").notNull(),
@@ -1461,6 +1468,9 @@ export const hostNotificationBindings = sqliteTable(
   },
   (table) => ({
     statusIdx: index("idx_host_notification_bindings_status").on(table.status),
+    deviceIdx: index("idx_host_notification_bindings_device").on(
+      table.originRemoteDeviceId,
+    ),
   }),
 );
 
@@ -1478,9 +1488,9 @@ export const notificationOutbox = sqliteTable(
       .references(() => hostNotificationBindings.installationId, {
         onDelete: "cascade",
       }),
-    canonicalMessageId: text("canonical_message_id")
-      .notNull()
-      .references(() => messages.id, { onDelete: "cascade" }),
+    // Opaque canonical identity: keep durable outbox history even if the
+    // canonical message is later deleted. Delivery revalidates current truth.
+    canonicalMessageId: text("canonical_message_id").notNull(),
     sourceId: text("source_id").notNull(),
     eligibilityEvent: text("eligibility_event", {
       enum: ["final_transition_first_seen"] as const,
