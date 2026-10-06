@@ -35,6 +35,7 @@ const capabilities = {
   ],
   isLoading: false,
   isResolvingApproval: false,
+  isSelectionLocked: false,
   loadError: null,
   readiness: {
     state: "ready" as const,
@@ -160,10 +161,47 @@ vi.mock("./hooks/useCapabilities", () => ({
 describe("CapabilitiesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    capabilities.cases = [
+      {
+        id: "core-approval-boundary",
+        toolId: "write",
+        title: "写入审批边界",
+        purpose: "确认真实 Policy 边界。",
+        expectedObservation: "Awaiting Approval",
+        args: {
+          path: ".test-artifact/capabilities/approval-probe.txt",
+        },
+        group: "Native",
+      },
+    ];
+    capabilities.selectedTool = {
+      id: "write",
+      title: "Write",
+      description: "Write workspace files.",
+      domain: "edit",
+      source: "internal" as const,
+      sourceInfo: {
+        kind: "native" as const,
+        label: "Native",
+        settingsPath: "/settings/tools",
+      },
+      inputSchema: {},
+      tags: [],
+      capabilities: {
+        sideEffect: "local-write" as const,
+        requiresApproval: true,
+        workspaceBound: true,
+      },
+    };
+    capabilities.selectedCase = {
+      ...capabilities.cases[0],
+      args: {
+        path: ".test-artifact/capabilities/approval-probe.txt",
+        dryRun: true,
+      },
+    };
     capabilities.toolCases = [capabilities.selectedCase];
     capabilities.tools = [capabilities.selectedTool];
-    capabilities.selectedTool = capabilities.tools[0];
-    capabilities.selectedCase = capabilities.toolCases[0];
     selectTool.mockImplementation((toolId: string) => {
       const nextTool = capabilities.tools.find((tool) => tool.id === toolId) ?? null;
       capabilities.selectedTool = nextTool;
