@@ -30,6 +30,11 @@ const mocks = vi.hoisted(() => {
     },
     thread: {
       listChatWorkspaces: vi.fn(),
+      getThreadSummaryById: vi.fn(),
+    },
+    push: {
+      createBindingDescriptor: vi.fn(),
+      acceptApprovedBinding: vi.fn(),
     },
     workspaces: {
       list: vi.fn(),
@@ -58,6 +63,16 @@ vi.mock("@/services/tailscale-remote-access.service.js", () => ({
 
 vi.mock("@/services/thread.service.js", () => ({
   threadService: mocks.thread,
+}));
+
+vi.mock("@/services/host-notification-identity.service.js", () => ({
+  hostNotificationIdentityService: mocks.push,
+}));
+
+vi.mock("@/services/host-notification-config.js", () => ({
+  getConfiguredPushBrokerBaseUrl: vi.fn(
+    () => "https://push.example.test",
+  ),
 }));
 
 vi.mock("@/db/repositories/chat-workspace.repository.js", () => ({
@@ -224,7 +239,34 @@ beforeEach(() => {
     accepted: true,
     status: "cancelling",
   });
-  mocks.thread.listChatWorkspaces.mockReturnValue([
+  mocks.thread.getThreadSummaryById.mockImplementation(
+    (threadId: string, userId: number) =>
+      threadId === "thread-1" && userId === user.id
+        ? { id: threadId, userId, status: "active" }
+        : null,
+  );
+  mocks.push.createBindingDescriptor.mockReturnValue({
+    schemaVersion: 1,
+    hostId: "host-1",
+    hostPublicKey: "host-public-key",
+    installationId: "installation-1",
+    sourceScope: ["thread-1"],
+    bindingNonce: "binding-nonce",
+    bindingExpiresAt: "2026-10-06T06:00:00.000Z",
+    hostSignature: "host-signature",
+  });
+  mocks.push.acceptApprovedBinding.mockReturnValue({
+    installationId: "installation-1",
+    originRemoteDeviceId: "device-1",
+    ownerUserId: user.id,
+    brokerBaseUrl: "https://push.example.test",
+    deliveryToken: "delivery-secret",
+    sourceScope: ["thread-1"],
+    status: "active",
+    createdAt: "2026-10-06T05:00:00.000Z",
+    updatedAt: "2026-10-06T05:00:00.000Z",
+  });
+    mocks.thread.listChatWorkspaces.mockReturnValue([
     {
       id: "workspace-active",
       name: "Mira BASE",
@@ -448,8 +490,91 @@ describe("remote access routes", () => {
       "POST /remote/v1/tool-invocations/:invocationId/approval",
       "POST /remote/v1/tool-invocations/:invocationId/cancel",
     ]);
+    assert.deepEqual(manifestResponse.json().data.routes.push, [
+      "POST /remote/v1/push/binding-descriptor",
+      "POST /remote/v1/push/bindings/accept",
+    ]);
     await app.close();
     await manifestApp.close();
+  });
+
+  it("binds Push bootstrap to the authenticated paired device and owner", async () => {
+    const app = await createApp({
+      authenticated: true,
+      device: {
+        id: "device-1",
+        name: "K70",
+        platform: "android",
+        permissions: ["threads:read"],
+      },
+    });
+
+    const descriptor = await app.inject({
+      method: "POST",
+      url: "/remote/v1/push/binding-descriptor",
+      payload: {
+        installationId: "installation-1",
+        sourceScope: ["thread-1"],
+      },
+    });
+    assert.equal(descriptor.statusCode, 200, descriptor.body);
+    expect(mocks.push.createBindingDescriptor).toHaveBeenCalledWith({
+      installationId: "installation-1",
+      originRemoteDeviceId: "device-1",
+      ownerUserId: user.id,
+      sourceScope: ["thread-1"],
+    });
+    assert.equal(
+      descriptor.json().data.brokerBaseUrl,
+      "https://push.example.test",
+    );
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/remote/v1/push/bindings/accept",
+      payload: {
+        bindingNonce: "binding-nonce",
+        installationId: "installation-1",
+        deliveryToken: "delivery_0123456789012345678901234567890123456789",
+        sourceScope: ["thread-1"],
+      },
+    });
+    assert.equal(accepted.statusCode, 200, accepted.body);
+    expect(mocks.push.acceptApprovedBinding).toHaveBeenCalledWith({
+      bindingNonce: "binding-nonce",
+      installationId: "installation-1",
+      originRemoteDeviceId: "device-1",
+      ownerUserId: user.id,
+      deliveryToken: "delivery_0123456789012345678901234567890123456789",
+      sourceScope: ["thread-1"],
+    });
+
+    await app.close();
+  });
+
+  it("rejects Push bootstrap for a source outside the paired owner's threads", async () => {
+    const app = await createApp({
+      authenticated: true,
+      device: {
+        id: "device-1",
+        name: "K70",
+        platform: "android",
+        permissions: ["threads:read"],
+      },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/remote/v1/push/binding-descriptor",
+      payload: {
+        installationId: "installation-1",
+        sourceScope: ["thread-other"],
+      },
+    });
+
+    assert.equal(response.statusCode, 403, response.body);
+    expect(mocks.push.createBindingDescriptor).not.toHaveBeenCalled();
+    await app.close();
   });
 
   it("lists and streams mobile-safe remote tools through the gateway service", async () => {
