@@ -53,8 +53,7 @@ Harness 是 concrete tool 的控制平面，不是 Planner、SubAgent 编排器�
 `read_discover / read_open / read_list / read_locate / read_extract / read_slice`，
 也不再靠 exposure policy 把它们“藏起来”。
 
-历史持久化 Run 中已经形成的旧 Read Evidence shape 仍可被只读解释，用于恢复和展示历史事实；
-这种兼容不会重新注册 Tool，也不会参与新的 Planner tool selection。旧本地 mutation id 同理。
+旧 Read ID 不保留运行时兼容。历史记录只存在于 archive / frozen evidence / old task documents，不进入当前 Agent/Harness/Evidence/Coverage 解释路径。旧本地 mutation id 的处理另按各自合同治理。
 
 动态注册还包括：
 
@@ -150,12 +149,6 @@ grep   content query   -> matching content locations
 ```
 
 它们追求首选意图清晰，不追求为了“绝对互斥”而削弱能力。
-
-### Legacy Read compatibility
-
-`read_discover / read_open / read_list / read_locate / read_extract / read_slice`
-不再有 executable Tool/runtime。新 Planner、Skill、Workbench 和 Context Read Bench 只使用
-`read / list / glob / grep`。旧 Evidence kind 仅用于读取历史持久化事实，不能反向扩大当前 Tool Exposure。
 
 ### `codebase_explore`
 
