@@ -5,6 +5,8 @@ import { getSqlite } from "@/db/index.js";
 export type CanonicalMessageCleanupPayload = {
   media: Array<{
     id: string;
+    messageId: string;
+    mediaType: "audio" | "image";
     absolutePath: string;
   }>;
   attachmentParts: unknown[];
@@ -56,6 +58,10 @@ const parsePayload = (value: string): CanonicalMessageCleanupPayload => {
         typeof item !== "object" ||
         Array.isArray(item) ||
         typeof (item as Record<string, unknown>).id !== "string" ||
+        typeof (item as Record<string, unknown>).messageId !== "string" ||
+        !["audio", "image"].includes(
+          String((item as Record<string, unknown>).mediaType),
+        ) ||
         typeof (item as Record<string, unknown>).absolutePath !== "string",
     )
   ) {
@@ -65,6 +71,8 @@ const parsePayload = (value: string): CanonicalMessageCleanupPayload => {
   return {
     media: media.map((item) => ({
       id: (item as { id: string }).id,
+      messageId: (item as { messageId: string }).messageId,
+      mediaType: (item as { mediaType: "audio" | "image" }).mediaType,
       absolutePath: (item as { absolutePath: string }).absolutePath,
     })),
     attachmentParts,
