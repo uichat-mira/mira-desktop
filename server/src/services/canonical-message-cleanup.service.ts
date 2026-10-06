@@ -17,7 +17,7 @@ const DEFAULT_POLL_INTERVAL_MS = 30_000;
 
 type CleanupRepository = Pick<
   typeof canonicalMessageCleanupRepository,
-  "listPending" | "remove" | "scheduleRetry" | "markFailed"
+  "listPending" | "countFailed" | "remove" | "scheduleRetry" | "markFailed"
 >;
 
 export class CanonicalMessageCleanupService {
@@ -98,6 +98,14 @@ export class CanonicalMessageCleanupService {
 
   start() {
     if (this.timer) return;
+    const repository =
+      this.dependencies.repository ?? canonicalMessageCleanupRepository;
+    const failedBacklog = repository.countFailed();
+    if (failedBacklog > 0) {
+      console.error("[canonical-cleanup] unresolved failed jobs", {
+        count: failedBacklog,
+      });
+    }
     this.drainOnce();
     this.timer = setInterval(
       () => this.drainOnce(),
