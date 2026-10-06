@@ -200,3 +200,57 @@ test("authorization failures are final and are not retried", async () => {
   assert.equal(calls.failed.length, 1);
   assert.equal(calls.retried.length, 0);
 });
+
+
+test("one corrupt binding does not abort delivery of later outbox events", async () => {
+  let fetchCalls = 0;
+  const { service, calls } = createHarness(
+    (async () => {
+      fetchCalls += 1;
+      return new Response("{}", { status: 202 });
+    }) as typeof fetch,
+  );
+
+  const secondEvent: NotificationOutboxRecord = {
+    ...event,
+    id: "event-2",
+    installationId: "installation-2",
+    canonicalMessageId: "assistant-2",
+  };
+  const repository = (
+    service as unknown as {
+      dependencies: {
+        repository: {
+          listPending: () => NotificationOutboxRecord[];
+          getBinding: (
+            installationId: string,
+          ) => HostNotificationBindingRecord | null;
+        };
+      };
+    }
+  ).dependencies.repository;
+
+  repository.listPending = () => [event, secondEvent];
+  repository.getBinding = (installationId) => {
+    if (installationId === event.installationId) {
+      throw new Error("stored delivery token cannot be decrypted");
+    }
+    return {
+      ...binding,
+      installationId,
+    };
+  };
+
+  const result = await service.drainOnce();
+
+  assert.deepEqual(result, { delivered: 1, retried: 0, failed: 1 });
+  assert.equal(fetchCalls, 1);
+  assert.deepEqual(calls.delivered, ["event-2"]);
+  assert.deepEqual(calls.failed, [
+    {
+      id: "event-1",
+      message:
+        "Notification delivery preparation failed: stored delivery token cannot be decrypted",
+    },
+  ]);
+});
