@@ -4,7 +4,7 @@ engine:
   detection-engine: copilot
   version: "1.18.34"
   display-name: Mira OpenCode Go
-  description: OpenCode CLI pinned for the Mira Agent Dispatch POC and routed explicitly to OpenCode Go.
+  description: OpenCode CLI pinned for the Mira Agent Dispatch POC and using OpenCode's native Go provider.
   runtime-id: opencode
   experimental: true
   auth:
@@ -25,7 +25,7 @@ engine:
         - raw.githubusercontent.com
         - opencode.ai
       provider-domains:
-        mira-opencode-go: opencode.ai
+        opencode-go: opencode.ai
     installation:
       package-manager: npm
       package-name: opencode-ai
@@ -45,6 +45,7 @@ engine:
         {
           "$schema": "https://opencode.ai/config.json",
           "model": "{env:OPENCODE_MODEL}",
+          "enabled_providers": ["opencode-go"],
           "share": "disabled",
           "autoupdate": false,
           "permission": {
@@ -60,17 +61,9 @@ engine:
             "question": "deny"
           },
           "provider": {
-            "mira-opencode-go": {
-              "name": "OpenCode Go",
-              "npm": "@ai-sdk/openai-compatible",
+            "opencode-go": {
               "options": {
-                "baseURL": "https://opencode.ai/zen/go/v1",
                 "apiKey": "{env:AI_PROVIDER_OPENCODE_GO_KEY}"
-              },
-              "models": {
-                "deepseek-v4.1-flash": {
-                  "name": "DeepSeek V4.1 Flash"
-                }
               }
             }
           }
