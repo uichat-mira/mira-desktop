@@ -56,6 +56,7 @@ export function useCapabilities() {
     nextOutputOffset: number;
     outputLimitBytes?: number;
   } | null>(null);
+  const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null);
   const runGenerationRef = useRef(0);
   const executionLockRef = useRef(false);
 
@@ -176,11 +177,19 @@ export function useCapabilities() {
     [displayInvocation?.result, selectedTool?.id],
   );
 
+  const clearTerminalTracking = () => {
+    setTerminalContinuation(null);
+    setTerminalSessionId(null);
+  };
+
   const rememberTerminalResult = (value: unknown) => {
     const summary = getTerminalResultSummary(value);
     if (summary?.state === "cancelled") {
-      setTerminalContinuation(null);
+      clearTerminalTracking();
       return;
+    }
+    if (summary?.sessionId) {
+      setTerminalSessionId(summary.sessionId);
     }
     if (
       summary?.continuationId &&
@@ -213,7 +222,7 @@ export function useCapabilities() {
 
   const selectTool = (toolId: string) => {
     if (executionLockRef.current || isSelectionLocked) return;
-    setTerminalContinuation(null);
+    clearTerminalTracking();
     setSelectedToolId(toolId);
     setSelectedCaseId(
       cases.find((caseDefinition) => caseDefinition.toolId === toolId)?.id ?? null,
@@ -223,7 +232,7 @@ export function useCapabilities() {
 
   const selectCase = (caseId: string) => {
     if (executionLockRef.current || isSelectionLocked) return;
-    setTerminalContinuation(null);
+    clearTerminalTracking();
     const nextCase = cases.find((caseDefinition) => caseDefinition.id === caseId);
     if (!nextCase) return;
     setSelectedToolId(nextCase.toolId);
@@ -234,6 +243,115 @@ export function useCapabilities() {
   const canOpenManual = Boolean(
     selectedTool && manualToolIds.has(selectedTool.id),
   );
+
+  const executeInvocation = async (
+    input: {
+      toolId: string;
+      args: Record<string, unknown>;
+      workspaceContext?: "tool_lab" | "tool_lab_managed";
+    },
+    generation: number,
+  ) => {
+    const isCurrentRun = () => runGenerationRef.current === generation;
+    let invocationId = "";
+    let approvalRequired = false;
+    let keepExecutionLock = false;
+
+    setRunState({ ...emptyRunState, isRunning: true });
+
+    try {
+      await executeMcpInvocationStream(input, (event) => {
+        if (!isCurrentRun() || event.type === "invocation:done") {
+          return;
+        }
+
+        if (event.type === "invocation:start") {
+          invocationId = event.invocationId;
+        }
+        if (event.type === "invocation:approval_required") {
+          approvalRequired = true;
+        }
+
+        setRunState((current) => ({
+          ...current,
+          invocationId:
+            event.type === "invocation:start"
+              ? event.invocationId
+              : current.invocationId,
+          events: [...current.events, event],
+        }));
+      });
+
+      if (!isCurrentRun()) return keepExecutionLock;
+      if (!invocationId) {
+        throw new Error("Invocation stream ended before an invocation id was received.");
+      }
+
+      const [invocationResult, traceResult] = await Promise.allSettled([
+        getMcpInvocation(invocationId),
+        getMcpInvocationTrace(invocationId),
+      ]);
+      if (!isCurrentRun()) return keepExecutionLock;
+
+      keepExecutionLock =
+        invocationResult.status === "fulfilled"
+          ? invocationResult.value.status === "awaiting_approval" &&
+            !invocationResult.value.approval?.resolution
+          : approvalRequired;
+
+      if (invocationResult.status === "fulfilled" && input.toolId === "terminal") {
+        rememberTerminalResult(invocationResult.value.result);
+      }
+
+      const retrievalErrors = [
+        invocationResult.status === "rejected"
+          ? `Invocation record: ${
+              invocationResult.reason instanceof Error
+                ? invocationResult.reason.message
+                : String(invocationResult.reason)
+            }`
+          : null,
+        traceResult.status === "rejected"
+          ? `Trace: ${
+              traceResult.reason instanceof Error
+                ? traceResult.reason.message
+                : String(traceResult.reason)
+            }`
+          : null,
+      ].filter((message): message is string => Boolean(message));
+
+      setRunState((current) => ({
+        ...current,
+        invocationId,
+        invocation:
+          invocationResult.status === "fulfilled"
+            ? invocationResult.value
+            : current.invocation,
+        resolutionInvocation: null,
+        trace:
+          traceResult.status === "fulfilled"
+            ? traceResult.value
+            : current.trace,
+        transportError:
+          retrievalErrors.length > 0
+            ? retrievalErrors.join(" · ")
+            : current.transportError,
+      }));
+    } catch (error) {
+      if (isCurrentRun()) {
+        setRunState((current) => ({
+          ...current,
+          transportError: error instanceof Error ? error.message : String(error),
+        }));
+      }
+    } finally {
+      if (isCurrentRun()) {
+        setRunState((current) => ({ ...current, isRunning: false }));
+      }
+    }
+
+    return keepExecutionLock;
+  };
 
   const runCase = async (caseId: string) => {
     if (executionLockRef.current || hasPendingApproval) {
@@ -269,7 +387,7 @@ export function useCapabilities() {
       return;
     }
 
-    setTerminalContinuation(null);
+    clearTerminalTracking();
     executionLockRef.current = true;
     const generation = ++runGenerationRef.current;
     const isCurrentRun = () => runGenerationRef.current === generation;
@@ -308,111 +426,19 @@ export function useCapabilities() {
 
     if (!isCurrentRun()) return;
 
-    let invocationId = "";
-    let approvalRequired = false;
-    let keepExecutionLock = false;
-    setRunState({ ...emptyRunState, isRunning: true });
+    const keepExecutionLock = await executeInvocation(
+      {
+        toolId: nextCase.toolId,
+        args: nextCase.args,
+        ...(nextCase.workspace === "managed"
+          ? { workspaceContext: "tool_lab_managed" as const }
+          : {}),
+      },
+      generation,
+    );
 
-    try {
-      await executeMcpInvocationStream(
-        {
-          toolId: nextCase.toolId,
-          args: nextCase.args,
-          ...(nextCase.workspace === "managed"
-            ? { workspaceContext: "tool_lab_managed" as const }
-            : {}),
-        },
-        (event) => {
-          if (!isCurrentRun() || event.type === "invocation:done") {
-            return;
-          }
-
-          if (event.type === "invocation:start") {
-            invocationId = event.invocationId;
-          }
-          if (event.type === "invocation:approval_required") {
-            approvalRequired = true;
-          }
-
-          setRunState((current) => ({
-            ...current,
-            invocationId:
-              event.type === "invocation:start"
-                ? event.invocationId
-                : current.invocationId,
-            events: [...current.events, event],
-          }));
-        },
-      );
-
-      if (!isCurrentRun()) return;
-      if (!invocationId) {
-        throw new Error("Invocation stream ended before an invocation id was received.");
-      }
-
-      const [invocationResult, traceResult] = await Promise.allSettled([
-        getMcpInvocation(invocationId),
-        getMcpInvocationTrace(invocationId),
-      ]);
-
-      if (!isCurrentRun()) return;
-
-      keepExecutionLock =
-        invocationResult.status === "fulfilled"
-          ? invocationResult.value.status === "awaiting_approval" &&
-            !invocationResult.value.approval?.resolution
-          : approvalRequired;
-
-      if (invocationResult.status === "fulfilled" && nextTool.id === "terminal") {
-        rememberTerminalResult(invocationResult.value.result);
-      }
-
-      const retrievalErrors = [
-        invocationResult.status === "rejected"
-          ? `Invocation record: ${
-              invocationResult.reason instanceof Error
-                ? invocationResult.reason.message
-                : String(invocationResult.reason)
-            }`
-          : null,
-        traceResult.status === "rejected"
-          ? `Trace: ${
-              traceResult.reason instanceof Error
-                ? traceResult.reason.message
-                : String(traceResult.reason)
-            }`
-          : null,
-      ].filter((message): message is string => Boolean(message));
-
-      setRunState((current) => ({
-        ...current,
-        invocationId,
-        invocation:
-          invocationResult.status === "fulfilled"
-            ? invocationResult.value
-            : current.invocation,
-        trace:
-          traceResult.status === "fulfilled"
-            ? traceResult.value
-            : current.trace,
-        transportError:
-          retrievalErrors.length > 0
-            ? retrievalErrors.join(" · ")
-            : current.transportError,
-      }));
-    } catch (error) {
-      if (!isCurrentRun()) return;
-      setRunState((current) => ({
-        ...current,
-        transportError: error instanceof Error ? error.message : String(error),
-      }));
-    } finally {
-      if (isCurrentRun()) {
-        setRunState((current) => ({ ...current, isRunning: false }));
-        if (!keepExecutionLock) {
-          releaseExecutionLock();
-        }
-      }
+    if (!keepExecutionLock) {
+      releaseExecutionLock();
     }
   };
 
@@ -518,114 +544,17 @@ export function useCapabilities() {
 
     executionLockRef.current = true;
     const generation = ++runGenerationRef.current;
-    const isCurrentRun = () => runGenerationRef.current === generation;
-    const releaseExecutionLock = () => {
-      if (isCurrentRun()) {
-        executionLockRef.current = false;
-      }
-    };
+    const keepExecutionLock = await executeInvocation(
+      {
+        toolId: "terminal",
+        args,
+        workspaceContext: "tool_lab_managed",
+      },
+      generation,
+    );
 
-    let invocationId = "";
-    let approvalRequired = false;
-    let keepExecutionLock = false;
-    setRunState({ ...emptyRunState, isRunning: true });
-
-    try {
-      await executeMcpInvocationStream(
-        {
-          toolId: "terminal",
-          args,
-          workspaceContext: "tool_lab_managed",
-        },
-        (event) => {
-          if (!isCurrentRun() || event.type === "invocation:done") {
-            return;
-          }
-          if (event.type === "invocation:start") {
-            invocationId = event.invocationId;
-          }
-          if (event.type === "invocation:approval_required") {
-            approvalRequired = true;
-          }
-          setRunState((current) => ({
-            ...current,
-            invocationId:
-              event.type === "invocation:start"
-                ? event.invocationId
-                : current.invocationId,
-            events: [...current.events, event],
-          }));
-        },
-      );
-
-      if (!isCurrentRun()) return;
-      if (!invocationId) {
-        throw new Error("Invocation stream ended before an invocation id was received.");
-      }
-
-      const [invocationResult, traceResult] = await Promise.allSettled([
-        getMcpInvocation(invocationId),
-        getMcpInvocationTrace(invocationId),
-      ]);
-      if (!isCurrentRun()) return;
-
-      keepExecutionLock =
-        invocationResult.status === "fulfilled"
-          ? invocationResult.value.status === "awaiting_approval" &&
-            !invocationResult.value.approval?.resolution
-          : approvalRequired;
-
-      if (invocationResult.status === "fulfilled") {
-        rememberTerminalResult(invocationResult.value.result);
-      }
-
-      const retrievalErrors = [
-        invocationResult.status === "rejected"
-          ? `Invocation record: ${
-              invocationResult.reason instanceof Error
-                ? invocationResult.reason.message
-                : String(invocationResult.reason)
-            }`
-          : null,
-        traceResult.status === "rejected"
-          ? `Trace: ${
-              traceResult.reason instanceof Error
-                ? traceResult.reason.message
-                : String(traceResult.reason)
-            }`
-          : null,
-      ].filter((message): message is string => Boolean(message));
-
-      setRunState((current) => ({
-        ...current,
-        invocationId,
-        invocation:
-          invocationResult.status === "fulfilled"
-            ? invocationResult.value
-            : current.invocation,
-        resolutionInvocation: null,
-        trace:
-          traceResult.status === "fulfilled"
-            ? traceResult.value
-            : current.trace,
-        transportError:
-          retrievalErrors.length > 0
-            ? retrievalErrors.join(" · ")
-            : current.transportError,
-      }));
-    } catch (error) {
-      if (!isCurrentRun()) return;
-      setRunState((current) => ({
-        ...current,
-        transportError: error instanceof Error ? error.message : String(error),
-      }));
-    } finally {
-      if (isCurrentRun()) {
-        setRunState((current) => ({ ...current, isRunning: false }));
-        if (!keepExecutionLock) {
-          releaseExecutionLock();
-        }
-      }
+    if (!keepExecutionLock && runGenerationRef.current === generation) {
+      executionLockRef.current = false;
     }
   };
 
@@ -641,18 +570,18 @@ export function useCapabilities() {
   };
 
   const runTerminalStatus = async () => {
-    if (!terminalSummary?.sessionId) return;
+    if (!terminalSessionId) return;
     await runTerminalControl({
       operation: "status",
-      sessionId: terminalSummary.sessionId,
+      sessionId: terminalSessionId,
     });
   };
 
   const runTerminalStop = async () => {
-    if (!terminalSummary?.sessionId) return;
+    if (!terminalSessionId) return;
     await runTerminalControl({
       operation: "stop",
-      sessionId: terminalSummary.sessionId,
+      sessionId: terminalSessionId,
     });
   };
 
@@ -673,6 +602,7 @@ export function useCapabilities() {
     resolveApproval,
     runState,
     terminalContinuation,
+    terminalSessionId,
     terminalSummary,
     selectedCase,
     selectedTool,
