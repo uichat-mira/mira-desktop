@@ -89,7 +89,7 @@
     "benchmark:score": "node scripts/benchmark/scoring/agent-core-scorer.mjs",
     "benchmark:audit": "node scripts/benchmark/scoring/audit-package.mjs",
     "check:push-broker": "tsc --noEmit -p packages/push-broker/tsconfig.json",
-    "test:push-broker": "pnpm --filter @ui-chat-mira/server exec tsx --test ../packages/push-broker/src/service.test.ts"
+    "test:push-broker": "pnpm --dir server exec tsx --test ../packages/push-broker/src/service.test.ts"
   },
   "engines": {
     "node": ">=22.19.0"
