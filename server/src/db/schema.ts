@@ -1479,6 +1479,29 @@ export type HostNotificationBinding =
 export type NewHostNotificationBinding =
   typeof hostNotificationBindings.$inferInsert;
 
+export const hostNotificationBindingScopes = sqliteTable(
+  "host_notification_binding_scopes",
+  {
+    installationId: text("installation_id")
+      .notNull()
+      .references(() => hostNotificationBindings.installationId, {
+        onDelete: "cascade",
+      }),
+    sourceId: text("source_id").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.installationId, table.sourceId] }),
+    sourceIdx: index("idx_host_notification_binding_scopes_source").on(
+      table.sourceId,
+    ),
+  }),
+);
+
+export type HostNotificationBindingScope =
+  typeof hostNotificationBindingScopes.$inferSelect;
+export type NewHostNotificationBindingScope =
+  typeof hostNotificationBindingScopes.$inferInsert;
+
 export const notificationOutbox = sqliteTable(
   "notification_outbox",
   {
