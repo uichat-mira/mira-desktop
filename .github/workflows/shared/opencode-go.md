@@ -9,10 +9,11 @@ engine:
   experimental: true
   provider:
     name: openai
-    auth:
-      secret: OPENAI_API_KEY
   behaviors:
     secret-strategy: universal-llm-consumer
+    supported-env-var-keys:
+      - OPENAI_API_KEY
+      - OPENAI_BASE_URL
     capabilities:
       tools-allowlist: true
       max-turns: true
