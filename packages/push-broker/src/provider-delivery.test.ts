@@ -39,7 +39,7 @@ const bytesToPem = (label: string, value: ArrayBuffer) => {
   return `-----BEGIN ${label}-----\n${lines.join("\n")}\n-----END ${label}-----`;
 };
 
-const createRsaPem = async () => {
+const createRsaMaterial = async () => {
   const pair = (await crypto.subtle.generateKey(
     {
       name: "RSASSA-PKCS1-v1_5",
@@ -50,24 +50,77 @@ const createRsaPem = async () => {
     true,
     ["sign", "verify"],
   )) as CryptoKeyPair;
-  return bytesToPem("PRIVATE KEY", await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+  return {
+    privateKeyPem: bytesToPem(
+      "PRIVATE KEY",
+      await crypto.subtle.exportKey("pkcs8", pair.privateKey),
+    ),
+    publicKey: pair.publicKey,
+  };
 };
 
-const createEcPem = async () => {
+const createRsaPem = async () => (await createRsaMaterial()).privateKeyPem;
+
+const createEcMaterial = async () => {
   const pair = (await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
     true,
     ["sign", "verify"],
   )) as CryptoKeyPair;
-  return bytesToPem("PRIVATE KEY", await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+  return {
+    privateKeyPem: bytesToPem(
+      "PRIVATE KEY",
+      await crypto.subtle.exportKey("pkcs8", pair.privateKey),
+    ),
+    publicKey: pair.publicKey,
+  };
+};
+
+const createEcPem = async () => (await createEcMaterial()).privateKeyPem;
+
+const base64UrlToBytes = (value: string) => {
+  const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+};
+
+const decodeJwtPart = (value: string) =>
+  JSON.parse(new TextDecoder().decode(base64UrlToBytes(value))) as Record<
+    string,
+    unknown
+  >;
+
+const verifyJwt = async (
+  jwt: string,
+  publicKey: CryptoKey,
+  algorithm: AlgorithmIdentifier | EcdsaParams,
+) => {
+  const parts = jwt.split(".");
+  assert.equal(parts.length, 3);
+  const [header, payload, signature] = parts;
+  assert.ok(header && payload && signature);
+  const valid = await crypto.subtle.verify(
+    algorithm,
+    publicKey,
+    base64UrlToBytes(signature),
+    new TextEncoder().encode(`${header}.${payload}`),
+  );
+  assert.equal(valid, true);
+  return {
+    header: decodeJwtPart(header),
+    payload: decodeJwtPart(payload),
+  };
 };
 
 test("FCM adapter emits only generic alert plus identity data", async () => {
-  const privateKeyPem = await createRsaPem();
+  const material = await createRsaMaterial();
   const calls: Array<{ url: string; init: RequestInit }> = [];
+  let oauthAssertion = "";
   const fakeFetch: typeof fetch = async (input, init = {}) => {
     calls.push({ url: String(input), init });
     if (String(input).includes("oauth2.googleapis.com")) {
+      oauthAssertion = new URLSearchParams(String(init.body)).get("assertion") ?? "";
       return new Response(
         JSON.stringify({ access_token: "oauth-access", expires_in: 3600 }),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -82,7 +135,7 @@ test("FCM adapter emits only generic alert plus identity data", async () => {
     {
       projectId: "mira-project",
       clientEmail: "push@example.iam.gserviceaccount.com",
-      privateKeyPem,
+      privateKeyPem: material.privateKeyPem,
     },
     fakeFetch,
   );
@@ -95,6 +148,22 @@ test("FCM adapter emits only generic alert plus identity data", async () => {
   });
   assert.equal(result.type, "accepted");
   assert.equal(calls.length, 2);
+
+  const oauthJwt = await verifyJwt(
+    oauthAssertion,
+    material.publicKey,
+    { name: "RSASSA-PKCS1-v1_5" },
+  );
+  assert.equal(oauthJwt.header.alg, "RS256");
+  assert.equal(
+    oauthJwt.payload.iss,
+    "push@example.iam.gserviceaccount.com",
+  );
+  assert.equal(
+    oauthJwt.payload.scope,
+    "https://www.googleapis.com/auth/firebase.messaging",
+  );
+  assert.equal(oauthJwt.payload.aud, "https://oauth2.googleapis.com/token");
 
   const send = calls[1]!;
   const body = JSON.parse(String(send.init.body)) as {
@@ -196,13 +265,13 @@ test("FCM adapter classifies invalid, retryable and rejected responses", async (
 });
 
 test("APNs adapter emits alert request with event expiration and identity metadata", async () => {
-  const privateKeyPem = await createEcPem();
+  const material = await createEcMaterial();
   let captured: { url: string; init: RequestInit } | null = null;
   const adapter = new ApnsProviderAdapter(
     {
       teamId: "TEAM123456",
       keyId: "KEY1234567",
-      privateKeyPem,
+      privateKeyPem: material.privateKeyPem,
       topic: "io.tomz.mira.mobile",
       environment: "production",
     },
@@ -229,6 +298,17 @@ test("APNs adapter emits alert request with event expiration and identity metada
     "https://api.push.apple.com/3/device/apns-device-token",
   );
   const headers = request.init.headers as Record<string, string>;
+  const providerJwt = headers.authorization.replace(/^bearer\s+/u, "");
+  const verifiedJwt = await verifyJwt(
+    providerJwt,
+    material.publicKey,
+    { name: "ECDSA", hash: "SHA-256" },
+  );
+  assert.equal(verifiedJwt.header.alg, "ES256");
+  assert.equal(verifiedJwt.header.kid, "KEY1234567");
+  assert.equal(verifiedJwt.payload.iss, "TEAM123456");
+  assert.equal(verifiedJwt.payload.iat, Math.floor(NOW / 1000));
+
   assert.equal(headers["apns-push-type"], "alert");
   assert.equal(headers["apns-topic"], "io.tomz.mira.mobile");
   assert.equal(
