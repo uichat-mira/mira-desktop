@@ -463,4 +463,65 @@ export const hostNotificationRepository = {
       .all(now, now, limit) as OutboxRow[];
     return rows.map(toOutboxRecord);
   },
+
+  expireDue(now = new Date().toISOString()) {
+    const result = getSqlite()
+      .prepare(
+        `UPDATE notification_outbox
+         SET state = 'expired', updated_at = ?
+         WHERE state = 'pending' AND expires_at <= ?`,
+      )
+      .run(now, now);
+    return result.changes;
+  },
+
+  markDelivered(id: string, now = new Date().toISOString()) {
+    const result = getSqlite()
+      .prepare(
+        `UPDATE notification_outbox
+         SET state = 'delivered', last_error = NULL, updated_at = ?
+         WHERE id = ? AND state = 'pending'`,
+      )
+      .run(now, id);
+    return result.changes > 0;
+  },
+
+  markFailed(
+    id: string,
+    errorMessage: string,
+    now = new Date().toISOString(),
+  ) {
+    const result = getSqlite()
+      .prepare(
+        `UPDATE notification_outbox
+         SET state = 'failed', last_error = ?, updated_at = ?
+         WHERE id = ? AND state = 'pending'`,
+      )
+      .run(errorMessage.slice(0, 1000), now, id);
+    return result.changes > 0;
+  },
+
+  scheduleRetry(input: {
+    id: string;
+    attemptCount: number;
+    nextAttemptAt: string;
+    errorMessage: string;
+    now?: string;
+  }) {
+    const now = input.now ?? new Date().toISOString();
+    const result = getSqlite()
+      .prepare(
+        `UPDATE notification_outbox
+         SET attempt_count = ?, next_attempt_at = ?, last_error = ?, updated_at = ?
+         WHERE id = ? AND state = 'pending'`,
+      )
+      .run(
+        input.attemptCount,
+        input.nextAttemptAt,
+        input.errorMessage.slice(0, 1000),
+        now,
+        input.id,
+      );
+    return result.changes > 0;
+  },
 };
