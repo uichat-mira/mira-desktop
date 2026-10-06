@@ -47,19 +47,21 @@ jobs:
           set -euo pipefail
           test -s ".github/workflows/mira-agent-worker.lock.yml"
 
-      - name: Launch read-only agent probe
+      - name: Stage compiled lock for maintainer publication
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
         run: |
           set -euo pipefail
+          mkdir -p .gh-aw-poc
+          cp .github/workflows/mira-agent-worker.lock.yml .gh-aw-poc/mira-agent-worker.lock.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          printf '1\n' | "$RUNNER_TEMP/gh-aw" run mira-agent-worker \
-            --push \
-            --ref feat/agent-dispatch-poc \
-            --approve \
-            --json | tee "$RUNNER_TEMP/mira-agent-worker-run.json"
+          git add .gh-aw-poc/mira-agent-worker.lock.yml
+          if git diff --cached --quiet; then
+            echo "Compiled lock staging file is already current."
+          else
+            git commit -m "poc: stage compiled agent worker lock"
+            git push origin HEAD:feat/agent-dispatch-poc
+          fi
 
       - name: Upload generated lock
         uses: actions/upload-artifact@v4
