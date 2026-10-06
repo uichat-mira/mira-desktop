@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, test } from "vitest";
+import { afterAll, test, vi } from "vitest";
 import { initializeAuthDatabase } from "@/db/auth.db";
 import { getSqlite } from "@/db/index.js";
 import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
@@ -17,6 +17,7 @@ import {
 } from "@/db/repositories";
 import { threadService } from "./thread.service.js";
 import { privateAgentWorkspaceService } from "./agent-workspace.service.js";
+import { chatMediaService } from "./chat-media.service.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 
 const testDbPath = createTimestampedTestArtifactPath("db", "rag-demo-thread-service", ".sqlite");
@@ -969,6 +970,69 @@ test("notification outbox failure rolls back the canonical assistant message", (
     )
     .get(assistantMessageId) as { count: number };
   assert.equal(outbox.count, 0);
+});
+
+test("notification failure leaves existing message descendants and media cleanup untouched", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const parent = threadService.createMessage(thread.id, user.id, {
+    id: `user-parent-${crypto.randomUUID()}`,
+    role: "user",
+    content: "parent",
+    parts: [{ type: "text", text: "parent" }],
+  });
+  const assistantMessageId = `assistant-existing-${crypto.randomUUID()}`;
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    parentId: parent.id,
+    role: "assistant",
+    content: "Agent 正在运行…",
+    parts: [{ type: "text", text: "Agent 正在运行…" }],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+  const descendant = threadService.createMessage(thread.id, user.id, {
+    id: `user-descendant-${crypto.randomUUID()}`,
+    parentId: assistantMessageId,
+    role: "user",
+    content: "keep me",
+    parts: [{ type: "text", text: "keep me" }],
+  });
+
+  getSqlite()
+    .prepare(
+      "UPDATE host_notification_bindings SET source_scope_json = ? WHERE installation_id = ?",
+    )
+    .run("{invalid-json", installationId);
+
+  const cleanupSpy = vi.spyOn(chatMediaService, "removeForMessages");
+  try {
+    assert.throws(
+      () =>
+        threadService.createMessage(thread.id, user.id, {
+          id: assistantMessageId,
+          parentId: parent.id,
+          role: "assistant",
+          content: "最终答案",
+          parts: [{ type: "text", text: "最终答案" }],
+          metadata: { agent: { status: "completed" } },
+        }),
+      /Stored notification source scope is invalid/,
+    );
+
+    const persisted = threadService.getMessageById(assistantMessageId, user.id);
+    assert.equal(persisted?.content, "Agent 正在运行…");
+    assert.equal(
+      (persisted?.metadata.agent as { status?: string } | undefined)?.status,
+      "running",
+    );
+    assert.equal(
+      threadService.getMessageById(descendant.id, user.id)?.content,
+      "keep me",
+    );
+    assert.equal(cleanupSpy.mock.calls.length, 0);
+  } finally {
+    cleanupSpy.mockRestore();
+  }
 });
 
 test("notification outbox stores identity only and never persists Assistant text", () => {
