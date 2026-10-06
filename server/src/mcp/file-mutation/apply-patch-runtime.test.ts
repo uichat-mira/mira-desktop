@@ -103,6 +103,45 @@ describe("apply_patch File Mutation Runtime", () => {
     );
   });
 
+  it("updates the intended repeated line without ambiguous re-search", async () => {
+    fs.writeFileSync(
+      path.join(tempRoot, "repeated.txt"),
+      "same\nmarker\nsame\n",
+      "utf8",
+    );
+
+    const result = await executeApplyPatchMutation(
+      parseApplyPatch(`*** Begin Patch
+*** Update File: repeated.txt
+@@ marker
+-same
++changed
+*** End Patch`),
+    );
+
+    expect(result.status).toBe("completed");
+    expect(
+      fs.readFileSync(path.join(tempRoot, "repeated.txt"), "utf8"),
+    ).toBe("same\nmarker\nchanged\n");
+  });
+
+  it("appends an unanchored insertion at EOF", async () => {
+    fs.writeFileSync(path.join(tempRoot, "append.txt"), "alpha", "utf8");
+
+    const result = await executeApplyPatchMutation(
+      parseApplyPatch(`*** Begin Patch
+*** Update File: append.txt
+@@
++tail
+*** End Patch`),
+    );
+
+    expect(result.status).toBe("completed");
+    expect(fs.readFileSync(path.join(tempRoot, "append.txt"), "utf8")).toBe(
+      "alpha\ntail",
+    );
+  });
+
   it("prevalidates the whole patch before the first mutation", async () => {
     const parsed = parseApplyPatch(`*** Begin Patch
 *** Add File: first.txt
