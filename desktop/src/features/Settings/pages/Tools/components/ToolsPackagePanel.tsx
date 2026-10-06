@@ -218,7 +218,7 @@ export default function ToolsPackagePanel({
                   size="xs"
                   variant="danger-outline"
                   onClick={onTerminalStop}
-                  disabled={isRunning || terminalSummary.state !== "running"}
+                  disabled={isRunning || terminalSummary.state === "cancelled"}
                 >
                   {labels.stop}
                 </Button>
