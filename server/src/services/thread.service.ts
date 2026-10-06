@@ -851,17 +851,6 @@ export const threadService = {
       throw new Error("Message id already exists on a different thread");
     }
 
-    if (
-      effectiveParentId !== undefined &&
-      (!existing || !input.preserveDescendants)
-    ) {
-      pruneThreadTail(
-        threadId,
-        existing ? existing.id : effectiveParentId ?? null,
-        existing?.id,
-      );
-    }
-
     if (existing) {
       if (
       existing.role !== input.role ||
@@ -873,16 +862,9 @@ export const threadService = {
           ) ?? [],
         ) !== JSON.stringify(input.parts ?? [])
       ) {
-        const mediaCleanup = chatMediaService.removeForMessages([existing.id]);
-        if (mediaCleanup.failed > 0) {
-          throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s): ${mediaCleanup.errors.map((item) => item.mediaId).join(", ")}`);
-        }
-        removeFileAttachmentsRemovedFromParts(
-          parsePartsJson(existing.partsJson),
-          input.parts,
-        );
+        const previousParts = parsePartsJson(existing.partsJson);
         const previous = toMessageResponse(existing);
-        return getSqlite().transaction(() => {
+        const updatedResponse = getSqlite().transaction(() => {
           const updated = messageRepository.updateById(existing.id, {
             role: input.role,
             content: normalizedContent,
@@ -903,8 +885,29 @@ export const threadService = {
           });
           return next;
         })();
+
+        // Filesystem/media cleanup cannot participate in SQLite rollback.
+        // Run it only after canonical state + outbox commit successfully.
+        if (
+          effectiveParentId !== undefined &&
+          !input.preserveDescendants
+        ) {
+          pruneThreadTail(threadId, existing.id, existing.id);
+        }
+        const mediaCleanup = chatMediaService.removeForMessages([existing.id]);
+        if (mediaCleanup.failed > 0) {
+          throw new Error(`Failed to remove ${mediaCleanup.failed} media record(s): ${mediaCleanup.errors.map((item) => item.mediaId).join(", ")}`);
+        }
+        removeFileAttachmentsRemovedFromParts(previousParts, input.parts);
+        return updatedResponse;
       }
 
+      if (
+        effectiveParentId !== undefined &&
+        !input.preserveDescendants
+      ) {
+        pruneThreadTail(threadId, existing.id, existing.id);
+      }
       threadRepository.updateById(threadId, {});
       return toMessageResponse(existing);
     }
@@ -924,7 +927,7 @@ export const threadService = {
       throw new Error("Message content is missing");
     }
 
-    return getSqlite().transaction(() => {
+    const createdResponse = getSqlite().transaction(() => {
       const created = messageRepository.create({
         ...(input.id ? { id: input.id } : {}),
         threadId,
@@ -944,6 +947,15 @@ export const threadService = {
       });
       return next;
     })();
+
+    if (effectiveParentId !== undefined) {
+      pruneThreadTail(
+        threadId,
+        effectiveParentId ?? null,
+        createdResponse.id,
+      );
+    }
+    return createdResponse;
   },
 
   updateMessageMetadata(
