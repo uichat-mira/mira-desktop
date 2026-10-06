@@ -70,6 +70,23 @@ export const chatMediaService = {
     const media = this.getForRead(id);
     return media?.threadId === threadId ? media : null;
   },
+  createCleanupSnapshot(messageIds: string[]) {
+    return chatMediaRepository.listByMessageIds(messageIds).map((record) => ({
+      id: record.id,
+      absolutePath: record.absolutePath,
+    }));
+  },
+
+  removeCleanupSnapshot(
+    records: Array<{ id: string; absolutePath: string }>,
+  ) {
+    for (const record of records) {
+      const absolutePath = validatePath(record.absolutePath);
+      fs.rmSync(absolutePath, { force: true });
+      chatMediaRepository.deleteByIds([record.id]);
+    }
+  },
+
   removeForMessages(messageIds: string[]) {
     const records = chatMediaRepository.listByMessageIds(messageIds);
     let files = 0;
