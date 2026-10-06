@@ -34,7 +34,7 @@ tools:
   cli-proxy: false
   github:
     toolsets: [repos, issues, pull_requests]
-  bash: false
+  bash: ["*"]
 safe-outputs:
   # A harmless non-builtin output prevents gh-aw v0.89.21 from auto-injecting
   # create-issue as its default fallback. The probe does not call this tool.
