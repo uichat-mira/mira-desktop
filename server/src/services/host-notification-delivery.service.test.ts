@@ -185,7 +185,7 @@ test("stale canonical events expire without calling the Broker", async () => {
   assert.deepEqual(calls.expired, [
     {
       id: "event-1",
-      reason: "Canonical message is no longer notification-eligible",
+      reason: "Canonical message or binding authority is no longer eligible",
     },
   ]);
 });
