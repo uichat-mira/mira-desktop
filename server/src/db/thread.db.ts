@@ -93,6 +93,8 @@ const createThreadTables = () => {
     CREATE TABLE IF NOT EXISTS host_notification_binding_requests (
       nonce TEXT PRIMARY KEY,
       installation_id TEXT NOT NULL,
+      origin_remote_device_id TEXT NOT NULL,
+      owner_user_id INTEGER NOT NULL,
       source_scope_json TEXT NOT NULL,
       expires_at TEXT NOT NULL,
       consumed_at TEXT,
@@ -101,11 +103,15 @@ const createThreadTables = () => {
 
     CREATE INDEX IF NOT EXISTS idx_host_notification_binding_requests_installation
       ON host_notification_binding_requests(installation_id);
+    CREATE INDEX IF NOT EXISTS idx_host_notification_binding_requests_device
+      ON host_notification_binding_requests(origin_remote_device_id);
     CREATE INDEX IF NOT EXISTS idx_host_notification_binding_requests_expires
       ON host_notification_binding_requests(expires_at);
 
     CREATE TABLE IF NOT EXISTS host_notification_bindings (
       installation_id TEXT PRIMARY KEY,
+      origin_remote_device_id TEXT NOT NULL,
+      owner_user_id INTEGER NOT NULL,
       broker_base_url TEXT NOT NULL,
       delivery_token_encrypted TEXT NOT NULL,
       source_scope_json TEXT NOT NULL,
@@ -117,13 +123,14 @@ const createThreadTables = () => {
 
     CREATE INDEX IF NOT EXISTS idx_host_notification_bindings_status
       ON host_notification_bindings(status);
+    CREATE INDEX IF NOT EXISTS idx_host_notification_bindings_device
+      ON host_notification_bindings(origin_remote_device_id);
 
     CREATE TABLE IF NOT EXISTS notification_outbox (
       id TEXT PRIMARY KEY,
       installation_id TEXT NOT NULL
         REFERENCES host_notification_bindings(installation_id) ON DELETE CASCADE,
-      canonical_message_id TEXT NOT NULL
-        REFERENCES messages(id) ON DELETE CASCADE,
+      canonical_message_id TEXT NOT NULL,
       source_id TEXT NOT NULL,
       eligibility_event TEXT NOT NULL DEFAULT 'final_transition_first_seen'
         CHECK (eligibility_event = 'final_transition_first_seen'),
