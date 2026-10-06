@@ -6,8 +6,11 @@ import {
 
 import {
   hostNotificationRepository,
+  HostNotificationBindingError,
   type HostNotificationBindingRecord,
 } from "@/db/repositories/host-notification.repository.js";
+
+export { HostNotificationBindingError };
 import { getConfiguredPushBrokerBaseUrl } from "@/services/host-notification-config.js";
 
 const BINDING_DESCRIPTOR_TTL_MS = 5 * 60 * 1000;

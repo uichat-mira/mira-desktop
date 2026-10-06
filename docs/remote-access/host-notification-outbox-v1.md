@@ -104,8 +104,9 @@ The Host worker starts with Mira Server and drains pending durable outbox rows.
 - Before each Broker POST, Host re-reads the canonical message and owning thread,
   verifies the owning user still matches the binding, and verifies the originating
   paired device is still active. Missing/deleted/non-final canonical state,
-  archived/reassigned threads, revoked devices, or stale source authority expire
-  the outbox row without network delivery.
+  archived/reassigned threads, or stale source authority expire the outbox row
+  without network delivery. A revoked or otherwise unavailable binding marks the
+  outbox row failed instead of expired.
 - `canonical_message_id` is deliberately not an FK to `messages`: deleting a
   canonical message cannot silently erase durable outbox history; the worker marks
   that retained row expired explicitly.

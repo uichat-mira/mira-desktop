@@ -5,6 +5,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { badRequest, sendRouteError } from "@/utils/route-errors.js";
 
 const mocks = vi.hoisted(() => {
+  class HostNotificationBindingError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string,
+    ) {
+      super(message);
+      this.name = "HostNotificationBindingError";
+    }
+  }
+
+  class HostNotificationConfigError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string,
+    ) {
+      super(message);
+      this.name = "HostNotificationConfigError";
+    }
+  }
+
   class PairingServiceError extends Error {
     constructor(
       public readonly code: string,
@@ -16,6 +36,8 @@ const mocks = vi.hoisted(() => {
   }
 
   return {
+    HostNotificationBindingError,
+    HostNotificationConfigError,
     PairingServiceError,
     pairing: {
       createChallenge: vi.fn(),
@@ -30,11 +52,16 @@ const mocks = vi.hoisted(() => {
     },
     thread: {
       listChatWorkspaces: vi.fn(),
-      getThreadSummaryById: vi.fn(),
+    },
+    threadRepo: {
+      findById: vi.fn(),
     },
     push: {
       createBindingDescriptor: vi.fn(),
       acceptApprovedBinding: vi.fn(),
+    },
+    pushConfig: {
+      getBrokerBaseUrl: vi.fn(),
     },
     workspaces: {
       list: vi.fn(),
@@ -66,17 +93,21 @@ vi.mock("@/services/thread.service.js", () => ({
 }));
 
 vi.mock("@/services/host-notification-identity.service.js", () => ({
+  HostNotificationBindingError: mocks.HostNotificationBindingError,
   hostNotificationIdentityService: mocks.push,
 }));
 
 vi.mock("@/services/host-notification-config.js", () => ({
-  getConfiguredPushBrokerBaseUrl: vi.fn(
-    () => "https://push.example.test",
-  ),
+  HostNotificationConfigError: mocks.HostNotificationConfigError,
+  getConfiguredPushBrokerBaseUrl: mocks.pushConfig.getBrokerBaseUrl,
 }));
 
 vi.mock("@/db/repositories/chat-workspace.repository.js", () => ({
   chatWorkspaceRepository: mocks.workspaces,
+}));
+
+vi.mock("@/db/repositories/thread.repository.js", () => ({
+  threadRepository: mocks.threadRepo,
 }));
 
 vi.mock("@/services/remote-relay-config.service.js", () => {
@@ -239,11 +270,14 @@ beforeEach(() => {
     accepted: true,
     status: "cancelling",
   });
-  mocks.thread.getThreadSummaryById.mockImplementation(
+  mocks.threadRepo.findById.mockImplementation(
     (threadId: string, userId: number) =>
       threadId === "thread-1" && userId === user.id
         ? { id: threadId, userId, status: "active" }
-        : null,
+        : undefined,
+  );
+  mocks.pushConfig.getBrokerBaseUrl.mockReturnValue(
+    "https://push.example.test",
   );
   mocks.push.createBindingDescriptor.mockReturnValue({
     schemaVersion: 1,
@@ -549,6 +583,70 @@ describe("remote access routes", () => {
       sourceScope: ["thread-1"],
     });
 
+    await app.close();
+  });
+
+  it("maps unavailable Push Broker configuration to 503 without hiding the cause", async () => {
+    mocks.pushConfig.getBrokerBaseUrl.mockImplementationOnce(() => {
+      throw new mocks.HostNotificationConfigError(
+        "BROKER_NOT_CONFIGURED",
+        "MIRA_PUSH_BROKER_URL is not configured",
+      );
+    });
+    const app = await createApp({
+      authenticated: true,
+      device: {
+        id: "device-1",
+        name: "K70",
+        platform: "android",
+        permissions: ["threads:read"],
+      },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/remote/v1/push/binding-descriptor",
+      payload: {
+        installationId: "installation-1",
+        sourceScope: ["thread-1"],
+      },
+    });
+
+    assert.equal(response.statusCode, 503, response.body);
+    assert.equal(response.json().message, "MIRA_PUSH_BROKER_URL is not configured");
+    await app.close();
+  });
+
+  it("maps consumed or expired Push binding requests to 400", async () => {
+    mocks.push.acceptApprovedBinding.mockImplementationOnce(() => {
+      throw new mocks.HostNotificationBindingError(
+        "REQUEST_EXPIRED",
+        "Notification binding request has expired",
+      );
+    });
+    const app = await createApp({
+      authenticated: true,
+      device: {
+        id: "device-1",
+        name: "K70",
+        platform: "android",
+        permissions: ["threads:read"],
+      },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/remote/v1/push/bindings/accept",
+      payload: {
+        bindingNonce: "binding-nonce",
+        installationId: "installation-1",
+        deliveryToken: "delivery_0123456789012345678901234567890123456789",
+        sourceScope: ["thread-1"],
+      },
+    });
+
+    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(response.json().message, "Notification binding request has expired");
     await app.close();
   });
 

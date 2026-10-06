@@ -17,17 +17,25 @@ import {
 } from "@/services/remote-relay-config.service.js";
 import { tailscaleRemoteAccessService } from "@/services/tailscale-remote-access.service.js";
 import { threadService } from "@/services/thread.service.js";
-import { hostNotificationIdentityService } from "@/services/host-notification-identity.service.js";
-import { getConfiguredPushBrokerBaseUrl } from "@/services/host-notification-config.js";
+import {
+  HostNotificationBindingError,
+  hostNotificationIdentityService,
+} from "@/services/host-notification-identity.service.js";
+import {
+  HostNotificationConfigError,
+  getConfiguredPushBrokerBaseUrl,
+} from "@/services/host-notification-config.js";
 import { successEnvelope, errorEnvelope } from "@/routes/schema-helpers.js";
 import { success } from "@/utils/index.js";
 import {
   badRequest,
+  createRouteError,
   forbidden,
   notFound,
   routeHandler,
 } from "@/utils/route-errors.js";
 import { chatWorkspaceRepository } from "@/db/repositories/chat-workspace.repository.js";
+import { threadRepository } from "@/db/repositories/thread.repository.js";
 import {
   REMOTE_DEVICE_SCOPES,
   REMOTE_PAIRING_TRANSPORTS,
@@ -83,6 +91,44 @@ const mapPairingError = (error: unknown): never => {
 const mapRelayConfigError = (error: unknown): never => {
   if (error instanceof RemoteRelayConfigError) {
     throw badRequest(error.message, { cause: error });
+  }
+  throw error;
+};
+
+const compareStrings = (left: string, right: string) =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+const resolveOwnedPushSourceScope = (raw: string[], userId: number) => {
+  const sourceScope = Array.from(
+    new Set(raw.map((value) => value.trim()).filter(Boolean)),
+  ).sort(compareStrings);
+  if (
+    sourceScope.length === 0 ||
+    sourceScope.some((sourceId) => !threadRepository.findById(sourceId, userId))
+  ) {
+    throw forbidden("Push source scope contains an unavailable conversation");
+  }
+  return sourceScope;
+};
+
+const mapPushBindingError = (error: unknown): never => {
+  if (error instanceof HostNotificationConfigError) {
+    throw createRouteError({
+      statusCode: 503,
+      code: "PUSH_BROKER_UNAVAILABLE",
+      message: error.message,
+      cause: error,
+    });
+  }
+  if (error instanceof HostNotificationBindingError) {
+    if (
+      error.code === "REQUEST_NOT_FOUND" ||
+      error.code === "REQUEST_CONSUMED" ||
+      error.code === "REQUEST_EXPIRED"
+    ) {
+      throw badRequest(error.message, { cause: error });
+    }
+    throw forbidden(error.message, { cause: error });
   }
   throw error;
 };
@@ -510,6 +556,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
           401: errorEnvelope,
           403: errorEnvelope,
           500: errorEnvelope,
+          503: errorEnvelope,
         },
       },
     },
@@ -813,27 +860,24 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
         throw forbidden("A paired remote device credential is required");
       }
 
-      const sourceScope = Array.from(
-        new Set(request.body.sourceScope.map((value) => value.trim()).filter(Boolean)),
-      ).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
-      if (
-        sourceScope.length === 0 ||
-        sourceScope.some(
-          (sourceId) => !threadService.getThreadSummaryById(sourceId, user.id),
-        )
-      ) {
-        throw forbidden("Push source scope contains an unavailable conversation");
-      }
+      const sourceScope = resolveOwnedPushSourceScope(
+        request.body.sourceScope,
+        user.id,
+      );
 
-      return success({
-        brokerBaseUrl: getConfiguredPushBrokerBaseUrl(),
-        descriptor: hostNotificationIdentityService.createBindingDescriptor({
-          installationId: request.body.installationId,
-          originRemoteDeviceId: request.remoteDevice.id,
-          ownerUserId: user.id,
-          sourceScope,
-        }),
-      });
+      try {
+        return success({
+          brokerBaseUrl: getConfiguredPushBrokerBaseUrl(),
+          descriptor: hostNotificationIdentityService.createBindingDescriptor({
+            installationId: request.body.installationId,
+            originRemoteDeviceId: request.remoteDevice.id,
+            ownerUserId: user.id,
+            sourceScope,
+          }),
+        });
+      } catch (error) {
+        mapPushBindingError(error);
+      }
     }),
   );
 
@@ -888,32 +932,29 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
         throw forbidden("A paired remote device credential is required");
       }
 
-      const sourceScope = Array.from(
-        new Set(request.body.sourceScope.map((value) => value.trim()).filter(Boolean)),
-      ).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
-      if (
-        sourceScope.length === 0 ||
-        sourceScope.some(
-          (sourceId) => !threadService.getThreadSummaryById(sourceId, user.id),
-        )
-      ) {
-        throw forbidden("Push source scope contains an unavailable conversation");
+      const sourceScope = resolveOwnedPushSourceScope(
+        request.body.sourceScope,
+        user.id,
+      );
+
+      try {
+        const binding = hostNotificationIdentityService.acceptApprovedBinding({
+          bindingNonce: request.body.bindingNonce,
+          installationId: request.body.installationId,
+          originRemoteDeviceId: request.remoteDevice.id,
+          ownerUserId: user.id,
+          deliveryToken: request.body.deliveryToken,
+          sourceScope,
+        });
+
+        return success({
+          installationId: binding.installationId,
+          sourceScope: binding.sourceScope,
+          status: binding.status,
+        });
+      } catch (error) {
+        mapPushBindingError(error);
       }
-
-      const binding = hostNotificationIdentityService.acceptApprovedBinding({
-        bindingNonce: request.body.bindingNonce,
-        installationId: request.body.installationId,
-        originRemoteDeviceId: request.remoteDevice.id,
-        ownerUserId: user.id,
-        deliveryToken: request.body.deliveryToken,
-        sourceScope,
-      });
-
-      return success({
-        installationId: binding.installationId,
-        sourceScope: binding.sourceScope,
-        status: binding.status,
-      });
     }),
   );
 

@@ -27,6 +27,25 @@ export type HostNotificationBindingRequestRecord = {
   createdAt: string;
 };
 
+export type HostNotificationBindingErrorCode =
+  | "REQUEST_NOT_FOUND"
+  | "REQUEST_CONSUMED"
+  | "REQUEST_EXPIRED"
+  | "INSTALLATION_MISMATCH"
+  | "AUTHORITY_MISMATCH"
+  | "SOURCE_SCOPE_MISMATCH"
+  | "INSTALLATION_BOUND_TO_ANOTHER_DEVICE";
+
+export class HostNotificationBindingError extends Error {
+  constructor(
+    public readonly code: HostNotificationBindingErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "HostNotificationBindingError";
+  }
+}
+
 export type HostNotificationBindingRecord = {
   installationId: string;
   originRemoteDeviceId: string;
@@ -330,25 +349,43 @@ export const hostNotificationRepository = {
     return getSqlite().transaction(() => {
       const request = this.getBindingRequest(input.nonce);
       if (!request) {
-        throw new Error("Notification binding request was not found");
+        throw new HostNotificationBindingError(
+          "REQUEST_NOT_FOUND",
+          "Notification binding request was not found",
+        );
       }
       if (request.consumedAt) {
-        throw new Error("Notification binding request was already consumed");
+        throw new HostNotificationBindingError(
+          "REQUEST_CONSUMED",
+          "Notification binding request was already consumed",
+        );
       }
       if (Date.parse(request.expiresAt) <= Date.parse(now)) {
-        throw new Error("Notification binding request has expired");
+        throw new HostNotificationBindingError(
+          "REQUEST_EXPIRED",
+          "Notification binding request has expired",
+        );
       }
       if (request.installationId !== input.installationId.trim()) {
-        throw new Error("Notification binding installation does not match request");
+        throw new HostNotificationBindingError(
+          "INSTALLATION_MISMATCH",
+          "Notification binding installation does not match request",
+        );
       }
       if (
         request.originRemoteDeviceId !== input.originRemoteDeviceId.trim() ||
         request.ownerUserId !== input.ownerUserId
       ) {
-        throw new Error("Notification binding authority does not match request");
+        throw new HostNotificationBindingError(
+          "AUTHORITY_MISMATCH",
+          "Notification binding authority does not match request",
+        );
       }
       if (JSON.stringify(request.sourceScope) !== JSON.stringify(normalizedScope)) {
-        throw new Error("Notification binding source scope does not match request");
+        throw new HostNotificationBindingError(
+          "SOURCE_SCOPE_MISMATCH",
+          "Notification binding source scope does not match request",
+        );
       }
 
       const binding = this.upsertBinding({
@@ -417,7 +454,10 @@ export const hostNotificationRepository = {
         (existing.originRemoteDeviceId !== input.originRemoteDeviceId.trim() ||
           existing.ownerUserId !== input.ownerUserId)
       ) {
-        throw new Error("Notification installation is bound to another device");
+        throw new HostNotificationBindingError(
+          "INSTALLATION_BOUND_TO_ANOTHER_DEVICE",
+          "Notification installation is bound to another device",
+        );
       }
 
       getSqlite()
