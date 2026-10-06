@@ -84,7 +84,7 @@ describe("ToolsPackagePanel terminal acceptance controls", () => {
           streamMode: "merged",
           sessionMode: "persistent",
           stderrSeparated: false,
-          state: "running",
+          state: "completed",
           continuationId: "continuation-1",
           continuationAvailable: true,
           nextOutputOffset: 12,
@@ -109,7 +109,8 @@ describe("ToolsPackagePanel terminal acceptance controls", () => {
 
     expect(screen.getByText("acceptance cases")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "持久任务" })).toBeInTheDocument();
-    expect(screen.getByText("state running")).toBeInTheDocument();
+    expect(screen.getByText("state completed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "stop" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "持久任务" }));
     await user.click(screen.getByRole("button", { name: "continue" }));
