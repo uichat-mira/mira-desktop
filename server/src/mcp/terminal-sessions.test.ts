@@ -17,10 +17,15 @@ vi.mock("./terminal/process-tree.js", () => ({
   killTerminalProcessTree: mocks.killProcessTree,
 }));
 
-vi.mock("./terminal/persistent-output-store.js", () => ({
-  cancelPersistentTerminalOutputsForSession: mocks.cancelOutputs,
-  clearPersistentTerminalOutputsForSession: mocks.clearOutputs,
-}));
+vi.mock("./terminal/persistent-output-store.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./terminal/persistent-output-store.js")>();
+  return {
+    ...actual,
+    cancelPersistentTerminalOutputsForSession: mocks.cancelOutputs,
+    clearPersistentTerminalOutputsForSession: mocks.clearOutputs,
+  };
+});
 
 const createMockPty = () => ({
   pid: 4321,
