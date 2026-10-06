@@ -9,6 +9,7 @@ import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import {
+  hostNotificationRepository,
   knowledgeBaseRepository,
   messageRepository,
   roleRepository,
@@ -756,4 +757,169 @@ test("thread service updateThread with no changes returns current snapshot and d
   });
 
   assert.equal(threadService.deleteMessage(message.id, user.id), true);
+});
+
+
+const createNotificationThreadFixture = () => {
+  const user = userRepository.create({
+    username: `notify-${crypto.randomUUID()}`,
+    passwordHash: "hash",
+    role: "user",
+    isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id });
+  const installationId = `installation-${crypto.randomUUID()}`;
+  hostNotificationRepository.upsertBinding({
+    installationId,
+    brokerBaseUrl: "https://push.example.test",
+    deliveryToken: `delivery-${crypto.randomUUID()}-01234567890123456789012345678901`,
+    sourceScope: [thread.id],
+  });
+  return { user, thread, installationId };
+};
+
+test("canonical assistant insert atomically creates one notification outbox row", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-${crypto.randomUUID()}`;
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "ordinary final reply",
+    parts: [{ type: "text", text: "ordinary final reply" }],
+  });
+
+  const rows = getSqlite()
+    .prepare(
+      `SELECT installation_id, canonical_message_id, source_id,
+              eligibility_event, state
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .all(installationId, assistantMessageId) as Array<Record<string, unknown>>;
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.canonical_message_id, assistantMessageId);
+  assert.equal(rows[0]?.source_id, thread.id);
+  assert.equal(rows[0]?.eligibility_event, "final_transition_first_seen");
+  assert.equal(rows[0]?.state, "pending");
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "ordinary final reply with refreshed metadata",
+    parts: [
+      { type: "text", text: "ordinary final reply with refreshed metadata" },
+    ],
+  });
+
+  const count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 1);
+});
+
+test("Agent running to completed produces one outbox event while waiting approval does not", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-agent-${crypto.randomUUID()}`;
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "Agent 正在运行…",
+    parts: [{ type: "text", text: "Agent 正在运行…" }],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "等待审批",
+    parts: [{ type: "text", text: "等待审批" }],
+    metadata: { agent: { status: "waiting_approval" } },
+    preserveDescendants: true,
+  });
+
+  let count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 0);
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "等待审批",
+    parts: [{ type: "text", text: "等待审批" }],
+    metadata: { agent: { status: "running" } },
+    preserveDescendants: true,
+  });
+
+  threadService.createMessage(thread.id, user.id, {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "批准后的最终答案",
+    parts: [{ type: "text", text: "批准后的最终答案" }],
+    metadata: { agent: { status: "completed" } },
+    preserveDescendants: true,
+  });
+
+  count = getSqlite()
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_outbox
+       WHERE installation_id = ? AND canonical_message_id = ?`,
+    )
+    .get(installationId, assistantMessageId) as { count: number };
+  assert.equal(count.count, 1);
+});
+
+test("notification outbox failure rolls back the canonical assistant message", () => {
+  const { user, thread, installationId } = createNotificationThreadFixture();
+  const assistantMessageId = `assistant-rollback-${crypto.randomUUID()}`;
+
+  getSqlite()
+    .prepare(
+      "UPDATE host_notification_bindings SET source_scope_json = ? WHERE installation_id = ?",
+    )
+    .run("{invalid-json", installationId);
+
+  assert.throws(
+    () =>
+      threadService.createMessage(thread.id, user.id, {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "must roll back with outbox",
+        parts: [{ type: "text", text: "must roll back with outbox" }],
+      }),
+    /Stored notification source scope is invalid/,
+  );
+
+  assert.equal(messageRepository.findById(assistantMessageId), undefined);
+  const outbox = getSqlite()
+    .prepare(
+      "SELECT COUNT(*) AS count FROM notification_outbox WHERE canonical_message_id = ?",
+    )
+    .get(assistantMessageId) as { count: number };
+  assert.equal(outbox.count, 0);
+});
+
+test("notification outbox stores identity only and never persists Assistant text", () => {
+  const columns = getSqlite()
+    .prepare("PRAGMA table_info(notification_outbox)")
+    .all() as Array<{ name: string }>;
+
+  const names = new Set(columns.map((column) => column.name));
+  assert.equal(names.has("content"), false);
+  assert.equal(names.has("body"), false);
+  assert.equal(names.has("prompt"), false);
+  assert.equal(names.has("tool_output"), false);
 });
