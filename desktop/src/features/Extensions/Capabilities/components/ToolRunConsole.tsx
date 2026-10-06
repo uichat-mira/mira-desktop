@@ -4,7 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
@@ -241,7 +241,7 @@ export default function ToolRunConsole({
     [open, paneBodyHeight],
   );
 
-  const resizeByKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+  const resizeByKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!open || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) {
       return;
     }
@@ -251,24 +251,37 @@ export default function ToolRunConsole({
     setPaneBodyHeight((height) => clampPaneBodyHeight(height + delta));
   };
 
-  const handleApprovalKey = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (
-      activeTab !== "interaction" ||
-      !approvalPending ||
-      isResolvingApproval ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey
-    ) {
+  useEffect(() => {
+    if (!open || !approvalPending || isResolvingApproval) {
       return;
     }
 
-    const key = event.key.toLowerCase();
-    if (key !== "y" && key !== "n") return;
+    const handleApprovalKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
 
-    event.preventDefault();
-    void onResolveApproval(key === "y" ? "approved" : "rejected");
-  };
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT")
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key !== "y" && key !== "n") return;
+
+      event.preventDefault();
+      void onResolveApproval(key === "y" ? "approved" : "rejected");
+    };
+
+    window.addEventListener("keydown", handleApprovalKey);
+    return () => window.removeEventListener("keydown", handleApprovalKey);
+  }, [approvalPending, isResolvingApproval, onResolveApproval, open]);
 
   return (
     <section className="relative shrink-0 border-t border-border bg-surface-primary">
@@ -370,7 +383,6 @@ export default function ToolRunConsole({
                   transportError={runState.transportError}
                   isResolvingApproval={isResolvingApproval}
                   approvalFocusRef={approvalFocusRef}
-                  onApprovalKeyDown={handleApprovalKey}
                   onResolveApproval={onResolveApproval}
                 />
               ) : activeTab === "artifacts" ? (
@@ -411,7 +423,6 @@ function InteractionView({
   transportError,
   isResolvingApproval,
   approvalFocusRef,
-  onApprovalKeyDown,
   onResolveApproval,
 }: {
   status: ConsoleStatus;
@@ -421,7 +432,6 @@ function InteractionView({
   transportError: string | null;
   isResolvingApproval: boolean;
   approvalFocusRef: RefObject<HTMLButtonElement>;
-  onApprovalKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   onResolveApproval: (decision: "approved" | "rejected") => void | Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -504,7 +514,6 @@ function InteractionView({
                 ref={approvalFocusRef}
                 type="button"
                 disabled={!approvalPending || isResolvingApproval}
-                onKeyDown={onApprovalKeyDown}
                 onClick={() => void onResolveApproval("approved")}
                 className="text-success underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -514,7 +523,6 @@ function InteractionView({
               <button
                 type="button"
                 disabled={!approvalPending || isResolvingApproval}
-                onKeyDown={onApprovalKeyDown}
                 onClick={() => void onResolveApproval("rejected")}
                 className="text-danger underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
               >
