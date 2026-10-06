@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 import { resolveTerminalRuntimeExecutable } from "../terminal/dev-runtime.js";
-import { clearWorkspaceSelection } from "../workspace.js";
+import { clearWorkspaceSelection, runWithWorkspaceRootOverride } from "../workspace.js";
 import { executeGrep } from "./grep.js";
 import { probeRipgrepProvider, searchWithRipgrep } from "./ripgrep-provider.js";
 
@@ -162,19 +162,21 @@ describe("shared ripgrep provider", () => {
     fs.writeFileSync(path.join(tempRoot, "src", "delta.ts"), "alpha 中文\n", "utf-8");
     fs.writeFileSync(path.join(tempRoot, "ignored", "ignored.ts"), "alpha 中文\n", "utf-8");
 
-    const execution = await executeGrep(
-      {
-        args: {
-          pattern: "alpha\\s+中文",
-          path: ".",
-          limit: 1,
+    const execution = await runWithWorkspaceRootOverride(tempRoot, async () =>
+      executeGrep(
+        {
+          args: {
+            pattern: "alpha\\s+中文",
+            path: ".",
+            limit: 1,
+          },
+          environment: contentEnvironment(),
+          signal: new AbortController().signal,
         },
-        environment: contentEnvironment(),
-        signal: new AbortController().signal,
-      },
-      {
-        resolveExecutable: () => ({ source: "unavailable" }),
-      },
+        {
+          resolveExecutable: () => ({ source: "unavailable" }),
+        },
+      ),
     );
 
     expect(execution.contents).toEqual(
@@ -205,24 +207,26 @@ describe("shared ripgrep provider", () => {
   });
 
   it("uses Node scan after a resolved ripgrep execution failure", async () => {
-    const execution = await executeGrep(
-      {
-        args: { pattern: "needle", path: ".", limit: 10 },
-        environment: contentEnvironment(),
-        signal: new AbortController().signal,
-      },
-      {
-        resolveExecutable: () => ({
-          source: "bundled",
-          executablePath: "C:\\runtime\\rg.exe",
-        }),
-        runProcess: async () => ({
-          status: "completed",
-          exitCode: 2,
-          stdout: "",
-          stderr: "",
-        }),
-      },
+    const execution = await runWithWorkspaceRootOverride(tempRoot, async () =>
+      executeGrep(
+        {
+          args: { pattern: "needle", path: ".", limit: 10 },
+          environment: contentEnvironment(),
+          signal: new AbortController().signal,
+        },
+        {
+          resolveExecutable: () => ({
+            source: "bundled",
+            executablePath: "C:\\runtime\\rg.exe",
+          }),
+          runProcess: async () => ({
+            status: "completed",
+            exitCode: 2,
+            stdout: "",
+            stderr: "",
+          }),
+        },
+      ),
     );
 
     expect(execution.contents.provider).toBe("node-content-scan");
