@@ -526,6 +526,22 @@ export const hostNotificationRepository = {
     return rows.map(toBindingRecord);
   },
 
+  listActiveInstallationIdsForSource(sourceId: string): string[] {
+    const rows = getSqlite()
+      .prepare(
+        `SELECT b.installation_id
+         FROM host_notification_bindings b
+         JOIN host_notification_binding_scopes s
+           ON s.installation_id = b.installation_id
+         WHERE b.status = 'active'
+           AND s.source_id = ?
+         ORDER BY b.installation_id ASC`,
+      )
+      .all(sourceId) as Array<{ installation_id: string }>;
+
+    return rows.map((row) => row.installation_id);
+  },
+
   enqueueEligibleTransition(input: {
     previous: NotificationCanonicalMessage | null;
     next: NotificationCanonicalMessage;
@@ -546,7 +562,10 @@ export const hostNotificationRepository = {
       nowMs + (input.ttlMs ?? 24 * 60 * 60 * 1000),
     ).toISOString();
 
-    const bindings = this.listActiveBindingsForSource(input.sourceId);
+    // Canonical persistence only needs opaque installation identity. Do not
+    // decrypt delivery capabilities on the message transaction path; a corrupt
+    // or rotated token must not be able to roll back the Assistant message.
+    const installationIds = this.listActiveInstallationIdsForSource(input.sourceId);
     const insert = getSqlite().prepare(
       `INSERT OR IGNORE INTO notification_outbox (
         id, installation_id, canonical_message_id, source_id,
@@ -556,11 +575,11 @@ export const hostNotificationRepository = {
     );
 
     const created: NotificationOutboxRecord[] = [];
-    for (const binding of bindings) {
+    for (const installationId of installationIds) {
       const id = randomUUID();
       const result = insert.run(
         id,
-        binding.installationId,
+        installationId,
         input.next.id,
         input.sourceId,
         NOTIFICATION_ELIGIBILITY_EVENT,
