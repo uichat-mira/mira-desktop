@@ -42,6 +42,10 @@ export type FileMutationRuntimeContext = {
   signal?: AbortSignal;
   pushEvent?: (event: ToolInvocationEventInput) => void;
   filesystem?: FileMutationFilesystem;
+  /** Internal observer for compound runtimes that need commit-point evidence. */
+  commitObserver?: {
+    markTargetCommitAttempted(): void;
+  };
   /**
    * Internal batch scope used only after the File Mutation Runtime has acquired
    * every path needed by a compound operation such as apply_patch.
@@ -141,6 +145,8 @@ const withRuntimeMutationLocks = async <T>(
   run: () => Promise<T> | T,
 ): Promise<T> => {
   if (context.lockScope) {
+    // A compound runtime may reuse an already-held scope only for the exact
+    // canonical paths acquired during its own stable preflight.
     const requiredKeys = normalizeMutationLockKeys(rawKeys);
     for (const key of requiredKeys) {
       if (!context.lockScope.has(key)) {
@@ -320,6 +326,8 @@ export const executeWriteMutation = async (
             content: encoded,
             overwrite: beforeCommit.exists,
             filesystem,
+            onTargetCommitAttempt: () =>
+              context.commitObserver?.markTargetCommitAttempted(),
           }),
       );
 
@@ -788,6 +796,7 @@ export const executeMoveMutation = async (
       const cleanupWarning = await wrapMutationFailure(
         `Failed to move workspace target from ${sourcePath} to ${destinationPath}`,
         () => {
+          context.commitObserver?.markTargetCommitAttempted();
           if (caseOnlyRename) {
             renameCaseOnlySafely({
               sourcePath: sourceBeforeCommit.canonicalPath,
@@ -893,6 +902,7 @@ export const executeDeleteMutation = async (
       await wrapMutationFailure(
         `Failed to delete workspace target: ${inputPath}`,
         () => {
+          context.commitObserver?.markTargetCommitAttempted();
           if (beforeCommit.type === "directory") {
             if (recursive) {
               filesystem.remove(beforeCommit.canonicalPath, {
