@@ -2,7 +2,75 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { reduceAgentCoverageState } from "../coverage-state";
 
-test("coverage reducer completes list task from read_list evidence", () => {
+test("coverage reducer asks for canonical list when directory evidence is missing", () => {
+  const state = reduceAgentCoverageState({
+    question: "列出当前目录有哪些文件",
+  });
+
+  assert.deepEqual(state.globalPendingActions, ["list"]);
+  assert.equal(state.taskCompletable, false);
+});
+
+test("coverage reducer keeps broad list pending while canonical list has another page", () => {
+  const state = reduceAgentCoverageState({
+    question: "列出当前目录有哪些文件",
+    latestSummary: {
+      source: "tool",
+      status: "truncated",
+      toolId: "list",
+      actionTaken: "Listed current directory.",
+      keyFindings: ["entryCount=300", "nextOffset=200"],
+      data: {
+        kind: "list",
+        path: ".",
+        entryCount: 300,
+        fileCount: 180,
+        directoryCount: 20,
+        entriesPreview: ["README.md", "src"],
+        offset: 0,
+        nextOffset: 200,
+        truncated: true,
+      },
+    },
+  });
+
+  assert.equal(state.taskCompletable, false);
+  assert.deepEqual(state.globalPendingActions, ["list"]);
+});
+
+test("coverage reducer keeps a truncated canonical read opened but not verified", () => {
+  const state = reduceAgentCoverageState({
+    question: "检查 README.md 内容是否正确",
+    latestSummary: {
+      source: "tool",
+      status: "truncated",
+      toolId: "read",
+      actionTaken: "Read file README.md.",
+      keyFindings: ["nextOffset=400"],
+      data: {
+        kind: "read",
+        path: "README.md",
+        contentPreview: "# Intro",
+        contentLength: 1200,
+        truncated: true,
+        pagination: {
+          offset: 0,
+          limit: 400,
+          returnedCount: 400,
+          totalLines: 900,
+          nextOffset: 400,
+        },
+      },
+    },
+  });
+
+  const target = state.targets.find((item) => item.target === "readme.md");
+  assert.equal(target?.status, "opened");
+  assert.ok(target?.completedActions.includes("read"));
+  assert.ok(target?.pendingActions.includes("verify"));
+});
+
+test("coverage reducer completes list task from canonical list evidence", () => {
   const state = reduceAgentCoverageState({
     question: "列出当前目录有哪些文件",
     evidence: {
@@ -10,13 +78,51 @@ test("coverage reducer completes list task from read_list evidence", () => {
       retrievals: [],
       toolExecutions: [
         {
-          toolId: "read_list",
+          toolId: "list",
           args: { path: "." },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_list",
+            toolId: "list",
+            actionTaken: "Listed current directory.",
+            keyFindings: ["entryCount=3"],
+            data: {
+              kind: "list",
+              path: ".",
+              entryCount: 3,
+              fileCount: 2,
+              directoryCount: 1,
+              entriesPreview: ["README.md", "AGENTS.md", "docs"],
+              truncated: false,
+            },
+          },
+          startedAt: "2026-10-05T00:00:00.000Z",
+          finishedAt: "2026-10-05T00:00:01.000Z",
+        },
+      ],
+    },
+  });
+
+  assert.equal(state.taskCompletable, true);
+  assert.deepEqual(state.globalPendingActions, []);
+});
+
+test("coverage reducer completes list task from list evidence", () => {
+  const state = reduceAgentCoverageState({
+    question: "列出当前目录有哪些文件",
+    evidence: {
+      observations: [],
+      retrievals: [],
+      toolExecutions: [
+        {
+          toolId: "list",
+          args: { path: "." },
+          status: "completed",
+          summary: {
+            source: "tool",
+            status: "completed",
+            toolId: "list",
             actionTaken: "Listed current directory.",
             keyFindings: ["entryCount=3"],
             answerReadiness: {
@@ -24,14 +130,13 @@ test("coverage reducer completes list task from read_list evidence", () => {
               reason: "Directory listing is available.",
             },
             data: {
-              kind: "read_list",
+              kind: "list",
               path: ".",
               entryCount: 3,
               fileCount: 2,
               directoryCount: 1,
               entriesPreview: ["README.md", "AGENTS.md", "docs"],
               truncated: false,
-              canAnswerDirectoryQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:00.000Z",
@@ -45,13 +150,92 @@ test("coverage reducer completes list task from read_list evidence", () => {
   assert.deepEqual(state.globalPendingActions, []);
 });
 
-test("coverage reducer completes locate-only task from read_locate evidence", () => {
+test("coverage reducer keeps broad locate pending while canonical glob has another page", () => {
+  const state = reduceAgentCoverageState({
+    question: "项目里的配置文件在哪里？",
+    latestSummary: {
+      source: "tool",
+      status: "truncated",
+      toolId: "glob",
+      actionTaken: "Matched workspace files.",
+      keyFindings: ["nextOffset=200"],
+      data: {
+        kind: "glob",
+        pattern: "**/*config*",
+        path: ".",
+        matchCount: 350,
+        matchedPaths: ["src/config.ts"],
+        matchesPreview: ["src/config.ts"],
+        offset: 0,
+        nextOffset: 200,
+        truncated: true,
+      },
+    },
+  });
+
+  assert.equal(state.taskCompletable, false);
+  assert.deepEqual(state.globalPendingActions, ["glob"]);
+});
+
+test("coverage reducer may stop a truncated glob once an explicit target was found", () => {
+  const state = reduceAgentCoverageState({
+    question: "README.md 在哪里？",
+    latestSummary: {
+      source: "tool",
+      status: "truncated",
+      toolId: "glob",
+      actionTaken: "Matched workspace files.",
+      keyFindings: ["matchedPath=README.md", "nextOffset=200"],
+      data: {
+        kind: "glob",
+        pattern: "**/README.md",
+        path: ".",
+        matchCount: 250,
+        matchedPaths: ["README.md"],
+        matchesPreview: ["README.md"],
+        offset: 0,
+        nextOffset: 200,
+        truncated: true,
+      },
+    },
+  });
+
+  assert.equal(state.taskCompletable, true);
+  assert.deepEqual(state.globalPendingActions, []);
+});
+
+test("coverage reducer completes locate-only task from canonical glob evidence", () => {
   const state = reduceAgentCoverageState({
     question: "README.md 在哪里？",
     latestSummary: {
       source: "tool",
       status: "completed",
-      toolId: "read_locate",
+      toolId: "glob",
+      actionTaken: "Matched workspace files.",
+      keyFindings: ["matchedPath=README.md"],
+      data: {
+        kind: "glob",
+        pattern: "**/README.md",
+        path: ".",
+        matchCount: 1,
+        matchedPaths: ["README.md"],
+        matchesPreview: ["README.md"],
+        truncated: false,
+      },
+    },
+  });
+
+  assert.equal(state.taskCompletable, true);
+  assert.deepEqual(state.globalPendingActions, []);
+});
+
+test("coverage reducer completes locate-only task from glob evidence", () => {
+  const state = reduceAgentCoverageState({
+    question: "README.md 在哪里？",
+    latestSummary: {
+      source: "tool",
+      status: "completed",
+      toolId: "glob",
       actionTaken: "Located README.md.",
       keyFindings: ["matchedPath=README.md"],
       answerReadiness: {
@@ -59,15 +243,13 @@ test("coverage reducer completes locate-only task from read_locate evidence", ()
         reason: "Located target path is available.",
       },
       data: {
-        kind: "read_locate",
-        scope: ".",
-        query: "README.md",
-        searchMode: "path",
+        kind: "glob",
+        pattern: "**/README.md",
+        path: ".",
         matchCount: 1,
         matchedPaths: ["README.md"],
         matchesPreview: ["README.md"],
         truncated: false,
-        canAnswerLocateQuestion: true,
       },
     },
   });
@@ -89,7 +271,7 @@ test("coverage reducer keeps read_content pending after locate-only evidence", (
     latestSummary: {
       source: "tool",
       status: "completed",
-      toolId: "read_locate",
+      toolId: "glob",
       actionTaken: "Located README.md.",
       keyFindings: ["matchedPath=README.md"],
       answerReadiness: {
@@ -97,21 +279,19 @@ test("coverage reducer keeps read_content pending after locate-only evidence", (
         reason: "Located target path is available.",
       },
       data: {
-        kind: "read_locate",
-        scope: ".",
-        query: "README.md",
-        searchMode: "path",
+        kind: "glob",
+        pattern: "**/README.md",
+        path: ".",
         matchCount: 1,
         matchedPaths: ["README.md"],
         matchesPreview: ["README.md"],
         truncated: false,
-        canAnswerLocateQuestion: true,
       },
     },
   });
 
   assert.equal(state.taskCompletable, false);
-  assert.deepEqual(state.pendingActions, ["read_open"]);
+  assert.deepEqual(state.pendingActions, ["read"]);
   assert.equal(state.targets[0]?.status, "located");
 });
 
@@ -123,13 +303,13 @@ test("coverage reducer keeps multi-target read_content incomplete until all targ
       retrievals: [],
       toolExecutions: [
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "README.md" },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_open",
+            toolId: "read",
             actionTaken: "Opened README.md.",
             keyFindings: ["path=README.md"],
             answerReadiness: {
@@ -137,13 +317,12 @@ test("coverage reducer keeps multi-target read_content incomplete until all targ
               reason: "Opened file content is available.",
             },
             data: {
-              kind: "read_open",
+              kind: "read",
               path: "README.md",
               contentPreview: "readme",
               contentLength: 6,
               truncated: false,
               keySections: [],
-              canAnswerFileQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:00.000Z",
@@ -166,48 +345,46 @@ test("coverage reducer completes multi-target read_content when both targets are
       retrievals: [],
       toolExecutions: [
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "README.md" },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_open",
+            toolId: "read",
             actionTaken: "Opened README.md.",
             keyFindings: ["path=README.md"],
             answerReadiness: { canAnswer: true, reason: "Opened." },
             data: {
-              kind: "read_open",
+              kind: "read",
               path: "README.md",
               contentPreview: "readme",
               contentLength: 6,
               truncated: false,
               keySections: [],
-              canAnswerFileQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:00.000Z",
           finishedAt: "2026-07-09T00:00:01.000Z",
         },
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "AGENTS.md" },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_open",
+            toolId: "read",
             actionTaken: "Opened AGENTS.md.",
             keyFindings: ["path=AGENTS.md"],
             answerReadiness: { canAnswer: true, reason: "Opened." },
             data: {
-              kind: "read_open",
+              kind: "read",
               path: "AGENTS.md",
               contentPreview: "agents",
               contentLength: 6,
               truncated: false,
               keySections: [],
-              canAnswerFileQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:02.000Z",
@@ -227,20 +404,18 @@ test("coverage reducer does not treat locate-only mutation evidence as mutation 
     latestSummary: {
       source: "tool",
       status: "completed",
-      toolId: "read_locate",
+      toolId: "glob",
       actionTaken: "Located notes.txt.",
       keyFindings: ["matchedPath=notes.txt"],
       answerReadiness: { canAnswer: true, reason: "Located." },
       data: {
-        kind: "read_locate",
-        scope: ".",
-        query: "notes.txt",
-        searchMode: "path",
+        kind: "glob",
+        pattern: "**/notes.txt",
+        path: ".",
         matchCount: 1,
         matchedPaths: ["notes.txt"],
         matchesPreview: ["notes.txt"],
         truncated: false,
-        canAnswerLocateQuestion: true,
       },
     },
   });
@@ -250,7 +425,43 @@ test("coverage reducer does not treat locate-only mutation evidence as mutation 
   assert.equal(state.targets[0]?.status, "located");
 });
 
-test("coverage reducer keeps mutation verification pending until read_open exists", () => {
+test("coverage reducer recognizes canonical file_mutation evidence", () => {
+  const state = reduceAgentCoverageState({
+    question: "写入 notes.txt",
+    latestSummary: {
+      source: "tool",
+      status: "completed",
+      toolId: "write",
+      actionTaken: "Created workspace file notes.txt.",
+      keyFindings: [
+        "operation=write",
+        "targetPath=notes.txt",
+        "changed=true",
+      ],
+      data: {
+        kind: "file_mutation",
+        operation: "write",
+        targetPath: "notes.txt",
+        changed: true,
+        created: true,
+        artifactId: "artifact-1",
+        bytesBefore: 0,
+        bytesAfter: 5,
+        diffTruncated: false,
+      },
+    },
+  });
+
+  assert.equal(state.taskCompletable, true);
+  assert.deepEqual(state.pendingActions, []);
+  assert.equal(state.targets[0]?.status, "mutated");
+  assert.deepEqual(state.targets[0]?.completedActions, [
+    "locate",
+    "mutation_execution",
+  ]);
+});
+
+test("coverage reducer keeps mutation verification pending until read exists", () => {
   const state = reduceAgentCoverageState({
     question: "写入 notes.txt 后验证内容是否正确",
     evidence: {
@@ -292,7 +503,7 @@ test("coverage reducer keeps mutation verification pending until read_open exist
   ]);
 });
 
-test("coverage reducer completes mutation verification after read_open evidence", () => {
+test("coverage reducer completes mutation verification after read evidence", () => {
   const state = reduceAgentCoverageState({
     question: "写入 notes.txt 后验证内容是否正确",
     evidence: {
@@ -323,24 +534,23 @@ test("coverage reducer completes mutation verification after read_open evidence"
           finishedAt: "2026-07-09T00:00:01.000Z",
         },
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "notes.txt" },
           status: "completed",
           summary: {
             source: "tool",
             status: "completed",
-            toolId: "read_open",
+            toolId: "read",
             actionTaken: "Opened notes.txt.",
             keyFindings: ["path=notes.txt"],
             answerReadiness: { canAnswer: true, reason: "Opened." },
             data: {
-              kind: "read_open",
+              kind: "read",
               path: "notes.txt",
               contentPreview: "hello",
               contentLength: 5,
               truncated: false,
               keySections: [],
-              canAnswerFileQuestion: true,
             },
           },
           startedAt: "2026-07-09T00:00:02.000Z",
@@ -353,7 +563,7 @@ test("coverage reducer completes mutation verification after read_open evidence"
   assert.equal(state.taskCompletable, true);
   assert.deepEqual(state.targets[0]?.completedActions, [
     "locate",
-    "read_open",
+    "read",
     "mutation_execution",
     "mutation_verification",
   ]);
@@ -367,7 +577,7 @@ test("coverage reducer keeps recoverable read failure incomplete", () => {
       retrievals: [],
       toolExecutions: [
         {
-          toolId: "read_open",
+          toolId: "read",
           args: { path: "README.md" },
           status: "failed",
           failureKind: "recoverable",

@@ -5,75 +5,23 @@ import { planContextRead } from "../planner.js";
 import type { ContextReadBenchCaseResult } from "./contract.js";
 import { createContextReadBenchFixture, type ContextReadBenchFixture } from "./fixtures.js";
 import { runWithWorkspaceRootOverride } from "../../../mcp/workspace.js";
-import { executeReadExtract } from "../../../mcp/read/extract.js";
-import { executeReadLocate, type ReadLocateArgs } from "../../../mcp/read/locate.js";
-import { executeReadSlice } from "../../../mcp/read/slice.js";
 import {
-  executeReadList,
-  executeReadOpen,
-} from "../../../mcp/read/runtime.js";
-import type {
-  ReadListResult,
-  ReadLocateResult,
-  ReadOpenResult,
-} from "../../../mcp/read/types.js";
+  executeGenericRead,
+  sliceGenericText,
+  type GenericReadResult,
+  type GenericReadTextResult,
+} from "../../../mcp/read/generic.js";
+import { executeGrep } from "../../../mcp/read/grep.js";
+import { executeList, type ListResult } from "../../../mcp/read/list.js";
 
-const createBenchEnvironment = () =>
-  createHarnessEnvironmentSnapshot({
-    read: {
-      capabilities: [
-        {
-          id: "node-fs-directory",
-          kind: "directory",
-          provider: "node-fs",
-          available: true,
-          priority: 100,
-        },
-        {
-          id: "fast-glob-locate",
-          kind: "locate",
-          provider: "fast-glob",
-          available: true,
-          priority: 100,
-        },
-        {
-          id: "node-content-scan-locate",
-          kind: "locate",
-          provider: "node-fs",
-          available: true,
-          priority: 40,
-        },
-        {
-          id: "text-slice",
-          kind: "slice",
-          provider: "node-fs",
-          available: true,
-          priority: 100,
-        },
-        {
-          id: "text-known-extension",
-          kind: "text",
-          provider: "node-fs",
-          available: true,
-          priority: 80,
-        },
-        {
-          id: "text-content-probe",
-          kind: "text",
-          provider: "node-fs",
-          available: true,
-          priority: 40,
-        },
-        {
-          id: "binary-summary",
-          kind: "fallback",
-          provider: "node-fs",
-          available: true,
-          priority: 10,
-        },
-      ],
-    },
-  });
+const createBenchEnvironment = () => createHarnessEnvironmentSnapshot();
+
+const requireTextRead = (result: GenericReadResult): GenericReadTextResult => {
+  if (result.type !== "read" || !("source" in result)) {
+    throw new Error(`Expected canonical text read result, received ${result.type}`);
+  }
+  return result;
+};
 
 const countChars = (value: string) => value.length;
 
@@ -129,11 +77,11 @@ const buildFailure = (
   diagnostics: [error instanceof Error ? error.message : String(error)],
 });
 
-const buildOpenCaseResult = ({
+const buildReadCaseResult = ({
   caseId,
   operation,
   input,
-  openResult,
+  readResult,
   absolutePath,
   expectedText,
   status,
@@ -143,7 +91,7 @@ const buildOpenCaseResult = ({
   caseId: string;
   operation: string;
   input: Record<string, unknown>;
-  openResult: ReadOpenResult;
+  readResult: GenericReadTextResult;
   absolutePath: string;
   expectedText?: string;
   status: "passed" | "failed";
@@ -155,11 +103,11 @@ const buildOpenCaseResult = ({
   input,
   status,
   filesRead: 1,
-  charsRead: countChars(openResult.source.text),
+  charsRead: countChars(readResult.source.text),
   encoding: classifyEncoding({
     absolutePath,
-    text: openResult.source.text,
-    metadata: openResult.source.metadata,
+    text: readResult.source.text,
+    metadata: readResult.source.metadata,
     expectedText,
   }),
   truncated,
@@ -206,14 +154,20 @@ const buildInspectContext = async ({
     throw new Error(`inspect plan expected, received ${planResult.plan.kind}`);
   }
 
-  const locateResult = (await executeReadLocate(environment, {
-    query: locateQuery,
-    searchMode: "content",
-    limit: Math.max(budget.maxFiles * 3, 3),
-    path: "inspect-module",
-  } satisfies ReadLocateArgs)) as ReadLocateResult;
+  const grepResult = (
+    await executeGrep({
+      args: {
+        pattern: locateQuery,
+        path: "inspect-module",
+        literal: true,
+        limit: Math.max(budget.maxFiles * 3, 3),
+      },
+      environment,
+      signal: new AbortController().signal,
+    })
+  ).contents;
 
-  const uniquePaths = [...new Set(locateResult.matches.map((match) => match.path))];
+  const uniquePaths = [...new Set(grepResult.matches.map((match) => match.path))];
   const selectedPaths: string[] = [];
   const diagnostics: string[] = [
     `planner selected ${planResult.plan.kind}`,
@@ -230,11 +184,15 @@ const buildInspectContext = async ({
       break;
     }
 
-    const openResult = (await executeReadOpen({
-      args: { path: relativePath },
-      environment,
-    }).then((result) => result.contents)) as ReadOpenResult;
-    const text = openResult.source.text;
+    const readResult = requireTextRead(
+      (
+        await executeGenericRead({
+          args: { path: relativePath },
+          environment,
+        })
+      ).contents,
+    );
+    const text = readResult.source.text;
 
     if (remainingChars <= 0) {
       diagnostics.push("maxChars exhausted before reading next file");
@@ -254,15 +212,11 @@ const buildInspectContext = async ({
     let snippet = text;
     if (countChars(text) > availableChars) {
       const maxLines = pickLineWindowWithinChars(text, availableChars);
-      const sliceResult = await executeReadSlice(
-        environment,
-        {
-          text,
-          startLine: 1,
-          maxLines,
-        },
-      );
-      snippet = sliceResult.contents.slice.text;
+      const sliceResult = sliceGenericText(text, {
+        offset: 0,
+        limit: maxLines,
+      });
+      snippet = sliceResult.text;
       if (countChars(snippet) > availableChars) {
         snippet = snippet.slice(0, availableChars);
       }
@@ -278,7 +232,7 @@ const buildInspectContext = async ({
 
   return {
     planResult,
-    locateResult,
+    grepResult,
     selectedPaths,
     context: chunks.join(""),
     diagnostics,
@@ -295,20 +249,20 @@ type ContextReadBenchCaseDefinition = {
 
 const createBenchCases = (): ContextReadBenchCaseDefinition[] => [
   {
-    caseId: "read-list-chinese-directory",
-    operation: "read_list",
+    caseId: "list-chinese-directory",
+    operation: "list",
     input: { path: "中文目录" },
     run: async (fixture) => {
       const environment = createBenchEnvironment();
-      const result = await executeReadList({
+      const result = await executeList({
         args: { path: fixture.paths.chineseDir },
         environment,
       });
-      const entries = (result.contents as ReadListResult).entries.map((entry) => entry.name);
+      const entries = (result.contents as ListResult).entries.map((entry) => entry.name);
       const passed = entries.includes("README.md") && entries.includes("中文文件名-说明.txt");
       return {
-        caseId: "read-list-chinese-directory",
-        operation: "read_list",
+        caseId: "list-chinese-directory",
+        operation: "list",
         input: { path: fixture.paths.chineseDir },
         status: passed ? "passed" : "failed",
         filesRead: 0,
@@ -322,21 +276,25 @@ const createBenchCases = (): ContextReadBenchCaseDefinition[] => [
     },
   },
   {
-    caseId: "read-open-chinese-filename",
-    operation: "read_open",
+    caseId: "read-chinese-filename",
+    operation: "read",
     input: { path: "中文目录/中文文件名-说明.txt" },
     run: async (fixture) => {
       const environment = createBenchEnvironment();
-      const openResult = (await executeReadOpen({
-        args: { path: fixture.paths.chineseFile },
-        environment,
-      }).then((result) => result.contents)) as ReadOpenResult;
-      const passed = openResult.source.text.includes(fixture.expected.chineseFileText);
-      return buildOpenCaseResult({
-        caseId: "read-open-chinese-filename",
-        operation: "read_open",
+      const readResult = requireTextRead(
+        (
+          await executeGenericRead({
+            args: { path: fixture.paths.chineseFile },
+            environment,
+          })
+        ).contents,
+      );
+      const passed = readResult.source.text.includes(fixture.expected.chineseFileText);
+      return buildReadCaseResult({
+        caseId: "read-chinese-filename",
+        operation: "read",
         input: { path: fixture.paths.chineseFile },
-        openResult,
+        readResult,
         absolutePath: path.join(fixture.rootPath, fixture.paths.chineseFile),
         expectedText: fixture.expected.chineseFileText,
         status: passed ? "passed" : "failed",
@@ -347,22 +305,26 @@ const createBenchCases = (): ContextReadBenchCaseDefinition[] => [
     },
   },
   {
-    caseId: "read-open-utf8-bom",
-    operation: "read_open",
+    caseId: "read-utf8-bom",
+    operation: "read",
     input: { path: "带BOM的说明.txt" },
     run: async (fixture) => {
       const environment = createBenchEnvironment();
-      const openResult = (await executeReadOpen({
-        args: { path: fixture.paths.bomFile },
-        environment,
-      }).then((result) => result.contents)) as ReadOpenResult;
-      const normalized = openResult.source.text.replace(/^\uFEFF/u, "");
+      const readResult = requireTextRead(
+        (
+          await executeGenericRead({
+            args: { path: fixture.paths.bomFile },
+            environment,
+          })
+        ).contents,
+      );
+      const normalized = readResult.source.text.replace(/^\uFEFF/u, "");
       const passed = normalized.includes(fixture.expected.bomText);
-      return buildOpenCaseResult({
-        caseId: "read-open-utf8-bom",
-        operation: "read_open",
+      return buildReadCaseResult({
+        caseId: "read-utf8-bom",
+        operation: "read",
         input: { path: fixture.paths.bomFile },
-        openResult,
+        readResult,
         absolutePath: path.join(fixture.rootPath, fixture.paths.bomFile),
         expectedText: fixture.expected.bomText,
         status: passed ? "passed" : "failed",
@@ -373,137 +335,158 @@ const createBenchCases = (): ContextReadBenchCaseDefinition[] => [
     },
   },
   {
-    caseId: "read-open-gbk",
-    operation: "read_open",
+    caseId: "read-gbk",
+    operation: "read",
     input: { path: "GBK-示例.txt" },
     run: async (fixture) => {
       const environment = createBenchEnvironment();
-      const openResult = (await executeReadOpen({
-        args: { path: fixture.paths.gbkFile },
-        environment,
-      }).then((result) => result.contents)) as ReadOpenResult;
+      const readResult = requireTextRead(
+        (
+          await executeGenericRead({
+            args: { path: fixture.paths.gbkFile },
+            environment,
+          })
+        ).contents,
+      );
       const encoding = classifyEncoding({
         absolutePath: path.join(fixture.rootPath, fixture.paths.gbkFile),
-        text: openResult.source.text,
-        metadata: openResult.source.metadata,
+        text: readResult.source.text,
+        metadata: readResult.source.metadata,
         expectedText: fixture.expected.gbkText,
       });
-      const passed = encoding === "uncertain" || encoding === "decoded";
+      const passed =
+        encoding === "gb18030" &&
+        readResult.source.text.includes(fixture.expected.gbkText);
       return {
-        caseId: "read-open-gbk",
-        operation: "read_open",
+        caseId: "read-gbk",
+        operation: "read",
         input: { path: fixture.paths.gbkFile },
         status: passed ? "passed" : "failed",
         filesRead: 1,
-        charsRead: countChars(openResult.source.text),
+        charsRead: countChars(readResult.source.text),
         encoding,
         truncated: false,
         diagnostics: passed
-          ? ["GBK 文件未崩溃，bench 已标记为 uncertain 或 decoded。"]
-          : [`GBK 文件编码标记不符合预期：${encoding}`],
+          ? ["GBK 文件通过 canonical read 以 gb18030 正确解码。"]
+          : [
+              `GBK 文件未以 gb18030 正确解码：encoding=${encoding}; text=${readResult.source.text}`,
+            ],
       };
     },
   },
   {
-    caseId: "read-open-binary",
-    operation: "read_open",
+    caseId: "read-binary",
+    operation: "read",
     input: { path: "二进制样本.bin" },
     run: async (fixture) => {
       const environment = createBenchEnvironment();
-      const openResult = (await executeReadOpen({
+      const result = await executeGenericRead({
         args: { path: fixture.paths.binaryFile },
         environment,
-      }).then((result) => result.contents)) as ReadOpenResult;
-      const binaryDetected = openResult.source.metadata.binary === true;
-      return buildOpenCaseResult({
-        caseId: "read-open-binary",
-        operation: "read_open",
-        input: { path: fixture.paths.binaryFile },
-        openResult,
-        absolutePath: path.join(fixture.rootPath, fixture.paths.binaryFile),
-        status: binaryDetected ? "passed" : "failed",
-        diagnostics: binaryDetected
-          ? ["二进制文件已被 binary summary 接管，没有展开原始字节。"]
-          : ["二进制文件没有被正确标记为 binaryDetected。"],
       });
-    },
-  },
-  {
-    caseId: "read-slice-large-file",
-    operation: "read_slice",
-    input: { path: "超大日志.log", startLine: 120, endLine: 130, maxLines: 5 },
-    run: async (fixture) => {
-      const environment = createBenchEnvironment();
-      const extractResult = await executeReadExtract(
-        environment,
-        {
-          path: fixture.paths.largeFile,
-        },
-      );
-      const sliceResult = await executeReadSlice(
-        environment,
-        {
-          text: extractResult.contents.source.text,
-          startLine: 120,
-          endLine: 130,
-          maxLines: 5,
-        },
-      );
-      const lines = sliceResult.contents.slice.text.split("\n");
       const passed =
-        lines[0] === "line-120 context budget trace" &&
-        lines[lines.length - 1] === "line-124 context budget trace";
+        result.contents.type === "unsupported" &&
+        result.contents.reason === "binary";
       return {
-        caseId: "read-slice-large-file",
-        operation: "read_slice",
-        input: { path: fixture.paths.largeFile, startLine: 120, endLine: 130, maxLines: 5 },
+        caseId: "read-binary",
+        operation: "read",
+        input: { path: fixture.paths.binaryFile },
         status: passed ? "passed" : "failed",
         filesRead: 1,
-        charsRead: countChars(sliceResult.contents.slice.text),
-        encoding: "utf-8",
-        truncated: true,
+        charsRead: 0,
+        encoding: "binaryDetected",
+        truncated: false,
         diagnostics: passed
-          ? ["大文件通过 read_slice 截成 5 行窗口，没有返回整份日志。"]
-          : [`read_slice 结果异常：${sliceResult.contents.slice.text}`],
+          ? ["canonical read 拒绝把二进制内容伪装成文本。"]
+          : [`binary read outcome unexpected: ${JSON.stringify(result.contents)}`],
       };
     },
   },
   {
-    caseId: "read-locate-open",
-    operation: "locate->open",
+    caseId: "read-large-file-window",
+    operation: "read",
+    input: { path: "超大日志.log", offset: 119, limit: 5 },
+    run: async (fixture) => {
+      const environment = createBenchEnvironment();
+      const readResult = requireTextRead(
+        (
+          await executeGenericRead({
+            args: {
+              path: fixture.paths.largeFile,
+              offset: 119,
+              limit: 5,
+            },
+            environment,
+          })
+        ).contents,
+      );
+      const lines = readResult.source.text.split("\n");
+      const passed =
+        lines.length === 5 &&
+        lines[0] === "line-120 context budget trace" &&
+        lines[lines.length - 1] === "line-124 context budget trace" &&
+        readResult.hasMore;
+      return {
+        caseId: "read-large-file-window",
+        operation: "read",
+        input: { path: fixture.paths.largeFile, offset: 119, limit: 5 },
+        status: passed ? "passed" : "failed",
+        filesRead: 1,
+        charsRead: countChars(readResult.source.text),
+        encoding: readResult.source.metadata.encoding,
+        truncated: readResult.truncated,
+        diagnostics: passed
+          ? ["大文件通过 canonical read(offset, limit) 返回 5 行窗口和 continuation。"]
+          : [`read window 结果异常：${readResult.source.text}`],
+      };
+    },
+  },
+  {
+    caseId: "grep-read",
+    operation: "grep->read",
     input: { query: "预算约束", searchMode: "content", path: "inspect-module" },
     run: async (fixture) => {
       const environment = createBenchEnvironment();
-      const locateResult = (await executeReadLocate(environment, {
-        query: fixture.expected.inspectKeyword,
-        searchMode: "content",
-        path: "inspect-module",
-      })) as ReadLocateResult;
-      const firstPath = locateResult.matches[0]?.path;
+      const grepResult = (
+        await executeGrep({
+          args: {
+            pattern: fixture.expected.inspectKeyword,
+            path: "inspect-module",
+            literal: true,
+          },
+          environment,
+          signal: new AbortController().signal,
+        })
+      ).contents;
+      const firstPath = grepResult.matches[0]?.path;
       if (!firstPath) {
         return {
-          caseId: "read-locate-open",
-          operation: "locate->open",
+          caseId: "grep-read",
+          operation: "grep->read",
           input: { query: fixture.expected.inspectKeyword, searchMode: "content", path: "inspect-module" },
           status: "failed",
           filesRead: 0,
           charsRead: 0,
           encoding: "n/a",
           truncated: false,
-          diagnostics: ["read_locate 没有返回任何候选文件。"],
+          diagnostics: ["grep 没有返回任何候选文件。"],
         };
       }
 
-      const openResult = (await executeReadOpen({
-        args: { path: firstPath },
-        environment,
-      }).then((result) => result.contents)) as ReadOpenResult;
-      const passed = openResult.source.text.includes(fixture.expected.inspectKeyword);
-      return buildOpenCaseResult({
-        caseId: "read-locate-open",
-        operation: "locate->open",
+      const readResult = requireTextRead(
+        (
+          await executeGenericRead({
+            args: { path: firstPath },
+            environment,
+          })
+        ).contents,
+      );
+      const passed = readResult.source.text.includes(fixture.expected.inspectKeyword);
+      return buildReadCaseResult({
+        caseId: "grep-read",
+        operation: "grep->read",
         input: { query: fixture.expected.inspectKeyword, searchMode: "content", path: "inspect-module" },
-        openResult,
+        readResult,
         absolutePath: path.join(fixture.rootPath, firstPath),
         expectedText: fixture.expected.inspectKeyword,
         status: passed ? "passed" : "failed",
@@ -514,28 +497,32 @@ const createBenchCases = (): ContextReadBenchCaseDefinition[] => [
     },
   },
   {
-    caseId: "read-list-open-readme",
-    operation: "list->open",
+    caseId: "list-read-readme",
+    operation: "list->read",
     input: { path: "产品说明" },
     run: async (fixture) => {
       const environment = createBenchEnvironment();
-      const listResult = await executeReadList({
+      const listResult = await executeList({
         args: { path: fixture.paths.listReadmeDir },
         environment,
       });
-      const hasReadme = (listResult.contents as ReadListResult).entries.some(
+      const hasReadme = (listResult.contents as ListResult).entries.some(
         (entry) => entry.name === "README.md",
       );
-      const openResult = (await executeReadOpen({
-        args: { path: fixture.paths.listReadme },
-        environment,
-      }).then((result) => result.contents)) as ReadOpenResult;
-      const passed = hasReadme && openResult.source.text.includes(fixture.expected.listReadmeText);
-      return buildOpenCaseResult({
-        caseId: "read-list-open-readme",
-        operation: "list->open",
+      const readResult = requireTextRead(
+        (
+          await executeGenericRead({
+            args: { path: fixture.paths.listReadme },
+            environment,
+          })
+        ).contents,
+      );
+      const passed = hasReadme && readResult.source.text.includes(fixture.expected.listReadmeText);
+      return buildReadCaseResult({
+        caseId: "list-read-readme",
+        operation: "list->read",
         input: { path: fixture.paths.listReadmeDir },
-        openResult,
+        readResult,
         absolutePath: path.join(fixture.rootPath, fixture.paths.listReadme),
         expectedText: fixture.expected.listReadmeText,
         status: passed ? "passed" : "failed",

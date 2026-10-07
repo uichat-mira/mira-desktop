@@ -65,7 +65,180 @@ const createThreadTables = () => {
     CREATE INDEX IF NOT EXISTS idx_conversation_artifacts_thread_id ON conversation_artifacts(thread_id);
     CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+
+    CREATE TABLE IF NOT EXISTS canonical_message_cleanup_jobs (
+      id TEXT PRIMARY KEY,
+      payload_json TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'pending'
+        CHECK (state IN ('pending', 'failed')),
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT NOT NULL,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_canonical_message_cleanup_delivery
+      ON canonical_message_cleanup_jobs(state, next_attempt_at);
+
+    CREATE TABLE IF NOT EXISTS host_notification_identity (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      host_id TEXT NOT NULL UNIQUE,
+      public_key TEXT NOT NULL,
+      private_key_encrypted TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      rotated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS host_notification_binding_requests (
+      nonce TEXT PRIMARY KEY,
+      installation_id TEXT NOT NULL,
+      origin_remote_device_id TEXT NOT NULL,
+      owner_user_id INTEGER NOT NULL,
+      source_scope_json TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_host_notification_binding_requests_installation
+      ON host_notification_binding_requests(installation_id);
+    CREATE INDEX IF NOT EXISTS idx_host_notification_binding_requests_device
+      ON host_notification_binding_requests(origin_remote_device_id);
+    CREATE INDEX IF NOT EXISTS idx_host_notification_binding_requests_expires
+      ON host_notification_binding_requests(expires_at);
+
+    CREATE TABLE IF NOT EXISTS host_notification_bindings (
+      installation_id TEXT PRIMARY KEY,
+      origin_remote_device_id TEXT NOT NULL,
+      owner_user_id INTEGER NOT NULL,
+      broker_base_url TEXT NOT NULL,
+      delivery_token_encrypted TEXT NOT NULL,
+      source_scope_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'revoked')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_host_notification_bindings_status
+      ON host_notification_bindings(status);
+    CREATE INDEX IF NOT EXISTS idx_host_notification_bindings_device
+      ON host_notification_bindings(origin_remote_device_id);
+
+    CREATE TABLE IF NOT EXISTS host_notification_binding_scopes (
+      installation_id TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      PRIMARY KEY (installation_id, source_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_host_notification_binding_scopes_source
+      ON host_notification_binding_scopes(source_id);
+
+    CREATE TABLE IF NOT EXISTS notification_outbox (
+      id TEXT PRIMARY KEY,
+      -- Opaque identity by design: no FK. Outbox history must survive
+      -- binding deletion/revocation until the worker records a terminal state.
+      installation_id TEXT NOT NULL,
+      canonical_message_id TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      eligibility_event TEXT NOT NULL DEFAULT 'final_transition_first_seen'
+        CHECK (eligibility_event = 'final_transition_first_seen'),
+      state TEXT NOT NULL DEFAULT 'pending'
+        CHECK (state IN ('pending', 'delivered', 'failed', 'expired')),
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (installation_id, canonical_message_id, eligibility_event)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notification_outbox_delivery
+      ON notification_outbox(state, next_attempt_at);
+    CREATE INDEX IF NOT EXISTS idx_notification_outbox_source
+      ON notification_outbox(source_id);
   `);
+};
+
+
+const rebuildNotificationOutboxForDurableHistory = () => {
+  const sqlite = getSqlite();
+  if (!hasSqliteTable(sqlite, "notification_outbox")) return;
+
+  const foreignKeys = sqlite
+    .prepare("PRAGMA foreign_key_list(notification_outbox)")
+    .all() as Array<{ table: string }>;
+  if (foreignKeys.length === 0) return;
+
+  sqlite.exec("PRAGMA foreign_keys = OFF");
+  sqlite.exec("BEGIN");
+  try {
+    sqlite.exec(`
+      ALTER TABLE notification_outbox RENAME TO notification_outbox_legacy;
+
+      CREATE TABLE notification_outbox (
+        id TEXT PRIMARY KEY,
+        installation_id TEXT NOT NULL,
+        canonical_message_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        eligibility_event TEXT NOT NULL DEFAULT 'final_transition_first_seen'
+          CHECK (eligibility_event = 'final_transition_first_seen'),
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK (state IN ('pending', 'delivered', 'failed', 'expired')),
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        last_error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (installation_id, canonical_message_id, eligibility_event)
+      );
+
+      INSERT INTO notification_outbox (
+        id,
+        installation_id,
+        canonical_message_id,
+        source_id,
+        eligibility_event,
+        state,
+        attempt_count,
+        next_attempt_at,
+        expires_at,
+        last_error,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        installation_id,
+        canonical_message_id,
+        source_id,
+        eligibility_event,
+        state,
+        attempt_count,
+        next_attempt_at,
+        expires_at,
+        last_error,
+        created_at,
+        updated_at
+      FROM notification_outbox_legacy;
+
+      DROP TABLE notification_outbox_legacy;
+
+      CREATE INDEX IF NOT EXISTS idx_notification_outbox_delivery
+        ON notification_outbox(state, next_attempt_at);
+      CREATE INDEX IF NOT EXISTS idx_notification_outbox_source
+        ON notification_outbox(source_id);
+    `);
+    sqlite.exec("COMMIT");
+  } catch (error) {
+    sqlite.exec("ROLLBACK");
+    throw error;
+  } finally {
+    sqlite.exec("PRAGMA foreign_keys = ON");
+  }
 };
 
 
@@ -769,6 +942,7 @@ export const initializeThreadDatabase = () => {
     migrateConversationArtifactsOffWorkdirIdentity();
     ensureConversationArtifactIndexes();
     rebuildMessagesTableForThreadSupport();
+    rebuildNotificationOutboxForDurableHistory();
     ensureThreadWorkspaceColumn();
     ensureThreadKnowledgeBaseColumn();
     ensureThreadRoleColumn();

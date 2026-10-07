@@ -9,7 +9,7 @@ source: Mira
 status: review
 execution.context: fork
 execution.agent: subAgent
-execution.allowedTools: read_open, terminal_session
+execution.allowedTools: read, terminal
 execution.workspaceBound: true
 ---
 
@@ -62,7 +62,7 @@ execution.workspaceBound: true
 python <workspacePath> --input <article.md> --output article-wechat.html --style <style> --title <title> --source <source>
 ```
 
-禁止把脚本源码拼进 `terminal_session.command`，也不要再次复制或重写脚本。Windows 可回退 `py -3`。不得运行 `pip`、`conda` 或创建虚拟环境；脚本只用 `argparse`、`os`、`re`。没有 Python 时返回 capability 缺口。
+禁止把脚本源码拼进 `terminal.command`，也不要再次复制或重写脚本。Windows 可回退 `py -3`。不得运行 `pip`、`conda` 或创建虚拟环境；脚本只用 `argparse`、`os`、`re`。没有 Python 时返回 capability 缺口。
 
 ## 3. 处理图片
 

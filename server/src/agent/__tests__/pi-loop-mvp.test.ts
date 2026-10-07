@@ -34,7 +34,7 @@ const createState = (): AgentNodeState => {
       coveredProgress: ["Opened file README.md."],
     },
     toolExposure: {
-      exposedTools: ["read_open", "edit_file", "terminal_session"],
+      exposedTools: ["read_open", "edit", "terminal"],
       toolMeta: [
         {
           toolId: "read_open",
@@ -54,8 +54,8 @@ const createState = (): AgentNodeState => {
           },
         },
         {
-          toolId: "edit_file",
-          title: "Edit File",
+          toolId: "edit",
+          title: "Edit",
           description: "Edit a workspace file.",
           inputSchema: { type: "object", properties: {} },
           domain: "edit",
@@ -67,7 +67,7 @@ const createState = (): AgentNodeState => {
           },
         },
         {
-          toolId: "terminal_session",
+          toolId: "terminal",
           title: "Terminal Session",
           description: "Run a workspace command.",
           inputSchema: { type: "object", properties: {} },
@@ -155,12 +155,15 @@ test("planner receives accumulated execution history and continues after read st
       capturedMessages = messages;
       yield JSON.stringify({
         type: "use_tool",
-        toolId: "edit_file",
+        toolId: "edit",
         args: {
-          operation: "replace_block",
           path: "README.md",
-          expectedOldText: "npm install",
-          newText: "pnpm install",
+          edits: [
+            {
+              oldText: "npm install",
+              newText: "pnpm install",
+            },
+          ],
         },
         reason:
           "README.md and package.json were read and compared, but the requested fix and verification are still unfinished.",
@@ -174,7 +177,7 @@ test("planner receives accumulated execution history and continues after read st
   if (result.nextAction?.type !== "use_tool") {
     throw new Error("Planner did not continue with a tool action.");
   }
-  assert.equal(result.nextAction.toolId, "edit_file");
+  assert.equal(result.nextAction.toolId, "edit");
 
   const payloads = capturedMessages
     .map((message) => {

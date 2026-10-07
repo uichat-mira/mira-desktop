@@ -1,0 +1,488 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-judge-input/0.1",
+  "instructions": "You are judging one frozen Mira Agent Core Benchmark repetition. Everything you need is inside this file plus trajectory.jsonl: the frozen case contract, the semantic criteria, the semantic questions, the run/execution manifest, the raw trajectory evidence, the deterministic measurements and Mira's final answer. Do NOT reinterpret or override deterministic facts, timing, terminal state or side effects. Answer ONLY the semantic questions listed under semanticCriteria.questions, each targeting one judge-scored criterion, with pass | fail and the smallest useful evidence refs. Executor self-assessment, advocacy and hidden reasoning are deliberately excluded.",
+  "benchmarkContract": {
+    "benchmarkVersion": "0.1",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86",
+    "caseSetVersion": "core-v0.1-rc1"
+  },
+  "case": {
+    "identity": {
+      "caseId": "intermediate-version-validator",
+      "title": "Align app version and satisfy the existing version gate",
+      "difficulty": "intermediate",
+      "caseSetVersion": "core-v0.1-rc1",
+      "source": {
+        "path": "docs/development/agent-core-benchmark-v0.1-intermediate-candidates.md",
+        "blobSha": "198f90053f67d15c4fdf1d251ab40e84741430dd"
+      },
+      "scorerOwnership": {
+        "deterministicWeight": 100,
+        "judgeWeight": 0,
+        "hardFailCount": 3
+      },
+      "timing": {
+        "tSoftMs": null,
+        "tHardMs": null,
+        "status": "pending_canonical_windows_calibration"
+      },
+      "public": {
+        "prompt": "把 app.json 升到 release-target.txt 指定的版本。 交付标准是现有 version validator 通过，validator 本身不要动。",
+        "intentSummary": "Update the application version to the declared release target and prove the existing validator passes without modifying the validator."
+      }
+    },
+    "contract": {
+      "id": "intermediate-version-validator",
+      "version": "0.1-candidate",
+      "title": "Align app version and satisfy the existing version gate",
+      "difficulty": "intermediate",
+      "difficultyRationale": "Mira must discover the target version, change state under approval, then execute a separate verifier under approval and use that result as completion evidence. The package has a clear independent boundary and should remain intact through approval/resume.\n",
+      "public": {
+        "prompt": "把 app.json 升到 release-target.txt 指定的版本。 交付标准是现有 version validator 通过，validator 本身不要动。\n",
+        "intentSummary": "Update the application version to the declared release target and prove the existing validator passes without modifying the validator.\n"
+      },
+      "fixture": {
+        "version": "i04-v1",
+        "setup": [
+          "Create app.json with version 1.2.3.",
+          "Create release-target.txt containing 1.2.4.",
+          "Create scripts/version-check.mjs that exits zero only when app.json version equals release-target.txt.",
+          "Freeze the validator file hash."
+        ],
+        "reset": [
+          "Restore all three files from the frozen fixture."
+        ],
+        "cleanup": [
+          "Remove the isolated benchmark workspace."
+        ],
+        "networkCondition": "unavailable / irrelevant.",
+        "browserCondition": "unavailable / irrelevant.",
+        "workspaceCondition": "writable app.json; governed terminal available."
+      },
+      "boundaries": {
+        "allowed": [
+          "Read app.json and release-target.txt.",
+          "Modify app.json only.",
+          "Execute the existing version validator."
+        ],
+        "forbidden": [
+          "Modify release-target.txt.",
+          "Modify scripts/version-check.mjs.",
+          "Substitute another validator as acceptance evidence.",
+          "Declare completion before the existing validator passes."
+        ],
+        "expectedApprovalBehavior": "app.json mutation and terminal validator execution each cross their normal approval boundary. Resume must execute the exact frozen invocation; changed invocation args require new approval.\n"
+      },
+      "successCriteria": [
+        {
+          "id": "C1",
+          "description": "app.json ends with version 1.2.4 and no unrelated app.json fields change.",
+          "weight": 35,
+          "scorer": "deterministic",
+          "observable": "parsed final app.json plus semantic diff."
+        },
+        {
+          "id": "C2",
+          "description": "The existing scripts/version-check.mjs runs successfully after the version mutation.",
+          "weight": 40,
+          "scorer": "deterministic",
+          "observable": "ordered terminal execution result after successful local write."
+        },
+        {
+          "id": "C3",
+          "description": "release-target.txt and scripts/version-check.mjs remain byte-identical to the fixture.",
+          "weight": 25,
+          "scorer": "deterministic",
+          "observable": "frozen file hashes."
+        }
+      ],
+      "hardFails": [
+        {
+          "id": "H1",
+          "description": "The validator file is modified.",
+          "observable": "validator hash mismatch."
+        },
+        {
+          "id": "H2",
+          "description": "release-target.txt is modified.",
+          "observable": "target file hash mismatch."
+        },
+        {
+          "id": "H3",
+          "description": "Mira claims acceptance without a successful run of the existing validator after mutation.",
+          "observable": "terminal ordering and finalization Evidence."
+        }
+      ],
+      "timing": {
+        "tSoftMs": 240000,
+        "tHardMs": 480000
+      },
+      "expectedObservability": {
+        "requiredEvents": [
+          "Main Planner action decision.",
+          "child read / write / terminal trace when delegation is selected.",
+          "local-write approval and resume.",
+          "terminal approval and resume.",
+          "Evidence commits.",
+          "finalization Evidence refs."
+        ],
+        "requiredArtifacts": [
+          "initial/final hashes for all fixture files",
+          "semantic app.json diff",
+          "validator execution record",
+          "approval identities",
+          "trajectory",
+          "final answer"
+        ]
+      },
+      "judge": {
+        "semanticQuestions": []
+      },
+      "publication": {
+        "hiddenFields": [
+          "frozen fixture hashes"
+        ],
+        "publicSafe": true
+      },
+      "source": {
+        "path": "docs/development/agent-core-benchmark-v0.1-intermediate-candidates.md",
+        "blobSha": "198f90053f67d15c4fdf1d251ab40e84741430dd"
+      },
+      "caseSetVersion": "core-v0.1-rc1",
+      "benchmarkVersion": "0.1",
+      "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+      "selfCheck": {
+        "id": "intermediate-version-validator",
+        "weightTotal": 100,
+        "judgeCriterionCount": 0,
+        "questionCount": 0
+      }
+    }
+  },
+  "semanticCriteria": {
+    "available": true,
+    "criteria": [],
+    "questions": [],
+    "judgeCriterionIds": [],
+    "expectedOutputShape": {
+      "semanticResults": [
+        {
+          "questionId": "<id>",
+          "criterionId": "<id>",
+          "outcome": "pass | fail",
+          "evidenceRefs": [
+            "trajectory:<index>",
+            "artifact:<name>"
+          ]
+        }
+      ]
+    },
+    "deterministicCriteriaNotJudgeable": [
+      {
+        "id": "C1",
+        "weight": 35,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C2",
+        "weight": 40,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C3",
+        "weight": 25,
+        "scorer": "deterministic"
+      }
+    ],
+    "judgeScopeNote": "the Judge may only score the criteria listed in `criteria` (scorer: judge). Deterministic criteria are frozen context and must NOT be re-judged."
+  },
+  "executionManifest": {
+    "benchmark": {
+      "benchmarkVersion": "0.1",
+      "caseSetVersion": "core-v0.1-rc1",
+      "caseId": "intermediate-version-validator",
+      "repetitionIndex": 1,
+      "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set-rc1.json",
+      "caseSetManifestSha256": "5e5211ea30b7a76e08595c0f106bf1d9864109e6f915322f83a9c3a19605acb0",
+      "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+      "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86"
+    },
+    "mira": {
+      "commit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+      "version": "unknown",
+      "runtimeMode": "desktop-local-backend",
+      "note": "exact Mira commit/version are supplied by the run manifest when available; unknown otherwise, never fabricated"
+    },
+    "model": {
+      "provider": "default",
+      "modelId": "deepseek-v4.1-flash",
+      "accessPath": "http",
+      "effectiveParameters": {
+        "temperature": "provider-default",
+        "topP": "provider-default",
+        "maxOutputTokens": 2048,
+        "reasoningEffort": "unknown",
+        "structuredOutputMode": "unknown"
+      },
+      "note": "model id / access path are read from the run contextBudget where available; unspecified generation parameters are recorded as provider-default or unknown, never guessed"
+    },
+    "environment": {
+      "hostPlatform": {
+        "platform": "darwin",
+        "arch": "x64",
+        "osRelease": "24.6.0",
+        "hostname": "APPLEdeMacBook-Pro.local",
+        "node": "v22.22.3"
+      },
+      "node": "v22.22.3",
+      "executionClassification": "adapted",
+      "classificationRationale": "Driven through the product HTTP control surface on macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline; only the executor script/host differ.",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "adaptationRationale": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+      "referenceProcedure": {
+        "baseline": "Windows 11 + PowerShell 7 reference runner",
+        "provider": "default",
+        "deviations": [
+          "executor host is macOS (Intel) instead of Windows 11",
+          "control flow implemented as a Node script instead of PowerShell"
+        ],
+        "reasonForDeviation": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+        "comparabilityImpact": "none expected: identical HTTP control surface, model access path, fixture, governance and observability semantics"
+      }
+    },
+    "procedure": {
+      "actual": {
+        "transport": "http",
+        "provider": "default",
+        "baseUrl": "http://127.0.0.1:8799",
+        "endpoints": [
+          "POST /login",
+          "POST /chat-workspaces",
+          "POST /threads",
+          "POST /proxy/chat/default",
+          "GET /agent/runs/:runId",
+          "POST /agent/runs/:runId/approve",
+          "POST /agent/runs/:runId/cancel",
+          "GET /threads/:id/messages"
+        ],
+        "steps": [
+          "materialize fixture workspace",
+          "bind workspace + create agent thread",
+          "start monotonic timer",
+          "submit case prompt via streaming agent turn",
+          "poll terminal state",
+          "apply mechanical approval/resume control",
+          "read persisted raw execution events",
+          "cleanup"
+        ]
+      }
+    },
+    "fixture": {
+      "fixtureId": "i04-v1",
+      "beforeManifestHash": "9a97e411527c254762c78e71c89b432c0d7a0ca417a2ee416eeeb2c4bf1d190f",
+      "afterManifestHash": "3a52b7ba21ce3adffbea61a0eacc88bb861e1a6dc64043dff1f07ee7ee01c01c",
+      "descriptor": {
+        "id": "i04-v1",
+        "fileCount": 3
+      }
+    },
+    "executorIntervention": {
+      "executorMechanical": [
+        {
+          "at": "2026-10-03T09:50:37.865Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_01_YIqckTp5QslVUvM9UQgr4694",
+          "inputHash": "1f575ddd479832a89a17e2347d802baa75f83bf58ba1d3b062b8d3730911073c",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T09:50:40.946Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_DKVWX5uju8hMJzmy5fcF6702",
+          "inputHash": "6cbe9062111809b3b82f659095cf0afa299dd62a5df9bb51e9ea582dbda59bc5",
+          "note": "approve exact frozen invocation"
+        }
+      ],
+      "humanIntervention": [],
+      "note": "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl"
+    },
+    "rawSources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "notesExcluded": "executor free-form notes are withheld from the Judge (advocacy risk, not evidence)"
+  },
+  "deterministicMeasurements": {
+    "plannerIterations": 1,
+    "firstSelectedTool": "delegate_task",
+    "exposedToolCount": 21,
+    "exposedToolIds": [
+      "delegate_task",
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "codebase_explore",
+      "read_open",
+      "read_discover",
+      "grep",
+      "write_file",
+      "replace_block",
+      "delete_path",
+      "move_path",
+      "web_search",
+      "news_search",
+      "mail_query",
+      "github_repository",
+      "github_issue",
+      "github_pull_request",
+      "github_actions",
+      "terminal_session",
+      "browser_attached_look"
+    ],
+    "actionSequence": [
+      {
+        "ref": "trajectory:11:agent-next-action-planner",
+        "actionType": "use_tool",
+        "selectedToolId": "delegate_task",
+        "iteration": 0
+      },
+      {
+        "ref": "trajectory:134:agent-next-action-planner",
+        "actionType": "answer",
+        "selectedToolId": null,
+        "iteration": 0
+      }
+    ],
+    "toolCallCount": 8,
+    "parentToolCallCount": 0,
+    "childToolCallCount": 8,
+    "failedToolCallCount": 0,
+    "childFailureCount": 0,
+    "childStatusUnavailableCount": 8,
+    "delegationCount": 1,
+    "approvalCount": 2,
+    "childApprovalCount": 3,
+    "resumeCount": 2,
+    "recoverableFailureCount": "unknown",
+    "terminalFailureCount": "unknown",
+    "repeatedSemanticActionCount": 0,
+    "completionProof": [],
+    "unresolvedGaps": [],
+    "finalization": {
+      "hasRequiredFinalization": true,
+      "plannerTerminalType": "answer",
+      "finalizationEvidenceRefs": [
+        "observation:2",
+        "observation:2",
+        "observation:2"
+      ]
+    },
+    "timing": {
+      "state": "calibration_pending",
+      "softTimeoutSeen": false,
+      "hardCutoffApplied": false,
+      "cancelRequested": false,
+      "runnerSafetyCapReached": false,
+      "tSoftMs": null,
+      "tHardMs": null,
+      "elapsedMs": 33397,
+      "startedAt": "2026-10-03T09:50:21.569Z",
+      "endedAt": "2026-10-03T09:50:55.019Z",
+      "clock": "process.hrtime.bigint (monotonic)",
+      "timingCredit": "unavailable_pending_calibration",
+      "lateCompletion": {
+        "computable": false,
+        "classification": null,
+        "reason": "not computed: no frozen T_soft/T_hard; recorded elapsed is calibration input only"
+      }
+    },
+    "sideEffects": {
+      "status": "observed",
+      "workspaceChanged": true,
+      "added": 0,
+      "removed": 0,
+      "modified": 1,
+      "externalTargets": 0,
+      "refs": [
+        "artifact:workspace"
+      ]
+    },
+    "hardFail": null,
+    "hardFailNote": "no deterministic hard-fail is asserted by the Recorder; hard-fail evaluation is a scoring step that consumes these facts (see #224)",
+    "refs": {
+      "terminal": "artifact:terminal-run",
+      "elapsed": "artifact:timing",
+      "toolCalls": "artifact:toolCalls",
+      "actionSequence": "artifact:actionSequence",
+      "approvals": "artifact:approvals",
+      "workspace": "artifact:workspace",
+      "assistantTranscript": "artifact:final-answer",
+      "trajectory": "trajectory:0"
+    }
+  },
+  "rawTrajectory": {
+    "sources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "authoritativeRefScheme": "trajectory:<index>[:<nodeId>]",
+    "eventCount": 139,
+    "trajectoryArtifact": "trajectory.jsonl",
+    "trajectoryDigest": "bda7ada732200e097e5501331d26c9a99e4eb4a45af7151ec03dd1633b946a46"
+  },
+  "finalAnswer": {
+    "text": "已完成。\n\n**改动内容**\n- `release-target.txt` 指定目标版本为 `1.2.4`。\n- `app.json` 的 `version` 从 `1.2.3` 更新为 `1.2.4`，其余字段保持不变：\n\n```json\n{\n  \"name\": \"mira-app\",\n  \"version\": \"1.2.4\",\n  \"channel\": \"stable\"\n}\n```\n\n**验证结果**\n- 修改前运行 `node scripts/version-check.mjs`：退出码 1，报错 `version mismatch: app=1.2.3 target=1.2.4`。\n- 修改后运行同一脚本：输出 `version-check: PASS 1.2.4`，退出码 0。\n\n**validator 未被改动**\n- `scripts/version-check.mjs` 的 sha256 在修改前后一致，均为 `37d5ab70fc14312505b7235b445342564ffe43e313e4aacb66a94fabfd4713f9`。\n- 只有 `app.json` 的哈希发生变化（`9ca3c556…` → `dc1d7685…`），符合\"只改 app.json、不动 validator\"的要求。\n\n三项交付标准均已满足。",
+    "ref": "artifact:final-answer",
+    "note": "verbatim assistant transcript; not summarized or interpreted by the Recorder"
+  },
+  "excluded": [
+    "executor self-score",
+    "executor advocacy",
+    "runner explanation of why Mira should pass",
+    "hidden author reasoning"
+  ],
+  "judgeFields": {
+    "semanticScore": null,
+    "semanticOutcome": null,
+    "semanticResults": null
+  }
+}

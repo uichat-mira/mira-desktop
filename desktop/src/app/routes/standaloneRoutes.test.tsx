@@ -51,6 +51,15 @@ vi.mock("@/features/Development/pages/ClientTests/index", () => ({
 vi.mock("@/features/Development/pages/ServerTests/index", () => ({
   default: () => null,
 }));
+vi.mock("@/features/Extensions/Capabilities/index", () => ({
+  default: () => <div data-testid="extensions-capabilities">extensions-capabilities</div>,
+}));
+vi.mock("@/features/Extensions/Mcp/index", () => ({
+  default: () => <div data-testid="extensions-mcp">extensions-mcp</div>,
+}));
+vi.mock("@/features/Skills/index", () => ({
+  default: () => <div data-testid="extensions-skills">extensions-skills</div>,
+}));
 
 function renderStandaloneRoute(path: string) {
   const router = createMemoryRouter(
@@ -85,5 +94,37 @@ describe("standalone routes", () => {
     renderStandaloneRoute("/development/logs");
 
     expect(await screen.findByTestId("development-logs")).toBeInTheDocument();
+  });
+
+  it("redirects /extensions to the Capabilities surface", async () => {
+    const router = renderStandaloneRoute("/extensions");
+
+    expect(await screen.findByTestId("extensions-capabilities")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/extensions/capabilities");
+  });
+
+  it("mounts the Capabilities surface at /extensions/capabilities", async () => {
+    renderStandaloneRoute("/extensions/capabilities");
+
+    expect(await screen.findByTestId("extensions-capabilities")).toBeInTheDocument();
+  });
+
+  it("mounts the MCP surface at /extensions/mcp", async () => {
+    renderStandaloneRoute("/extensions/mcp");
+
+    expect(await screen.findByTestId("extensions-mcp")).toBeInTheDocument();
+  });
+
+  it("mounts the Skills surface at /extensions/skills", async () => {
+    renderStandaloneRoute("/extensions/skills");
+
+    expect(await screen.findByTestId("extensions-skills")).toBeInTheDocument();
+  });
+
+  it("redirects the legacy tools route to the Capabilities surface", async () => {
+    const router = renderStandaloneRoute("/extensions/tools");
+
+    expect(await screen.findByTestId("extensions-capabilities")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/extensions/capabilities");
   });
 });

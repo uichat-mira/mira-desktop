@@ -5,7 +5,10 @@
  * second semantic judge over Evidence and must not replace a grounded model answer merely
  * because an Evidence summary is partial, truncated, generic, or otherwise conservative.
  */
-import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
+import type {
+  NormalizedChatMessage,
+  NormalizedChatMessagePart,
+} from "@/services/provider-proxy.message-protocol";
 import { providerProxyService } from "@/services/provider-proxy.service/index";
 import { contextBudgetService } from "@/services/context-budget/index";
 import { agentGenerateTextRunnable } from "../runnables";
@@ -103,6 +106,9 @@ const getGenerateRequestContextMessages = (state: AgentNodeState) =>
 const buildGenerateContextBudget = (
   state: AgentNodeState,
   evidenceMessages: NormalizedChatMessage[],
+  evidenceImageParts: Array<
+    Extract<NormalizedChatMessagePart, { type: "image" }>
+  >,
   invocation: ReturnType<typeof providerProxyService.describeChatInvocation>,
 ) =>
   contextBudgetService.pack({
@@ -123,10 +129,17 @@ const buildGenerateContextBudget = (
         metadata: { source: "planner_finalization" },
       })),
       historyMessages: state.messages.slice(0, -1),
-      latestUserMessage: {
-        role: "user",
-        content: getLatestUserQuestion(state.messages) || state.goal.text,
-      },
+      latestUserMessage: (() => {
+        const content = getLatestUserQuestion(state.messages) || state.goal.text;
+        return {
+          role: "user" as const,
+          content,
+          parts: [
+            { type: "text" as const, text: content },
+            ...evidenceImageParts,
+          ],
+        };
+      })(),
     },
   });
 
@@ -217,6 +230,7 @@ export const generateNode = async (
   const budget = buildGenerateContextBudget(
     state,
     materializedEvidence.messages,
+    materializedEvidence.imageParts,
     invocationResolution,
   );
   const generationMessages = budget.messages;

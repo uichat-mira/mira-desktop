@@ -110,8 +110,17 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[skill/README]]：Skill 当前定义与 SubAgent 执行边界；
 - [[skill/pi-skill-agent-execution]]：SubAgent 详细参考；
 - [[development/agent-observability]]：Agent / SubAgent 观测与诊断；
+- [[development/agent-core-benchmark-v0.1]]：Mira Agent Core Benchmark v0.1 设计合同、评分与记录语义；
+- [[development/agent-core-benchmark-v0.1-calibration]]：#220 Core v0.1 交叉校准、alternate-path / replay / Judge handoff 与 Timing gate；
+- [[development/agent-core-benchmark-testing-playbook]]：#222 Pilot / Formal 实跑后的 Benchmark Testing Playbook、经验集与下一轮最短启动 checklist；
+- [[development/agent-core-benchmark-v0.1-case-set-rc1.json]]：Core v0.1 machine-readable case-set RC（25 题；Timing 尚未冻结，不能当正式 v0.1）；
+- [[development/agent-core-benchmark-advanced-cases-v0.1]]：Advanced 候选题包（Proposed；由 #220 校准冻结，不是正式题库）；
+- [[development/agent-core-benchmark-beginner-candidates-v0.1]]：Core Benchmark v0.1 Beginner 候选题包（#217，待 #220 校准冻结）；
+- [[development/agent-core-benchmark-v0.1-intermediate-candidates]]：#218 Intermediate 候选题包（draft，非冻结正式题库）；
 - [[microapp/README]]：MicroApps Hub、Integration binding、Studio 与领域 Runtime 入口；
 - [[chat/README]]：Chat 与 Agent UI 入口；
+- [[remote-access/push-broker-v1]]：Push Broker V1 独立服务、身份授权、event ingest 与 Relay 边界；
+- [[remote-access/host-notification-outbox-v1]]：Host canonical notification eligibility、durable outbox、binding 与 Broker delivery；
 - [[platform/tauri]]：Tauri 平台路径；
 - [[platform/macos-implementation-phases]]：macOS 支持缺口、改造进度与验收门槛（Proposed，不代表当前已支持）；
 - [[platform/macos-electron-build-exploration]]：macOS Electron 构建独立探索（Intel 优先，research，不代表当前已支持）；

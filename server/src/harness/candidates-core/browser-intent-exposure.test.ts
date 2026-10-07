@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { McpToolImplementation } from "../../mcp/core/definitions.js";
+import type { ToolImplementation } from "../../mcp/core/definitions.js";
 import {
   clearHarnessRegistry,
-  registerCapability,
+  registerTool,
 } from "../registry.js";
 import { resolveHarnessToolCandidatesForTurn } from "./resolver.js";
 
@@ -35,7 +35,7 @@ const createTool = (input: {
   requiresApproval: boolean;
   networkAccess?: boolean;
   longRunning?: boolean;
-}): McpToolImplementation => ({
+}): ToolImplementation => ({
   definition: {
     id: input.id,
     title: input.id,
@@ -74,7 +74,7 @@ describe("browser-intent Harness candidate exposure", () => {
     );
     rerankMock.mockImplementation(async ({ matches }) => ({ matches }));
 
-    registerCapability(
+    registerTool(
       createTool({
         id: "browser_observe",
         domain: "browser_action",
@@ -84,7 +84,7 @@ describe("browser-intent Harness candidate exposure", () => {
         networkAccess: true,
       }),
     );
-    registerCapability(
+    registerTool(
       createTool({
         id: "browser_act",
         domain: "browser_action",
@@ -94,7 +94,7 @@ describe("browser-intent Harness candidate exposure", () => {
         networkAccess: true,
       }),
     );
-    registerCapability(
+    registerTool(
       createTool({
         id: "browser_assert",
         domain: "browser_action",
@@ -110,7 +110,7 @@ describe("browser-intent Harness candidate exposure", () => {
       "browser_attached_act",
       "browser_attached_transfer",
     ]) {
-      registerCapability(
+      registerTool(
         createTool({
           id,
           domain: "browser_action",
@@ -130,18 +130,18 @@ describe("browser-intent Harness candidate exposure", () => {
         }),
       );
     }
-    registerCapability(
+    registerTool(
       createTool({
-        id: "write_file",
+        id: "write",
         domain: "edit",
         tags: ["edit", "write"],
         sideEffect: "local-write",
         requiresApproval: true,
       }),
     );
-    registerCapability(
+    registerTool(
       createTool({
-        id: "terminal_session",
+        id: "terminal",
         domain: "terminal",
         tags: ["terminal", "shell"],
         sideEffect: "process",
@@ -150,7 +150,7 @@ describe("browser-intent Harness candidate exposure", () => {
       }),
     );
     for (let index = 0; index < 13; index += 1) {
-      registerCapability(
+      registerTool(
         createTool({
           id: `unrelated_tool_${index}`,
           domain: "terminal",
@@ -178,8 +178,8 @@ describe("browser-intent Harness candidate exposure", () => {
         "browser_observe",
         "browser_act",
         "browser_assert",
-        "write_file",
-        "terminal_session",
+        "write",
+        "terminal",
       ]),
     );
     expect(result.toolExposure.reason).not.toContain(
@@ -221,7 +221,7 @@ describe("browser-intent Harness candidate exposure", () => {
       expect.arrayContaining([
         "browser_attached_look",
         "browser_attached_act",
-        "write_file",
+        "write",
       ]),
     );
   });

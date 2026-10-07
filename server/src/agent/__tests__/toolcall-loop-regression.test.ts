@@ -18,6 +18,7 @@ import * as policyModule from "../policy";
 import * as runnablesModule from "../runnables";
 import { agentGraph } from "../graph";
 import type { AgentGraphOutput } from "../types";
+import { normalizeToolResult, projectToolEvidence } from "@/mcp/core/tool-result.js";
 
 const baseGoal = {
   id: "goal-1",
@@ -87,7 +88,7 @@ const readOpenTool = () =>
 
 const terminalTool = () =>
   makeToolDefinition({
-    id: "terminal_session",
+    id: "terminal",
     domain: "terminal",
     inputSchema: {
       type: "object",
@@ -137,13 +138,14 @@ const makeToolIntentResult = (
     exposedDefinitions: definitions,
     reason: [],
     blockedCapabilityIds: [],
-  },});
+  },
+});
 
 const setupToolExposure = (
   query: string,
   definitions: Array<ReturnType<typeof makeToolDefinition>>,
 ) => {
-  vi.spyOn(registry, "listCapabilityDefinitions").mockReturnValue(definitions);
+  vi.spyOn(registry, "listToolDefinitions").mockReturnValue(definitions);
   vi.spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding").mockResolvedValue(
     makeToolIntentResult(query, definitions),
   );
@@ -171,28 +173,34 @@ const completedReadOpenInvocation = (text = "# README\n\nUIChat Mira runtime doc
     finishedAt: "2026-07-05T00:00:01.000Z",
   }) as const;
 
-const completedTimedOutTerminalInvocation = () =>
-  ({
+const completedTimedOutTerminalInvocation = () => {
+  const result = {
+    sessionId: "terminal-session-timeout-1",
+    command: "pwd",
+    cwd: "D:\\workspace\\rag-demo",
+    exitCode: null,
+    output: "",
+    stdout: "",
+    stderr: "Command timed out",
+    timedOut: true,
+    reusedSession: false,
+    sessionMode: "ephemeral",
+    streamMode: "split",
+    stderrSeparated: true,
+  };
+  return ({
     id: "invocation-terminal-timeout-1",
-    toolId: "terminal_session",
+    toolId: "terminal",
     status: "completed" as const,
-    result: {
-      sessionId: "terminal-session-timeout-1",
-      command: "pwd",
-      cwd: "D:\\workspace\\rag-demo",
-      exitCode: null,
-      output: "",
-      stdout: "",
-      stderr: "Command timed out",
-      timedOut: true,
-      reusedSession: false,
-      sessionMode: "ephemeral",
-      streamMode: "split",
-      stderrSeparated: true,
-    },
+    result,
+    evidence: projectToolEvidence(
+      { id: "terminal", source: "internal", domain: "terminal" },
+      normalizeToolResult({ structuredContent: result }),
+    ),
     startedAt: "2026-07-05T00:00:00.000Z",
     finishedAt: "2026-07-05T00:00:30.000Z",
   }) as const;
+};
 
 const runToolLoop = (input: {
   runId: string;
@@ -381,7 +389,7 @@ test("toolCall loop policy approval stops at waiting_approval without ToolNode e
   setupToolExposure("run dir", [terminalSession]);
   vi.spyOn(providerProxyService, "streamTaskChatText").mockImplementation(
     async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"dir"},"reason":"Need command output."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"dir"},"reason":"Need command output."}';
     },
   );
   const executeSpy = vi.spyOn(harnessInvocations, "executeHarnessInvocation");
@@ -546,7 +554,7 @@ test("toolCall loop timedOut tool evidence is not marked answer-ready", async ()
   setupToolExposure("execute shell command pwd and show stdout", [terminalSession]);
   vi.spyOn(providerProxyService, "streamTaskChatText")
     .mockImplementationOnce(async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"pwd"},"reason":"Need command output."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"pwd"},"reason":"Need command output."}';
     })
     .mockImplementationOnce(async function* () {
       yield '{"type":"answer","reason":"Timeout evidence is not enough for a grounded command result.","completionProof":[{"criterion":"report the command outcome","evidenceRefs":["tool:0"]}],"unresolvedGaps":[]}';
@@ -577,7 +585,7 @@ test("toolCall loop timedOut tool evidence is not marked answer-ready", async ()
   assert.equal(generateSpy.mock.calls.length, 1);
   assert.equal(result.lastToolExecution?.status, "completed");
   assert.equal(result.evidence.latestSummary?.status, "timed_out");
-  assert.equal(result.evidence.latestSummary?.toolId, "terminal_session");
+  assert.equal(result.evidence.latestSummary?.toolId, "terminal");
   assert.equal(result.evidence.latestSummary?.answerReadiness, undefined);
   assert.match(result.evidence.latestSummary?.gaps?.join(" ") ?? "", /finish|complete|stable/i);
   assert.equal(result.evidence.latestSummary?.data?.kind, "terminal_session");

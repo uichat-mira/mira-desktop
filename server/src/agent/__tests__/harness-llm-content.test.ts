@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
+  getHarnessLlmContentImages,
   getHarnessLlmContentText,
+  projectHarnessContentForLlm,
   projectHarnessResultForLlm,
 } from "@/harness/llm-content";
 import {
@@ -24,6 +26,39 @@ const createExecution = (
   result,
   startedAt: "2026-07-18T00:00:00.000Z",
   finishedAt: "2026-07-18T00:00:01.000Z",
+});
+
+test("explicit text content remains plain model-facing text", () => {
+  const content = projectHarnessContentForLlm([
+    { type: "text", text: "line one\nline two" },
+  ]);
+  const text = getHarnessLlmContentText(content);
+
+  assert.match(text, /line one\nline two/);
+  assert.doesNotMatch(text, /\[\s*"line one/);
+});
+
+test("Harness preserves image blocks without serializing base64 into text", () => {
+  const content = projectHarnessContentForLlm([
+    { type: "text", text: "Read image file: pixel.png" },
+    {
+      type: "image",
+      data: "BASE64_IMAGE_DATA",
+      mimeType: "image/png",
+      filename: "pixel.png",
+    },
+  ]);
+
+  assert.match(getHarnessLlmContentText(content), /Read image file: pixel\.png/);
+  assert.doesNotMatch(getHarnessLlmContentText(content), /BASE64_IMAGE_DATA/);
+  assert.deepEqual(getHarnessLlmContentImages(content), [
+    {
+      type: "image",
+      data: "BASE64_IMAGE_DATA",
+      mimeType: "image/png",
+      filename: "pixel.png",
+    },
+  ]);
 });
 
 test("read_list keeps all returned entries instead of the first five", () => {

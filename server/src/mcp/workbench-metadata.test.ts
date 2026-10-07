@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { McpToolDefinition } from "./core/definitions.js";
+import type { ToolDefinition } from "./core/definitions.js";
 import { withWorkbenchMetadata } from "./workbench-metadata.js";
 
-const createBrowserTool = (id: string): McpToolDefinition => ({
+const createBrowserTool = (id: string): ToolDefinition => ({
   id,
   title: id,
   description: id,
@@ -17,7 +17,7 @@ const createBrowserTool = (id: string): McpToolDefinition => ({
   },
 });
 
-const createGitHubTool = (id: string): McpToolDefinition => ({
+const createGitHubTool = (id: string): ToolDefinition => ({
   id,
   title: id,
   description: id,
@@ -108,6 +108,79 @@ describe("withWorkbenchMetadata", () => {
         ownershipDefinitions,
       )[0]?.workbench?.groupId,
     ).toBe("browser_computer_use");
+  });
+
+  it("keeps Tool Lab acceptance cases out of the ordinary Settings workbench", () => {
+    const projected = withWorkbenchMetadata([
+      {
+        id: "terminal",
+        title: "Terminal",
+        description: "Run commands.",
+        domain: "terminal",
+        source: "internal",
+        mode: "stream",
+        inputSchema: {},
+        tags: ["terminal"],
+        capabilities: {
+          sideEffect: "process",
+          requiresApproval: true,
+          workspaceBound: true,
+          longRunning: true,
+        },
+      },
+    ]);
+
+    expect(projected[0]?.workbench).toMatchObject({
+      groupId: "terminal",
+      groupLabel: "终端",
+    });
+    expect(projected[0]?.workbench?.cases).toBeUndefined();
+  });
+
+  it("attaches clickable Tool Lab acceptance cases to apply_patch in the edit group", () => {
+    const projected = withWorkbenchMetadata([
+      {
+        id: "apply_patch",
+        title: "Apply Patch",
+        description: "Apply a patch.",
+        domain: "edit",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {},
+        tags: ["workspace", "edit", "patch", "apply_patch"],
+        capabilities: {
+          sideEffect: "write",
+          requiresApproval: true,
+          workspaceBound: true,
+        },
+      },
+    ]);
+
+    expect(projected[0]?.workbench).toMatchObject({
+      groupId: "edit",
+      groupLabel: "编辑",
+    });
+
+    const cases = projected[0]?.workbench?.cases;
+    expect(cases?.map((item) => item.id)).toEqual([
+      "apply-patch-add",
+      "apply-patch-update",
+      "apply-patch-move",
+      "apply-patch-delete",
+      "apply-patch-controlled-error",
+    ]);
+    expect(cases?.every((item) => item.fixture === "file-mutation")).toBe(true);
+
+    const patchTextOf = (id: string) =>
+      String(cases?.find((item) => item.id === id)?.args.patchText ?? "");
+    expect(patchTextOf("apply-patch-add")).toContain("*** Add File:");
+    expect(patchTextOf("apply-patch-update")).toContain("*** Update File:");
+    expect(patchTextOf("apply-patch-move")).toContain("*** Move to:");
+    expect(patchTextOf("apply-patch-delete")).toContain("*** Delete File:");
+    for (const item of cases ?? []) {
+      expect(String(item.args.patchText)).toContain("*** Begin Patch");
+      expect(String(item.args.patchText)).toContain("*** End Patch");
+    }
   });
 
   it("groups exactly four GitHub domain tools and supplies operation drafts", () => {

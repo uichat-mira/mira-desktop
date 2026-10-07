@@ -1,0 +1,10 @@
+{
+  "name": "@ui-chat-mira/push-broker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Independent Mira Push Broker identity and event-ingest service.",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

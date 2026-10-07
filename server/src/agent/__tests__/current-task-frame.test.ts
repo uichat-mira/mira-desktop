@@ -263,7 +263,7 @@ test("prepareContextNode injects an explicit tool package as a Planner preferenc
   const readOpen = makeToolDefinition("read_open");
   const webSearch = makeToolDefinition("web_search", "web_search");
   const registrySpy = vi
-    .spyOn(harnessRegistry, "listCapabilityDefinitions")
+    .spyOn(harnessRegistry, "listToolDefinitions")
     .mockReturnValue([readOpen, webSearch]);
   const matcherSpy = vi
     .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
@@ -360,7 +360,7 @@ test("prepareContextNode reports unavailable and unknown tool packages without c
   const readOpen = makeToolDefinition("read_open");
   const webSearch = makeToolDefinition("web_search", "web_search");
   const registrySpy = vi
-    .spyOn(harnessRegistry, "listCapabilityDefinitions")
+    .spyOn(harnessRegistry, "listToolDefinitions")
     .mockReturnValue([readOpen, webSearch]);
   const matcherSpy = vi
     .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")

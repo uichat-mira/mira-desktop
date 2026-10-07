@@ -1,6 +1,6 @@
 {
   "name": "ui-chat-mira",
-  "version": "0.102.0",
+  "version": "0.103.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.12.0",
@@ -59,8 +59,10 @@
     "release:package:tauri:win": "node scripts/release/package-tauri-from-payload.mjs",
     "clean:artifacts": "node scripts/cleanup-artifacts.js",
     "check:no-db-in-index": "node scripts/check-no-db-in-index.js",
+    "check:benchmark-runner": "node --test scripts/benchmark/agent-core-runner.test.mjs",
+    "check:benchmark-recorder": "node --test scripts/benchmark/recorder/agent-core-recorder.test.mjs",
     "check:remote-relay": "tsc --noEmit -p packages/remote-relay/tsconfig.json",
-    "check": "pnpm check:ai-review-runner && pnpm check:forge-cutover && pnpm check:remote-relay && pnpm -r --workspace-concurrency=1 typecheck",
+    "check": "pnpm check:ai-review-runner && pnpm check:benchmark-runner && pnpm check:benchmark-recorder && pnpm check:benchmark-scorer && pnpm check:forge-cutover && pnpm check:remote-relay && pnpm check:push-broker && pnpm test:push-broker && pnpm -r --workspace-concurrency=1 typecheck",
     "check:tauri": "pnpm internal:prepare:tauri && cross-env CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo check --manifest-path tauri/Cargo.toml -j 1",
     "version:sync": "node scripts/sync-version.js",
     "internal:build:desktop": "pnpm --filter @ui-chat-mira/desktop build",
@@ -73,6 +75,8 @@
     "smoke:terminal-runtime": "pnpm prepare:terminal-runtime && pnpm internal:build:server && node scripts/smoke-terminal-runtime.mjs --quick",
     "smoke:terminal-runtime:staged": "pnpm prepare:terminal-runtime && pnpm internal:build:server && node scripts/smoke-terminal-runtime.mjs --full",
     "smoke:pi-skill-agent": "pnpm --filter @ui-chat-mira/server smoke:pi-skill-agent",
+    "benchmark:agent-core": "node scripts/benchmark/agent-core-runner.mjs",
+    "benchmark:record": "node scripts/benchmark/recorder/agent-core-recorder.mjs",
     "prepare:piper-runtime": "node scripts/prepare-piper-runtime.mjs",
     "prepare:vivliostyle-runtime": "node scripts/prepare-vivliostyle-runtime.mjs",
     "prepare:local-model-packs": "node scripts/prepare-local-model-packs.mjs",
@@ -80,10 +84,15 @@
     "smoke:local-model-runtime": "node scripts/smoke-local-model-runtime.mjs",
     "eval:local-model-runtime": "node scripts/eval-local-model-runtime.mjs",
     "check:forge-cutover": "node scripts/check-forge-cutover.mjs",
-    "check:ai-review-runner": "node --test scripts/ai-review/opencode-review-routing.test.mjs scripts/ai-review/opencode-review-runner.test.mjs"
+    "check:ai-review-runner": "node --test scripts/ai-review/opencode-review-routing.test.mjs scripts/ai-review/opencode-review-runner.test.mjs",
+    "check:benchmark-scorer": "node --test scripts/benchmark/scoring/agent-core-scorer.test.mjs",
+    "benchmark:score": "node scripts/benchmark/scoring/agent-core-scorer.mjs",
+    "benchmark:audit": "node scripts/benchmark/scoring/audit-package.mjs",
+    "check:push-broker": "tsc --noEmit -p packages/push-broker/tsconfig.json",
+    "test:push-broker": "node server/node_modules/tsx/dist/cli.mjs --test packages/push-broker/src/service.test.ts packages/push-broker/src/provider-delivery.test.ts packages/push-broker/src/delivery.test.ts"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.19.0"
   },
   "devDependencies": {
     "@huggingface/tokenizers": "^0.1.3",
@@ -95,6 +104,7 @@
     "jimp": "^1.6.1",
     "onnxruntime-web": "^1.27.0",
     "png2icons": "^2.0.1",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "yaml": "^2.9.0"
   }
 }

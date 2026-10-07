@@ -120,7 +120,7 @@ GitHub 模式需要本地安装、类型检查和静态构建，因此必须建�
 
 默认 `Mira BASE` 只提供 Harness workspace root。默认物理目录由桌面 launcher 在 backend 启动前创建；MiraDocs Skill 不负责补建全局默认目录。
 
-如果当前没有有效 Workspace 或 `terminal_session` 不可用，则本地验证能力缺失。必须返回 capability gap，不能只写远程文件后宣称站点已经完成。
+如果当前没有有效 Workspace 或 `terminal` 不可用，则本地验证能力缺失。必须返回 capability gap，不能只写远程文件后宣称站点已经完成。
 
 ## 4. GitHub 目标检查
 
@@ -243,7 +243,7 @@ inspect_target
 - 已有成功证据的阶段不得重跑；
 - 当前阶段失败时只诊断和修复当前失败层；
 - `deployment: none` 时，跳过 `render_pages_workflow`、`verify_actions`、`configure_pages`、`verify_pages`，并在交付中标为 `not_run`；
-- 只读目录 / 文件清单优先使用 `read_discover` 或 `read_open`，不得为反复 `dir` / `ls` 制造 Terminal 审批；
+- 只读目录清单使用 `list`，按路径模式找文件使用 `glob`，打开已知文件使用 `read`；不得为反复 `dir` / `ls` / `cat` 制造 Terminal 审批；
 - Terminal 只承担模板落盘、安装、类型检查和构建，不通过 Terminal 研究第三方包或拼装远程发布策略。
 
 ### 6.2 固定本地命令

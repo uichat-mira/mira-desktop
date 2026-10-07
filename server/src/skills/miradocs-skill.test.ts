@@ -11,9 +11,11 @@ import type { SkillManifest } from "./context/types.js";
 const skillsRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const MIRADOCS_ALLOWED_TOOLS = [
-  "read_discover",
-  "read_open",
-  "terminal_session",
+  "list",
+  "glob",
+  "grep",
+  "read",
+  "terminal",
   "github_repository",
   "github_pull_request",
   "github_actions",
@@ -107,7 +109,7 @@ describe("MiraDocs canonical Skill", () => {
     expect(content.body).toContain("不修改 Main Agent、Planner、Agent Graph、Harness 审批或 C contract");
     expect(content.body).toContain("execution.allowedTools");
     expect(content.body).toContain("不是每次任务都必须具备的工具清单");
-    expect(content.body).toContain("本地文件施工统一由 `terminal_session` 承担");
+    expect(content.body).toContain("本地文件施工统一由 `terminal` 承担");
     expect(resources.map((resource) => resource.uri).sort()).toEqual([
       "skill://miradocs/examples/conversations.md",
       "skill://miradocs/references/create-site.md",

@@ -8,9 +8,9 @@ import {
 import { resolveHarnessToolExposure } from "@/harness/exposure.js";
 import { initializeHarnessRuntime } from "@/mcp/bootstrap.js";
 import type {
-  McpInvocationFailureCode,
-  McpStreamEvent,
-  McpToolDefinition,
+  ToolInvocationFailureCode,
+  ToolInvocationEvent,
+  ToolDefinition,
 } from "@/mcp/core/definitions.js";
 import {
   claimInvocationApproval,
@@ -48,7 +48,7 @@ export type RemoteToolInvocationProjection = {
     scope?: string;
   };
   error?: {
-    code: McpInvocationFailureCode | "tool_runtime_failed";
+    code: ToolInvocationFailureCode | "tool_runtime_failed";
     message: string;
     retryable?: boolean;
     suggestedAction?: string | null;
@@ -101,7 +101,7 @@ const toModelToolName = (toolId: string) => {
   return `${readable}_${suffix}`.slice(0, 64);
 };
 
-const resolveRemoteToolDefinitions = async (): Promise<McpToolDefinition[]> => {
+const resolveRemoteToolDefinitions = async (): Promise<ToolDefinition[]> => {
   initializeHarnessRuntime();
   const eligibleExternalToolIds = process.env.DATABASE_URL
     ? resolveAgentEligibleExternalMcpCapabilities().map((definition) => definition.id)
@@ -141,7 +141,7 @@ export const listRemoteToolManifests = async (): Promise<RemoteToolManifest[]> =
   }));
 };
 
-const safeFailureMessage = (failureCode: McpInvocationFailureCode | undefined) => {
+const safeFailureMessage = (failureCode: ToolInvocationFailureCode | undefined) => {
   switch (failureCode) {
     case "schema_invalid":
       return "Tool arguments are invalid.";
@@ -207,7 +207,7 @@ const projectInvocation = (
 };
 
 const toRemoteStreamEvent = (
-  event: McpStreamEvent,
+  event: ToolInvocationEvent,
 ): RemoteToolGatewayStreamEvent | null => {
   if (event.type === "invocation:start") {
     return {

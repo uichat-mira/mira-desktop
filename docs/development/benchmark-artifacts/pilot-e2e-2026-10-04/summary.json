@@ -1,0 +1,136 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-summary/0.1",
+  "runCount": 4,
+  "repetitionCounts": {
+    "total": 4,
+    "validComparable": 4,
+    "noncanonical": 0,
+    "invalid": 0
+  },
+  "terminalDistribution": {
+    "completed": 4
+  },
+  "executionModeDistribution": {
+    "adapted": 4
+  },
+  "timingObservations": {
+    "policyState": "frozen",
+    "scope": "valid_comparable_terminal_elapsed_not_success_filtered",
+    "note": "Recorder aggregate timing is descriptive terminal elapsed only. Final timing calibration must select observations by the frozen case-defined success boundary; failed or semantically unsuccessful terminal outcomes must not be treated as successful completion timing.",
+    "elapsedMs": {
+      "values": [
+        125578,
+        8232,
+        11379,
+        37491
+      ],
+      "median": 24435,
+      "max": 125578,
+      "count": 4
+    },
+    "elapsedMsByTerminal": {
+      "completed": {
+        "values": [
+          125578,
+          8232,
+          11379,
+          37491
+        ],
+        "median": 24435,
+        "max": 125578,
+        "count": 4
+      }
+    }
+  },
+  "deterministicMeasurements": {
+    "toolCallCountMean": 10,
+    "plannerIterationsMean": 1.5,
+    "delegationCountMean": 0.75,
+    "approvalCountTotal": 8,
+    "resumeCountTotal": 8,
+    "workspaceChangedCount": 2
+  },
+  "unresolvedGaps": [
+    {
+      "caseId": "ADV-08",
+      "repetition": 1,
+      "fact": "childFailureCount",
+      "requiredBy": "#216 §12/§13 delegated failure visibility; #221 subagent-trace contract",
+      "availableSources": [
+        "subagent-trace tool.completed",
+        "subagent-trace tool.failed",
+        "traceDetails.status"
+      ],
+      "missingReason": "the #221 subagent-trace contract exposes child tool.started/tool.completed but no definite child success/failure fact (no tool.failed, no traceDetails.status), so delegated failures cannot be mechanically proven",
+      "scoringImpact": "delegated (child) tool failures may be undercounted in failure facts; childFailureCount is asserted as 0 only for the provable subset"
+    },
+    {
+      "caseId": "ADV-08",
+      "repetition": 1,
+      "fact": "recoverableFailureCount",
+      "requiredBy": "#216 §12/§13 recoverable-failure diagnostic; #221 failureRetry",
+      "availableSources": [
+        "execution-events tool node details.status",
+        "artifact:toolCalls"
+      ],
+      "missingReason": "current #221 execution-node schema exposes per-tool `status` but not `failureKind`, so recoverable vs terminal failure cannot be proven from the raw trajectory alone",
+      "scoringImpact": "recoverable-failure diagnostics and any hard-fail that depends on failure classification stay unresolved for this repetition"
+    },
+    {
+      "caseId": "beginner-02-locate-release-checklist",
+      "repetition": 1,
+      "fact": "recoverableFailureCount",
+      "requiredBy": "#216 §12/§13 recoverable-failure diagnostic; #221 failureRetry",
+      "availableSources": [
+        "execution-events tool node details.status",
+        "artifact:toolCalls"
+      ],
+      "missingReason": "current #221 execution-node schema exposes per-tool `status` but not `failureKind`, so recoverable vs terminal failure cannot be proven from the raw trajectory alone",
+      "scoringImpact": "recoverable-failure diagnostics and any hard-fail that depends on failure classification stay unresolved for this repetition"
+    },
+    {
+      "caseId": "beginner-07-rename-one-file",
+      "repetition": 1,
+      "fact": "recoverableFailureCount",
+      "requiredBy": "#216 §12/§13 recoverable-failure diagnostic; #221 failureRetry",
+      "availableSources": [
+        "execution-events tool node details.status",
+        "artifact:toolCalls"
+      ],
+      "missingReason": "current #221 execution-node schema exposes per-tool `status` but not `failureKind`, so recoverable vs terminal failure cannot be proven from the raw trajectory alone",
+      "scoringImpact": "recoverable-failure diagnostics and any hard-fail that depends on failure classification stay unresolved for this repetition"
+    },
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "repetition": 1,
+      "fact": "childFailureCount",
+      "requiredBy": "#216 §12/§13 delegated failure visibility; #221 subagent-trace contract",
+      "availableSources": [
+        "subagent-trace tool.completed",
+        "subagent-trace tool.failed",
+        "traceDetails.status"
+      ],
+      "missingReason": "the #221 subagent-trace contract exposes child tool.started/tool.completed but no definite child success/failure fact (no tool.failed, no traceDetails.status), so delegated failures cannot be mechanically proven",
+      "scoringImpact": "delegated (child) tool failures may be undercounted in failure facts; childFailureCount is asserted as 0 only for the provable subset"
+    },
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "repetition": 1,
+      "fact": "recoverableFailureCount",
+      "requiredBy": "#216 §12/§13 recoverable-failure diagnostic; #221 failureRetry",
+      "availableSources": [
+        "execution-events tool node details.status",
+        "artifact:toolCalls"
+      ],
+      "missingReason": "current #221 execution-node schema exposes per-tool `status` but not `failureKind`, so recoverable vs terminal failure cannot be proven from the raw trajectory alone",
+      "scoringImpact": "recoverable-failure diagnostics and any hard-fail that depends on failure classification stay unresolved for this repetition"
+    }
+  ],
+  "scoreComponents": {
+    "taskSuccessSemantic": "pending",
+    "autonomy": "pending",
+    "reliability": "pending",
+    "governance": "pending",
+    "note": "these components require deterministic scoring (#224) and/or a fresh blank Judge; the Recorder intentionally does not populate them"
+  }
+}

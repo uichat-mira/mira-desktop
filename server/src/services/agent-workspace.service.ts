@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import CONFIG from "@/config/index.js";
 import { threadRepository } from "@/db/repositories/index.js";
+import { resolveAppDataStorageRoot } from "@/utils/app-data-storage-root.js";
 
 export type AgentWorkspaceErrorCode =
   | "thread_not_found"
@@ -86,23 +86,8 @@ export const resolvePrivateAgentWorkspaceQuotaBytes = (
     : DEFAULT_PRIVATE_AGENT_WORKSPACE_QUOTA_BYTES;
 };
 
-export const resolvePrivateAgentWorkspaceStorageRoot = (
-  env: NodeJS.ProcessEnv = process.env,
-  cwd = process.cwd(),
-) => {
-  const configured = env.UI_CHAT_DATABASE_DIR?.trim();
-  if (configured) return path.resolve(cwd, configured);
-
-  const raw = env.DATABASE_URL?.trim() ?? "";
-  if (raw.startsWith("file:")) {
-    const filePath = raw.slice("file:".length).trim();
-    if (filePath) return path.dirname(path.resolve(cwd, filePath));
-  }
-  if (raw.endsWith(".db") || raw.endsWith(".sqlite")) {
-    return path.dirname(path.resolve(cwd, raw));
-  }
-  return path.resolve(cwd, CONFIG.DATABASE_DIR);
-};
+export const resolvePrivateAgentWorkspaceStorageRoot =
+  resolveAppDataStorageRoot;
 
 export const buildPrivateAgentWorkspacePath = (
   input: { storageRoot: string; userId: number; threadId: string },

@@ -171,7 +171,7 @@ const runSmoke = async () => {
       }),
     });
 
-    const payload = toolResult.result as Record<string, any>;
+    const payload = toolResult.structuredContent as Record<string, any>;
     const exploreResult = payload.exploreResult as Record<string, any>;
     const verificationResult = payload.verificationResult as Record<string, any>;
     const trace = payload.trace as Record<string, any>;

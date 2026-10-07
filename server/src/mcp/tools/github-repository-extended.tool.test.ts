@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubConnectionRecord } from "@/db/repositories/github-connection.repository.js";
-import type { McpInvocationContext } from "../core/definitions.js";
-import { McpApprovalRequiredError } from "../core/errors.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
+import { ToolApprovalRequiredError } from "../core/errors.js";
 import { validateInvocationArgs } from "../core/schema.js";
 import { createGitHubDomainRuntime } from "./github-domain.shared.js";
 import {
@@ -66,7 +66,7 @@ const jsonResponse = (body: unknown, status = 200) =>
 const createContext = (
   args: Record<string, unknown>,
   approvalGranted = false,
-): McpInvocationContext => ({
+): ToolInvocationContext => ({
   invocationId: "github-repository-extended-test",
   args,
   ...(approvalGranted
@@ -174,8 +174,8 @@ const expectApproval = async (invocation: Promise<unknown>) => {
     await invocation;
     throw new Error("Expected GitHub write approval");
   } catch (error) {
-    expect(error).toBeInstanceOf(McpApprovalRequiredError);
-    expect((error as McpApprovalRequiredError).scope).toBe("github.remote_write");
+    expect(error).toBeInstanceOf(ToolApprovalRequiredError);
+    expect((error as ToolApprovalRequiredError).scope).toBe("github.remote_write");
   }
 };
 
@@ -254,7 +254,7 @@ describe("GitHub repository bootstrap operations", () => {
       ),
     );
 
-    expect(execution.result).toMatchObject({
+    expect(execution.structuredContent).toMatchObject({
       operation: "create",
       id: 20,
       fullName: "tomz/mira-docs",
@@ -283,7 +283,7 @@ describe("GitHub repository bootstrap operations", () => {
         repository: "dangjingtao/uichat-mira",
       }),
     );
-    expect(accessible.result).toMatchObject({
+    expect(accessible.structuredContent).toMatchObject({
       operation: "ensure_installation_access",
       accessible: true,
       installationId: 55,
@@ -296,7 +296,7 @@ describe("GitHub repository bootstrap operations", () => {
         repository: "tomz/unscoped",
       }),
     );
-    expect(unscoped.result).toMatchObject({
+    expect(unscoped.structuredContent).toMatchObject({
       operation: "ensure_installation_access",
       accessible: false,
       resolution: "user_action_required",
@@ -313,7 +313,7 @@ describe("GitHub repository bootstrap operations", () => {
         repository: "dangjingtao/uichat-mira",
       }),
     );
-    expect(disabled.result).toMatchObject({
+    expect(disabled.structuredContent).toMatchObject({
       operation: "get_pages",
       enabled: false,
       url: null,
@@ -331,7 +331,7 @@ describe("GitHub repository bootstrap operations", () => {
         true,
       ),
     );
-    expect(configured.result).toMatchObject({
+    expect(configured.structuredContent).toMatchObject({
       operation: "configure_pages",
       enabled: true,
       buildType: "workflow",

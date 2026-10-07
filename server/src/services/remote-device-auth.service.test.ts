@@ -28,6 +28,12 @@ describe("remote device route gateway", () => {
     expect(getRequiredRemoteScope("GET", "/remote/v1/manifest")).toBe(
       "authenticated",
     );
+    expect(
+      getRequiredRemoteScope("POST", "/remote/v1/push/binding-descriptor"),
+    ).toBe("authenticated");
+    expect(
+      getRequiredRemoteScope("POST", "/remote/v1/push/bindings/accept"),
+    ).toBe("authenticated");
     expect(getRequiredRemoteScope("GET", "/remote/v1/workspaces")).toBe(
       "threads:read",
     );
@@ -86,6 +92,12 @@ describe("remote device route gateway", () => {
 
   it("rejects nearby but unadvertised write routes", () => {
     expect(getRequiredRemoteScope("PATCH", "/threads/thread-1")).toBeNull();
+    expect(
+      getRequiredRemoteScope("GET", "/remote/v1/push/binding-descriptor"),
+    ).toBeNull();
+    expect(
+      getRequiredRemoteScope("POST", "/remote/v1/push/arbitrary"),
+    ).toBeNull();
     expect(getRequiredRemoteScope("POST", "/threads/thread-1/archive")).toBeNull();
     expect(getRequiredRemoteScope("POST", "/threads/thread-1/restore")).toBeNull();
     expect(getRequiredRemoteScope("DELETE", "/threads/history")).toBeNull();

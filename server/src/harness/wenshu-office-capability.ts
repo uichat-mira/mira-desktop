@@ -1,7 +1,7 @@
 import { isWenshuCapabilityPackProvisioned } from "@/microapps/office-suite/capability-pack.js";
 import {
-  listCapabilityDefinitions,
-  unregisterCapability,
+  listToolDefinitions,
+  unregisterTool,
 } from "./registry.js";
 
 /**
@@ -20,10 +20,10 @@ export const WENSHU_OPTIONAL_CAPABILITY_IDS = [
 
 export const reconcileWenshuOfficeHarnessCapabilities = () => {
   const available = isWenshuCapabilityPackProvisioned();
-  const registered = new Set(listCapabilityDefinitions().map((definition) => definition.id));
+  const registered = new Set(listToolDefinitions().map((definition) => definition.id));
 
   for (const id of WENSHU_OPTIONAL_CAPABILITY_IDS) {
-    if (registered.has(id)) unregisterCapability(id);
+    if (registered.has(id)) unregisterTool(id);
   }
 
   return {

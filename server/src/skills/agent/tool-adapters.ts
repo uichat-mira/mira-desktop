@@ -3,8 +3,9 @@ import fs from "node:fs";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { getHarnessEnvironmentSnapshot } from "@/harness/environment.js";
 import { executeHarnessInvocation } from "@/harness/invocations.js";
-import { getCapabilityImplementation } from "@/harness/registry.js";
-import type { McpArtifact, McpToolImplementation } from "@/mcp/core/definitions.js";
+import { getToolImplementation } from "@/harness/registry.js";
+import type { ToolArtifact, ToolImplementation } from "@/mcp/core/definitions.js";
+import { normalizeToolResult, projectToolEvidence } from "@/mcp/core/tool-result.js";
 import { officeDocumentTool } from "@/mcp/tools/office-document.tool.js";
 import { officePdfTool } from "@/mcp/tools/office-pdf.tool.js";
 import { officePresentationTool } from "@/mcp/tools/office-presentation.tool.js";
@@ -20,7 +21,7 @@ import type {
   SkillAgentToolBinding,
 } from "./types.js";
 
-const PRIVATE_WENSHU_RUNTIME_TOOLS = new Map<string, McpToolImplementation>([
+const PRIVATE_WENSHU_RUNTIME_TOOLS = new Map<string, ToolImplementation>([
   [officeDocumentTool.definition.id, officeDocumentTool],
   [officePdfTool.definition.id, officePdfTool],
   [officePresentationTool.definition.id, officePresentationTool],
@@ -147,7 +148,7 @@ const normalizeExtractedText = (value: unknown) => {
 };
 
 const verifyCreatedPdf = async (input: {
-  implementation: McpToolImplementation;
+  implementation: ToolImplementation;
   args: Record<string, unknown>;
   execution: SkillAgentExecutionInput;
   signal?: AbortSignal;
@@ -181,7 +182,7 @@ const verifyCreatedPdf = async (input: {
         }),
       },
     });
-    const extracted = normalizeExtractedText(verification.result);
+    const extracted = normalizeExtractedText(verification.structuredContent);
     const missing = collectExpectedPdfText(spec).filter(
       (expected) =>
         !extracted.includes(expected.normalize("NFKC").replace(/\s+/g, "").toLowerCase()),
@@ -209,7 +210,7 @@ export const createHarnessSkillAgentToolBinding = (input: {
   toolId: string;
   execution: SkillAgentExecutionInput;
 }): SkillAgentToolBinding => {
-  const implementation = getCapabilityImplementation(input.toolId);
+  const implementation = getToolImplementation(input.toolId);
   if (!implementation) {
     throw new Error(`Skill Agent Harness tool is unavailable: ${input.toolId}`);
   }
@@ -320,7 +321,7 @@ export const createPrivateWenShuRuntimeToolBinding = (input: {
         consumedApprovals.add(approvalKey);
       }
 
-      const artifacts: McpArtifact[] = [];
+      const artifacts: ToolArtifact[] = [];
       const response = await runWithWorkspaceRootOverride(
         input.execution.workspaceRoot,
         async () => {
@@ -338,7 +339,7 @@ export const createPrivateWenShuRuntimeToolBinding = (input: {
             environment: getHarnessEnvironmentSnapshot(),
             pushEvent: () => undefined,
             addArtifact: (artifact) => {
-              const next: McpArtifact = { id: crypto.randomUUID(), ...artifact };
+              const next: ToolArtifact = { id: crypto.randomUUID(), ...artifact };
               artifacts.push(next);
               return next;
             },
@@ -361,9 +362,10 @@ export const createPrivateWenShuRuntimeToolBinding = (input: {
         },
       );
 
+      const normalized = normalizeToolResult(response);
       return {
-        result: response.result,
-        evidence: response.evidence,
+        result: normalized.structuredContent,
+        evidence: projectToolEvidence(definition, normalized),
         artifacts,
       };
     },

@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import * as S from "./github-domain.shared.js";
 
 const {
@@ -21,8 +21,8 @@ type GitRefResponse = S.GitRefResponse;
 export const createRepositoryTool = (
   client: GitHubReadClient,
   api: GitHubApi,
-  baseTool: McpToolImplementation,
-): McpToolImplementation => ({
+  baseTool: ToolImplementation,
+): ToolImplementation => ({
   definition: {
     id: "github_repository",
     title: "GitHub Repository",

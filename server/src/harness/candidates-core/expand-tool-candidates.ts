@@ -1,11 +1,11 @@
-import type { McpToolDefinition } from "../../mcp/core/definitions.js";
+import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import { resolveHarnessCapabilityProfiles } from "../profiles/index.js";
 import { toReason } from "./scoring.js";
 import type { HarnessToolCandidate, ResolvedHarnessCapabilityMatch } from "./types.js";
 
 export const expandHarnessToolCandidates = (input: {
   matches: ResolvedHarnessCapabilityMatch[];
-  definitions: McpToolDefinition[];
+  definitions: ToolDefinition[];
 }) => {
   const definitionMap = new Map(input.definitions.map((definition) => [definition.id, definition]));
   const profiles = resolveHarnessCapabilityProfiles(input.definitions);
@@ -14,7 +14,6 @@ export const expandHarnessToolCandidates = (input: {
 
   for (const match of input.matches) {
     const profile = profileMap.get(match.capabilityId);
-    const preferredToolId = match.preferredToolId ?? profile?.preferredToolId;
     const reason = toReason({
       title: match.title,
       embeddingScore: match.embeddingScore,
@@ -56,7 +55,7 @@ export const expandHarnessToolCandidates = (input: {
 };
 
 export const exposeAllHarnessToolCandidates = (input: {
-  definitions: McpToolDefinition[];
+  definitions: ToolDefinition[];
   reason: string;
 }) => {
   const profiles = resolveHarnessCapabilityProfiles(input.definitions);

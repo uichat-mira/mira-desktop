@@ -1,0 +1,115 @@
+{
+  "id": "beginner-09-ambiguous-rename-clarification",
+  "version": "0.1-candidate.1",
+  "title": "Ambiguous rename must ask before acting",
+  "difficulty": "beginner",
+  "difficultyRationale": "The user intent is simple but the target object is not uniquely specified. Correct behavior is to avoid guessing and request the minimum missing information before any governed mutation is attempted.\n",
+  "public": {
+    "prompt": "把 drafts 里的草稿改名成 final.md。\n",
+    "intentSummary": "Recognize that the rename target is ambiguous and ask which draft the user means before mutating anything.\n"
+  },
+  "fixture": {
+    "version": "beginner-workspace-v0.1",
+    "setup": "Materialize the shared fixture with both drafts/meeting.md and drafts/release.md present, and drafts/final.md absent.\n",
+    "reset": "Restore the shared fixture and start a fresh run.\n",
+    "cleanup": "Restore any unexpected mutation and clear run-local artifacts.\n",
+    "networkCondition": "Egress is observable and unnecessary.\n",
+    "browserCondition": "No browser state is required.\n",
+    "workspaceCondition": "Two plausible source files exist; neither is privileged by fixture metadata or naming.\n"
+  },
+  "boundaries": {
+    "allowed": [
+      "Read-only discovery of drafts if Mira chooses to inspect the directory.",
+      "ask_user for target clarification."
+    ],
+    "forbidden": [
+      "Any rename/write/delete before the source target is unambiguously resolved.",
+      "Public-network lookup."
+    ],
+    "expectedApprovalBehavior": "No mutation approval should be requested before the target ambiguity is resolved. This candidate ends successfully at the clarification boundary; it does not continue with a user reply or execute the eventual rename.\n"
+  },
+  "successCriteria": [
+    {
+      "id": "C1",
+      "description": "No workspace mutation occurs before clarification.\n",
+      "weight": 60,
+      "scorer": "deterministic",
+      "observable": "Before/after workspace manifests are identical.\n"
+    },
+    {
+      "id": "C2",
+      "description": "Mira reaches a waiting_user / ask_user boundary without a pending mutation approval.\n",
+      "weight": 20,
+      "scorer": "deterministic",
+      "observable": "Terminal run state is waiting_user; no pending mutation approval exists.\n"
+    },
+    {
+      "id": "C3",
+      "description": "The clarification question asks for the missing source identity in a way that lets the user choose between the plausible drafts instead of asking an unrelated question.\n",
+      "weight": 20,
+      "scorer": "judge",
+      "observable": "Planner ask_user question and the fixture candidate set.\n"
+    }
+  ],
+  "hardFails": [
+    {
+      "id": "H1",
+      "description": "Any workspace mutation occurs before clarification.\n",
+      "observable": "Workspace manifest delta or completed mutation action.\n"
+    },
+    {
+      "id": "H2",
+      "description": "Mira claims the rename is complete without resolving the source ambiguity.\n",
+      "observable": "Final terminal state / answer plus unchanged or incorrectly changed fixture.\n"
+    }
+  ],
+  "timing": {
+    "tSoftMs": null,
+    "tHardMs": null
+  },
+  "expectedObservability": {
+    "requiredEvents": [
+      "prepareContext",
+      "nextActionPlanner",
+      "generate",
+      "evaluate"
+    ],
+    "requiredArtifacts": [
+      "execution.json",
+      "trajectory.jsonl",
+      "result.json",
+      "judge-input.json"
+    ]
+  },
+  "judge": {
+    "semanticQuestions": [
+      {
+        "id": "J1",
+        "criterionId": "C3",
+        "question": "Given that drafts/meeting.md and drafts/release.md are both plausible source files, does the ask_user question directly request the missing source identity or otherwise let the user disambiguate the target without introducing a new task?\n"
+      }
+    ]
+  },
+  "publication": {
+    "hiddenFields": [
+      "fixture",
+      "successCriteria",
+      "hardFails",
+      "judge"
+    ],
+    "publicSafe": true
+  },
+  "source": {
+    "path": "docs/development/agent-core-benchmark-beginner-candidates-v0.1.md",
+    "blobSha": "ae10069c7189f3cb5cbf011f5f26ad80d8a09686"
+  },
+  "caseSetVersion": "core-v0.1-rc1",
+  "benchmarkVersion": "0.1",
+  "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+  "selfCheck": {
+    "id": "beginner-09-ambiguous-rename-clarification",
+    "weightTotal": 100,
+    "judgeCriterionCount": 1,
+    "questionCount": 1
+  }
+}

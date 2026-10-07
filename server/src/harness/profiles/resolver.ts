@@ -1,13 +1,13 @@
-import type { McpToolDefinition } from "../../mcp/core/definitions.js";
+import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessCapabilityProfile } from "./types.js";
 
 const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   id: string;
   title: string;
   description: string;
-  domain: McpToolDefinition["domain"];
+  domain: ToolDefinition["domain"];
   tags: string[];
-  preferredToolId: string;
+  preferredToolId?: string;
   supportingToolIds: string[];
   actionProfileId?: string;
   actionProfileTitle?: string;
@@ -18,11 +18,10 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     id: "workspace_lookup",
     title: "Workspace Lookup",
     description:
-      "Find, search text, inspect, and read relevant workspace files and excerpts for the current task.",
+      "Inspect workspace paths and contents when local file context is relevant to the current task.",
     domain: "read",
-    tags: ["workspace", "read", "lookup", "locate", "search", "grep", "symbol", "reference", "open"],
-    preferredToolId: "read_open",
-    supportingToolIds: ["grep", "read_discover", "read_open"],
+    tags: ["workspace", "read", "list", "directory", "glob", "pattern", "lookup", "locate", "search", "grep", "symbol", "reference", "open"],
+    supportingToolIds: ["glob", "grep", "list", "read"],
   },
   {
     id: "codebase_understanding",
@@ -45,23 +44,20 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   {
     id: "workspace_edit",
     title: "Workspace Edit",
-    description: "Create, patch, delete, move, or rename workspace paths through direct edit tools.",
+    description:
+      "Modify workspace files or path identity when governed local file mutation is relevant.",
     domain: "edit",
     tags: ["workspace", "edit", "write", "replace", "delete", "move", "rename"],
-    preferredToolId: "write_file",
-    supportingToolIds: ["write_file", "replace_block", "delete_path", "move_path"],
-    actionProfileId: "edit_create_file",
-    actionProfileTitle: "Edit Create File",
-    actionProfileDescription: "Create a new workspace file with write_file.",
+    supportingToolIds: ["write", "edit", "delete", "move", "apply_patch"],
   },
   {
-    id: "web_research",
-    title: "Web Research",
-    description: "Search current public web information and summarize the findings.",
+    id: "web",
+    title: "Web",
+    description: "Access public web information: discover relevant public sources or retrieve a known public URL.",
     domain: "web_search",
-    tags: ["web", "search", "public", "current", "realtime", "research", "internet"],
+    tags: ["web", "search", "public", "current", "realtime", "research", "internet", "fetch", "url", "retrieve", "page"],
     preferredToolId: "web_search",
-    supportingToolIds: ["web_search"],
+    supportingToolIds: ["web_search", "web_fetch"],
   },
   {
     id: "browser_computer_use",
@@ -153,8 +149,8 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     description: "Run local terminal commands or inspect command output in the workspace runtime.",
     domain: "terminal",
     tags: ["terminal", "command", "shell", "process"],
-    preferredToolId: "terminal_session",
-    supportingToolIds: ["terminal_session"],
+    preferredToolId: "terminal",
+    supportingToolIds: ["terminal"],
     actionProfileId: "terminal_execute_command",
     actionProfileTitle: "Terminal Execute Command",
     actionProfileDescription: "Execute a controlled terminal command through the managed terminal runtime.",
@@ -162,7 +158,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
 ];
 
 const createFallbackProfile = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
 ): HarnessCapabilityProfile => ({
   id: definition.id,
   title: definition.title,
@@ -177,7 +173,7 @@ const createFallbackProfile = (
 });
 
 export const resolveHarnessCapabilityProfiles = (
-  definitions: McpToolDefinition[],
+  definitions: ToolDefinition[],
 ): HarnessCapabilityProfile[] => {
   const definitionMap = new Map(definitions.map((definition) => [definition.id, definition]));
   const consumed = new Set<string>();
@@ -185,7 +181,10 @@ export const resolveHarnessCapabilityProfiles = (
 
   for (const blueprint of INTERNAL_PROFILE_BLUEPRINTS) {
     const matchedToolIds = blueprint.supportingToolIds.filter((toolId) => definitionMap.has(toolId));
-    if (matchedToolIds.length === 0 || !definitionMap.has(blueprint.preferredToolId)) {
+    if (
+      matchedToolIds.length === 0 ||
+      (blueprint.preferredToolId && !definitionMap.has(blueprint.preferredToolId))
+    ) {
       continue;
     }
 
@@ -197,7 +196,7 @@ export const resolveHarnessCapabilityProfiles = (
       domain: blueprint.domain,
       source: "internal",
       tags: blueprint.tags,
-      preferredToolId: blueprint.preferredToolId,
+      ...(blueprint.preferredToolId ? { preferredToolId: blueprint.preferredToolId } : {}),
       supportingToolIds: matchedToolIds,
       ...(blueprint.workbench ? { workbench: blueprint.workbench } : {}),
       ...(blueprint.actionProfileId

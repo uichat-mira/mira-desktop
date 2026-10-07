@@ -1,16 +1,16 @@
-import type { McpToolDefinition } from "../../mcp/core/definitions.js";
+import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessDefinitionSource } from "../shared/types.js";
 
 export interface HarnessCapabilityProfile {
   id: string;
   title: string;
   description: string;
-  domain: McpToolDefinition["domain"];
+  domain: ToolDefinition["domain"];
   source: HarnessDefinitionSource;
   tags: string[];
   inputSchema?: Record<string, unknown>;
   sourceLabel?: string;
-  preferredToolId: string;
+  preferredToolId?: string;
   supportingToolIds: string[];
   actionProfileId?: string;
   actionProfileTitle?: string;

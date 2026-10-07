@@ -3,6 +3,7 @@ packages:
   - server
   - packages/*
   - '!packages/remote-relay'
+  - '!packages/push-broker'
   - electron
 allowBuilds:
   '@google/genai': set this to true or false

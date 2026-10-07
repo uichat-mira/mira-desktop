@@ -166,6 +166,35 @@ export const resolveWorkspaceWritePath = (inputPath: unknown) => {
   return resolved;
 };
 
+export const resolveWorkspaceFilePath = (inputPath: unknown) => {
+  const workspaceRoot = getWorkspaceRoot();
+  const resolved = resolveWorkspacePath(inputPath);
+
+  if (!fs.existsSync(resolved)) {
+    throw mcpBadRequest(
+      `path must be an existing workspace file: ${String(inputPath ?? "")}`,
+    );
+  }
+
+  const stat = fs.statSync(resolved);
+  if (!stat.isFile()) {
+    throw mcpBadRequest(
+      `path must be an existing workspace file: ${String(inputPath ?? "")}`,
+    );
+  }
+
+  const workspaceRealRoot = getWorkspaceRealRoot(workspaceRoot);
+  let resolvedFile = resolved;
+  try {
+    resolvedFile = fs.realpathSync.native(resolved);
+  } catch {
+    resolvedFile = path.resolve(resolved);
+  }
+
+  assertPathInsideWorkspaceRoot(workspaceRealRoot, resolvedFile);
+  return resolvedFile;
+};
+
 export const resolveWorkspaceDirectoryPath = (inputPath: unknown) => {
   const workspaceRoot = getWorkspaceRoot();
   const resolved = resolveWorkspacePath(inputPath);

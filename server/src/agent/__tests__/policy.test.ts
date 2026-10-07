@@ -5,12 +5,12 @@ import * as registry from "@/harness/registry";
 import type { AgentNodeState } from "../node-runtime";
 import * as policy from "../policy";
 import { policyNode } from "../nodes/policy-node";
-import type { McpToolDefinition } from "@/mcp/core/definitions";
+import type { ToolDefinition } from "@/mcp/core/definitions";
 import type { PendingToolCall } from "../types";
 
 const createTool = (
-  overrides: Partial<McpToolDefinition>,
-): McpToolDefinition => ({
+  overrides: Partial<ToolDefinition>,
+): ToolDefinition => ({
   id: overrides.id ?? "tool",
   title: overrides.title ?? "tool",
   description: overrides.description ?? "tool",
@@ -112,7 +112,7 @@ test("evaluateAgentToolPolicy requires approval for risky tools", () => {
   assert.deepEqual(
     policy.evaluateAgentToolPolicy(
       createTool({
-        id: "edit_file",
+        id: "write",
         domain: "edit",
         capabilities: {
           sideEffect: "local-write",
@@ -125,7 +125,7 @@ test("evaluateAgentToolPolicy requires approval for risky tools", () => {
   assert.deepEqual(
     policy.evaluateAgentToolPolicy(
       createTool({
-        id: "workspace_mutation",
+        id: "delete",
         domain: "edit",
         capabilities: {
           sideEffect: "local-write",
@@ -184,8 +184,8 @@ test("policyNode blocks non-frozen legacy tool calls", async () => {
 });
 
 test("policyNode allows low-risk frozen pendingToolCall without modifying it", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
         id: "web_search",
@@ -214,13 +214,13 @@ test("policyNode allows low-risk frozen pendingToolCall without modifying it", a
     assert.deepEqual(result.pendingToolCall?.args, { query: "search docs" });
     assert.equal(result.pendingToolCall?.toolId, "web_search");
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode uses frozen pendingToolCall.toolMeta as the primary SSOT", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
         id: "web_search",
@@ -267,16 +267,16 @@ test("policyNode uses frozen pendingToolCall.toolMeta as the primary SSOT", asyn
     assert.equal(result.pendingApproval, undefined);
     assert.deepEqual(result.pendingToolCall, pendingToolCall);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode raises approval for risky frozen pendingToolCall", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
-        id: "workspace_mutation",
+        id: "delete",
         domain: "edit",
         capabilities: {
           sideEffect: "local-write",
@@ -286,9 +286,8 @@ test("policyNode raises approval for risky frozen pendingToolCall", async () => 
       }),
     ]);
   const emitted: unknown[] = [];
-  const pendingToolCall = createPendingToolCall("workspace_mutation", {
-    operation: "delete",
-    targetPath: "logs/output.txt",
+  const pendingToolCall = createPendingToolCall("delete", {
+    path: "logs/output.txt",
     recursive: true,
   });
 
@@ -304,19 +303,19 @@ test("policyNode raises approval for risky frozen pendingToolCall", async () => 
 
     assert.equal(result.selectedToolId, undefined);
     assert.equal(result.policyDecision?.type, "require_approval");
-    assert.equal(result.pendingApproval?.toolId, "workspace_mutation");
+    assert.equal(result.pendingApproval?.toolId, "delete");
     assert.equal(result.pendingApproval?.toolCallId, pendingToolCall.id);
     assert.equal(result.pendingApproval?.inputHash, pendingToolCall.inputHash);
     assert.deepEqual(result.pendingToolCall, pendingToolCall);
     assert.ok(emitted.length > 0);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode blocks execution when policy denies the frozen call", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
         id: "web_search",
@@ -353,16 +352,16 @@ test("policyNode blocks execution when policy denies the frozen call", async () 
     assert.equal(result.errorMessage, "Denied by policy for test coverage.");
   } finally {
     evaluatePolicySpy.mockRestore();
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode bypasses approval only for the exact approved frozen invocation", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
-        id: "terminal_session",
+        id: "terminal",
         domain: "terminal",
         capabilities: {
           sideEffect: "process",
@@ -372,7 +371,7 @@ test("policyNode bypasses approval only for the exact approved frozen invocation
         },
       }),
     ]);
-  const pendingToolCall = createPendingToolCall("terminal_session", {
+  const pendingToolCall = createPendingToolCall("terminal", {
     command: "dir",
     cwd: "D:\\workspace\\rag-demo",
   });
@@ -383,7 +382,7 @@ test("policyNode bypasses approval only for the exact approved frozen invocation
         pendingToolCall,
         approvedInvocations: [
           {
-            toolId: "terminal_session",
+            toolId: "terminal",
             input: pendingToolCall.args,
             inputHash: pendingToolCall.inputHash,
             approvedAt: "2026-07-04T00:00:00.000Z",
@@ -398,16 +397,16 @@ test("policyNode bypasses approval only for the exact approved frozen invocation
     assert.equal(result.policyDecision?.type, "allow");
     assert.deepEqual(result.pendingToolCall, pendingToolCall);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode does not reuse approval when inputHash does not match", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([
       createTool({
-        id: "terminal_session",
+        id: "terminal",
         domain: "terminal",
         capabilities: {
           sideEffect: "process",
@@ -417,7 +416,7 @@ test("policyNode does not reuse approval when inputHash does not match", async (
         },
       }),
     ]);
-  const pendingToolCall = createPendingToolCall("terminal_session", {
+  const pendingToolCall = createPendingToolCall("terminal", {
     command: "dir /b",
   });
 
@@ -427,7 +426,7 @@ test("policyNode does not reuse approval when inputHash does not match", async (
         pendingToolCall,
         approvedInvocations: [
           {
-            toolId: "terminal_session",
+            toolId: "terminal",
             input: { command: "dir" },
             inputHash: "another-hash",
             approvedAt: "2026-07-04T00:00:00.000Z",
@@ -439,17 +438,17 @@ test("policyNode does not reuse approval when inputHash does not match", async (
 
     assert.equal(result.selectedToolId, undefined);
     assert.equal(result.policyDecision?.type, "require_approval");
-    assert.equal(result.pendingApproval?.toolId, "terminal_session");
+    assert.equal(result.pendingApproval?.toolId, "terminal");
     assert.equal(result.pendingApproval?.toolCallId, pendingToolCall.id);
     assert.equal(result.pendingApproval?.inputHash, pendingToolCall.inputHash);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode blocks unknown tool ids instead of guessing fallbacks", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([]);
 
   try {
@@ -467,13 +466,13 @@ test("policyNode blocks unknown tool ids instead of guessing fallbacks", async (
     assert.equal(result.policyDecision?.type, "error");
     assert.match(result.errorMessage ?? "", /unknown tool/i);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });
 
 test("policyNode does not read toolIntent.toolExposure as a fallback execution source", async () => {
-  const listCapabilityDefinitionsSpy = vi
-    .spyOn(registry, "listCapabilityDefinitions")
+  const listToolDefinitionsSpy = vi
+    .spyOn(registry, "listToolDefinitions")
     .mockReturnValue([]);
 
   try {
@@ -510,6 +509,6 @@ test("policyNode does not read toolIntent.toolExposure as a fallback execution s
     assert.equal(result.policyDecision?.type, "error");
     assert.match(result.errorMessage ?? "", /unknown tool/i);
   } finally {
-    listCapabilityDefinitionsSpy.mockRestore();
+    listToolDefinitionsSpy.mockRestore();
   }
 });

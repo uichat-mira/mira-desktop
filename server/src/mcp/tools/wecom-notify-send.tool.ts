@@ -1,4 +1,4 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import {
   getBoundWecomUserForThread,
@@ -25,7 +25,7 @@ const normalizeContent = (value: unknown) => {
 const normalizeTitle = (value: unknown) =>
   typeof value === "string" && value.trim() ? value.trim() : undefined;
 
-export const wecomNotifySendTool: McpToolImplementation = {
+export const wecomNotifySendTool: ToolImplementation = {
   definition: {
     id: "wecom_notify_send",
     title: "WeCom Notify Send",
@@ -148,7 +148,7 @@ export const wecomNotifySendTool: McpToolImplementation = {
     }
 
     return {
-      result: {
+      structuredContent: {
         success: true,
         target,
         summary,

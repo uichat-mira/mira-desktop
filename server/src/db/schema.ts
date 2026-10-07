@@ -1365,6 +1365,191 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
 
+export const canonicalMessageCleanupJobs = sqliteTable(
+  "canonical_message_cleanup_jobs",
+  {
+    id: text("id").primaryKey(),
+    payloadJson: text("payload_json").notNull(),
+    state: text("state", { enum: ["pending", "failed"] as const })
+      .notNull()
+      .default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    lastError: text("last_error"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    deliveryIdx: index("idx_canonical_message_cleanup_delivery").on(
+      table.state,
+      table.nextAttemptAt,
+    ),
+  }),
+);
+
+export type CanonicalMessageCleanupJobRow =
+  typeof canonicalMessageCleanupJobs.$inferSelect;
+export type NewCanonicalMessageCleanupJobRow =
+  typeof canonicalMessageCleanupJobs.$inferInsert;
+
+export const hostNotificationIdentity = sqliteTable(
+  "host_notification_identity",
+  {
+    id: integer("id").primaryKey(),
+    hostId: text("host_id").notNull().unique(),
+    publicKey: text("public_key").notNull(),
+    privateKeyEncrypted: text("private_key_encrypted").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    rotatedAt: text("rotated_at"),
+  },
+);
+
+export type HostNotificationIdentityRow =
+  typeof hostNotificationIdentity.$inferSelect;
+export type NewHostNotificationIdentityRow =
+  typeof hostNotificationIdentity.$inferInsert;
+
+export const hostNotificationBindingRequests = sqliteTable(
+  "host_notification_binding_requests",
+  {
+    nonce: text("nonce").primaryKey(),
+    installationId: text("installation_id").notNull(),
+    originRemoteDeviceId: text("origin_remote_device_id").notNull(),
+    ownerUserId: integer("owner_user_id").notNull(),
+    sourceScopeJson: text("source_scope_json").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    consumedAt: text("consumed_at"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    installationIdx: index(
+      "idx_host_notification_binding_requests_installation",
+    ).on(table.installationId),
+    deviceIdx: index(
+      "idx_host_notification_binding_requests_device",
+    ).on(table.originRemoteDeviceId),
+    expiresIdx: index("idx_host_notification_binding_requests_expires").on(
+      table.expiresAt,
+    ),
+  }),
+);
+
+export type HostNotificationBindingRequestRow =
+  typeof hostNotificationBindingRequests.$inferSelect;
+export type NewHostNotificationBindingRequestRow =
+  typeof hostNotificationBindingRequests.$inferInsert;
+
+export const hostNotificationBindings = sqliteTable(
+  "host_notification_bindings",
+  {
+    installationId: text("installation_id").primaryKey(),
+    originRemoteDeviceId: text("origin_remote_device_id").notNull(),
+    ownerUserId: integer("owner_user_id").notNull(),
+    brokerBaseUrl: text("broker_base_url").notNull(),
+    deliveryTokenEncrypted: text("delivery_token_encrypted").notNull(),
+    sourceScopeJson: text("source_scope_json").notNull(),
+    status: text("status", { enum: ["active", "revoked"] as const })
+      .notNull()
+      .default("active"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    statusIdx: index("idx_host_notification_bindings_status").on(table.status),
+    deviceIdx: index("idx_host_notification_bindings_device").on(
+      table.originRemoteDeviceId,
+    ),
+  }),
+);
+
+export type HostNotificationBinding =
+  typeof hostNotificationBindings.$inferSelect;
+export type NewHostNotificationBinding =
+  typeof hostNotificationBindings.$inferInsert;
+
+export const hostNotificationBindingScopes = sqliteTable(
+  "host_notification_binding_scopes",
+  {
+    installationId: text("installation_id").notNull(),
+    sourceId: text("source_id").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.installationId, table.sourceId] }),
+    sourceIdx: index("idx_host_notification_binding_scopes_source").on(
+      table.sourceId,
+    ),
+  }),
+);
+
+export type HostNotificationBindingScope =
+  typeof hostNotificationBindingScopes.$inferSelect;
+export type NewHostNotificationBindingScope =
+  typeof hostNotificationBindingScopes.$inferInsert;
+
+export const notificationOutbox = sqliteTable(
+  "notification_outbox",
+  {
+    id: text("id").primaryKey(),
+    // Opaque installation identity: intentionally no foreign key. Durable
+    // outbox history must survive binding deletion/revocation so delivery can
+    // make an explicit terminal-state decision.
+    installationId: text("installation_id").notNull(),
+    // Opaque canonical identity: keep durable outbox history even if the
+    // canonical message is later deleted. Delivery revalidates current truth.
+    canonicalMessageId: text("canonical_message_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    eligibilityEvent: text("eligibility_event", {
+      enum: ["final_transition_first_seen"] as const,
+    })
+      .notNull()
+      .default("final_transition_first_seen"),
+    state: text("state", {
+      enum: ["pending", "delivered", "failed", "expired"] as const,
+    })
+      .notNull()
+      .default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    lastError: text("last_error"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    deliveryIdx: index("idx_notification_outbox_delivery").on(
+      table.state,
+      table.nextAttemptAt,
+    ),
+    sourceIdx: index("idx_notification_outbox_source").on(table.sourceId),
+    messageInstallationUnique: uniqueIndex(
+      "idx_notification_outbox_message_installation_unique",
+    ).on(
+      table.installationId,
+      table.canonicalMessageId,
+      table.eligibilityEvent,
+    ),
+  }),
+);
+
+export type NotificationOutboxRow = typeof notificationOutbox.$inferSelect;
+export type NewNotificationOutboxRow = typeof notificationOutbox.$inferInsert;
+
 export type ModelType =
   | "llm"
   | "embedding"

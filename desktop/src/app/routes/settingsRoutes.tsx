@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { RouteObject } from "react-router-dom";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Outlet } from "react-router-dom";
+import { Navigate, Outlet } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Blend,
@@ -10,7 +10,6 @@ import {
   Boxes,
   PanelsTopLeft,
   SlidersHorizontal,
-  Sparkles,
   ShieldCheck,
   Wrench,
   UserRoundPen,
@@ -36,7 +35,6 @@ import NotionMicroAppPage from "@/features/Settings/pages/MicroApps/Notion";
 import GitHubMicroAppPage from "@/features/Settings/pages/MicroApps/GitHub";
 import JianXingPage from "@/features/Settings/pages/MicroApps/JianXing";
 import OfficeSuitePage from "@/features/Settings/pages/MicroApps/OfficeSuite";
-import SkillsSettings from "@/features/Settings/pages/Skills";
 
 export type SettingsNavGroup =
   | "general"
@@ -101,8 +99,7 @@ const settingsRouteTree: SettingsRouteConfig[] = [
   },
   {
     path: "skills",
-    element: <SkillsSettings />,
-    nav: { labelKey: "settings.navigation.skills", icon: Sparkles, group: "app", order: 12 },
+    element: <Navigate to="/extensions/skills" replace />,
   },
   {
     path: "micro-apps",

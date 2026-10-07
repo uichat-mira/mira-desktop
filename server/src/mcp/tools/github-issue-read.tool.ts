@@ -1,4 +1,4 @@
-import type { McpInvocationContext, McpToolImplementation } from "../core/definitions.js";
+import type { ToolInvocationContext, ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { githubIssueReadTool as baseGitHubIssueReadTool } from "./github-read.tool.js";
 
@@ -41,9 +41,9 @@ const normalizeSearchText = (value: unknown) => {
   return `${query} in:title,body`;
 };
 
-export const githubIssueReadTool: McpToolImplementation = {
+export const githubIssueReadTool: ToolImplementation = {
   definition: baseGitHubIssueReadTool.definition,
-  execute: (context: McpInvocationContext) =>
+  execute: (context: ToolInvocationContext) =>
     baseGitHubIssueReadTool.execute({
       ...context,
       args: {

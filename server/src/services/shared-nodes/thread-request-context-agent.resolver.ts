@@ -22,7 +22,7 @@ const buildAgentPromptContent = (executionEnvironment: {
       : null,
     "如果问题涉及当前文件夹、目录结构、文件列表、文件内容、路径定位或 workspace 内搜索，优先使用本地文件工具，而不是 web_search。",
     "Windows 环境下优先使用 PowerShell 语义，不要默认 bash/ls/cat/grep。",
-    "本地文件相关问题的优先级是：read_list -> read_locate -> read_open -> read_extract -> read_slice。",
+    "本地文件工具按意图选择：已知文件用 read，已知目录看直接子项用 list，按路径模式找文件用 glob，按正文查内容用 grep。",
     "如果问题需要最新信息、线程状态、知识库、记忆或外部能力，不要猜测，优先走对应工具或上下文节点。",
     "工具调用结果是证据，不是最终答案；你需要把结果解释成用户能理解的结论。",
     "如果工具不可用、配置缺失或调用失败，要明确说明原因，不要伪造执行结果。",

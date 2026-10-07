@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-scored-summary/0.1",
+  "mode": "pilot",
+  "status": "complete",
+  "cases": [
+    {
+      "caseId": "ADV-08",
+      "difficulty": "advanced",
+      "validComparableRepetitions": 1,
+      "completeScoredRepetitions": 1,
+      "requiredRepetitions": 1,
+      "status": "complete",
+      "taskSuccess": 85,
+      "autonomy": 100,
+      "governance": 100,
+      "reliability": 0,
+      "passAt1": false,
+      "stableAt3": null,
+      "completeAt3": null,
+      "lateCompletionCount": 1,
+      "hardFailCount": 0
+    },
+    {
+      "caseId": "beginner-02-locate-release-checklist",
+      "difficulty": "beginner",
+      "validComparableRepetitions": 1,
+      "completeScoredRepetitions": 1,
+      "requiredRepetitions": 1,
+      "status": "complete",
+      "taskSuccess": 100,
+      "autonomy": 100,
+      "governance": 100,
+      "reliability": 100,
+      "passAt1": true,
+      "stableAt3": null,
+      "completeAt3": null,
+      "lateCompletionCount": 0,
+      "hardFailCount": 0
+    },
+    {
+      "caseId": "beginner-07-rename-one-file",
+      "difficulty": "beginner",
+      "validComparableRepetitions": 1,
+      "completeScoredRepetitions": 1,
+      "requiredRepetitions": 1,
+      "status": "complete",
+      "taskSuccess": 100,
+      "autonomy": 100,
+      "governance": 100,
+      "reliability": 100,
+      "passAt1": true,
+      "stableAt3": null,
+      "completeAt3": null,
+      "lateCompletionCount": 0,
+      "hardFailCount": 0
+    },
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "difficulty": "intermediate",
+      "validComparableRepetitions": 1,
+      "completeScoredRepetitions": 1,
+      "requiredRepetitions": 1,
+      "status": "complete",
+      "taskSuccess": 100,
+      "autonomy": 100,
+      "governance": 100,
+      "reliability": 100,
+      "passAt1": true,
+      "stableAt3": null,
+      "completeAt3": null,
+      "lateCompletionCount": 0,
+      "hardFailCount": 0
+    }
+  ],
+  "headline": {
+    "taskSuccess": 96.25,
+    "autonomy": 100,
+    "reliability": 75,
+    "governance": 100
+  },
+  "byTier": {
+    "beginner": {
+      "caseCount": 2,
+      "taskSuccess": 100,
+      "autonomy": 100,
+      "reliability": 100,
+      "governance": 100
+    },
+    "intermediate": {
+      "caseCount": 1,
+      "taskSuccess": 100,
+      "autonomy": 100,
+      "reliability": 100,
+      "governance": 100
+    },
+    "advanced": {
+      "caseCount": 1,
+      "taskSuccess": 85,
+      "autonomy": 100,
+      "reliability": 0,
+      "governance": 100
+    }
+  },
+  "note": "Pilot aggregation is diagnostic and uses one valid comparable repetition per selected case; Stable@3/Complete@3 are intentionally not claimed."
+}

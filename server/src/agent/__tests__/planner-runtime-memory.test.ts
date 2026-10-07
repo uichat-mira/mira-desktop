@@ -19,14 +19,14 @@ const createReadObservation = (input: {
   actionType: "tool",
   status: "completed",
   createdAt: input.createdAt,
-  toolId: "read_open",
+  toolId: "read",
   toolCallId: input.id,
   inputHash: input.inputHash,
   argsPreview: { path: input.path },
   summary: {
     source: "tool",
     status: "completed",
-    toolId: "read_open",
+    toolId: "read",
     inputHash: input.inputHash,
     actionTaken: `Opened file ${input.path}.`,
     keyFindings: [`contentLength=${100 + Number(input.id.replace(/\D/g, "") || 0)}`],
@@ -49,7 +49,7 @@ test("planner accumulated action ledger survives the recent execution window and
 
   const ledger = buildPlannerAccumulatedActionLedger(observations);
   const entry = ledger.entries.find(
-    (item) => item.toolId === "read_open" && item.target === "src/entry.ts",
+    (item) => item.toolId === "read" && item.target === "src/entry.ts",
   );
 
   assert.equal(ledger.totalExecutionObservations, 15);
@@ -80,7 +80,7 @@ test("planner recent evidence content keeps multiple canonical tool outputs beyo
       toolExecutions: [
         {
           toolCallId: "call-first",
-          toolId: "read_open",
+          toolId: "read",
           inputHash: "hash-first",
           args: { path: "src/first.ts" },
           status: "completed",
@@ -91,7 +91,7 @@ test("planner recent evidence content keeps multiple canonical tool outputs beyo
         },
         {
           toolCallId: "call-second",
-          toolId: "read_open",
+          toolId: "read",
           inputHash: "hash-second",
           args: { path: "src/second.ts" },
           status: "completed",
@@ -111,3 +111,4 @@ test("planner recent evidence content keeps multiple canonical tool outputs beyo
   assert.match(content?.content ?? "", /FIRST_REAL_TOOL_MARKER/);
   assert.match(content?.content ?? "", /SECOND_REAL_TOOL_MARKER/);
 });
+

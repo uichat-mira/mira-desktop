@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ToolsSettings from "./index";
 
@@ -9,8 +10,12 @@ const saveWebSearchConfig = vi.fn();
 const selectGroup = vi.fn();
 const selectTool = vi.fn();
 const setArgsDraft = vi.fn();
+const hookCapture = vi.hoisted(() => ({
+  initialHandoff: undefined as unknown,
+}));
 
 const workbench = {
+  activeCase: null,
   activeGroupId: "web_search",
   argsDraft: "{}",
   artifacts: [],
@@ -46,7 +51,12 @@ const workbench = {
 };
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock("./hooks/useToolsWorkbench", () => ({ useToolsWorkbench: () => workbench }));
+vi.mock("./hooks/useToolsWorkbench", () => ({
+  useToolsWorkbench: (initialHandoff: unknown) => {
+    hookCapture.initialHandoff = initialHandoff;
+    return workbench;
+  },
+}));
 vi.mock("../../components/SettingsPageLayout", () => ({ default: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }));
 vi.mock("./components/ToolsSidebar", () => ({ default: ({ onSelectGroup }: { onSelectGroup: (id: string) => void }) => <button onClick={() => onSelectGroup("web_search")}>sidebar</button> }));
 vi.mock("./components/ToolsWorkbenchPanel", () => ({ default: () => <div>workspace panel</div> }));
@@ -57,12 +67,23 @@ vi.mock("./components/ToolsPackagePanel", () => ({
   ),
 }));
 
+function renderToolsSettings(state?: unknown) {
+  return render(
+    <MemoryRouter initialEntries={[{ pathname: "/settings/tools", state }]}>
+      <ToolsSettings />
+    </MemoryRouter>,
+  );
+}
+
 describe("ToolsSettings", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    hookCapture.initialHandoff = undefined;
+  });
 
   it("wires sidebar, tool selection, and execution", async () => {
     const user = userEvent.setup();
-    render(<ToolsSettings />);
+    renderToolsSettings();
     await user.click(screen.getByRole("button", { name: "sidebar" }));
     await user.click(screen.getByRole("button", { name: "tool" }));
     await user.click(screen.getByRole("button", { name: "run" }));
@@ -71,9 +92,34 @@ describe("ToolsSettings", () => {
     expect(runSelectedTool).toHaveBeenCalledOnce();
   });
 
+  it("passes a valid Capability handoff into the existing workbench", () => {
+    const handoff = {
+      toolId: "read",
+      args: { path: "README.md" },
+    };
+
+    renderToolsSettings({ capabilitiesHandoff: handoff });
+
+    expect(hookCapture.initialHandoff).toEqual(handoff);
+  });
+
+  it.each([
+    null,
+    [],
+    {},
+    { capabilitiesHandoff: [] },
+    { capabilitiesHandoff: { toolId: 7, args: {} } },
+    { capabilitiesHandoff: { toolId: "read", args: null } },
+    { capabilitiesHandoff: { toolId: "read", args: [] } },
+  ])("rejects malformed Capability handoff state %#", (state) => {
+    renderToolsSettings(state);
+
+    expect(hookCapture.initialHandoff).toBeNull();
+  });
+
   it("opens web-search configuration and saves it on confirmation", async () => {
     const user = userEvent.setup();
-    render(<ToolsSettings />);
+    renderToolsSettings();
     await user.click(screen.getByRole("button", { name: "config" }));
     expect(screen.getByText("Web Search")).toBeInTheDocument();
     expect(screen.getByDisplayValue("key")).toBeInTheDocument();

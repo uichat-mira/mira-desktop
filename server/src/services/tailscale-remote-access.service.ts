@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import CONFIG from "@/config/index.js";
+import { getSqlite } from "@/db/index.js";
+import { hostNotificationRepository } from "@/db/repositories/host-notification.repository.js";
 import {
   tailscaleRemoteAccessRepository,
   type TailscalePairedDevice,
@@ -561,8 +563,21 @@ export class TailscaleRemoteAccessService {
     return this.getSnapshot({ verifyHealth: true });
   }
 
-  revokeDevice(id: string): boolean {
-    return tailscaleRemoteAccessRepository.revokeDevice(id);
+  revokeDevice(id: string, userId?: number): boolean {
+    const device = tailscaleRemoteAccessRepository.getActiveDeviceById(id);
+    if (!device || (typeof userId === "number" && device.userId !== userId)) {
+      return false;
+    }
+
+    return getSqlite().transaction(() => {
+      const revoked = tailscaleRemoteAccessRepository.revokeDevice(id, userId);
+      if (!revoked) return false;
+      hostNotificationRepository.revokeBindingsForRemoteDevice(
+        id,
+        device.userId,
+      );
+      return true;
+    })();
   }
 }
 

@@ -360,7 +360,7 @@ test("buildPlannerObservationContext includes pendingApproval in both approval v
         id: "approval-1",
         runId: "run-1",
         stepId: "approval",
-        toolId: "terminal_session",
+        toolId: "terminal",
         toolCallId: "tool-call-1",
         inputHash: "hash-1",
         reason: "Needs approval before running.",
@@ -372,13 +372,13 @@ test("buildPlannerObservationContext includes pendingApproval in both approval v
   );
 
   assert.deepEqual(context.pendingApproval, {
-    toolId: "terminal_session",
+    toolId: "terminal",
     inputHash: "hash-1",
     reason: "Needs approval before running.",
   });
   assert.equal(context.latestObservation?.source, "approval");
   assert.equal(context.latestObservation?.actionType, "approval");
-  assert.equal(context.latestObservation?.toolId, "terminal_session");
+  assert.equal(context.latestObservation?.toolId, "terminal");
   assert.equal(context.latestObservation?.status, "waiting_approval");
   assert.deepEqual(context.latestObservation?.suggestedNextActions, [
     "wait_for_approval",
@@ -529,7 +529,7 @@ test("buildNextActionPlannerMessages reads planner observation context instead o
         id: "approval-1",
         runId: "run-1",
         stepId: "approval",
-        toolId: "terminal_session",
+        toolId: "terminal",
         toolCallId: "tool-call-1",
         inputHash: "hash-1",
         reason: "Needs approval before running.",
@@ -640,6 +640,91 @@ test("buildNextActionPlannerMessages only uses toolExposure as the planner-visib
   assert.deepEqual(
     payload.toolExposure.toolMeta.map((tool) => tool.toolId),
     ["read_open"],
+  );
+});
+
+test("buildNextActionPlannerMessages gives Terminal exposure-aware alternatives without narrowing cwd authority", () => {
+  const terminalExposure = {
+    exposedTools: ["terminal", "read_open", "web_search"],
+    toolMeta: [
+      {
+        toolId: "terminal",
+        title: "Terminal",
+        description: "Run host commands.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            command: { type: "string" },
+            cwd: { type: "string" },
+          },
+        },
+        domain: "terminal",
+        source: "internal" as const,
+        tags: ["terminal"],
+        capabilities: {
+          sideEffect: "process" as const,
+          requiresApproval: true,
+          workspaceBound: true,
+          workspaceBoundary: {
+            argKeys: ["cwd"],
+            argTypes: { cwd: "directory" as const },
+          },
+          longRunning: true,
+          sandboxRequired: false,
+        },
+      },
+      baseToolExposure.toolMeta[0]!,
+      baseToolExposure.toolMeta[1]!,
+      {
+        toolId: "write",
+        title: "Write",
+        description: "Write a workspace file.",
+        inputSchema: { type: "object" },
+        domain: "edit",
+        source: "internal" as const,
+        capabilities: {
+          sideEffect: "local-write" as const,
+          requiresApproval: true,
+          workspaceBound: true,
+        },
+      },
+    ],
+  };
+
+  const messages = buildNextActionPlannerMessages({
+    question: "Run the repository tests.",
+    messages: createState().messages,
+    observationContext: buildPlannerObservationContext(createState()),
+    toolExposure: terminalExposure,
+    iteration: 0,
+    maxIterations: 3,
+  });
+
+  const payload = JSON.parse(String(messages[1]?.content ?? "{}")) as {
+    toolExposure: {
+      toolMeta: Array<{ toolId: string; description: string }>;
+    };
+  };
+  const terminalMeta = payload.toolExposure.toolMeta.find(
+    (tool) => tool.toolId === "terminal",
+  );
+  const systemPrompt = String(messages[0]?.content ?? "");
+
+  assert.ok(terminalMeta);
+  assert.match(terminalMeta.description, /real process\/shell work/i);
+  assert.match(terminalMeta.description, /execution escape hatch/i);
+  assert.match(terminalMeta.description, /read_open/);
+  assert.match(terminalMeta.description, /web_search/);
+  assert.doesNotMatch(terminalMeta.description, /write|delete|web_fetch/);
+
+  assert.match(
+    systemPrompt,
+    /绝对路径和父级跳转也是有效的 host 执行目录/,
+  );
+  assert.match(systemPrompt, /Policy \/ Approval \/ runtime authority/);
+  assert.doesNotMatch(
+    systemPrompt,
+    /对 terminal\.cwd，只能输出 workspace-relative directory/,
   );
 });
 
@@ -2110,7 +2195,7 @@ test("nextActionPlannerNode falls back when task model selects an unexposed tool
   const streamSpy = vi
     .spyOn(providerProxyService, "streamTaskChatText")
     .mockImplementation(async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"dir"},"reason":"Need terminal."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"dir"},"reason":"Need terminal."}';
     });
 
   try {

@@ -1,12 +1,12 @@
 import path from "node:path";
 import type {
-  McpCapabilityMetadata,
-  McpExecutionEnvironment,
-  McpToolDefinition,
+  ToolPolicyMetadata,
+  ToolExecutionEnvironment,
+  ToolDefinition,
 } from "./definitions.js";
 import { normalizeWorkspaceRelativePathArg } from "../workspace-path-args.js";
 
-export const describeRisk = (capabilities: McpCapabilityMetadata) => {
+export const describeRisk = (capabilities: ToolPolicyMetadata) => {
   if (capabilities.sideEffect === "process") {
     return "high";
   }
@@ -65,7 +65,7 @@ const resolveWorkspaceRelativeTarget = (
 };
 
 const getWorkspaceBoundaryCandidates = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
   args: Record<string, unknown>,
 ) => {
   const keys = definition.capabilities.workspaceBoundary?.argKeys ?? [];
@@ -84,9 +84,9 @@ const getWorkspaceBoundaryCandidates = (
 };
 
 export const evaluateInvocationApproval = (input: {
-  definition: McpToolDefinition;
+  definition: ToolDefinition;
   args: Record<string, unknown>;
-  environment?: McpExecutionEnvironment;
+  environment?: ToolExecutionEnvironment;
   approvedInvocations?: ApprovedInvocation[];
   inputHash?: string;
 }): InvocationApprovalDecision => {

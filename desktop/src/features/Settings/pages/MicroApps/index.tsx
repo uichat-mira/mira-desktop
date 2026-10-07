@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Github from "./GithubIcon";
-import NotionIcon from "./NotionIcon";
 import { AudioLines, BookOpen, Boxes, BrainCircuit, ChevronRight, FileText, Image, Mail, MonitorSmartphone, MoreHorizontal, Newspaper, PlugZap, Search, Settings } from "lucide-react";
 import { Link } from "react-router-dom";
 import SettingsPageLayout from "../../components/SettingsPageLayout";
@@ -9,7 +7,7 @@ import Alert from "@/shared/ui/Alert";
 import Badge from "@/shared/ui/Badge";
 import Card from "@/shared/ui/Card";
 import DropdownMenu from "@/shared/ui/DropdownMenu";
-import { Button, IconButton, Result, Skeleton, TextInput } from "@/shared/ui";
+import { Button, GithubIcon as Github, IconButton, NotionIcon, Result, Skeleton, TextInput } from "@/shared/ui";
 import { message } from "@/shared/ui/Message";
 import {
   getIntegrationInstances,

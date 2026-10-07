@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { executeInvocation, resolveInvocationApproval } from "@/mcp/core/invocations.js";
-import type { McpInvocationRecord } from "@/mcp/core/definitions.js";
+import type { ToolInvocation } from "@/mcp/core/definitions.js";
 import type { BrowserActInput, BrowserArtifact, BrowserAssertInput, BrowserToolResult } from "@/microapps/computer-use/browser/types.js";
 import type { BrowserSessionManager, ManagedBrowserSession } from "@/microapps/computer-use/session/manager.js";
 import { BrowserService } from "@/microapps/computer-use/browser/service.js";
@@ -53,13 +53,13 @@ export type ComputerUseDebuggerService = {
 
 const now = () => new Date().toISOString();
 const toArtifactIds = (artifacts: BrowserArtifact[]) => artifacts.map((artifact) => artifact.id);
-export const getDebuggerInvocationStatus = (invocationStatus: McpInvocationRecord["status"], resultOk: boolean): Invocation["status"] =>
+export const getDebuggerInvocationStatus = (invocationStatus: ToolInvocation["status"], resultOk: boolean): Invocation["status"] =>
   invocationStatus === "awaiting_approval"
     ? "awaiting_approval"
     : invocationStatus === "completed" && resultOk
       ? "succeeded"
       : "failed";
-export const browserResultFromRecord = (record: McpInvocationRecord): BrowserToolResult => {
+export const browserResultFromRecord = (record: ToolInvocation): BrowserToolResult => {
   const result = record.result as BrowserToolResult | { result?: BrowserToolResult } | undefined;
   if (result && "ok" in result && typeof result.ok === "boolean") return result;
   if (result && "result" in result && result.result) return result.result;
@@ -79,7 +79,7 @@ export const createComputerUseDebuggerService = (input: {
     if (!value) throw new Error("Browser session is not available.");
     return value;
   };
-  const apply = (record: DebuggerSession, tool: Invocation["tool"], args: Record<string, unknown>, invocation: McpInvocationRecord) => {
+  const apply = (record: DebuggerSession, tool: Invocation["tool"], args: Record<string, unknown>, invocation: ToolInvocation) => {
     const result = browserResultFromRecord(invocation);
     const screenshot = result.artifacts.find((artifact) => artifact.kind === "screenshot");
     record.browser = { url: result.page.url, title: result.page.title, snapshotHash: result.page.snapshotHash, snapshot: result.observation?.snapshot, visibleText: result.observation?.visibleText, screenshotArtifact: screenshot ? `/microapps/computer-use/sessions/${record.sessionId}/artifacts/${encodeURIComponent(screenshot.id)}/content` : undefined };

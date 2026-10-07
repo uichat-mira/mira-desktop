@@ -1,7 +1,7 @@
 import os from "node:os";
 import pty from "node-pty";
 import { mcpBadRequest } from "./core/errors.js";
-import type { McpExecutionEnvironment } from "./core/definitions.js";
+import type { ToolExecutionEnvironment } from "./core/definitions.js";
 import {
   resolveHostCwd,
   resolveHostEnv,
@@ -17,6 +17,10 @@ import {
   getWindowsJobMarker,
 } from "./terminal/windows-job-object.js";
 import { killTerminalProcessTree } from "./terminal/process-tree.js";
+import {
+  cancelPersistentTerminalOutputsForSession,
+  clearPersistentTerminalOutputsForSession,
+} from "./terminal/persistent-output-store.js";
 
 export interface TerminalSessionRecord {
   id: string;
@@ -48,23 +52,54 @@ export const listTerminalSessions = () =>
 
 export const getTerminalSession = (sessionId: string) => sessionMap.get(sessionId);
 
-export const removeTerminalSession = (sessionId: string) => {
+export const stopTerminalSession = async (sessionId: string) => {
   const session = sessionMap.get(sessionId);
   if (!session) {
-    return;
+    throw mcpBadRequest(`terminal session not found: ${sessionId}`);
   }
 
+  // Drop live ownership before cleanup so no new command can attach while the
+  // owned process tree is being stopped.
   sessionMap.delete(sessionId);
-  void killTerminalProcessTree({
-    pid: session.process.pid,
-    mode: session.processTreeMode,
-  }).finally(() => {
+  const outputCancellation =
+    cancelPersistentTerminalOutputsForSession(sessionId).catch(
+      () => undefined,
+    );
+
+  try {
+    await killTerminalProcessTree({
+      pid: session.process.pid,
+      mode: session.processTreeMode,
+    });
+  } finally {
     try {
       session.process.kill();
     } catch {
       // Process may already have exited.
     }
-  });
+    await outputCancellation;
+    await clearPersistentTerminalOutputsForSession(sessionId).catch(
+      () => undefined,
+    );
+  }
+
+  return {
+    sessionId: session.id,
+    command: session.command,
+    cwd: session.cwd,
+    runtimeId: session.runtimeId,
+    workspaceRelation: session.workspaceRelation,
+    processTreeMode: session.processTreeMode,
+    state: "cancelled" as const,
+    cleanupCompleted: true,
+  };
+};
+
+export const removeTerminalSession = (sessionId: string) => {
+  if (!sessionMap.has(sessionId)) {
+    return;
+  }
+  void stopTerminalSession(sessionId).catch(() => undefined);
 };
 
 export const clearTerminalSessions = () => {
@@ -118,7 +153,7 @@ export const createTerminalSession = async (input: {
   env?: Record<string, string>;
   workspaceRoot?: string | null;
   runtimeId?: TerminalRuntimeId;
-  shellProfile?: McpExecutionEnvironment["terminal"]["shellProfile"];
+  shellProfile?: ToolExecutionEnvironment["terminal"]["shellProfile"];
 }) => {
   const runtimeId = input.runtimeId ?? resolveTerminalRuntimeId();
   if (runtimeId !== "host_spawn") {

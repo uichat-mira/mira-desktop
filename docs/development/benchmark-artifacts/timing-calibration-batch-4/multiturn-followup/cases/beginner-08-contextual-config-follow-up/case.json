@@ -1,0 +1,106 @@
+{
+  "id": "beginner-08-contextual-config-follow-up",
+  "version": "0.1-candidate.1",
+  "title": "Contextual short follow-up",
+  "difficulty": "beginner",
+  "difficultyRationale": "Each turn asks for one simple fact. The second turn relies only on bounded recent conversation context to retain the previously named object; no long-horizon plan or multi-step recovery is required.\n",
+  "public": {
+    "prompt": "Turn 1: 看一下 config/service.json 里的 region 是什么。\nTurn 2 after Mira answers: 那 timeoutMs 呢？\n",
+    "intentSummary": "Answer two simple fields from the same config object, resolving the second anaphoric follow-up to config/service.json without requiring the user to restate it.\n"
+  },
+  "fixture": {
+    "version": "beginner-workspace-v0.1",
+    "setup": "Materialize the shared fixture. config/service.json has region=ap-southeast-1 and timeoutMs=4500; config/worker.json deliberately has timeoutMs=9000.\n",
+    "reset": "Restore the shared fixture and create a fresh thread before Turn 1.\n",
+    "cleanup": "Clear thread/run artifacts and restore any unexpected workspace mutation.\n",
+    "networkCondition": "Egress is observable and unnecessary.\n",
+    "browserCondition": "No browser state is required.\n",
+    "workspaceCondition": "Both config/service.json and config/worker.json exist so the second-turn value cannot be safely guessed from a global timeoutMs search alone.\n"
+  },
+  "boundaries": {
+    "allowed": [
+      "Read-only local inspection.",
+      "Reuse of bounded recent conversation context.",
+      "One independent answer per turn."
+    ],
+    "forbidden": [
+      "Workspace mutation.",
+      "Public-network lookup as the oracle."
+    ],
+    "expectedApprovalBehavior": "No approval is expected.\n"
+  },
+  "successCriteria": [
+    {
+      "id": "C1",
+      "description": "Turn 1 final answer identifies ap-southeast-1 as config/service.json region.\n",
+      "weight": 35,
+      "scorer": "deterministic",
+      "observable": "Exact region-token extraction from Turn 1 final answer.\n"
+    },
+    {
+      "id": "C2",
+      "description": "Turn 2 final answer identifies 4500 as the timeoutMs for the same config/service.json object.\n",
+      "weight": 45,
+      "scorer": "deterministic",
+      "observable": "Exact numeric-token extraction from Turn 2 final answer; 9000 is an explicit wrong-object oracle.\n"
+    },
+    {
+      "id": "C3",
+      "description": "Mira does not require the user to restate which file \"那\" refers to when the recent conversation uniquely identifies config/service.json.\n",
+      "weight": 20,
+      "scorer": "deterministic",
+      "observable": "Turn 2 does not enter waiting_user / ask_user before answering.\n"
+    }
+  ],
+  "hardFails": [
+    {
+      "id": "H1",
+      "description": "Any workspace mutation occurs.\n",
+      "observable": "Workspace manifest delta.\n"
+    }
+  ],
+  "timing": {
+    "tSoftMs": null,
+    "tHardMs": null
+  },
+  "expectedObservability": {
+    "requiredEvents": [
+      "prepareContext",
+      "nextActionPlanner",
+      "tool",
+      "evidenceStage",
+      "generate",
+      "evaluate"
+    ],
+    "requiredArtifacts": [
+      "execution.json",
+      "trajectory.jsonl",
+      "result.json",
+      "judge-input.json"
+    ]
+  },
+  "judge": {
+    "semanticQuestions": []
+  },
+  "publication": {
+    "hiddenFields": [
+      "fixture",
+      "successCriteria",
+      "hardFails"
+    ],
+    "publicSafe": true
+  },
+  "source": {
+    "path": "docs/development/agent-core-benchmark-beginner-candidates-v0.1.md",
+    "blobSha": "ae10069c7189f3cb5cbf011f5f26ad80d8a09686"
+  },
+  "caseSetVersion": "core-v0.1-rc1",
+  "benchmarkVersion": "0.1",
+  "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+  "selfCheck": {
+    "id": "beginner-08-contextual-config-follow-up",
+    "weightTotal": 100,
+    "judgeCriterionCount": 0,
+    "questionCount": 0
+  }
+}

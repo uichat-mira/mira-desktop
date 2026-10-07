@@ -1,13 +1,13 @@
-import type { McpArtifact, McpArtifactKind } from "./definitions.js";
+import type { ToolArtifact, ToolArtifactKind } from "./definitions.js";
 
 export const createArtifact = (input: {
-  kind: McpArtifactKind;
+  kind: ToolArtifactKind;
   title: string;
   mimeType?: string;
   data?: unknown;
   uri?: string;
   metadata?: Record<string, unknown>;
-}): McpArtifact => ({
+}): ToolArtifact => ({
   id: crypto.randomUUID(),
   kind: input.kind,
   title: input.title,

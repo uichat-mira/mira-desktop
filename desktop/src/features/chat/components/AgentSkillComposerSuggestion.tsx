@@ -7,7 +7,7 @@ import {
   getWenshuSkillCatalog,
   type WenshuSkillPackageDefinition,
 } from "@/shared/api/officeSuiteSkills";
-import { getMcpTools, type McpToolDefinition } from "@/shared/api/tools";
+import { getMcpTools, type HarnessToolDefinition } from "@/shared/api/tools";
 
 const explicitSkillDraftPattern = /(^|\s)\$([a-z0-9_-]*)$/i;
 const appliedSkillPattern = /@\(([a-z0-9_-]+)\)/gi;
@@ -27,7 +27,7 @@ type AgentSkillSuggestion = Pick<
 let cachedAgentSkills: AgentSkillSuggestion[] | null = null;
 let agentSkillsRequest: Promise<AgentSkillSuggestion[]> | null = null;
 type AgentToolkitSuggestion = Pick<
-  NonNullable<McpToolDefinition["workbench"]>,
+  NonNullable<HarnessToolDefinition["workbench"]>,
   "groupId" | "groupLabel" | "groupDescription" | "icon"
 >;
 let cachedAgentToolkits: AgentToolkitSuggestion[] | null = null;

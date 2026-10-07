@@ -9,19 +9,28 @@ import {
   getHarnessInvocation,
   getHarnessInvocationTrace,
   listHarnessInvocationEvents,
+  resolveHarnessInvocationApproval,
 } from "../harness/invocations.js";
 import {
   getReadableResourceImplementation,
-  listInternalCapabilityDefinitions,
+  listInternalToolDefinitions,
   listReadableResourceDefinitions,
 } from "../harness/registry.js";
 import { resolveHarnessToolExposure } from "../harness/exposure.js";
 import { resolveHarnessCapabilityDiagnostics } from "../harness/capability-diagnostics.js";
 import { resolveHarnessToolCandidatesForTurn } from "../harness/tool-candidates.js";
-import { getHarnessEnvironmentSnapshot } from "../harness/environment.js";
+import {
+  createHarnessEnvironmentSnapshot,
+  getHarnessEnvironmentSnapshot,
+} from "../harness/environment.js";
 import { toSseChunk } from "./core/events.js";
 import { mcpNotFound } from "./core/errors.js";
 import { getWorkspaceSelection, selectWorkspaceRoot } from "./workspace.js";
+import {
+  getManagedToolLabWorkspaceSelection,
+  getToolLabWorkspaceSelection,
+} from "./tool-lab-workspace.js";
+import { resetToolLabFixture } from "./tool-lab-fixtures.js";
 import { createMcpMarketplaceCatalog } from "./marketplace-catalog.js";
 import {
   connectExternalMcpServer,
@@ -722,6 +731,51 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
       }),
   );
 
+  app.post<{ Params: { id: string } }>(
+    "/mcp/tool-lab/fixtures/:id/reset",
+    {
+      schema: {
+        tags: ["Tools"],
+        summary: "Reset one registered Tool Lab fixture",
+        response: {
+          200: successEnvelope(objectSchema),
+        },
+      },
+    },
+    routeHandler("Failed to reset Tool Lab fixture", async (request) =>
+      success(await resetToolLabFixture(request.params.id))),
+  );
+
+  app.get(
+    "/mcp/tool-lab/workspace/managed",
+    {
+      schema: {
+        tags: ["Tools"],
+        summary: "Get the managed Tool Lab acceptance workspace",
+        response: {
+          200: successEnvelope(objectSchema),
+        },
+      },
+    },
+    routeHandler("Failed to get managed Tool Lab workspace", async () =>
+      success(getManagedToolLabWorkspaceSelection())),
+  );
+
+  app.get(
+    "/mcp/tool-lab/workspace",
+    {
+      schema: {
+        tags: ["Tools"],
+        summary: "Get the effective Tool Lab workspace",
+        response: {
+          200: successEnvelope(objectSchema),
+        },
+      },
+    },
+    routeHandler("Failed to get Tool Lab workspace", async () =>
+      success(getToolLabWorkspaceSelection())),
+  );
+
   app.get(
     "/mcp/workspace",
     {
@@ -778,7 +832,7 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to list MCP tools", async (request) => {
-      const internalDefinitions = listInternalCapabilityDefinitions();
+      const internalDefinitions = listInternalToolDefinitions();
       if (!request.query.query && !request.query.source) {
         return success(withWorkbenchMetadata(internalDefinitions));
       }
@@ -934,7 +988,13 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
     }),
   );
 
-  app.post<{ Body: { toolId: string; args?: Record<string, unknown> } }>(
+  app.post<{
+    Body: {
+      toolId: string;
+      args?: Record<string, unknown>;
+      workspaceContext?: "tool_lab" | "tool_lab_managed";
+    };
+  }>(
     "/mcp/invocations",
     {
       schema: {
@@ -950,12 +1010,28 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
         toolId: request.body.toolId,
         args: request.body.args,
         userId: request.authUser?.id,
+        ...(request.body.workspaceContext
+          ? {
+              environment: createHarnessEnvironmentSnapshot({
+                workspace:
+                  request.body.workspaceContext === "tool_lab_managed"
+                    ? getManagedToolLabWorkspaceSelection()
+                    : getToolLabWorkspaceSelection(),
+              }),
+            }
+          : {}),
       });
       return success(result);
     }),
   );
 
-  app.post<{ Body: { toolId: string; args?: Record<string, unknown> } }>(
+  app.post<{
+    Body: {
+      toolId: string;
+      args?: Record<string, unknown>;
+      workspaceContext?: "tool_lab" | "tool_lab_managed";
+    };
+  }>(
     "/mcp/invocations/stream",
     {
       schema: {
@@ -985,6 +1061,16 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
             toolId: request.body.toolId,
             args: request.body.args,
             userId: request.authUser?.id,
+            ...(request.body.workspaceContext
+              ? {
+                  environment: createHarnessEnvironmentSnapshot({
+                    workspace:
+                      request.body.workspaceContext === "tool_lab_managed"
+                        ? getManagedToolLabWorkspaceSelection()
+                        : getToolLabWorkspaceSelection(),
+                  }),
+                }
+              : {}),
             onEvent(event) {
               invocationId = event.invocationId;
               queue.push(toSseChunk(event));
@@ -1016,6 +1102,56 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
 
       return reply.send(stream);
     }),
+  );
+
+  app.post<{
+    Params: { id: string };
+    Body: {
+      decision: "approved" | "rejected";
+      toolId: string;
+      args?: Record<string, unknown>;
+    };
+  }>(
+    "/mcp/invocations/:id/approval",
+    {
+      schema: {
+        tags: ["Tools"],
+        summary: "Resolve one governed MCP invocation approval",
+        body: {
+          type: "object",
+          required: ["decision", "toolId"],
+          additionalProperties: false,
+          properties: {
+            decision: {
+              type: "string",
+              enum: ["approved", "rejected"],
+            },
+            toolId: {
+              type: "string",
+              minLength: 1,
+            },
+            args: {
+              type: "object",
+              additionalProperties: true,
+            },
+          },
+        },
+        response: {
+          200: successEnvelope(objectSchema),
+        },
+      },
+    },
+    routeHandler("Failed to resolve MCP invocation approval", async (request) =>
+      success(
+        await resolveHarnessInvocationApproval({
+          invocationId: request.params.id,
+          decision: request.body.decision,
+          toolId: request.body.toolId,
+          args: request.body.args,
+          userId: request.authUser?.id,
+        }),
+      ),
+    ),
   );
 
   app.get<{ Params: { id: string } }>(

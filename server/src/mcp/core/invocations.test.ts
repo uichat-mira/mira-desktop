@@ -4,12 +4,20 @@ import {
   executeHarnessInvocation,
   getHarnessInvocationTrace,
   listHarnessInvocationEvents,
+  resolveHarnessInvocationApproval,
 } from "../../harness/invocations.js";
-import { clearHarnessRegistry, registerCapability } from "../../harness/registry.js";
+import { clearHarnessRegistry, registerTool } from "../../harness/registry.js";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
-import { McpApprovalRequiredError } from "./errors.js";
-import type { McpToolImplementation } from "./definitions.js";
-import { configureInvocationRetention, sweepStoredInvocations } from "./invocations.js";
+import { ToolApprovalRequiredError } from "./errors.js";
+import { getHarnessLlmContentText } from "../../harness/llm-content.js";
+import type { ToolImplementation } from "./definitions.js";
+import {
+  configureInvocationRetention,
+  executeInvocation,
+  getInvocationWorkspaceSnapshot,
+  resolveInvocationApproval,
+  sweepStoredInvocations,
+} from "./invocations.js";
 
 describe("mcp invocations", () => {
   beforeEach(() => {
@@ -21,8 +29,102 @@ describe("mcp invocations", () => {
     });
   });
 
+  it("preserves explicit model content and marks Tool-level errors without failing the invocation", async () => {
+    registerTool({
+      definition: {
+        id: "tool_result_error_content",
+        title: "Tool result error content",
+        description: "returns an error outcome without a Harness failure",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      execute: () => ({
+        content: [{ type: "text", text: "bad input: choose another query" }],
+        structuredContent: { ok: false, reason: "bad input" },
+        isError: true,
+      }),
+    });
+
+    const record = await executeHarnessInvocation({
+      toolId: "tool_result_error_content",
+      args: {},
+    });
+
+    expect(record.status).toBe("completed");
+    expect(record.evidence?.status).toBe("failed");
+    const text = getHarnessLlmContentText(record.llmContent);
+    expect(text).toContain("toolOutcome=error");
+    expect(text).toContain("bad input: choose another query");
+    expect(text).not.toContain('"bad input: choose another query"');
+  });
+
+  it("marks Tool-level errors even when the Tool provides only structured content", async () => {
+    registerTool({
+      definition: {
+        id: "tool_result_structured_error",
+        title: "Tool result structured error",
+        description: "returns a structured error outcome",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      execute: () => ({
+        structuredContent: { ok: false, error: { message: "boom" } },
+        isError: true,
+      }),
+    });
+
+    const record = await executeHarnessInvocation({
+      toolId: "tool_result_structured_error",
+      args: {},
+    });
+
+    expect(record.status).toBe("completed");
+    const text = getHarnessLlmContentText(record.llmContent);
+    expect(text).toContain("toolOutcome=error");
+    expect(text).toContain("boom");
+  });
+
+  it("still exposes a Tool error marker when an error result has no payload", async () => {
+    registerTool({
+      definition: {
+        id: "tool_result_empty_error",
+        title: "Tool result empty error",
+        description: "returns only an error outcome",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: { sideEffect: "none", requiresApproval: false },
+      },
+      execute: () => ({ isError: true }),
+    });
+
+    const record = await executeHarnessInvocation({
+      toolId: "tool_result_empty_error",
+      args: {},
+    });
+
+    expect(record.status).toBe("completed");
+    expect(getHarnessLlmContentText(record.llmContent)).toContain("toolOutcome=error");
+  });
+
   it("records result, artifact and events", async () => {
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "test_tool",
         title: "Test Tool",
@@ -47,12 +149,12 @@ describe("mcp invocations", () => {
           data: "hello",
         });
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "test_tool",
@@ -91,7 +193,7 @@ describe("mcp invocations", () => {
   });
 
   it("records awaiting_approval when preflight approval gating stops execution", async () => {
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "approval_tool",
         title: "Approval Tool",
@@ -106,13 +208,13 @@ describe("mcp invocations", () => {
         },
       },
       execute() {
-        throw new McpApprovalRequiredError("Need explicit approval", {
+        throw new ToolApprovalRequiredError("Need explicit approval", {
           scope: "command",
         });
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "approval_tool",
@@ -150,7 +252,7 @@ describe("mcp invocations", () => {
   });
 
   it("records structured failureCode for schema validation failures thrown by tools", async () => {
-    registerCapability({
+    registerTool({
       definition: {
         id: "tool_schema_failure",
         title: "Tool Schema Failure",
@@ -185,7 +287,7 @@ describe("mcp invocations", () => {
   it("requires approval at preflight when capability metadata marks the tool as approval-gated", async () => {
     let executed = false;
 
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "preflight_approval_tool",
         title: "Preflight Approval Tool",
@@ -204,12 +306,12 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "preflight_approval_tool",
@@ -223,10 +325,57 @@ describe("mcp invocations", () => {
     expect(executed).toBe(false);
   });
 
+  it("fails closed when an approval replay has lost its frozen workspace snapshot", async () => {
+    let executed = false;
+
+    registerTool({
+      definition: {
+        id: "missing_workspace_snapshot_tool",
+        title: "Missing Workspace Snapshot Tool",
+        description: "approval replay requires the frozen workspace",
+        domain: "edit",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "local-write",
+          requiresApproval: true,
+        },
+      },
+      execute() {
+        executed = true;
+        return {
+          structuredContent: { ok: true },
+        };
+      },
+    });
+
+    const record = await executeInvocation({
+      toolId: "missing_workspace_snapshot_tool",
+      args: {},
+    });
+
+    expect(record.status).toBe("awaiting_approval");
+    expect(getInvocationWorkspaceSnapshot(record.id)).toBeUndefined();
+
+    await expect(
+      resolveHarnessInvocationApproval({
+        invocationId: record.id,
+        decision: "approved",
+        toolId: "missing_workspace_snapshot_tool",
+        args: {},
+      }),
+    ).rejects.toThrow("workspace snapshot is unavailable");
+
+    expect(record.status).toBe("awaiting_approval");
+    expect(executed).toBe(false);
+  });
+
   it("allows preflight approval-gated tool execution when the exact invocation is already approved", async () => {
     let executed = false;
 
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "approved_tool",
         title: "Approved Tool",
@@ -245,12 +394,12 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "approved_tool",
@@ -274,9 +423,9 @@ describe("mcp invocations", () => {
   it("requires approval again when a reused terminal session changes command input", async () => {
     let executed = false;
 
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "terminal",
         domain: "terminal",
@@ -299,12 +448,12 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const approvedArgs = {
       command: "pwd",
@@ -316,11 +465,11 @@ describe("mcp invocations", () => {
     };
 
     const record = await executeHarnessInvocation({
-      toolId: "terminal_session",
+      toolId: "terminal",
       args: nextArgs,
       approvedInvocations: [
         {
-          toolId: "terminal_session",
+          toolId: "terminal",
           inputHash: createInvocationInputHash(approvedArgs),
         },
       ],
@@ -335,7 +484,7 @@ describe("mcp invocations", () => {
     let receivedThreadId: string | undefined;
     let receivedTurnId: string | undefined;
 
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "thread_context_tool",
         title: "Thread Context Tool",
@@ -353,14 +502,14 @@ describe("mcp invocations", () => {
         receivedThreadId = context.threadId;
         receivedTurnId = context.turnId;
         return {
-          result: {
+          structuredContent: {
             ok: true,
           },
         };
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
 
     const record = await executeHarnessInvocation({
       toolId: "thread_context_tool",
@@ -377,7 +526,7 @@ describe("mcp invocations", () => {
   it("rejects invocation args that do not satisfy the declared input schema", async () => {
     let executed = false;
 
-    registerCapability({
+    registerTool({
       definition: {
         id: "schema_tool",
         title: "Schema Tool",
@@ -401,7 +550,7 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: {
+          structuredContent: {
             ok: true,
           },
         };
@@ -418,7 +567,7 @@ describe("mcp invocations", () => {
   });
 
   it("accepts only a concrete toolId and rejects an unregistered capabilityId", async () => {
-    registerCapability({
+    registerTool({
       definition: {
         id: "read_list",
         title: "Read List",
@@ -435,7 +584,7 @@ describe("mcp invocations", () => {
       },
       execute() {
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     });
@@ -451,7 +600,7 @@ describe("mcp invocations", () => {
   it("uses definition-declared workspace boundary keys instead of implicit path/cwd guessing", async () => {
     let executed = false;
 
-    registerCapability({
+    registerTool({
       definition: {
         id: "boundary_tool",
         title: "Boundary Tool",
@@ -480,7 +629,7 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: {
+          structuredContent: {
             ok: true,
           },
         };
@@ -536,7 +685,7 @@ describe("mcp invocations", () => {
   it("keeps POSIX absolute paths visible to the workspace boundary on Windows-style roots", async () => {
     let executed = false;
 
-    registerCapability({
+    registerTool({
       definition: {
         id: "boundary_tool_root_relative",
         title: "Boundary Tool Root Relative",
@@ -564,7 +713,7 @@ describe("mcp invocations", () => {
       execute() {
         executed = true;
         return {
-          result: {
+          structuredContent: {
             ok: true,
           },
         };
@@ -617,7 +766,7 @@ describe("mcp invocations", () => {
   });
 
   it("sweeps finished invocations beyond retention limit", async () => {
-    const tool: McpToolImplementation = {
+    const tool: ToolImplementation = {
       definition: {
         id: "retention_tool",
         title: "Retention Tool",
@@ -633,12 +782,12 @@ describe("mcp invocations", () => {
       },
       execute() {
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     };
 
-    registerCapability(tool);
+    registerTool(tool);
     configureInvocationRetention({
       maxEntries: 1,
       ttlMs: 1000 * 60 * 30,
@@ -658,5 +807,74 @@ describe("mcp invocations", () => {
     expect(listHarnessInvocationEvents(first.id)).toEqual([]);
     expect(getHarnessInvocationTrace(first.id)).toBeUndefined();
     expect(listHarnessInvocationEvents(second.id).length).toBeGreaterThan(0);
+  });
+
+  it("retains a pending approval workspace snapshot until the approval resolves", async () => {
+    registerTool({
+      definition: {
+        id: "retention_approval_tool",
+        title: "Retention Approval Tool",
+        description: "retention approval",
+        domain: "edit",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "local-write",
+          requiresApproval: true,
+        },
+      },
+      execute() {
+        return {
+          structuredContent: { ok: true },
+        };
+      },
+    });
+    registerTool({
+      definition: {
+        id: "retention_completed_tool",
+        title: "Retention Completed Tool",
+        description: "retention completed",
+        domain: "read",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["test"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      execute() {
+        return {
+          structuredContent: { ok: true },
+        };
+      },
+    });
+    configureInvocationRetention({
+      maxEntries: 1,
+      ttlMs: 1000 * 60 * 30,
+    });
+
+    const pending = await executeHarnessInvocation({
+      toolId: "retention_approval_tool",
+      args: {},
+    });
+    await executeHarnessInvocation({
+      toolId: "retention_completed_tool",
+      args: {},
+    });
+
+    expect(pending.status).toBe("awaiting_approval");
+    expect(getInvocationWorkspaceSnapshot(pending.id)).toBeDefined();
+
+    sweepStoredInvocations();
+
+    expect(getInvocationWorkspaceSnapshot(pending.id)).toBeDefined();
+
+    resolveInvocationApproval({
+      invocationId: pending.id,
+      decision: "rejected",
+    });
+    expect(getInvocationWorkspaceSnapshot(pending.id)).toBeUndefined();
   });
 });

@@ -96,7 +96,7 @@ describe("mailQueryTool", () => {
     const result = await mailQueryTool.execute(context);
 
     expect(queryMail).toHaveBeenCalledWith({ userId: 42 });
-    expect(result.result).toMatchObject({ total: 1, sync: { status: "skipped" } });
+    expect(result.structuredContent).toMatchObject({ total: 1, sync: { status: "skipped" } });
     expect(context.addArtifact).toHaveBeenCalledWith(expect.objectContaining({
       kind: "table",
       metadata: expect.objectContaining({ sensitiveFieldsExcluded: true }),
@@ -127,10 +127,10 @@ describe("mailQueryTool", () => {
 
     const result = await mailQueryTool.execute(context);
 
-    expect(result.result).toMatchObject({
+    expect(result.structuredContent).toMatchObject({
       sync: { requested: "force", status: "failed", error: "邮件同步失败，请检查账号连接状态" },
     });
-    expect(JSON.stringify(result.result)).not.toContain("imap-secret");
+    expect(JSON.stringify(result.structuredContent)).not.toContain("imap-secret");
   });
 
   it("requires exact approval for force sync and does not reuse it after args change", async () => {

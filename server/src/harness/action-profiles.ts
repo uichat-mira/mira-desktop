@@ -1,11 +1,11 @@
 import { mcpBadRequest } from "../mcp/core/errors.js";
-import type { McpToolDefinition } from "../mcp/core/definitions.js";
+import type { ToolDefinition } from "../mcp/core/definitions.js";
 
 export interface HarnessActionProfile {
   id: string;
   title: string;
   description: string;
-  domain: McpToolDefinition["domain"];
+  domain: ToolDefinition["domain"];
   source: "internal";
   tags: string[];
   runtimeToolId: string;
@@ -16,7 +16,7 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
   id: string;
   title: string;
   description: string;
-  domain: McpToolDefinition["domain"];
+  domain: ToolDefinition["domain"];
   tags: string[];
   runtimeToolId: string;
   inputSchema: Record<string, unknown>;
@@ -28,7 +28,7 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
     description: "Execute a controlled terminal command in the current workspace runtime.",
     domain: "terminal",
     tags: ["terminal", "command", "shell", "process"],
-    runtimeToolId: "terminal_session",
+    runtimeToolId: "terminal",
     inputSchema: {
       type: "object",
       required: ["command"],
@@ -45,84 +45,10 @@ const ACTION_PROFILE_BLUEPRINTS: Array<{
       ...(typeof args.timeoutMs === "number" ? { timeoutMs: args.timeoutMs } : {}),
     }),
   },
-  {
-    id: "edit_create_file",
-    title: "Edit Create File",
-    description: "Create a new workspace file through managed editing.",
-    domain: "edit",
-    tags: ["workspace", "edit", "create", "file", "write"],
-    runtimeToolId: "edit_file",
-    inputSchema: {
-      type: "object",
-      required: ["path"],
-      additionalProperties: false,
-      properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-        dryRun: { type: "boolean" },
-      },
-    },
-    mapArgs: (args) => ({
-      operation: "write_file",
-      path: args.path,
-      content: typeof args.content === "string" ? args.content : "",
-      ...(args.dryRun === true ? { dryRun: true } : {}),
-    }),
-  },
-  {
-    id: "edit_overwrite_file",
-    title: "Edit Overwrite File",
-    description: "Overwrite an existing workspace file through managed editing.",
-    domain: "edit",
-    tags: ["workspace", "edit", "overwrite", "file", "write"],
-    runtimeToolId: "edit_file",
-    inputSchema: {
-      type: "object",
-      required: ["path", "content"],
-      additionalProperties: false,
-      properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-        dryRun: { type: "boolean" },
-      },
-    },
-    mapArgs: (args) => ({
-      operation: "write_file",
-      path: args.path,
-      content: args.content,
-      ...(args.dryRun === true ? { dryRun: true } : {}),
-    }),
-  },
-  {
-    id: "edit_replace_block",
-    title: "Edit Replace Block",
-    description: "Replace a uniquely matched block inside a workspace file.",
-    domain: "edit",
-    tags: ["workspace", "edit", "replace", "block", "patch"],
-    runtimeToolId: "edit_file",
-    inputSchema: {
-      type: "object",
-      required: ["path", "expectedOldText", "newText"],
-      additionalProperties: false,
-      properties: {
-        path: { type: "string" },
-        expectedOldText: { type: "string" },
-        newText: { type: "string" },
-        dryRun: { type: "boolean" },
-      },
-    },
-    mapArgs: (args) => ({
-      operation: "replace_block",
-      path: args.path,
-      expectedOldText: args.expectedOldText,
-      newText: args.newText,
-      ...(args.dryRun === true ? { dryRun: true } : {}),
-    }),
-  },
 ];
 
 export const resolveHarnessActionProfiles = (
-  definitions: McpToolDefinition[],
+  definitions: ToolDefinition[],
 ): HarnessActionProfile[] => {
   const definitionIds = new Set(definitions.map((definition) => definition.id));
 

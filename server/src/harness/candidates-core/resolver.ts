@@ -2,6 +2,7 @@ import { executeLocalEmbedding } from "@/services/internal-capabilities/local-em
 import { toCapabilityIntentDocuments } from "@/agent/intent/capability-documents.js";
 import { resolveHarnessToolExposure } from "../exposure-core/index.js";
 import { resolveHarnessCapabilityProfiles } from "../profiles/index.js";
+import { resolveWorkspaceEditFacadeForModel } from "../edit-facade.js";
 import {
   expandHarnessToolCandidates,
   exposeAllHarnessToolCandidates,
@@ -40,6 +41,11 @@ export const resolveHarnessToolCandidatesForTurn = async (
   const exposureDecision = resolveHarnessToolExposure({
     source,
     query: input.query,
+    editFacade:
+      input.editFacade ??
+      (source === "tools_list"
+        ? "all"
+        : resolveWorkspaceEditFacadeForModel(input.modelHint)),
     allowExternal: input.allowExternal,
     allowedExternalToolIds: input.allowedExternalToolIds,
     sandboxProfiles: input.sandboxProfiles,
@@ -152,7 +158,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
         rerankScore: 0,
         finalScore: embeddingScore,
         candidateToolIds: profile.supportingToolIds,
-        preferredToolId: profile.preferredToolId,
+        ...(profile.preferredToolId ? { preferredToolId: profile.preferredToolId } : {}),
       } satisfies ResolvedHarnessCapabilityMatch;
     })
     .filter((match): match is NonNullable<typeof match> => match !== null)

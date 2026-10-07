@@ -1,44 +1,88 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveHarnessToolExposure } from "./exposure.js";
-import { clearHarnessRegistry, registerCapability } from "./registry.js";
-import { codebaseExploreTool } from "../mcp/managed-codegraph/codebase-explore.tool.js";
+import {
+  clearHarnessRegistry,
+  listToolDefinitions,
+} from "./registry.js";
+import {
+  initializeHarnessRuntime,
+  resetHarnessRuntime,
+} from "./runtime.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
-import { readDiscoverTool } from "../mcp/tools/read-discover.tool.js";
-import { readExtractTool } from "../mcp/tools/read-extract.tool.js";
-import { readListTool } from "../mcp/tools/read-list.tool.js";
-import { readLocateTool } from "../mcp/tools/read-locate.tool.js";
-import { readOpenTool } from "../mcp/tools/read-open.tool.js";
-import { readSliceTool } from "../mcp/tools/read-slice.tool.js";
+import { globTool } from "../mcp/tools/glob.tool.js";
+import { listTool } from "../mcp/tools/list.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 
 describe("public read tool surface", () => {
   afterEach(() => {
+    resetHarnessRuntime();
     clearHarnessRegistry();
   });
 
-  it("exposes exactly four read actions to the Agent while keeping legacy primitives internal", () => {
-    [
-      readTool,
-      readListTool,
-      readLocateTool,
-      readExtractTool,
-      readSliceTool,
-      readDiscoverTool,
-      grepTool,
-      readOpenTool,
-      codebaseExploreTool,
-    ].forEach(registerCapability);
+  it("registers canonical read primitives without executable legacy readers", () => {
+    resetHarnessRuntime();
+    clearHarnessRegistry();
+    initializeHarnessRuntime();
 
-    const readToolIds = resolveHarnessToolExposure({
-      source: "agent_intent",
-      query: "inspect the workspace code",
-    }).exposedDefinitions
+    const readToolIds = listToolDefinitions()
       .filter((definition) => definition.domain === "read")
-      .map((definition) => definition.id)
-      .sort();
+      .map((definition) => definition.id);
 
     expect(readToolIds).toEqual(
-      ["codebase_explore", "grep", "read_discover", "read_open"].sort(),
+      expect.arrayContaining(["glob", "grep", "list", "read"]),
     );
+    for (const legacyId of [
+      "read_discover",
+      "read_open",
+      "read_list",
+      "read_locate",
+      "read_extract",
+      "read_slice",
+    ]) {
+      expect(readToolIds).not.toContain(legacyId);
+    }
+  });
+
+  it("keeps neighboring read-tool choices explicit without narrowing schemas", () => {
+    const definitions = [readTool, listTool, globTool, grepTool].map(
+      (tool) => tool.definition,
+    );
+    const byId = new Map(definitions.map((definition) => [definition.id, definition]));
+
+    expect(byId.get("read")?.description).toMatch(/list.*glob.*grep/i);
+    expect(byId.get("list")?.description).toMatch(/glob.*read/i);
+    expect(byId.get("glob")?.description).toMatch(/list.*grep/i);
+    expect(byId.get("grep")?.description).toMatch(/glob.*read/i);
+
+    expect(byId.get("read")?.inputSchema).toMatchObject({
+      required: ["path"],
+      properties: {
+        path: { type: "string" },
+        offset: { type: "integer", minimum: 0 },
+        limit: { type: "integer", minimum: 1 },
+      },
+    });
+    expect(byId.get("list")?.inputSchema).toMatchObject({
+      properties: {
+        path: { type: "string" },
+        includeIgnored: { type: "boolean" },
+      },
+    });
+    expect(byId.get("glob")?.inputSchema).toMatchObject({
+      required: ["pattern"],
+      properties: {
+        pattern: { type: "string" },
+        includeIgnored: { type: "boolean" },
+      },
+    });
+    expect(byId.get("grep")?.inputSchema).toMatchObject({
+      required: ["pattern"],
+      properties: {
+        pattern: { type: "string" },
+        literal: { type: "boolean" },
+        caseSensitive: { type: "boolean" },
+        context: { type: "integer", minimum: 0 },
+        includeIgnored: { type: "boolean" },
+      },
+    });
   });
 });

@@ -1,0 +1,47 @@
+{
+  "note": "#220 timing calibration Batch 3; #249 runner-ready selection.",
+  "caseSetVersion": "core-v0.1-rc1",
+  "repetitions": 3,
+  "cases": [
+    {
+      "id": "beginner-05-local-version-no-network",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "beginner-06-read-command-do-not-execute",
+      "fixture": "beginner-workspace-v0.1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-handshake-recovery",
+      "fixture": "i03-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "intermediate-version-validator",
+      "fixture": "i04-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    },
+    {
+      "id": "ADV-03",
+      "fixture": "adv03-v1",
+      "provider": "default",
+      "executionMode": "adapted",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "approvalPolicy": "auto-approve"
+    }
+  ]
+}

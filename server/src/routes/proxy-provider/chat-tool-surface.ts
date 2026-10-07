@@ -1,4 +1,4 @@
-import type { McpToolDefinition } from "@/mcp/core/definitions.js";
+import type { ToolDefinition } from "@/mcp/core/definitions.js";
 import { resolveHarnessToolExposure } from "@/harness/exposure.js";
 
 export interface ChatToolSurfaceDefinition {
@@ -7,8 +7,8 @@ export interface ChatToolSurfaceDefinition {
   description: string;
   inputSchema: Record<string, unknown>;
   tags: string[];
-  domain: McpToolDefinition["domain"];
-  mode: McpToolDefinition["mode"];
+  domain: ToolDefinition["domain"];
+  mode: ToolDefinition["mode"];
 }
 
 export interface ResolveChatToolSurfaceInput {
@@ -23,7 +23,7 @@ const DEFAULT_CHAT_TOOL_ALLOWLIST = [
 const DEFAULT_MAX_CHAT_TOOLS = 8;
 
 const toChatToolSurfaceDefinition = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
 ): ChatToolSurfaceDefinition => ({
   id: definition.id,
   name: definition.id,
@@ -34,7 +34,7 @@ const toChatToolSurfaceDefinition = (
   mode: definition.mode,
 });
 
-const isExternalMcpProjection = (definition: McpToolDefinition) =>
+const isExternalMcpProjection = (definition: ToolDefinition) =>
   definition.tags.includes("external") && definition.tags.includes("mcp");
 
 /**

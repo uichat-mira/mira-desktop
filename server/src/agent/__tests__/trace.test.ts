@@ -69,33 +69,37 @@ test("summarizePlannerNextAction turns use_tool into a user-visible next step", 
     summarizePlannerNextAction({
       nextAction: {
         type: "use_tool",
-        toolId: "read_open",
+        toolId: "read",
         args: { path: "README.md" },
         reason: "Need the file content.",
       },
       pendingApprovalActive: false,
       recoveryExhausted: false,
     }),
-    "下一步改为执行 read_open：README.md",
+    "下一步改为执行 read：README.md",
   );
 });
 
 test("summarizeToolExecutionFailure explains recoverable retry intent", () => {
   assert.equal(
     summarizeToolExecutionFailure({
-      toolId: "read_open",
+      toolId: "read",
       failureKind: "recoverable",
       args: { path: "missing.md" },
     }),
-    "read_open 执行失败：missing.md，正在重新判断下一步",
+    "read 执行失败：missing.md，正在重新判断下一步",
   );
-  assert.equal(getToolTraceTargetPreview("terminal_session", { command: "pnpm check" }), "pnpm check");
+  assert.equal(getToolTraceTargetPreview("terminal", { command: "pnpm check" }), "pnpm check");
+  assert.equal(
+    getToolTraceTargetPreview("terminal_session", { command: "pnpm check" }),
+    "pnpm check",
+  );
 });
 
 test("toAgentResumeExecutionNode emits a user-visible resume event", () => {
   const event = toAgentResumeExecutionNode({
     runId: "run-1",
-    toolId: "terminal_session",
+    toolId: "terminal",
     toolCallId: "pending-1",
     inputHash: "hash-1",
   });
@@ -104,10 +108,10 @@ test("toAgentResumeExecutionNode emits a user-visible resume event", () => {
   assert.equal(event.nodeType, "approval");
   assert.equal(event.phase, "done");
   assert.equal(event.label, "恢复执行");
-  assert.equal(event.summary, "审批已通过，继续恢复 terminal_session 的执行");
+  assert.equal(event.summary, "审批已通过，继续恢复 terminal 的执行");
   assert.deepEqual(event.details, {
     runId: "run-1",
-    toolId: "terminal_session",
+    toolId: "terminal",
     toolCallId: "pending-1",
     inputHash: "hash-1",
     resumedFromApproval: true,

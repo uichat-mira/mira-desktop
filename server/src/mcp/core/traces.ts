@@ -1,7 +1,7 @@
 import type {
-  McpInvocationTrace,
-  McpTraceSpan,
-  McpTraceSpanKind,
+  ToolTrace,
+  ToolTraceSpan,
+  ToolTraceSpanKind,
 } from "./definitions.js";
 import { computerUseRepository } from "@/db/repositories/computer-use/repository.js";
 import {
@@ -10,7 +10,7 @@ import {
   type RetentionConfig,
 } from "@/utils/retention.js";
 
-const traceMap = new Map<string, McpInvocationTrace>();
+const traceMap = new Map<string, ToolTrace>();
 let traceRetentionConfig: RetentionConfig = {
   ...DEFAULT_RETENTION_CONFIG,
 };
@@ -23,7 +23,7 @@ const sweepTraces = () => {
   });
 };
 
-const attachDebugView = (trace: McpInvocationTrace): McpInvocationTrace => {
+const attachDebugView = (trace: ToolTrace): ToolTrace => {
   trace.debugView = {
     invocationId: trace.invocationId,
     toolId: trace.toolId,
@@ -36,7 +36,7 @@ const attachDebugView = (trace: McpInvocationTrace): McpInvocationTrace => {
   return trace;
 };
 
-const persistIfComputerUse = (trace: McpInvocationTrace) => {
+const persistIfComputerUse = (trace: ToolTrace) => {
   if (!trace.toolId.startsWith("browser_")) return;
   try { computerUseRepository.persistTrace(trace); } catch { /* optional before database startup */ }
 };
@@ -47,7 +47,7 @@ export const createInvocationTrace = (input: {
   startedAt: string;
 }) => {
   sweepTraces();
-  const trace: McpInvocationTrace = {
+  const trace: ToolTrace = {
     traceId: crypto.randomUUID(),
     invocationId: input.invocationId,
     toolId: input.toolId,
@@ -98,7 +98,7 @@ export const startTraceSpan = (input: {
   invocationId: string;
   parentSpanId?: string;
   name: string;
-  kind: McpTraceSpanKind;
+  kind: ToolTraceSpanKind;
   metadata?: Record<string, unknown>;
 }) => {
   const trace = traceMap.get(input.invocationId);
@@ -106,7 +106,7 @@ export const startTraceSpan = (input: {
     throw new Error(`Trace not found for invocation ${input.invocationId}`);
   }
 
-  const span: McpTraceSpan = {
+  const span: ToolTraceSpan = {
     id: crypto.randomUUID(),
     traceId: trace.traceId,
     invocationId: input.invocationId,

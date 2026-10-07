@@ -70,6 +70,59 @@ export const chatMediaService = {
     const media = this.getForRead(id);
     return media?.threadId === threadId ? media : null;
   },
+  createCleanupSnapshot(messageIds: string[]) {
+    return chatMediaRepository.listByMessageIds(messageIds).map((record) => ({
+      id: record.id,
+      messageId: record.messageId,
+      mediaType: record.mediaType as ChatMediaType,
+      absolutePath: record.absolutePath,
+    }));
+  },
+
+  removeCleanupSnapshot(
+    records: Array<{
+      id: string;
+      messageId: string;
+      mediaType: ChatMediaType;
+      absolutePath: string;
+    }>,
+  ) {
+    for (const record of records) {
+      const absolutePath = validatePath(record.absolutePath);
+      const message = messageRepository.findById(record.messageId);
+      const previousMetadata = message?.metadata ?? "{}";
+      const metadata = parseMetadata(previousMetadata);
+      const media =
+        metadata.media &&
+        typeof metadata.media === "object" &&
+        !Array.isArray(metadata.media)
+          ? { ...(metadata.media as Record<string, unknown>) }
+          : {};
+      const key = mediaMetadataKey(record.mediaType);
+      const entry = media[key];
+      const ownsMetadataEntry =
+        entry &&
+        typeof entry === "object" &&
+        (entry as { mediaId?: unknown }).mediaId === record.id;
+
+      fs.rmSync(absolutePath, { force: true });
+      getSqlite().transaction(() => {
+        if (message && ownsMetadataEntry) {
+          delete media[key];
+          const updated = messageRepository.updateById(message.id, {
+            metadata: JSON.stringify({ ...metadata, media }),
+          });
+          if (!updated) {
+            throw new Error(
+              "Failed to update assistant message metadata during cleanup.",
+            );
+          }
+        }
+        chatMediaRepository.deleteByIds([record.id]);
+      })();
+    }
+  },
+
   removeForMessages(messageIds: string[]) {
     const records = chatMediaRepository.listByMessageIds(messageIds);
     let files = 0;

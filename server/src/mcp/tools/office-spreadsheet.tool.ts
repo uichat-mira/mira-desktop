@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { resolveWorkspacePath, resolveWorkspaceWritePath } from "../workspace.js";
 import { executeSpreadsheetSkillRuntime } from "@/microapps/office-suite/skill-runtime.js";
@@ -40,7 +40,7 @@ const resolveExistingWorkbook = (value: unknown) => {
   return { inputPath, resolved };
 };
 
-export const officeSpreadsheetTool: McpToolImplementation = {
+export const officeSpreadsheetTool: ToolImplementation = {
   definition: {
     id: "office_spreadsheet",
     title: "Office Spreadsheet Diagnostics",
@@ -76,13 +76,8 @@ export const officeSpreadsheetTool: McpToolImplementation = {
       const { inputPath, resolved } = resolveExistingWorkbook(context.args.inputPath);
       const result = await executeSpreadsheetSkillRuntime({ operation, inputPath: resolved });
       return {
-        result: { operation, inputPath, data: result },
-        evidence: {
-          status: "completed",
-          actionTaken: `${operation === "inspect" ? "Inspected" : "Verified"} spreadsheet ${inputPath}`,
-          facts: [`Source: ${inputPath}`, `Result: ${summaryPreview(result)}`],
-          data: { kind: "office_spreadsheet", operation, inputPath, result },
-        },
+        structuredContent: { operation, inputPath, data: result },
+
       };
     }
 
@@ -118,23 +113,8 @@ export const officeSpreadsheetTool: McpToolImplementation = {
         },
       });
       return {
-        result: { operation, inputPath, outputPath, recalculation, verification },
-        evidence: {
-          status: "completed",
-          actionTaken: `Prepared recalculated workbook ${outputPath}`,
-          facts: [
-            `Source: ${inputPath}`,
-            `Output: ${outputPath}`,
-            `Recalculation: ${summaryPreview(recalculation)}`,
-          ],
-          data: {
-            kind: "office_spreadsheet",
-            operation,
-            inputPath,
-            outputPath,
-            verification,
-          },
-        },
+        structuredContent: { operation, inputPath, outputPath, recalculation, verification },
+
       };
     }
 

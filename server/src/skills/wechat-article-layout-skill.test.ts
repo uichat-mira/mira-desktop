@@ -29,7 +29,7 @@ describe("WeChat article layout Skill", () => {
       execution: {
         context: "fork",
         agent: "subAgent",
-        allowedTools: ["read_open", "terminal_session"],
+        allowedTools: ["read", "terminal"],
         runtimeBindings: [],
         workspaceBound: true,
       },
@@ -75,7 +75,7 @@ describe("WeChat article layout Skill", () => {
     expect(body).toContain("skill_read_resource");
     expect(body).toContain("workspacePath");
     expect(body).toContain("--output article-wechat.html");
-    expect(body).toContain("禁止把脚本源码拼进 `terminal_session.command`");
+    expect(body).toContain("禁止把脚本源码拼进 `terminal.command`");
     expect(body).toContain("没有真实文件 Evidence 不得宣称完成");
     expect(body).not.toContain("原样写到");
     expect(body).not.toContain("不注册专用 Runtime");
