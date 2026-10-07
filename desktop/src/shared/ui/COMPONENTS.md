@@ -26,6 +26,8 @@
 - `FileIcon`
 - `FileListItem`
 - `FileUploadDropzone`
+- `GithubIcon`
+- `NotionIcon`
 - `FullPageStatus`
 - `ImagePreviewOverlay`
 - `IconButton`
@@ -425,6 +427,21 @@
 - 默认以 `surface-secondary` 作为承托，hover 可回到 `surface-primary`
 - 拖拽激活可用 `primary/10` 或更清晰的 `border-primary/30`
 - disabled 时降低对比度，不显示可点击暗示
+
+## GithubIcon / NotionIcon
+
+品牌图标组件，用于第三方服务的品牌标识展示。
+
+### 说明
+
+- lucide-react 已移除品牌图标（如 `Github`），这里以官方 SVG path 内联实现
+- 均使用 `currentColor`，颜色由外层容器通过文本色类控制
+- 通过 `className` 控制尺寸（例如 `h-[22px] w-[22px]`），不提供 `size` 属性
+
+### 来源
+
+- `GithubIcon`：Octicons `mark-github`
+- `NotionIcon`：Wikimedia `Notion-logo.svg`
 
 ## FullPageStatus
 

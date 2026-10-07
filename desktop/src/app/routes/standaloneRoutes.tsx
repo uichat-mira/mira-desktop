@@ -6,6 +6,7 @@ import DevelopmentDatabasePage from "@/features/Development/pages/Database/index
 import DevelopmentClientTestsPage from "@/features/Development/pages/ClientTests/index";
 import DevelopmentServerTestsPage from "@/features/Development/pages/ServerTests/index";
 import CapabilitiesPage from "@/features/Extensions/Capabilities/index";
+import McpPage from "@/features/Extensions/Mcp/index";
 import StandaloneWorkspace from "@/app/Layouts/StandaloneWorkspace";
 import KnowledgeBaseSettings from "@/features/KnowledgeBase/index";
 import KnowledgeBaseAddWizard from "@/features/KnowledgeBase/Add";
@@ -13,6 +14,7 @@ import KnowledgeBaseDetail from "@/features/KnowledgeBase/Detail";
 import EvaluationCenter from "@/features/Evaluation/Center";
 import EvaluationNew from "@/features/Evaluation/New";
 import RemoteAccessSettings from "@/features/RemoteAccess/index";
+import SkillsPage from "@/features/Skills/index";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 
 export const standaloneRoutes = [
@@ -55,6 +57,8 @@ export const standaloneRoutes = [
     children: [
       { index: true, element: <Navigate to="capabilities" replace /> },
       { path: "capabilities", element: <CapabilitiesPage /> },
+      { path: "mcp", element: <McpPage /> },
+      { path: "skills", element: <SkillsPage /> },
       { path: "tools", element: <Navigate to="/extensions/capabilities" replace /> },
     ],
   },

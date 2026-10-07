@@ -73,10 +73,7 @@ function matchesRoute(pathname: string, route: string) {
 
 function resolveActiveItem(pathname: string): RailLinkId | null {
   if (pathname === "/" || matchesRoute(pathname, "/chat")) return "home";
-  if (
-    matchesRoute(pathname, "/settings/mcp") ||
-    matchesRoute(pathname, "/settings/skills")
-  ) {
+  if (matchesRoute(pathname, "/settings/mcp")) {
     return null;
   }
   if (matchesRoute(pathname, "/settings")) return "settings";
@@ -121,19 +118,18 @@ function isExtensionCapabilitiesRoute(pathname: string) {
 }
 
 function isExtensionMcpRoute(pathname: string) {
-  return matchesRoute(pathname, "/settings/mcp");
+  return (
+    matchesRoute(pathname, "/extensions/mcp") ||
+    matchesRoute(pathname, "/settings/mcp")
+  );
 }
 
 function isExtensionSkillsRoute(pathname: string) {
-  return matchesRoute(pathname, "/settings/skills");
+  return matchesRoute(pathname, "/extensions/skills");
 }
 
 function isExtensionsRoute(pathname: string) {
-  return (
-    matchesRoute(pathname, "/extensions") ||
-    isExtensionMcpRoute(pathname) ||
-    isExtensionSkillsRoute(pathname)
-  );
+  return matchesRoute(pathname, "/extensions") || isExtensionMcpRoute(pathname);
 }
 
 function RailButton({
@@ -269,9 +265,9 @@ function ExtensionsMenu({
         if (item.id === "capabilities") {
           void navigate("/extensions/capabilities");
         } else if (item.id === "mcp") {
-          void navigate("/settings/mcp");
+          void navigate("/extensions/mcp");
         } else if (item.id === "skills") {
-          void navigate("/settings/skills");
+          void navigate("/extensions/skills");
         }
       }}
     />

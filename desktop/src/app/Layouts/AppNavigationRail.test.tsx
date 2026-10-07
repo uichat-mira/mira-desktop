@@ -68,8 +68,8 @@ describe("AppNavigationRail extensions menu", () => {
 
   it.each([
     ["扩展", "能力", "/extensions/capabilities"],
-    ["扩展", "MCP", "/settings/mcp"],
-    ["扩展", "技能", "/settings/skills"],
+    ["扩展", "MCP", "/extensions/mcp"],
+    ["扩展", "技能", "/extensions/skills"],
     ["知识与评测", "知识库", "/knowledge-base"],
     ["知识与评测", "评测中心", "/evaluation/center"],
     ["帮助", "关于", "/about"],
