@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import type { McpExecutionEnvironment } from "@/mcp/core/definitions.js";
+import type { ToolExecutionEnvironment } from "@/mcp/core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "@/mcp/core/errors.js";
 import { decodeTerminalOutput } from "@/mcp/terminal/encoding.js";
 import { resolveWorkspaceDirectoryPath, resolveWorkspacePath } from "@/mcp/workspace.js";
@@ -578,7 +578,7 @@ export const executeSandboxedCommand = async (
 };
 
 export const createSandboxShellProfile = (
-  environment: McpExecutionEnvironment["terminal"]["shellProfile"],
+  environment: ToolExecutionEnvironment["terminal"]["shellProfile"],
 ): SandboxShellProfile => ({
   shell: environment.shell,
   argsMode: environment.argsMode,

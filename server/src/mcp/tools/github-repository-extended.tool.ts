@@ -1,4 +1,4 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { createRepositoryTool } from "./github-repository.tool.js";
 import * as S from "./github-domain.shared.js";
 
@@ -155,8 +155,8 @@ const isInstallationScopeError = (error: unknown) =>
 export const createExtendedRepositoryTool = (
   client: GitHubReadClient,
   api: GitHubApi,
-  baseTool: McpToolImplementation,
-): McpToolImplementation => {
+  baseTool: ToolImplementation,
+): ToolImplementation => {
   const repositoryTool = createRepositoryTool(client, api, baseTool);
 
   return {

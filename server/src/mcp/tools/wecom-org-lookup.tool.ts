@@ -1,4 +1,4 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import {
   getBoundWecomUserForThread,
@@ -28,7 +28,7 @@ const normalizeQuery = (value: unknown, mode: "self" | "user") => {
   return query;
 };
 
-export const wecomOrgLookupTool: McpToolImplementation = {
+export const wecomOrgLookupTool: ToolImplementation = {
   definition: {
     id: "wecom_org_lookup",
     title: "WeCom Org Lookup",
@@ -148,7 +148,7 @@ export const wecomOrgLookupTool: McpToolImplementation = {
     }));
 
     return {
-      result: {
+      structuredContent: {
         success: true,
         departments: departmentSummaries,
         summary:

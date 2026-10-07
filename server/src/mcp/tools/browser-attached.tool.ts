@@ -1,6 +1,6 @@
 import type {
-  McpInvocationContext,
-  McpToolImplementation,
+  ToolInvocationContext,
+  ToolImplementation,
 } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { invokeWebBridge } from "@/routes/webbridge.js";
@@ -124,14 +124,9 @@ const descriptions: Record<BrowserAttachedToolName, string> = {
     "Upload explicit in-memory file content or download from the user's already-connected browser. Local host paths are not accepted.",
 };
 
-const toEvidenceData = (result: unknown): Record<string, unknown> =>
-  result && typeof result === "object" && !Array.isArray(result)
-    ? { provider: BROWSER_ATTACHED_PROVIDER, ...(result as Record<string, unknown>) }
-    : { provider: BROWSER_ATTACHED_PROVIDER, result };
-
 const createBrowserAttachedTool = (
   tool: BrowserAttachedToolName,
-): McpToolImplementation => ({
+): ToolImplementation => ({
   definition: {
     id: `browser_attached_${tool}`,
     title: `Attached Browser ${tool[0].toUpperCase()}${tool.slice(1)}`,
@@ -147,7 +142,7 @@ const createBrowserAttachedTool = (
       networkAccess: true,
     },
   },
-  execute: async (context: McpInvocationContext) => {
+  execute: async (context: ToolInvocationContext) => {
     if (context.userId === undefined || !Number.isInteger(context.userId)) {
       throw mcpBadRequest(
         "Attached Browser requires a trusted authenticated user context",
@@ -162,16 +157,10 @@ const createBrowserAttachedTool = (
     });
 
     return {
-      result,
-      evidence: {
-        actionTaken: `Called ${BROWSER_ATTACHED_PROVIDER} Attached Browser ${tool}.`,
-        facts: [
-          `tool=browser_attached_${tool}`,
-          `provider=${BROWSER_ATTACHED_PROVIDER}`,
-        ],
-        status: "completed",
-        data: toEvidenceData(result),
-      },
+      structuredContent: result,
+      ...(result && typeof result === "object" && (result as { ok?: unknown }).ok === false
+        ? { isError: true }
+        : {}),
     };
   },
 });
@@ -181,7 +170,7 @@ export const browserAttachedBrowseTool = createBrowserAttachedTool("browse");
 export const browserAttachedActTool = createBrowserAttachedTool("act");
 export const browserAttachedTransferTool = createBrowserAttachedTool("transfer");
 
-export const createBrowserAttachedTools = (): McpToolImplementation[] => [
+export const createBrowserAttachedTools = (): ToolImplementation[] => [
   browserAttachedLookTool,
   browserAttachedBrowseTool,
   browserAttachedActTool,

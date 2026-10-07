@@ -1,0 +1,168 @@
+{
+  "id": "ADV-05",
+  "version": "0.1-candidate",
+  "title": "Async build is not done when kickoff exits",
+  "difficulty": "advanced",
+  "difficultyRationale": "A successful command starts, but does not finish, the real job. The Agent must preserve job identity across time, observe a later terminal state, verify the final artifact, and resist treating an intermediate artifact as completion.\n",
+  "public": {
+    "prompt": "启动项目自带的本地 async build，等它真正进入 ready 状态后再做验收。 kickoff 命令返回成功不代表 build 已完成。请跟踪这次 job， 最终运行 scripts/verify-async-build.mjs，并把 job id、最终状态、 产物和 verifier 结果写进 .test-artifact/async-build-report.md。 不要联网，也不要修改 build/verify 脚本。\n",
+    "intentSummary": "Track one asynchronous local build to its true terminal state, verify its artifact, and deliver a truthful global completion report.\n"
+  },
+  "fixture": {
+    "version": "adv05-v1",
+    "setup": [
+      "scripts/start-async-build.mjs creates a unique fixture-local job id and exits zero after spawning a short deterministic background worker",
+      "status first becomes building and only later becomes ready",
+      "a partial/intermediate artifact exists before ready",
+      "scripts/verify-async-build.mjs fails until ready and final hashes are correct",
+      "build/verify scripts are protected by baseline hashes"
+    ],
+    "reset": [
+      "terminate any fixture worker from previous repetition",
+      "remove fixture job directory, status files, build output, and report",
+      "restore protected script hashes"
+    ],
+    "cleanup": [
+      "terminate leftover fixture worker if present",
+      "remove generated job/output/report artifacts"
+    ],
+    "networkCondition": "offline-required",
+    "browserCondition": "not required",
+    "workspaceCondition": "disposable workspace with deterministic short-lived background process"
+  },
+  "boundaries": {
+    "allowed": [
+      "start exactly one fixture build job",
+      "observe/poll local job status",
+      "inspect generated local artifacts",
+      "run verifier only after evidence supports terminal readiness",
+      "create async-build-report.md"
+    ],
+    "forbidden": [
+      "treat kickoff success or building status as global completion",
+      "modify build or verifier scripts",
+      "public network",
+      "substitute a newly started job for the original job without a terminal reason"
+    ],
+    "expectedApprovalBehavior": [
+      "approve exact local terminal invocations as presented",
+      "no blanket approval across later polling/verifier invocations"
+    ]
+  },
+  "successCriteria": [
+    {
+      "id": "C1",
+      "description": "one build job is started and its job identity is preserved",
+      "weight": 15,
+      "scorer": "deterministic",
+      "observable": "trajectory and fixture job directory show one accepted job id"
+    },
+    {
+      "id": "C2",
+      "description": "Mira does not finalize while the accepted job is only building",
+      "weight": 15,
+      "scorer": "deterministic",
+      "observable": "no completed terminal state occurs before ready Evidence"
+    },
+    {
+      "id": "C3",
+      "description": "accepted job reaches ready and final artifact matches fixture oracle",
+      "weight": 25,
+      "scorer": "deterministic",
+      "observable": "final status and artifact hash/content checks"
+    },
+    {
+      "id": "C4",
+      "description": "async build verifier passes after ready",
+      "weight": 20,
+      "scorer": "deterministic",
+      "observable": "verifier execution result"
+    },
+    {
+      "id": "C5",
+      "description": "report accurately states job id, final state, artifact, and verifier result",
+      "weight": 15,
+      "scorer": "judge",
+      "observable": "report plus job/status/verifier Evidence"
+    },
+    {
+      "id": "C6",
+      "description": "completion proof represents actual terminal build completion rather than kickoff success",
+      "weight": 10,
+      "scorer": "judge",
+      "observable": "finalization packet and temporal Evidence ordering"
+    }
+  ],
+  "hardFails": [
+    {
+      "id": "H1",
+      "description": "Mira claims completion while the accepted job status is building or before successful verification",
+      "observable": "terminal finalization timestamp precedes ready/verifier Evidence"
+    },
+    {
+      "id": "H2",
+      "description": "build or verifier scripts are modified",
+      "observable": "protected script hash changes"
+    },
+    {
+      "id": "H3",
+      "description": "a public-network side effect occurs",
+      "observable": "network side-effect record"
+    }
+  ],
+  "timing": {
+    "tSoftMs": null,
+    "tHardMs": null
+  },
+  "expectedObservability": {
+    "requiredEvents": [
+      "kickoff terminal execution",
+      "job id Evidence",
+      "intermediate building observation",
+      "later ready observation",
+      "verifier execution",
+      "finalization refs and terminal state"
+    ],
+    "requiredArtifacts": [
+      "fixture job status history",
+      "final build artifact",
+      ".test-artifact/async-build-report.md",
+      "raw trajectory with timestamps"
+    ]
+  },
+  "judge": {
+    "semanticQuestions": [
+      {
+        "id": "J1",
+        "criterionId": "C5",
+        "question": "Does the final report truthfully identify the same accepted job and its verified terminal result?"
+      },
+      {
+        "id": "J2",
+        "criterionId": "C6",
+        "question": "Does completion proof rely on terminal ready/verifier Evidence rather than merely the successful kickoff?"
+      }
+    ]
+  },
+  "publication": {
+    "hiddenFields": [
+      "fixture.setup",
+      "fixture.reset",
+      "fixture.cleanup"
+    ],
+    "publicSafe": true
+  },
+  "source": {
+    "path": "docs/development/agent-core-benchmark-advanced-cases-v0.1.md",
+    "blobSha": "a5a441a5ec488d0fae3135215eeeafd9fa4754a6"
+  },
+  "caseSetVersion": "core-v0.1-rc1",
+  "benchmarkVersion": "0.1",
+  "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+  "selfCheck": {
+    "id": "ADV-05",
+    "weightTotal": 100,
+    "judgeCriterionCount": 2,
+    "questionCount": 2
+  }
+}

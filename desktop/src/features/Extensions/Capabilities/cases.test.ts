@@ -1,0 +1,470 @@
+import { describe, expect, it } from "vitest";
+import type { ExternalMcpServerRecord } from "@/shared/api/tools";
+import {
+  buildExternalMcpCapabilityAcceptanceCases,
+  buildCapabilityAcceptanceCases,
+  nativeCapabilityAcceptanceCases,
+} from "./cases";
+
+const createServer = (
+  overrides: Partial<ExternalMcpServerRecord> = {},
+): ExternalMcpServerRecord =>
+  ({
+    id: "server-1",
+    source: "manual",
+    displayName: "Demo MCP",
+    transport: { kind: "streamable-http", url: "https://example.com/mcp" },
+    status: "connected",
+    enabled: true,
+    agentEnabled: true,
+    createdAt: "2026-10-05T00:00:00.000Z",
+    updatedAt: "2026-10-05T00:00:00.000Z",
+    discoveredTools: [
+      {
+        name: "ping",
+        title: "Ping",
+        description: "No input required",
+        inputSchema: { type: "object", properties: {} },
+        projectedCapabilityId: "mcp:server-1:tool:ping",
+      },
+      {
+        name: "search",
+        title: "Search",
+        description: "Requires a query",
+        inputSchema: {
+          type: "object",
+          required: ["query"],
+          properties: { query: { type: "string" } },
+        },
+        projectedCapabilityId: "mcp:server-1:tool:search",
+      },
+    ],
+    ...overrides,
+  }) as ExternalMcpServerRecord;
+
+describe("Capability acceptance cases", () => {
+  it("registers the platform baseline plus Universal Read acceptance cases", () => {
+    expect(nativeCapabilityAcceptanceCases.map((caseDefinition) => caseDefinition.id)).toEqual([
+      "core-read-success",
+      "universal-read-range",
+      "universal-read-image",
+      "universal-read-svg",
+      "universal-read-binary",
+      "universal-list-direct",
+      "universal-glob-match",
+      "universal-glob-no-match",
+      "universal-grep-match",
+      "universal-grep-no-match",
+      "file-mutation-write-create",
+      "file-mutation-write-overwrite",
+      "file-mutation-edit-multi",
+      "file-mutation-edit-tolerant",
+      "file-mutation-edit-missing",
+      "file-mutation-edit-ambiguous",
+      "file-mutation-move",
+      "file-mutation-delete-file",
+      "file-mutation-delete-recursive",
+      "file-mutation-boundary-rejection",
+      "file-mutation-controlled-failure",
+      "file-mutation-apply-patch-add",
+      "file-mutation-apply-patch-update",
+      "file-mutation-apply-patch-move",
+      "file-mutation-apply-patch-delete",
+      "file-mutation-apply-patch-controlled-error",
+      "terminal-short-success",
+      "terminal-short-failure",
+      "terminal-persistent-start",
+      "terminal-stale-session",
+      "core-read-controlled-failure",
+      "core-approval-boundary",
+      "web-search-multi-query",
+      "web-fetch-known-url",
+      "web-fetch-blocked-private-destination",
+      "web-fetch-blocked-invalid-scheme",
+    ]);
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "core-read-success"),
+    ).toMatchObject({
+      args: {
+        path: ".tool-lab-fixtures/platform-read-success/input.txt",
+      },
+      workspace: "managed",
+      fixture: "platform-read-success",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-read-range"),
+    ).toMatchObject({
+      toolId: "read",
+      args: {
+        path: ".tool-lab-fixtures/universal-read/text/notes.txt",
+        offset: 1,
+        limit: 2,
+      },
+      workspace: "managed",
+      fixture: "universal-read",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-read-image"),
+    ).toMatchObject({
+      toolId: "read",
+      args: {
+        path: ".tool-lab-fixtures/universal-read/image/pixel.png",
+      },
+      fixture: "universal-read",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-list-direct"),
+    ).toMatchObject({
+      toolId: "list",
+      args: {
+        path: ".tool-lab-fixtures/universal-read/tree",
+        limit: 20,
+      },
+      fixture: "universal-read",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-glob-match"),
+    ).toMatchObject({
+      toolId: "glob",
+      args: {
+        pattern: "**/*.ts",
+        path: ".tool-lab-fixtures/universal-read/tree",
+        limit: 20,
+      },
+      fixture: "universal-read",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "universal-grep-match"),
+    ).toMatchObject({
+      toolId: "grep",
+      args: expect.objectContaining({
+        pattern: "MIRA_NEEDLE",
+        path: ".tool-lab-fixtures/universal-read/tree",
+        include: "**/*.ts",
+        literal: true,
+        context: 1,
+      }),
+      fixture: "universal-read",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "core-read-controlled-failure"),
+    ).toMatchObject({
+      args: {
+        path: ".tool-lab-fixtures/platform-read-missing/missing.txt",
+      },
+      workspace: "managed",
+      fixture: "platform-read-missing",
+    });
+
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "core-approval-boundary"),
+    ).toMatchObject({
+      toolId: "write",
+      args: {
+        path: ".tool-lab-fixtures/platform-approval-boundary/approval-probe.txt",
+        content: "capabilities-approval-probe",
+      },
+      workspace: "managed",
+      fixture: "platform-approval-boundary",
+    });
+  });
+
+  it("registers Terminal acceptance cases on the Tool Lab surface", () => {
+    const terminalCases = nativeCapabilityAcceptanceCases.filter(
+      (item) => item.toolId === "terminal",
+    );
+
+    expect(terminalCases.map((item) => item.id)).toEqual([
+      "terminal-short-success",
+      "terminal-short-failure",
+      "terminal-persistent-start",
+      "terminal-stale-session",
+    ]);
+    expect(terminalCases.every((item) => item.workspace === "managed")).toBe(true);
+    expect(
+      terminalCases.find((item) => item.id === "terminal-short-failure"),
+    ).toMatchObject({
+      expectedObservation: expect.stringContaining("Invocation=Completed"),
+    });
+    expect(
+      terminalCases.find((item) => item.id === "terminal-short-failure")
+        ?.expectedObservation,
+    ).toContain("commandSucceeded=false");
+    expect(
+      terminalCases.find((item) => item.id === "terminal-persistent-start")?.args,
+    ).toMatchObject({
+      sessionMode: "persistent",
+      timeoutMs: 700,
+      outputLimitBytes: 4096,
+    });
+    expect(
+      terminalCases.find((item) => item.id === "terminal-stale-session")?.args,
+    ).toEqual({
+      operation: "status",
+      sessionId: "tool-lab-stale-session",
+    });
+  });
+
+  it("registers deterministic Universal Web acceptance cases that need no workspace", () => {
+    const webCases = nativeCapabilityAcceptanceCases.filter(
+      (item) => item.group === "Universal Web",
+    );
+
+    expect(webCases.map((item) => item.id)).toEqual([
+      "web-search-multi-query",
+      "web-fetch-known-url",
+      "web-fetch-blocked-private-destination",
+      "web-fetch-blocked-invalid-scheme",
+    ]);
+    expect(webCases.every((item) => item.workspace === "none")).toBe(true);
+    expect(webCases.every((item) => item.fixture === undefined)).toBe(true);
+    expect([...new Set(webCases.map((item) => item.toolId))].sort()).toEqual([
+      "web_fetch",
+      "web_search",
+    ]);
+
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "web-fetch-blocked-private-destination",
+      ),
+    ).toMatchObject({
+      toolId: "web_fetch",
+      args: { url: "http://127.0.0.1/" },
+      workspace: "none",
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find((item) => item.id === "web-search-multi-query"),
+    ).toMatchObject({
+      toolId: "web_search",
+      args: { queries: ["mira desktop", "electron agent runtime"], maxResults: 5 },
+    });
+  });
+
+  it("registers canonical File Mutation cases against one resettable managed fixture", () => {
+    const fileMutationCases = nativeCapabilityAcceptanceCases.filter(
+      (item) => item.group === "File Mutation",
+    );
+
+    expect(fileMutationCases).toHaveLength(16);
+    expect(fileMutationCases.every((item) => item.workspace === "managed")).toBe(
+      true,
+    );
+    expect(fileMutationCases.every((item) => item.fixture === "file-mutation")).toBe(
+      true,
+    );
+    expect([...new Set(fileMutationCases.map((item) => item.toolId))].sort()).toEqual([
+      "apply_patch",
+      "delete",
+      "edit",
+      "move",
+      "write",
+    ]);
+
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-write-create",
+      ),
+    ).toMatchObject({
+      toolId: "write",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/created.txt",
+        content: "created by Mira Tool Lab\n",
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-write-overwrite",
+      ),
+    ).toMatchObject({
+      toolId: "write",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/overwrite.txt",
+        content: "after overwrite\n",
+        overwrite: true,
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-edit-multi",
+      ),
+    ).toMatchObject({
+      toolId: "edit",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/multi-edit.txt",
+        edits: [
+          { oldText: "alpha target", newText: "alpha changed" },
+          { oldText: "omega target", newText: "omega changed" },
+        ],
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-edit-tolerant",
+      ),
+    ).toMatchObject({
+      toolId: "edit",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/tolerant.txt",
+        edits: [
+          {
+            oldText: '  const message = "hello";',
+            newText: '  const message = "hello from Mira";',
+          },
+        ],
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-edit-missing",
+      ),
+    ).toMatchObject({
+      toolId: "edit",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/missing-edit.txt",
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-edit-ambiguous",
+      ),
+    ).toMatchObject({
+      toolId: "edit",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/ambiguous-edit.txt",
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-move",
+      ),
+    ).toMatchObject({
+      toolId: "move",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/move-source.txt",
+        destinationPath:
+          ".tool-lab-fixtures/file-mutation/move-destination.txt",
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-delete-file",
+      ),
+    ).toMatchObject({
+      toolId: "delete",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/delete-file.txt",
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-delete-recursive",
+      ),
+    ).toMatchObject({
+      toolId: "delete",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/recursive-dir",
+        recursive: true,
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-boundary-rejection",
+      ),
+    ).toMatchObject({
+      toolId: "write",
+      args: {
+        path: "../file-mutation-outside.txt",
+        content: "must not escape\n",
+      },
+    });
+    expect(
+      nativeCapabilityAcceptanceCases.find(
+        (item) => item.id === "file-mutation-controlled-failure",
+      ),
+    ).toMatchObject({
+      toolId: "delete",
+      args: {
+        path: ".tool-lab-fixtures/file-mutation/controlled-dir",
+      },
+    });
+  });
+
+  it("registers apply_patch acceptance cases against the file-mutation fixture", () => {
+    const applyPatchCases = nativeCapabilityAcceptanceCases.filter(
+      (item) => item.toolId === "apply_patch",
+    );
+
+    expect(applyPatchCases.map((item) => item.id)).toEqual([
+      "file-mutation-apply-patch-add",
+      "file-mutation-apply-patch-update",
+      "file-mutation-apply-patch-move",
+      "file-mutation-apply-patch-delete",
+      "file-mutation-apply-patch-controlled-error",
+    ]);
+    expect(applyPatchCases.every((item) => item.group === "File Mutation")).toBe(true);
+    expect(applyPatchCases.every((item) => item.workspace === "managed")).toBe(true);
+    expect(applyPatchCases.every((item) => item.fixture === "file-mutation")).toBe(true);
+
+    const patchTextOf = (id: string) =>
+      String(applyPatchCases.find((item) => item.id === id)?.args.patchText ?? "");
+    for (const item of applyPatchCases) {
+      expect(String(item.args.patchText)).toContain("*** Begin Patch");
+      expect(String(item.args.patchText)).toContain("*** End Patch");
+    }
+    expect(patchTextOf("file-mutation-apply-patch-add")).toContain(
+      "*** Add File: .tool-lab-fixtures/file-mutation/apply-patch-added.txt",
+    );
+    expect(patchTextOf("file-mutation-apply-patch-update")).toContain(
+      "*** Update File: .tool-lab-fixtures/file-mutation/overwrite.txt",
+    );
+    expect(patchTextOf("file-mutation-apply-patch-update")).toContain("-before overwrite");
+    expect(patchTextOf("file-mutation-apply-patch-move")).toContain(
+      "*** Move to: .tool-lab-fixtures/file-mutation/move-target.txt",
+    );
+    expect(patchTextOf("file-mutation-apply-patch-delete")).toContain(
+      "*** Delete File: .tool-lab-fixtures/file-mutation/delete-file.txt",
+    );
+    expect(patchTextOf("file-mutation-apply-patch-controlled-error")).toContain(
+      "does-not-exist.txt",
+    );
+    expect(
+      applyPatchCases.find(
+        (item) => item.id === "file-mutation-apply-patch-controlled-error",
+      )?.expectedObservation,
+    ).toContain("Failed");
+  });
+
+  it("registers only deterministic zero-input External MCP cases", () => {
+    const cases = buildExternalMcpCapabilityAcceptanceCases([createServer()]);
+
+    expect(cases).toHaveLength(1);
+    expect(cases[0]).toMatchObject({
+      toolId: "mcp:server-1:tool:ping",
+      args: {},
+      group: "External MCP",
+      workspace: "none",
+    });
+  });
+
+  it("keeps explicit Capability cases independent from the Agent exposure switch", () => {
+    const cases = buildExternalMcpCapabilityAcceptanceCases([
+      createServer({ agentEnabled: false }),
+    ]);
+
+    expect(cases[0]?.expectedObservation).toContain("Awaiting Approval");
+  });
+
+  it("combines native and eligible External MCP cases without custom UI contracts", () => {
+    const cases = buildCapabilityAcceptanceCases([createServer()]);
+
+    expect(cases).toHaveLength(nativeCapabilityAcceptanceCases.length + 1);
+    expect(cases.some((item) => item.toolId === "mcp:server-1:tool:ping")).toBe(true);
+  });
+});

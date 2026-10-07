@@ -44,7 +44,7 @@ describe("web/news search separation", () => {
 
     const result = await webSearchTool.execute({
       invocationId: "web-news-separation",
-      args: { query: "latest AI news" },
+      args: { queries: ["latest AI news"] },
       signal: new AbortController().signal,
       environment: createHarnessEnvironmentSnapshot(),
       pushEvent() {},
@@ -64,10 +64,10 @@ describe("web/news search separation", () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
     expect(newsSearchMock.hasNewsIntent).not.toHaveBeenCalled();
     expect(newsSearchMock.searchNewsHubCache).not.toHaveBeenCalled();
-    expect(result.result).toMatchObject({
-      provider: "tavily",
-      capabilityId: "tavily-search",
-      query: "latest AI news",
+    expect(result.structuredContent).toMatchObject({
+      queries: ["latest AI news"],
     });
+    expect(result.structuredContent).not.toHaveProperty("provider");
+    expect(result.structuredContent).not.toHaveProperty("capabilityId");
   });
 });

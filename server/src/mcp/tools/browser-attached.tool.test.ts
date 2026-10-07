@@ -11,14 +11,14 @@ import {
 } from "@/harness/invocations.js";
 import {
   clearHarnessRegistry,
-  listCapabilityDefinitions,
-  registerCapability,
+  listToolDefinitions,
+  registerTool,
 } from "@/harness/registry.js";
 import {
   initializeHarnessRuntime,
   resetHarnessRuntime,
 } from "@/harness/runtime.js";
-import type { McpInvocationContext } from "../core/definitions.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
 import {
   WebBridgeInvocationError,
   toWebBridgeInvocationError,
@@ -45,7 +45,7 @@ const executeDirectly = (
   args: Record<string, unknown>,
   signal = new AbortController().signal,
   userId: number | undefined = trustedUserId,
-) => tool.execute({ args, signal, userId } as McpInvocationContext);
+) => tool.execute({ args, signal, userId } as ToolInvocationContext);
 
 describe("Attached Browser Harness tools", () => {
   beforeEach(() => {
@@ -153,11 +153,11 @@ describe("Attached Browser Harness tools", () => {
         args: { mode: "page" },
         signal: new AbortController().signal,
         userId: undefined,
-      } as McpInvocationContext),
+      } as ToolInvocationContext),
     ).rejects.toThrow(/trusted authenticated user context/i);
     expect(invokeWebBridgeMock).not.toHaveBeenCalled();
 
-    registerCapability(browserAttachedLookTool);
+    registerTool(browserAttachedLookTool);
     await expect(
       executeHarnessInvocation({
         toolId: "browser_attached_look",
@@ -176,7 +176,7 @@ describe("Attached Browser Harness tools", () => {
         suggestedAction: "look",
       }),
     );
-    registerCapability(browserAttachedLookTool);
+    registerTool(browserAttachedLookTool);
 
     const invocation = await executeHarnessInvocation({
       toolId: "browser_attached_look",
@@ -243,7 +243,7 @@ describe("Attached Browser Harness tools", () => {
         suggestedAction: "look",
       }),
     );
-    expect(JSON.stringify(evidence)).not.toContain(String(trustedUserId));
+    expect(JSON.stringify(evidence)).not.toMatch(/userId|accessToken|backendUrl|extensionClientId/);
   });
 
   it("retains browser result fields, provider evidence, args, timing, and trace in the existing Harness contract", async () => {
@@ -269,7 +269,7 @@ describe("Attached Browser Harness tools", () => {
       ],
     };
     invokeWebBridgeMock.mockResolvedValue(result);
-    registerCapability(browserAttachedLookTool);
+    registerTool(browserAttachedLookTool);
 
     const invocation = await executeHarnessInvocation({
       toolId: "browser_attached_look",
@@ -292,11 +292,10 @@ describe("Attached Browser Harness tools", () => {
     );
     expect(invocation.evidence).toEqual(
       expect.objectContaining({
-        facts: expect.arrayContaining([
-          "tool=browser_attached_look",
-          "provider=chujie",
-        ]),
+        facts: expect.arrayContaining(["operation=browser_attached_look"]),
         data: expect.objectContaining({
+          kind: "computer_use_browser",
+          operation: "browser_attached_look",
           provider: "chujie",
           url: result.url,
           title: result.title,
@@ -370,7 +369,7 @@ describe("Attached Browser Harness tools", () => {
 
   it("registers only browser_attached IDs in Harness runtime", () => {
     initializeHarnessRuntime();
-    const ids = listCapabilityDefinitions().map((definition) => definition.id);
+    const ids = listToolDefinitions().map((definition) => definition.id);
     expect(ids).toEqual(
       expect.arrayContaining([
         "browser_attached_look",
@@ -391,7 +390,7 @@ describe("Attached Browser Harness tools", () => {
       .spyOn(computerUseRepository, "persistEvents")
       .mockImplementation(() => undefined);
     invokeWebBridgeMock.mockResolvedValue({ url: "https://example.com" });
-    registerCapability(browserAttachedLookTool);
+    registerTool(browserAttachedLookTool);
 
     const record = await executeHarnessInvocation({
       toolId: "browser_attached_look",

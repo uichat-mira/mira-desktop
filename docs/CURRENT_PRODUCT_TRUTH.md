@@ -197,9 +197,9 @@ UIChat Mira 是一个 **本地优先、桌面优先、多 Provider 的个人 AI 
 
 - Harness 是 registry、公共面、暴露、边界、审批、执行、结果和审计控制平面；
 - 公共 Read 面是 `read_discover / grep / read_open / codebase_explore`；
-- 公共 Edit 面是 `write_file / replace_block / delete_path / move_path`；
+- 公共 Edit 面是 canonical `write / edit / delete / move`，四者统一经过 File Mutation Runtime；旧本地 mutation wrapper/runtime 已退出可执行 registry；
 - Search 区分公共互联网 `web_search` 与本地 News Hub `news_search`；
-- `terminal_session` 是完整 host shell / PTY runtime，不是强隔离 sandbox；
+- `terminal` 是完整 host shell / PTY runtime，不是强隔离 sandbox；
 - Managed Browser、Attached Browser、Mail、GitHub、问策和 External MCP 可以按真实 availability 进入工具面；
 - <=20 个公共工具全部暴露，>20 才做 ranking 并暴露前 20；
 - Mira 以 MCP Host 为主，external MCP 必须 connected、discovered、显式 Agent Access、approval 后执行；

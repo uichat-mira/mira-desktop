@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { resolveHarnessCapabilityProfiles } from "./capability-profiles.js";
-import type { McpToolDefinition } from "../mcp/core/definitions.js";
+import type { ToolDefinition } from "../mcp/core/definitions.js";
 
 const createDefinition = (
   id: string,
-  domain: McpToolDefinition["domain"] = "browser_action",
-): McpToolDefinition => ({
+  domain: ToolDefinition["domain"] = "browser_action",
+): ToolDefinition => ({
   id,
   title: id,
   description: id,
@@ -24,22 +24,50 @@ describe("resolveHarnessCapabilityProfiles", () => {
   it("groups read family tools under one workspace capability profile", () => {
     const profiles = resolveHarnessCapabilityProfiles([
       {
-        id: "read_discover",
-        title: "Read Discover",
-        description: "discover",
+        id: "grep",
+        title: "Grep",
+        description: "search file contents",
         domain: "read",
         source: "internal",
         mode: "sync",
         inputSchema: {},
-        tags: ["read"],
+        tags: ["read", "grep"],
         capabilities: {
           sideEffect: "none",
           requiresApproval: false,
         },
       },
       {
-        id: "read_open",
-        title: "Read Open",
+        id: "glob",
+        title: "Glob",
+        description: "glob files",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {},
+        tags: ["read", "glob"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      {
+        id: "list",
+        title: "List",
+        description: "list directory",
+        domain: "read",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {},
+        tags: ["read", "list"],
+        capabilities: {
+          sideEffect: "none",
+          requiresApproval: false,
+        },
+      },
+      {
+        id: "read",
+        title: "Read",
         description: "open",
         domain: "read",
         source: "internal",
@@ -57,17 +85,16 @@ describe("resolveHarnessCapabilityProfiles", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "workspace_lookup",
-          preferredToolId: "read_open",
-          supportingToolIds: ["read_discover", "read_open"],
+          supportingToolIds: ["glob", "grep", "list", "read"],
         }),
       ]),
     );
   });
 
-  it("exposes action profile metadata for terminal and edit capability groups", () => {
+  it("keeps coarse workspace capabilities free of action defaults", () => {
     const profiles = resolveHarnessCapabilityProfiles([
       {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "terminal",
         domain: "terminal",
@@ -81,23 +108,23 @@ describe("resolveHarnessCapabilityProfiles", () => {
         },
       },
       {
-        id: "write_file",
-        title: "Write File",
+        id: "write",
+        title: "Write",
         description: "write",
         domain: "edit",
         source: "internal",
         mode: "sync",
         inputSchema: {},
-        tags: ["edit"],
+        tags: ["edit", "write"],
         capabilities: {
           sideEffect: "local-write",
           requiresApproval: true,
         },
       },
       {
-        id: "replace_block",
-        title: "Replace Block",
-        description: "replace",
+        id: "edit",
+        title: "Edit",
+        description: "edit",
         domain: "edit",
         source: "internal",
         mode: "sync",
@@ -114,16 +141,18 @@ describe("resolveHarnessCapabilityProfiles", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "terminal_execution",
-          preferredToolId: "terminal_session",
+          preferredToolId: "terminal",
           actionProfileId: "terminal_execute_command",
         }),
         expect.objectContaining({
           id: "workspace_edit",
-          preferredToolId: "write_file",
-          actionProfileId: "edit_create_file",
+          supportingToolIds: ["write", "edit"],
         }),
       ]),
     );
+    const workspaceEdit = profiles.find((profile) => profile.id === "workspace_edit");
+    expect(workspaceEdit).not.toHaveProperty("preferredToolId");
+    expect(workspaceEdit).not.toHaveProperty("actionProfileId");
   });
 
   it("keeps unknown tools as one-to-one fallback profiles", () => {
@@ -192,7 +221,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
 
     expect(profiles).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "web_research", preferredToolId: "web_search" }),
+        expect.objectContaining({ id: "web", preferredToolId: "web_search" }),
         expect.objectContaining({ id: "news_research", preferredToolId: "news_search" }),
         expect.objectContaining({ id: "mail_reading", preferredToolId: "mail_query" }),
       ]),

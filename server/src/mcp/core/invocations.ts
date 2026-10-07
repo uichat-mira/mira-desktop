@@ -1,16 +1,16 @@
 import { createArtifact } from "./artifacts.js";
 import type {
-  McpArtifact,
-  McpExecutionEnvironment,
-  McpInvocationFailureCode,
-  McpInvocationRecord,
-  McpStructuredInvocationErrorDetail,
-  McpStreamEvent,
-  McpStreamEventInput,
-  McpToolExecutionResult,
+  ToolArtifact,
+  ToolExecutionEnvironment,
+  ToolInvocationFailureCode,
+  ToolInvocation,
+  StructuredInvocationErrorDetail,
+  ToolInvocationEvent,
+  ToolInvocationEventInput,
+  ToolContentBlock,
 } from "./definitions.js";
 import { withEventMeta } from "./events.js";
-import { McpApprovalRequiredError, mcpBadRequest, mcpNotFound } from "./errors.js";
+import { ToolApprovalRequiredError, mcpBadRequest, mcpNotFound } from "./errors.js";
 import { getToolImplementation } from "./registry.js";
 import {
   clearInvocationTraces,
@@ -33,6 +33,7 @@ import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { validateInvocationArgs } from "./schema.js";
 import { redactExternalMcpValue } from "../external-redaction.js";
 import { computerUseRepository } from "@/db/repositories/computer-use/repository.js";
+import { normalizeToolResult, projectToolEvidence } from "./tool-result.js";
 
 const COMPUTER_USE_TOOL_IDS = new Set([
   "browser_observe",
@@ -44,7 +45,7 @@ const isComputerUseInvocation = (toolId: string) =>
 
 const getStructuredInvocationError = (
   error: unknown,
-): Omit<McpStructuredInvocationErrorDetail, "message"> | undefined => {
+): Omit<StructuredInvocationErrorDetail, "message"> | undefined => {
   if (!error || typeof error !== "object") {
     return undefined;
   }
@@ -62,18 +63,22 @@ const getStructuredInvocationError = (
       : {}),
   };
 };
-const persistComputerUseInvocation = (record: McpInvocationRecord) => {
+const persistComputerUseInvocation = (record: ToolInvocation) => {
   if (!isComputerUseInvocation(record.toolId) || !process.env.DATABASE_URL) return;
   try { computerUseRepository.persistInvocation(record); } catch { /* database initialization is completed by server startup */ }
 };
 
-const invocationMap = new Map<string, McpInvocationRecord>();
-const invocationEvents = new Map<string, McpStreamEvent[]>();
+const invocationMap = new Map<string, ToolInvocation>();
+const invocationEvents = new Map<string, ToolInvocationEvent[]>();
+const invocationWorkspaceSnapshots = new Map<
+  string,
+  ToolExecutionEnvironment["workspace"]
+>();
 let invocationRetentionConfig: RetentionConfig = {
   ...DEFAULT_RETENTION_CONFIG,
 };
 
-const appendEvent = (invocationId: string, event: McpStreamEvent) => {
+const appendEvent = (invocationId: string, event: ToolInvocationEvent) => {
   const events = invocationEvents.get(invocationId) ?? [];
   events.push(event);
   invocationEvents.set(invocationId, events);
@@ -86,17 +91,28 @@ const sweepInvocations = () => {
   sweepRetentionMap(invocationMap, {
     config: invocationRetentionConfig,
     getUpdatedAt: (record) => record.finishedAt ?? record.startedAt,
-    keep: (record) => !record.finishedAt,
+    keep: (record) =>
+      !record.finishedAt || record.status === "awaiting_approval",
   });
   sweepRetentionMap(invocationEvents, {
     config: invocationRetentionConfig,
     getUpdatedAt: (_events) => undefined,
   });
   sweepInvocationTraces();
+  for (const invocationId of invocationWorkspaceSnapshots.keys()) {
+    if (!invocationMap.has(invocationId)) {
+      invocationWorkspaceSnapshots.delete(invocationId);
+    }
+  }
 };
 
 export const getInvocation = (invocationId: string) =>
   invocationMap.get(invocationId) ?? computerUseRepository.getInvocation(invocationId) ?? undefined;
+
+export const getInvocationWorkspaceSnapshot = (invocationId: string) => {
+  const snapshot = invocationWorkspaceSnapshots.get(invocationId);
+  return snapshot ? { ...snapshot } : undefined;
+};
 
 export const listInvocationEvents = (invocationId: string) =>
   invocationEvents.get(invocationId) ?? computerUseRepository.getEvents(invocationId);
@@ -132,6 +148,7 @@ export const resolveInvocationApproval = (input: {
   invocationMap.set(record.id, record);
   persistComputerUseInvocation(record);
   appendEvent(record.id, { type: "invocation:finish", status: record.status, at: resolvedAt, invocationId: record.id });
+  invocationWorkspaceSnapshots.delete(record.id);
   return record;
 };
 
@@ -224,12 +241,14 @@ export const finalizeClaimedInvocationApproval = (input: {
     at: finishedAt,
     invocationId: record.id,
   });
+  invocationWorkspaceSnapshots.delete(record.id);
   return record;
 };
 
 export const clearInvocations = () => {
   invocationMap.clear();
   invocationEvents.clear();
+  invocationWorkspaceSnapshots.clear();
   clearInvocationTraces();
 };
 
@@ -256,17 +275,19 @@ export interface ExecuteInvocationInput {
   threadId?: string;
   turnId?: string;
   signal?: AbortSignal;
-  environment?: McpExecutionEnvironment;
+  environment?: ToolExecutionEnvironment;
+  /** Internal callback for model-facing content; never serialized onto ToolInvocation. */
+  onResultContent?: (content: ToolContentBlock[], isError: boolean) => void;
   approvedInvocations?: Array<{
     toolId: string;
     inputHash: string;
   }>;
-  onEvent?: (event: McpStreamEvent) => void | Promise<void>;
+  onEvent?: (event: ToolInvocationEvent) => void | Promise<void>;
 }
 
 export const executeInvocation = async (
   input: ExecuteInvocationInput,
-): Promise<McpInvocationRecord> => {
+): Promise<ToolInvocation> => {
   const tool = getToolImplementation(input.toolId);
   if (!tool) {
     throw mcpNotFound(`Tool not found: ${input.toolId}`);
@@ -282,7 +303,7 @@ export const executeInvocation = async (
   const invocationId = crypto.randomUUID();
   sweepInvocations();
   const startedAt = new Date().toISOString();
-  const artifacts: McpArtifact[] = [];
+  const artifacts: ToolArtifact[] = [];
   const signal = input.signal ?? new AbortController().signal;
   const trace = createInvocationTrace({
     invocationId,
@@ -290,7 +311,7 @@ export const executeInvocation = async (
     startedAt,
   });
 
-  const record: McpInvocationRecord = {
+  const record: ToolInvocation = {
     id: invocationId,
     toolId: input.toolId,
     status: "running",
@@ -306,11 +327,16 @@ export const executeInvocation = async (
     startedAt,
   };
   invocationMap.set(invocationId, record);
+  if (input.environment?.workspace) {
+    invocationWorkspaceSnapshots.set(invocationId, {
+      ...input.environment.workspace,
+    });
+  }
   persistComputerUseInvocation(record);
 
-  const emit = async (event: McpStreamEventInput) => {
+  const emit = async (event: ToolInvocationEventInput) => {
     const safeEvent = tool.definition.source === "external"
-      ? redactExternalMcpValue(event) as McpStreamEventInput
+      ? redactExternalMcpValue(event) as ToolInvocationEventInput
       : event;
     const full = withEventMeta(invocationId, safeEvent);
     appendEvent(invocationId, full);
@@ -344,7 +370,7 @@ export const executeInvocation = async (
       inputHash,
     });
     if (approvalDecision.type === "require_approval") {
-      throw new McpApprovalRequiredError(
+      throw new ToolApprovalRequiredError(
         approvalDecision.reason ?? `${input.toolId} requires approval.`,
         {
           scope: approvalDecision.scope,
@@ -410,15 +436,24 @@ export const executeInvocation = async (
               : {}),
           }),
       },
-    })) as McpToolExecutionResult;
-
-    if (response.evidence !== undefined) {
+    }));
+    const normalized = normalizeToolResult(response);
+    const safeNormalized = tool.definition.source === "external"
+      ? {
+          ...normalized,
+          content: redactExternalMcpValue(normalized.content) as typeof normalized.content,
+          structuredContent: redactExternalMcpValue(normalized.structuredContent),
+        }
+      : normalized;
+    input.onResultContent?.(safeNormalized.content, safeNormalized.isError);
+    const projectedEvidence = projectToolEvidence(tool.definition, safeNormalized);
+    if (projectedEvidence !== undefined) {
       record.evidence = tool.definition.source === "external"
-        ? redactExternalMcpValue(response.evidence) as typeof response.evidence
-        : response.evidence;
+        ? redactExternalMcpValue(projectedEvidence) as typeof projectedEvidence
+        : projectedEvidence;
     }
 
-    if (response.result !== undefined) {
+    if (safeNormalized.structuredContent !== undefined) {
       const resultSpan = startTraceSpan({
         invocationId,
         parentSpanId: invocationSpan.spanId,
@@ -426,8 +461,8 @@ export const executeInvocation = async (
         kind: "result_normalization",
       });
       record.result = tool.definition.source === "external"
-        ? redactExternalMcpValue(response.result)
-        : response.result;
+        ? redactExternalMcpValue(safeNormalized.structuredContent)
+        : safeNormalized.structuredContent;
       await emit({
         type: "invocation:result",
         result: record.result,
@@ -458,7 +493,7 @@ export const executeInvocation = async (
     const safeMessage = tool.definition.source === "external"
       ? String(redactExternalMcpValue(message))
       : message;
-    if (error instanceof McpApprovalRequiredError) {
+    if (error instanceof ToolApprovalRequiredError) {
       record.status = "awaiting_approval";
       record.approval = {
         required: true,
@@ -533,7 +568,7 @@ const inferInvocationFailureCode = (input: {
   error: unknown;
   message: string;
   signal: AbortSignal;
-}): McpInvocationFailureCode => {
+}): ToolInvocationFailureCode => {
   if (input.signal.aborted) {
     return "cancelled";
   }

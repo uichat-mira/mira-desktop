@@ -39,32 +39,32 @@ const KNOWN_PRIVATE_RUNTIME_BINDINGS: Record<string, SkillAgentRuntimeBinding> =
   },
 };
 
-const LEGACY_OFFICE_EXECUTION: Record<string, SkillExecutionManifest> = {
+const OFFICE_EXECUTION_DEFAULTS: Record<string, SkillExecutionManifest> = {
   docx: {
     context: "fork",
     agent: "subAgent",
-    allowedTools: ["read_open", "read_extract"],
+    allowedTools: ["read"],
     runtimeBindings: ["office_document"],
     workspaceBound: true,
   },
   pdf: {
     context: "fork",
     agent: "subAgent",
-    allowedTools: ["read_open", "read_extract"],
+    allowedTools: ["read"],
     runtimeBindings: ["office_pdf"],
     workspaceBound: true,
   },
   pptx: {
     context: "fork",
     agent: "subAgent",
-    allowedTools: ["read_open", "read_extract"],
+    allowedTools: ["read"],
     runtimeBindings: ["office_presentation"],
     workspaceBound: true,
   },
   xlsx: {
     context: "fork",
     agent: "subAgent",
-    allowedTools: ["read_open", "read_extract"],
+    allowedTools: ["read"],
     runtimeBindings: ["office_spreadsheet", "wenshu_xlsx_xml_runtime"],
     workspaceBound: true,
   },
@@ -108,7 +108,7 @@ const resolveExecution = (input: {
   skillId: string;
   declared?: SkillExecutionManifest;
 }) => {
-  const compatibility = LEGACY_OFFICE_EXECUTION[input.skillId];
+  const compatibility = OFFICE_EXECUTION_DEFAULTS[input.skillId];
   if (!input.declared) {
     return cloneExecution(compatibility ?? DEFAULT_EXECUTION);
   }
@@ -117,9 +117,8 @@ const resolveExecution = (input: {
   }
 
   // Office package discovery can derive the private runtime from the built-in
-  // Registry, while the historic read-only Harness surface is intentionally not
-  // duplicated there. Merge the minimum compatibility requirements so moving
-  // from a hard-coded profile to a discovered manifest cannot reduce capability.
+  // Registry. Merge the minimum canonical Read + private-runtime requirements so
+  // moving from a built-in default to a discovered manifest cannot reduce capability.
   return cloneExecution({
     ...input.declared,
     allowedTools: unique([
@@ -171,10 +170,10 @@ export const listSubAgentExecutionProfiles = (
 
 // Temporary compatibility aliases for existing smoke/tests. These names no
 // longer define the execution boundary and may be removed after migration.
-export type WenShuPiSkillId = keyof typeof LEGACY_OFFICE_EXECUTION;
+export type WenShuPiSkillId = keyof typeof OFFICE_EXECUTION_DEFAULTS;
 export const isWenShuPiSkillPilot = (skillId: string) =>
-  Boolean(LEGACY_OFFICE_EXECUTION[skillId]);
+  Boolean(OFFICE_EXECUTION_DEFAULTS[skillId]);
 export const listWenShuPiSkillProfiles = () =>
-  Object.keys(LEGACY_OFFICE_EXECUTION).map((skillId) =>
+  Object.keys(OFFICE_EXECUTION_DEFAULTS).map((skillId) =>
     resolveSubAgentExecutionProfile(skillId),
   );

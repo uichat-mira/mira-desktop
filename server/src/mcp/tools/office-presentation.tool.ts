@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { resolveWorkspacePath, resolveWorkspaceWritePath } from "../workspace.js";
 import { executePresentationSkillRuntime } from "@/microapps/office-suite/skill-runtime.js";
@@ -144,7 +144,7 @@ const nativePptdSpecSchema = () => ({
   },
 });
 
-export const officePresentationTool: McpToolImplementation = {
+export const officePresentationTool: ToolImplementation = {
   definition: {
     id: "office_presentation",
     title: "Office Presentation",
@@ -188,13 +188,8 @@ export const officePresentationTool: McpToolImplementation = {
       const spec = preparePresentationSpec(requireSpec(context.args.spec));
       const validation = await executePresentationSkillRuntime({ operation: "validate", spec });
       return {
-        result: { operation, validation },
-        evidence: {
-          status: "completed",
-          actionTaken: "Validated native Kimi PPTD project",
-          facts: [`Validation: ${summarize(validation)}`],
-          data: { kind: "office_presentation", operation, validation },
-        },
+        structuredContent: { operation, validation },
+
       };
     }
 
@@ -207,13 +202,8 @@ export const officePresentationTool: McpToolImplementation = {
       }
       const inspection = await executePresentationSkillRuntime({ operation: "inspect", inputPath: resolvedInput });
       return {
-        result: { operation, inputPath, inspection },
-        evidence: {
-          status: "completed",
-          actionTaken: `Inspected presentation ${inputPath}`,
-          facts: [`Source: ${inputPath}`, `Inspection: ${summarize(inspection)}`],
-          data: { kind: "office_presentation", operation, inputPath, inspection },
-        },
+        structuredContent: { operation, inputPath, inspection },
+
       };
     }
 
@@ -266,18 +256,8 @@ export const officePresentationTool: McpToolImplementation = {
       }
 
       return {
-        result: { operation, count: outputs.length, outputs },
-        evidence: {
-          status: "completed",
-          actionTaken: `Created ${outputs.length} presentations`,
-          facts: outputs.map((item) => `Output: ${item.outputPath}`),
-          data: {
-            kind: "office_presentation",
-            operation,
-            count: outputs.length,
-            outputPaths: outputs.map((item) => item.outputPath),
-          },
-        },
+        structuredContent: { operation, count: outputs.length, outputs },
+
       };
     }
 
@@ -298,18 +278,8 @@ export const officePresentationTool: McpToolImplementation = {
       },
     });
     return {
-      result: { operation, ...result },
-      evidence: {
-        status: "completed",
-        actionTaken: `Created presentation at ${outputPath}`,
-        facts: [`Output: ${outputPath}`, `Validation: ${summarize(result.validation)}`],
-        data: {
-          kind: "office_presentation",
-          operation,
-          outputPath,
-          validation: result.validation,
-        },
-      },
+      structuredContent: { operation, ...result },
+
     };
   },
 };

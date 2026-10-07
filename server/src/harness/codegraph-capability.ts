@@ -12,8 +12,8 @@ import {
   isRealCodeGraphCommand,
 } from "@/mcp/managed-codegraph/repo-local-process-manager.js";
 import {
-  getCapabilityImplementation,
-  registerCapability,
+  getToolImplementation,
+  registerTool,
 } from "./registry.js";
 
 let lastRuntimeConfigFingerprint: string | null = null;
@@ -40,8 +40,8 @@ export const reconcileCodeGraphHarnessCapability = () => {
   // Keep the public read contract stable: codebase_explore is always registered.
   // Runtime/provider availability is reported by the tool result itself and can
   // degrade to its controlled fallback signal without changing the tool surface.
-  if (!getCapabilityImplementation("codebase_explore")) {
-    registerCapability(codebaseExploreTool);
+  if (!getToolImplementation("codebase_explore")) {
+    registerTool(codebaseExploreTool);
   }
 
   const service = getActiveCodeGraphStudioService();

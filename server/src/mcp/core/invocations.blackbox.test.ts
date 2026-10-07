@@ -6,9 +6,9 @@ import {
   getHarnessInvocationTrace,
   listHarnessInvocationEvents,
 } from "../../harness/invocations.js";
-import { clearHarnessRegistry, registerCapability } from "../../harness/registry.js";
+import { clearHarnessRegistry, registerTool } from "../../harness/registry.js";
 import { createHarnessEnvironmentSnapshot } from "../../harness/environment.js";
-import type { McpToolImplementation } from "./definitions.js";
+import type { ToolImplementation } from "./definitions.js";
 import { configureInvocationRetention } from "./invocations.js";
 
 const createBoundaryEnvironment = (workspaceRoot = "D:\\CODEX_TEST_FOLDER_ALT") =>
@@ -19,8 +19,8 @@ const createBoundaryEnvironment = (workspaceRoot = "D:\\CODEX_TEST_FOLDER_ALT") 
     },
   });
 
-const registerBlackboxTool = (tool: McpToolImplementation) => {
-  registerCapability(tool);
+const registerBlackboxTool = (tool: ToolImplementation) => {
+  registerTool(tool);
   return tool;
 };
 
@@ -36,7 +36,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H1 blocks unapproved high-risk tools before execute", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -73,7 +73,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H2 executes only after exact toolId + inputHash approval", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -118,7 +118,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H3 does not reuse approval when the args hash changes", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -175,7 +175,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H4 uses workspaceBoundary.argKeys as the only workspace boundary source", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -226,7 +226,7 @@ describe("harness invocation boundary blackbox", () => {
 
   it("H5 keeps POSIX absolute slash paths visible to the workspace boundary", async () => {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -293,7 +293,7 @@ describe("harness invocation boundary blackbox", () => {
 
   async function assertExternalPathIsBlocked(targetPath: string) {
     const execute = vi.fn(() => ({
-      result: { ok: true },
+      structuredContent: { ok: true },
     }));
 
     registerBlackboxTool({
@@ -371,7 +371,7 @@ describe("harness invocation boundary blackbox", () => {
         });
         span.end();
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     });
@@ -422,7 +422,7 @@ describe("harness invocation boundary blackbox", () => {
       },
       execute() {
         return {
-          result: { ok: true },
+          structuredContent: { ok: true },
         };
       },
     });

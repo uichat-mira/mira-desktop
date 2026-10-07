@@ -1,11 +1,11 @@
-import type { McpSandboxProfile } from "../../mcp/core/definitions.js";
+import type { SandboxProfile } from "../../mcp/core/definitions.js";
 import { resolveHarnessActionProfiles } from "../action-profiles.js";
 import { resolveHarnessCapabilityProfiles } from "../profiles/index.js";
 import { resolveHarnessToolCandidatesForTurn } from "../candidates-core/index.js";
 import { resolveHarnessToolExposure } from "../exposure-core/index.js";
 import type { ToolIntentCandidate } from "@/agent/intent/types.js";
 import type { HarnessTurnSource } from "../shared/types.js";
-import { listCapabilityDefinitions } from "../registry.js";
+import { listToolDefinitions } from "../registry.js";
 import { resolveAgentEligibleExternalMcpCapabilities } from "@/mcp/external";
 
 export interface HarnessCapabilityDiagnosticsInput {
@@ -17,7 +17,7 @@ export interface HarnessCapabilityDiagnosticsInput {
   selectedMinScore?: number;
   allowExternal?: boolean;
   allowedExternalToolIds?: string[];
-  sandboxProfiles?: Partial<Record<McpSandboxProfile, boolean>>;
+  sandboxProfiles?: Partial<Record<SandboxProfile, boolean>>;
 }
 
 export interface HarnessCapabilityDiagnosticsResult {
@@ -72,7 +72,7 @@ export interface HarnessCapabilityDiagnosticsResult {
   };
   profiles: Array<{
     capabilityId: string;
-    preferredToolId: string;
+    preferredToolId?: string;
     supportingToolIds: string[];
     actionProfileId?: string;
     actionProfileTitle?: string;
@@ -117,7 +117,7 @@ export const resolveHarnessCapabilityDiagnostics = async (
   );
   const eligibleExternalCapabilityIds = resolveAgentEligibleExternalMcpCapabilities().map((item) => item.id);
   const eligibleSet = new Set(input.allowedExternalToolIds ?? eligibleExternalCapabilityIds);
-  const registeredExternal = listCapabilityDefinitions().filter((item) => item.source === "external");
+  const registeredExternal = listToolDefinitions().filter((item) => item.source === "external");
   const exposureDecision = resolveHarnessToolExposure({
     source,
     query: input.query,
@@ -216,7 +216,7 @@ export const resolveHarnessCapabilityDiagnostics = async (
       : {}),
     profiles: profiles.map((profile) => ({
       capabilityId: profile.id,
-      preferredToolId: profile.preferredToolId,
+      ...(profile.preferredToolId ? { preferredToolId: profile.preferredToolId } : {}),
       supportingToolIds: profile.supportingToolIds,
       ...(profile.actionProfileId
         ? {

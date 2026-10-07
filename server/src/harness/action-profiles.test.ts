@@ -5,10 +5,10 @@ import {
 } from "./action-profiles.js";
 
 describe("resolveHarnessActionProfiles", () => {
-  it("returns terminal and edit action profiles when the backing runtime tools exist", () => {
+  it("returns only independently justified action profiles", () => {
     const profiles = resolveHarnessActionProfiles([
       {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "terminal",
         domain: "terminal",
@@ -22,8 +22,22 @@ describe("resolveHarnessActionProfiles", () => {
         },
       },
       {
-        id: "edit_file",
-        title: "Edit File",
+        id: "write",
+        title: "Write",
+        description: "write",
+        domain: "edit",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {},
+        tags: ["edit", "write"],
+        capabilities: {
+          sideEffect: "local-write",
+          requiresApproval: true,
+        },
+      },
+      {
+        id: "edit",
+        title: "Edit",
         description: "edit",
         domain: "edit",
         source: "internal",
@@ -39,23 +53,16 @@ describe("resolveHarnessActionProfiles", () => {
 
     expect(profiles.map((profile) => profile.id)).toEqual([
       "terminal_execute_command",
-      "edit_create_file",
-      "edit_overwrite_file",
-      "edit_replace_block",
     ]);
     expect(profiles[0]).toMatchObject({
       id: "terminal_execute_command",
-      runtimeToolId: "terminal_session",
-    });
-    expect(profiles[1]).toMatchObject({
-      id: "edit_create_file",
-      runtimeToolId: "edit_file",
+      runtimeToolId: "terminal",
     });
   });
 });
 
 describe("resolveActionProfileInvocation", () => {
-  it("maps terminal_execute_command to terminal_session", () => {
+  it("maps terminal_execute_command to terminal", () => {
     expect(
       resolveActionProfileInvocation({
         actionProfileId: "terminal_execute_command",
@@ -66,7 +73,7 @@ describe("resolveActionProfileInvocation", () => {
         },
       }),
     ).toEqual({
-      toolId: "terminal_session",
+      toolId: "terminal",
       args: {
         command: "pwd",
         cwd: "server",
@@ -75,59 +82,12 @@ describe("resolveActionProfileInvocation", () => {
     });
   });
 
-  it("maps edit action profiles to edit_file with normalized runtime args", () => {
-    expect(
+  it("does not retain obsolete edit action aliases", () => {
+    expect(() =>
       resolveActionProfileInvocation({
         actionProfileId: "edit_create_file",
-        args: {
-          path: "notes/todo.txt",
-        },
+        args: { path: "notes/todo.txt" },
       }),
-    ).toEqual({
-      toolId: "edit_file",
-      args: {
-        operation: "write_file",
-        path: "notes/todo.txt",
-        content: "",
-      },
-    });
-
-    expect(
-      resolveActionProfileInvocation({
-        actionProfileId: "edit_overwrite_file",
-        args: {
-          path: "notes/todo.txt",
-          content: "next",
-          dryRun: true,
-        },
-      }),
-    ).toEqual({
-      toolId: "edit_file",
-      args: {
-        operation: "write_file",
-        path: "notes/todo.txt",
-        content: "next",
-        dryRun: true,
-      },
-    });
-
-    expect(
-      resolveActionProfileInvocation({
-        actionProfileId: "edit_replace_block",
-        args: {
-          path: "notes/todo.txt",
-          expectedOldText: "old",
-          newText: "new",
-        },
-      }),
-    ).toEqual({
-      toolId: "edit_file",
-      args: {
-        operation: "replace_block",
-        path: "notes/todo.txt",
-        expectedOldText: "old",
-        newText: "new",
-      },
-    });
+    ).toThrow(/Unknown action profile/);
   });
 });

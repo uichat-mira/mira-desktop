@@ -17,6 +17,8 @@ export { default as ExpandableSection } from "./ExpandableSection";
 export { FileIcon } from "./FileIcon";
 export { default as FileListItem } from "./FileListItem";
 export { FileUploadDropzone } from "./FileUploadDropzone";
+export { default as GithubIcon } from "./GithubIcon";
+export { default as NotionIcon } from "./NotionIcon";
 export { FullPageStatus } from "./FullPageStatus";
 export { default as ImagePreviewOverlay } from "./ImagePreviewOverlay";
 export { default as MarkdownEditor } from "./MarkdownEditor";

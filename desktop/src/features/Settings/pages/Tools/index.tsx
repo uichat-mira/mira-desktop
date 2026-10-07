@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { Button } from "@/shared/ui/Button";
 import { Modal } from "@/shared/ui/Modal";
 import { NumberInput, TextArea, TextInput } from "@/shared/ui/Input";
@@ -9,10 +10,42 @@ import ToolsSidebar from "./components/ToolsSidebar";
 import ToolsTracePanel from "./components/ToolsTracePanel";
 import ToolsWorkbenchPanel from "./components/ToolsWorkbenchPanel";
 import { useToolsWorkbench } from "./hooks/useToolsWorkbench";
+import type { ToolWorkbenchHandoff } from "./types";
+
+const getToolWorkbenchHandoff = (state: unknown): ToolWorkbenchHandoff | null => {
+  if (!state || typeof state !== "object" || Array.isArray(state)) {
+    return null;
+  }
+
+  const value = (state as { capabilitiesHandoff?: unknown }).capabilitiesHandoff;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const handoff = value as Record<string, unknown>;
+  if (
+    typeof handoff.toolId !== "string" ||
+    !handoff.args ||
+    typeof handoff.args !== "object" ||
+    Array.isArray(handoff.args)
+  ) {
+    return null;
+  }
+
+  return {
+    toolId: handoff.toolId,
+    args: handoff.args as Record<string, unknown>,
+  };
+};
 
 export default function ToolsSettings() {
   const { t } = useTranslation();
-  const workbench = useToolsWorkbench();
+  const location = useLocation();
+  const capabilitiesHandoff = useMemo(
+    () => getToolWorkbenchHandoff(location.state),
+    [location.state],
+  );
+  const workbench = useToolsWorkbench(capabilitiesHandoff, location.key);
   const [isArgsModalOpen, setIsArgsModalOpen] = useState(false);
 
   return (
@@ -57,6 +90,8 @@ export default function ToolsSettings() {
             terminalSummary={workbench.terminalSummary}
             runStatus={workbench.runStatus}
             isRunning={workbench.isRunning}
+            pendingApproval={Boolean(workbench.pendingApproval)}
+            activeCase={workbench.activeCase}
             tracePanel={
               <ToolsTracePanel
                 activeToolId={workbench.selectedTool?.id ?? null}
@@ -73,6 +108,12 @@ export default function ToolsSettings() {
             onSelectTool={workbench.selectTool}
             onOpenArgsModal={() => setIsArgsModalOpen(true)}
             onRun={() => void workbench.runSelectedTool()}
+            onSelectCase={workbench.selectCase}
+            onApprove={() => void workbench.resolvePendingApproval("approved")}
+            onReject={() => void workbench.resolvePendingApproval("rejected")}
+            onTerminalContinue={() => void workbench.runTerminalContinuation()}
+            onTerminalStatus={() => void workbench.runTerminalStatus()}
+            onTerminalStop={() => void workbench.runTerminalStop()}
             labels={{
               empty: t("settings.tools.package.empty"),
               config: t("settings.tools.package.config"),
@@ -89,6 +130,16 @@ export default function ToolsSettings() {
               terminalSession: (sessionId) =>
                 t("settings.tools.package.terminalSession", { sessionId }),
               terminalCwd: (cwd) => t("settings.tools.package.terminalCwd", { cwd }),
+              terminalState: (state) =>
+                t("settings.tools.package.terminalState", { state }),
+              acceptanceCases: t("settings.tools.package.acceptanceCases"),
+      caseFixtureHint: (fixture: string) =>
+        t("settings.tools.package.caseFixtureHint", { fixture }),
+              approve: t("settings.tools.package.approve"),
+              reject: t("settings.tools.package.reject"),
+              continueOutput: t("settings.tools.package.continueOutput"),
+              inspectStatus: t("settings.tools.package.inspectStatus"),
+              stop: t("settings.tools.package.stop"),
             }}
           />
         </div>

@@ -75,7 +75,7 @@ describe("news search tool", () => {
       maxResults: 5,
     });
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(result.result).toMatchObject({
+    expect(result.structuredContent).toMatchObject({
       query: "AI 新闻",
       provider: "local_news_hub",
       capabilityId: "local-news-hub",

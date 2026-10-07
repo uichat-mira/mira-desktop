@@ -5,7 +5,7 @@ import type {
   OfficeRuntimeWordCreateParagraph,
   OfficeRuntimeWordCreateTable,
 } from "@/microapps/office-suite/contract.js";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import {
   ensureParentDir,
@@ -97,7 +97,7 @@ const defaultReviewOutputPath = (inputPath: string) => {
   return `${base}-wenshu.docx`;
 };
 
-export const officeDocumentTool: McpToolImplementation = {
+export const officeDocumentTool: ToolImplementation = {
   definition: {
     id: "office_document",
     title: "Office Document",
@@ -229,25 +229,14 @@ export const officeDocumentTool: McpToolImplementation = {
         },
       });
       return {
-        result: {
+        structuredContent: {
           operation: "create",
           outputPath,
           byteSize: artifact.byteSize,
           summary: result.summary,
           warnings: result.warnings,
         },
-        evidence: {
-          status: "completed",
-          actionTaken: `Created Word document at ${outputPath}`,
-          facts: [result.summary, `Output: ${outputPath}`, `Bytes: ${artifact.byteSize}`],
-          gaps: result.warnings,
-          data: {
-            kind: "office_document",
-            operation: "create",
-            outputPath,
-            byteSize: artifact.byteSize,
-          },
-        },
+
       };
     }
 
@@ -324,7 +313,7 @@ export const officeDocumentTool: McpToolImplementation = {
       },
     });
     return {
-      result: {
+      structuredContent: {
         operation: "review",
         inputPath,
         outputPath,
@@ -332,24 +321,7 @@ export const officeDocumentTool: McpToolImplementation = {
         summary: runtimeResult.summary,
         warnings: runtimeResult.warnings,
       },
-      evidence: {
-        status: "completed",
-        actionTaken: `Reviewed Word document ${inputPath} and wrote ${outputPath}`,
-        facts: [
-          runtimeResult.summary,
-          `Source: ${inputPath}`,
-          `Output: ${outputPath}`,
-          `Bytes: ${artifact.byteSize}`,
-        ],
-        gaps: runtimeResult.warnings,
-        data: {
-          kind: "office_document",
-          operation: "review",
-          inputPath,
-          outputPath,
-          byteSize: artifact.byteSize,
-        },
-      },
+
     };
   },
 };

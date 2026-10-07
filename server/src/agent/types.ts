@@ -3,7 +3,7 @@ import type { NormalizedChatMessage } from "@/services/provider-proxy.message-pr
 import type { RetrievedChunk } from "@/services/rag-nodes";
 import type { ContextBudgetAudit } from "@/services/context-budget/index";
 import type { SandboxOutputEncoding } from "@/harness/sandbox/contract";
-import type { McpInvocationFailureCode, McpToolDefinition, McpToolEvidence } from "@/mcp/core/definitions";
+import type { ToolInvocationFailureCode, ToolDefinition, ToolEvidence } from "@/mcp/core/definitions";
 import type { ConversationArtifactReference } from "@/services/conversation-artifact.service";
 import type {
   AgentIntentEmbeddingConfig,
@@ -58,11 +58,11 @@ export interface AgentToolMeta {
   toolId: string;
   title: string;
   description: string;
-  inputSchema?: McpToolDefinition["inputSchema"];
-  domain?: McpToolDefinition["domain"];
-  source?: McpToolDefinition["source"];
+  inputSchema?: ToolDefinition["inputSchema"];
+  domain?: ToolDefinition["domain"];
+  source?: ToolDefinition["source"];
   tags?: string[];
-  capabilities?: McpToolDefinition["capabilities"];
+  capabilities?: ToolDefinition["capabilities"];
 }
 
 export interface PendingToolCall {
@@ -119,10 +119,10 @@ export interface AgentToolExecutionResult {
   invocationId?: string;
   status: "completed" | "failed" | "awaiting_approval" | "denied";
   failureKind?: "recoverable" | "terminal";
-  failureCode?: McpInvocationFailureCode;
+  failureCode?: ToolInvocationFailureCode;
   recoveryAttemptCount?: number;
   result?: unknown;
-  evidence?: McpToolEvidence;
+  evidence?: ToolEvidence;
   errorMessage?: string;
   approval?: AgentApprovalRequest;
   summary?: AgentEvidenceSummary;
@@ -174,59 +174,89 @@ export interface AgentFinalizationPacket {
 }
 
 export interface AgentReadListEvidenceData {
-  kind: "read_list";
+  kind: "list";
   path: string;
   entryCount: number;
   fileCount: number;
   directoryCount: number;
+  symlinkCount?: number;
   entriesPreview: string[];
+  offset?: number;
+  nextOffset?: number;
   truncated: boolean;
 }
 
-export interface AgentReadDiscoverEvidenceData {
-  kind: "read_discover";
-  mode: "list" | "locate";
-  operation: "list" | "locate";
-  path?: string;
-  root?: string;
-  query?: string;
-  candidateCount: number;
-  candidatePaths: string[];
-  returnedCount: number;
-  totalCount?: number;
-  hasMore: boolean;
-  truncated: boolean;
-}
-
-export interface AgentReadOpenEvidenceData {
-  kind: "read_open";
+export interface AgentReadEvidenceData {
+  kind: "read";
   path: string;
   contentPreview: string;
   contentLength: number;
   truncated: boolean;
+  mediaType?: "text" | "image";
+  mimeType?: string;
+  sizeBytes?: number;
   keySections?: string[];
+  pagination?: {
+    offset: number;
+    limit?: number;
+    returnedCount?: number;
+    totalLines?: number;
+    startLine?: number;
+    endLine?: number;
+    nextOffset?: number;
+  };
 }
 
-export interface AgentReadLocateEvidenceData {
-  kind: "read_locate";
-  scope: string;
-  query: string;
-  searchMode: "auto" | "path" | "content";
+export interface AgentGlobEvidenceData {
+  kind: "glob";
+  pattern: string;
+  path: string;
   matchCount: number;
   matchedPaths: string[];
   matchesPreview: string[];
+  offset?: number;
+  nextOffset?: number;
   truncated: boolean;
 }
 
-export interface AgentWebSearchEvidenceData {
+export interface AgentGrepEvidenceData {
+  kind: "grep";
+  pattern: string;
+  path: string;
+  matchCount: number;
+  matchedPaths: string[];
+  matchesPreview: string[];
+  provider: string;
+  offset?: number;
+  nextOffset?: number;
+  truncated: boolean;
+}
+
+export type AgentWebSearchEvidenceData = {
   kind: "web_search";
-  query: string;
   resultCount: number;
   topFindings: string[];
   citationsPreview: Array<{
     title: string;
     link: string;
   }>;
+} & (
+  | { queries: string[]; query?: never }
+  | { query: string; queries?: never }
+);
+
+export interface AgentWebFetchEvidenceData {
+  kind: "web_fetch";
+  url: string;
+  finalUrl: string;
+  status: number;
+  contentType?: string;
+  contentKind: string;
+  title?: string;
+  byteLength: number;
+  truncated: boolean;
+  reason?: string;
+  contentPreview: string;
 }
 
 export type AgentEvidenceResolution =
@@ -250,6 +280,17 @@ export interface AgentTerminalSessionEvidenceData {
   violations: string[];
   outputInterpretable: boolean;
   unreadableReason?: string;
+  continuationId?: string;
+  continuationAvailable?: boolean;
+  outputOffset?: number;
+  outputEndOffset?: number;
+  nextOutputOffset?: number;
+  outputBytesAvailable?: number;
+  outputLimitBytes?: number;
+  commandCompleted?: boolean;
+  state?: "running" | "completed" | "failed" | "cancelled";
+  cleanupCompleted?: boolean;
+  operation?: "status" | "stop";
 }
 
 export interface AgentRetrievalEvidenceData {
@@ -265,6 +306,8 @@ export interface AgentObservationEvidenceData {
   factsPreview: string[];
 }
 
+// Historical persisted-run compatibility only. No executable
+// workspace_mutation tool remains registered after #235.
 export interface AgentWorkspaceMutationEvidenceData {
   kind: "workspace_mutation";
   operation: "create" | "overwrite" | "replace" | "delete" | "move" | "unknown";
@@ -280,6 +323,40 @@ export interface AgentWorkspaceMutationEvidenceData {
   actionProfileId?: string;
 }
 
+export interface AgentFileMutationEvidenceData {
+  kind: "file_mutation";
+  operation: "write" | "edit" | "move" | "delete";
+  targetPath: string;
+  destinationPath?: string;
+  changed: boolean;
+  artifactId?: string;
+  created?: boolean;
+  overwritten?: boolean;
+  editsApplied?: number;
+  tolerantEdits?: number;
+  movedType?: "file" | "directory";
+  deletedType?: "file" | "directory";
+  recursive?: boolean;
+  bytesBefore?: number;
+  bytesAfter?: number;
+  diffAvailable?: boolean;
+  diffPreview?: string;
+  diffTruncated?: boolean;
+  diffUnavailableReason?: string;
+}
+
+export interface AgentApplyPatchEvidenceData {
+  kind: "file_mutation_patch";
+  status: "completed" | "partial" | "failed";
+  changed: boolean | "unknown";
+  hunkCount: number;
+  committedMutationCount: number;
+  unappliedHunkCount: number;
+  committedDeltaExact: boolean;
+  artifactId?: string;
+  failed?: Record<string, unknown>;
+}
+
 export interface AgentExternalMcpEvidenceData {
   kind: "external_mcp";
   serverId: string;
@@ -289,6 +366,8 @@ export interface AgentExternalMcpEvidenceData {
   resultPreview?: string;
 }
 
+// Historical persisted-run compatibility only. No executable
+// edit_file tool remains registered after #235.
 export interface AgentEditFileEvidenceData {
   kind: "edit_file";
   operation: "create" | "overwrite" | "replace" | "delete" | "move" | "unknown";
@@ -304,15 +383,18 @@ export interface AgentEditFileEvidenceData {
 
 export type AgentEvidenceSummaryData =
   | AgentGenericStructuredEvidenceData
-  | AgentReadDiscoverEvidenceData
   | AgentReadListEvidenceData
-  | AgentReadOpenEvidenceData
-  | AgentReadLocateEvidenceData
+  | AgentReadEvidenceData
+  | AgentGlobEvidenceData
+  | AgentGrepEvidenceData
   | AgentWebSearchEvidenceData
+  | AgentWebFetchEvidenceData
   | AgentTerminalSessionEvidenceData
   | AgentRetrievalEvidenceData
   | AgentObservationEvidenceData
   | AgentExternalMcpEvidenceData
+  | AgentFileMutationEvidenceData
+  | AgentApplyPatchEvidenceData
   | AgentWorkspaceMutationEvidenceData
   | AgentEditFileEvidenceData;
 

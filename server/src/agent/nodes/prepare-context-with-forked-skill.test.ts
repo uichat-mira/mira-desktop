@@ -82,18 +82,16 @@ describe("prepareContextWithForkedSkillAgentNode", () => {
     mocks.basePrepare.mockResolvedValue({
       toolExposure: {
         exposedTools: [
-          "read_open",
-          "read_extract",
-          "terminal_session",
+          "read",
+          "terminal",
           "codebase_explore",
-          "edit_file",
+          "edit",
         ],
         toolMeta: [
-          { toolId: "read_open", title: "Read Open", description: "read" },
-          { toolId: "read_extract", title: "Read Extract", description: "read" },
-          { toolId: "terminal_session", title: "Terminal", description: "run" },
+          { toolId: "read", title: "Read", description: "read" },
+          { toolId: "terminal", title: "Terminal", description: "run" },
           { toolId: "codebase_explore", title: "Explore", description: "explore" },
-          { toolId: "edit_file", title: "Edit", description: "edit" },
+          { toolId: "edit", title: "Edit", description: "edit" },
         ],
       },
     });
@@ -103,10 +101,9 @@ describe("prepareContextWithForkedSkillAgentNode", () => {
 
     const result = await prepareContextWithForkedSkillAgentNode(state);
 
-    expect(result.toolExposure?.exposedTools).toEqual(["read_open", "read_extract"]);
+    expect(result.toolExposure?.exposedTools).toEqual(["read"]);
     expect(result.toolExposure?.toolMeta.map((tool) => tool.toolId)).toEqual([
-      "read_open",
-      "read_extract",
+      "read",
     ]);
   });
 

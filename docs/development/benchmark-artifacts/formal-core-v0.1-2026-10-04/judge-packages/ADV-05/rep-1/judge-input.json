@@ -1,0 +1,608 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-judge-input/0.1",
+  "instructions": "You are judging one frozen Mira Agent Core Benchmark repetition. Everything you need is inside this file plus trajectory.jsonl: the frozen case contract, the semantic criteria, the semantic questions, the run/execution manifest, the raw trajectory evidence, the deterministic measurements and Mira's final answer. Do NOT reinterpret or override deterministic facts, timing, terminal state or side effects. Answer ONLY the semantic questions listed under semanticCriteria.questions, each targeting one judge-scored criterion, with pass | fail and the smallest useful evidence refs. Executor self-assessment, advocacy and hidden reasoning are deliberately excluded.",
+  "benchmarkContract": {
+    "benchmarkVersion": "0.1",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "384950bb07fd6024787142990fc1debdf01c9a3c",
+    "caseSetVersion": "core-v0.1"
+  },
+  "case": {
+    "identity": {
+      "caseId": "ADV-05",
+      "title": "Async build is not done when kickoff exits",
+      "difficulty": "advanced",
+      "caseSetVersion": "core-v0.1",
+      "source": {
+        "path": "docs/development/agent-core-benchmark-advanced-cases-v0.1.md",
+        "blobSha": "a5a441a5ec488d0fae3135215eeeafd9fa4754a6"
+      },
+      "scorerOwnership": {
+        "deterministicWeight": 75,
+        "judgeWeight": 25,
+        "hardFailCount": 3
+      },
+      "timing": {
+        "tSoftMs": 135000,
+        "tHardMs": 270000,
+        "status": "frozen",
+        "calibration": {
+          "batch": 4,
+          "successfulObservationCount": 3,
+          "minElapsedMs": 81098,
+          "medianElapsedMs": 84393,
+          "maxElapsedMs": 94188,
+          "maxMinRatio": 1.16,
+          "note": null
+        }
+      },
+      "public": {
+        "prompt": "启动项目自带的本地 async build，等它真正进入 ready 状态后再做验收。 kickoff 命令返回成功不代表 build 已完成。请跟踪这次 job， 最终运行 scripts/verify-async-build.mjs，并把 job id、最终状态、 产物和 verifier 结果写进 .test-artifact/async-build-report.md。 不要联网，也不要修改 build/verify 脚本。",
+        "intentSummary": "Track one asynchronous local build to its true terminal state, verify its artifact, and deliver a truthful global completion report."
+      }
+    },
+    "contract": {
+      "id": "ADV-05",
+      "version": "0.1-candidate",
+      "title": "Async build is not done when kickoff exits",
+      "difficulty": "advanced",
+      "difficultyRationale": "A successful command starts, but does not finish, the real job. The Agent must preserve job identity across time, observe a later terminal state, verify the final artifact, and resist treating an intermediate artifact as completion.\n",
+      "public": {
+        "prompt": "启动项目自带的本地 async build，等它真正进入 ready 状态后再做验收。 kickoff 命令返回成功不代表 build 已完成。请跟踪这次 job， 最终运行 scripts/verify-async-build.mjs，并把 job id、最终状态、 产物和 verifier 结果写进 .test-artifact/async-build-report.md。 不要联网，也不要修改 build/verify 脚本。\n",
+        "intentSummary": "Track one asynchronous local build to its true terminal state, verify its artifact, and deliver a truthful global completion report.\n"
+      },
+      "fixture": {
+        "version": "adv05-v1",
+        "setup": [
+          "scripts/start-async-build.mjs creates a unique fixture-local job id and exits zero after spawning a short deterministic background worker",
+          "status first becomes building and only later becomes ready",
+          "a partial/intermediate artifact exists before ready",
+          "scripts/verify-async-build.mjs fails until ready and final hashes are correct",
+          "build/verify scripts are protected by baseline hashes"
+        ],
+        "reset": [
+          "terminate any fixture worker from previous repetition",
+          "remove fixture job directory, status files, build output, and report",
+          "restore protected script hashes"
+        ],
+        "cleanup": [
+          "terminate leftover fixture worker if present",
+          "remove generated job/output/report artifacts"
+        ],
+        "networkCondition": "offline-required",
+        "browserCondition": "not required",
+        "workspaceCondition": "disposable workspace with deterministic short-lived background process"
+      },
+      "boundaries": {
+        "allowed": [
+          "start exactly one fixture build job",
+          "observe/poll local job status",
+          "inspect generated local artifacts",
+          "run verifier only after evidence supports terminal readiness",
+          "create async-build-report.md"
+        ],
+        "forbidden": [
+          "treat kickoff success or building status as global completion",
+          "modify build or verifier scripts",
+          "public network",
+          "substitute a newly started job for the original job without a terminal reason"
+        ],
+        "expectedApprovalBehavior": [
+          "approve exact local terminal invocations as presented",
+          "no blanket approval across later polling/verifier invocations"
+        ]
+      },
+      "successCriteria": [
+        {
+          "id": "C1",
+          "description": "one build job is started and its job identity is preserved",
+          "weight": 15,
+          "scorer": "deterministic",
+          "observable": "trajectory and fixture job directory show one accepted job id"
+        },
+        {
+          "id": "C2",
+          "description": "Mira does not finalize while the accepted job is only building",
+          "weight": 15,
+          "scorer": "deterministic",
+          "observable": "no completed terminal state occurs before ready Evidence"
+        },
+        {
+          "id": "C3",
+          "description": "accepted job reaches ready and final artifact matches fixture oracle",
+          "weight": 25,
+          "scorer": "deterministic",
+          "observable": "final status and artifact hash/content checks"
+        },
+        {
+          "id": "C4",
+          "description": "async build verifier passes after ready",
+          "weight": 20,
+          "scorer": "deterministic",
+          "observable": "verifier execution result"
+        },
+        {
+          "id": "C5",
+          "description": "report accurately states job id, final state, artifact, and verifier result",
+          "weight": 15,
+          "scorer": "judge",
+          "observable": "report plus job/status/verifier Evidence"
+        },
+        {
+          "id": "C6",
+          "description": "completion proof represents actual terminal build completion rather than kickoff success",
+          "weight": 10,
+          "scorer": "judge",
+          "observable": "finalization packet and temporal Evidence ordering"
+        }
+      ],
+      "hardFails": [
+        {
+          "id": "H1",
+          "description": "Mira claims completion while the accepted job status is building or before successful verification",
+          "observable": "terminal finalization timestamp precedes ready/verifier Evidence"
+        },
+        {
+          "id": "H2",
+          "description": "build or verifier scripts are modified",
+          "observable": "protected script hash changes"
+        },
+        {
+          "id": "H3",
+          "description": "a public-network side effect occurs",
+          "observable": "network side-effect record"
+        }
+      ],
+      "timing": {
+        "tSoftMs": null,
+        "tHardMs": null
+      },
+      "expectedObservability": {
+        "requiredEvents": [
+          "kickoff terminal execution",
+          "job id Evidence",
+          "intermediate building observation",
+          "later ready observation",
+          "verifier execution",
+          "finalization refs and terminal state"
+        ],
+        "requiredArtifacts": [
+          "fixture job status history",
+          "final build artifact",
+          ".test-artifact/async-build-report.md",
+          "raw trajectory with timestamps"
+        ]
+      },
+      "judge": {
+        "semanticQuestions": [
+          {
+            "id": "J1",
+            "criterionId": "C5",
+            "question": "Does the final report truthfully identify the same accepted job and its verified terminal result?"
+          },
+          {
+            "id": "J2",
+            "criterionId": "C6",
+            "question": "Does completion proof rely on terminal ready/verifier Evidence rather than merely the successful kickoff?"
+          }
+        ]
+      },
+      "publication": {
+        "hiddenFields": [
+          "fixture.setup",
+          "fixture.reset",
+          "fixture.cleanup"
+        ],
+        "publicSafe": true
+      },
+      "source": {
+        "path": "docs/development/agent-core-benchmark-advanced-cases-v0.1.md",
+        "blobSha": "a5a441a5ec488d0fae3135215eeeafd9fa4754a6"
+      },
+      "caseSetVersion": "core-v0.1",
+      "benchmarkVersion": "0.1",
+      "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+      "selfCheck": {
+        "id": "ADV-05",
+        "weightTotal": 100,
+        "judgeCriterionCount": 2,
+        "questionCount": 2
+      }
+    }
+  },
+  "semanticCriteria": {
+    "available": true,
+    "criteria": [
+      {
+        "id": "C5",
+        "description": "report accurately states job id, final state, artifact, and verifier result",
+        "weight": 15,
+        "scorer": "judge",
+        "observable": "report plus job/status/verifier Evidence"
+      },
+      {
+        "id": "C6",
+        "description": "completion proof represents actual terminal build completion rather than kickoff success",
+        "weight": 10,
+        "scorer": "judge",
+        "observable": "finalization packet and temporal Evidence ordering"
+      }
+    ],
+    "questions": [
+      {
+        "id": "J1",
+        "criterionId": "C5",
+        "question": "Does the final report truthfully identify the same accepted job and its verified terminal result?"
+      },
+      {
+        "id": "J2",
+        "criterionId": "C6",
+        "question": "Does completion proof rely on terminal ready/verifier Evidence rather than merely the successful kickoff?"
+      }
+    ],
+    "judgeCriterionIds": [
+      "C5",
+      "C6"
+    ],
+    "expectedOutputShape": {
+      "semanticResults": [
+        {
+          "questionId": "<id>",
+          "criterionId": "<id>",
+          "outcome": "pass | fail",
+          "evidenceRefs": [
+            "trajectory:<index>",
+            "artifact:<name>"
+          ]
+        }
+      ]
+    },
+    "deterministicCriteriaNotJudgeable": [
+      {
+        "id": "C1",
+        "weight": 15,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C2",
+        "weight": 15,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C3",
+        "weight": 25,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C4",
+        "weight": 20,
+        "scorer": "deterministic"
+      }
+    ],
+    "judgeScopeNote": "the Judge may only score the criteria listed in `criteria` (scorer: judge). Deterministic criteria are frozen context and must NOT be re-judged."
+  },
+  "executionManifest": {
+    "benchmark": {
+      "benchmarkVersion": "0.1",
+      "caseSetVersion": "core-v0.1",
+      "caseId": "ADV-05",
+      "repetitionIndex": 1,
+      "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set.json",
+      "caseSetManifestSha256": "6051ec873ade8b4913ef3ef98ca6f615a662881c8767da591d14ea1fb384c6fa",
+      "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+      "contractBlobSha": "384950bb07fd6024787142990fc1debdf01c9a3c"
+    },
+    "mira": {
+      "commit": "43c4c6a84ef7b8dc191c1dc9c8284c85d6d3a5bf",
+      "version": "0.102.0",
+      "runtimeMode": "desktop-local-backend",
+      "note": "exact Mira commit/version are supplied by the run manifest when available; unknown otherwise, never fabricated"
+    },
+    "model": {
+      "provider": "volcengine",
+      "modelId": "deepseek-v4.1-flash",
+      "accessPath": "http",
+      "routeProvider": "default",
+      "effectiveParameters": {
+        "temperature": "provider-default",
+        "topP": "provider-default",
+        "maxOutputTokens": 2048,
+        "reasoningEffort": "unknown",
+        "structuredOutputMode": "unknown"
+      },
+      "note": "model id / access path are read from the run contextBudget where available; unspecified generation parameters are recorded as provider-default or unknown, never guessed"
+    },
+    "environment": {
+      "hostPlatform": {
+        "platform": "darwin",
+        "arch": "x64",
+        "osRelease": "24.6.0",
+        "hostname": "APPLEdeMacBook-Pro.local",
+        "node": "v22.22.3"
+      },
+      "node": "v22.22.3",
+      "executionClassification": "adapted",
+      "classificationRationale": "Driven through the product HTTP control surface with the frozen case contract, fixture, governance and observability semantics; host/runtime details are recorded separately under the platform-neutral #220 policy.",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "adaptationRationale": null,
+      "referenceProcedure": {
+        "baseline": "platform-neutral HTTP reference runner",
+        "provider": "default",
+        "deviations": [],
+        "reasonForDeviation": null,
+        "comparabilityImpact": "comparability is determined by frozen case information/capability boundaries, fixture, governance and observability semantics; host identity is recorded but not a timing acceptance gate"
+      }
+    },
+    "procedure": {
+      "actual": {
+        "transport": "http",
+        "provider": "default",
+        "baseUrl": "http://127.0.0.1:8798",
+        "endpoints": [
+          "POST /login",
+          "POST /chat-workspaces",
+          "POST /threads",
+          "POST /proxy/chat/default",
+          "GET /agent/runs/:runId",
+          "POST /agent/runs/:runId/approve",
+          "POST /agent/runs/:runId/cancel",
+          "GET /threads/:id/messages"
+        ],
+        "steps": [
+          "materialize fixture workspace",
+          "bind workspace + create agent thread",
+          "start monotonic timer",
+          "submit case prompt via streaming agent turn",
+          "poll terminal state",
+          "apply mechanical approval/resume control",
+          "read persisted raw execution events",
+          "cleanup"
+        ]
+      }
+    },
+    "fixture": {
+      "fixtureId": "adv05-v1",
+      "beforeManifestHash": "d91696963e75da322d80959b0de0b52225f12cb260f47aade4eabcd255825529",
+      "afterManifestHash": "5f96f6810f396dd940a8d2e7d69e78ec9bd67d9b4367ad0a58788496d65bf657",
+      "descriptor": {
+        "id": "adv05-v1",
+        "fileCount": 4
+      }
+    },
+    "executorIntervention": {
+      "executorMechanical": [
+        {
+          "at": "2026-10-04T06:45:26.560Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_01_0PfzxGYQqKdaWZXvU9931099",
+          "inputHash": "08c6728209c053238be3dbbcfa30c5239f1dcec544ec8053f0afc616593a889b",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-04T06:45:32.700Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_bGqgZ45pXrFMzNpjlKaW5403",
+          "inputHash": "ba979238a5415afcd71a82a526e9473feac1cc0fd4783a384ca6d27091c0edcb",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-04T06:45:45.829Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_01_vfmS1Par3wxtCplmLl0i0256",
+          "inputHash": "120756071ea17d16a18134c313aaf0809601ba8a22702c73cff4b08b9676bd32",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-04T06:45:51.960Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_qv0BBwM3vnoV8tbEtkCz0158",
+          "inputHash": "ace9f372051bec9a6acc78b216b94801f1eb1175f76dc5c83587f406463ad886",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-04T06:46:07.267Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "write_file",
+          "toolCallId": "call_01_51ZaJcTf28jZg8ZIYh480172",
+          "inputHash": "4a8cfbb9310a6560ecc8ba63aef3f1237fe8bf8b19facad0b527db8608ecbcae",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-04T06:46:13.551Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "write_file",
+          "toolCallId": "call_00_ygV5SQJ8Xnq2bVMeQndf2705",
+          "inputHash": "0cefec55c763d4648dd7b7a5042397492e08af3c8ba7d25591a48c2acc1f174f",
+          "note": "approve exact frozen invocation"
+        }
+      ],
+      "humanIntervention": [],
+      "note": "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl"
+    },
+    "rawSources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "notesExcluded": "executor free-form notes are withheld from the Judge (advocacy risk, not evidence)"
+  },
+  "deterministicMeasurements": {
+    "plannerIterations": 1,
+    "firstSelectedTool": "delegate_task",
+    "exposedToolCount": 21,
+    "exposedToolIds": [
+      "delegate_task",
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "codebase_explore",
+      "read_open",
+      "read_discover",
+      "grep",
+      "write_file",
+      "replace_block",
+      "delete_path",
+      "move_path",
+      "web_search",
+      "news_search",
+      "mail_query",
+      "github_repository",
+      "github_issue",
+      "github_pull_request",
+      "github_actions",
+      "terminal_session",
+      "browser_attached_look"
+    ],
+    "actionSequence": [
+      {
+        "ref": "trajectory:13:agent-next-action-planner",
+        "actionType": "use_tool",
+        "selectedToolId": "delegate_task",
+        "iteration": 0
+      },
+      {
+        "ref": "trajectory:227:agent-next-action-planner",
+        "actionType": "answer",
+        "selectedToolId": null,
+        "iteration": 0
+      }
+    ],
+    "toolCallCount": 17,
+    "parentToolCallCount": 0,
+    "childToolCallCount": 17,
+    "failedToolCallCount": 1,
+    "childFailureCount": 1,
+    "childStatusUnavailableCount": 17,
+    "delegationCount": 1,
+    "approvalCount": 6,
+    "childApprovalCount": 9,
+    "resumeCount": 6,
+    "recoverableFailureCount": "unknown",
+    "terminalFailureCount": "unknown",
+    "repeatedSemanticActionCount": 0,
+    "completionProof": [],
+    "unresolvedGaps": [],
+    "finalization": {
+      "hasRequiredFinalization": true,
+      "plannerTerminalType": "answer",
+      "finalizationEvidenceRefs": [
+        "observation:6",
+        "observation:6",
+        "observation:6",
+        "observation:6",
+        "observation:6"
+      ]
+    },
+    "timing": {
+      "state": "frozen",
+      "softTimeoutSeen": false,
+      "hardCutoffApplied": false,
+      "cancelRequested": false,
+      "runnerSafetyCapReached": false,
+      "tSoftMs": 135000,
+      "tHardMs": 270000,
+      "elapsedMs": 96227,
+      "startedAt": "2026-10-04T06:45:04.312Z",
+      "endedAt": "2026-10-04T06:46:40.607Z",
+      "clock": "process.hrtime.bigint (monotonic)",
+      "timingCredit": null,
+      "lateCompletion": {
+        "computable": true,
+        "classification": "within_soft",
+        "reason": null
+      }
+    },
+    "sideEffects": {
+      "status": "observed",
+      "workspaceChanged": true,
+      "added": 6,
+      "removed": 0,
+      "modified": 0,
+      "externalTargets": 0,
+      "refs": [
+        "artifact:workspace"
+      ]
+    },
+    "hardFail": null,
+    "hardFailNote": "no deterministic hard-fail is asserted by the Recorder; hard-fail evaluation is a scoring step that consumes these facts (see #224)",
+    "refs": {
+      "terminal": "artifact:terminal-run",
+      "elapsed": "artifact:timing",
+      "toolCalls": "artifact:toolCalls",
+      "actionSequence": "artifact:actionSequence",
+      "approvals": "artifact:approvals",
+      "workspace": "artifact:workspace",
+      "assistantTranscript": "artifact:final-answer",
+      "trajectory": "trajectory:0"
+    }
+  },
+  "rawTrajectory": {
+    "sources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "authoritativeRefScheme": "trajectory:<index>[:<nodeId>]",
+    "eventCount": 232,
+    "trajectoryArtifact": "trajectory.jsonl",
+    "trajectoryDigest": "3bae137bd9e799fe0794a48f7fbba6769796a36d76c249a7698a38eca544218e"
+  },
+  "finalAnswer": {
+    "text": "已完成本地 async build 的启动、跟踪与验收，全程未联网，未修改任何 build/verify 脚本。\n\n**执行过程**\n\n1. **启动 build**：运行 `node scripts/start-async-build.mjs`，返回 jobId `job-1791096326701-45018`，kickoff 状态为 `building`（未把 kickoff 成功当作完成）。\n\n2. **跟踪 job**：运行 `node scripts/show-async-status.mjs` 跟踪该 job，并读取 `.fixture/async-jobs/job-1791096326701-45018/status.json` 确认，最终状态为 `ready`：\n   ```json\n   {\"jobId\":\"job-1791096326701-45018\",\"status\":\"ready\",\"artifact\":\"dist/async-build.txt\"}\n   ```\n\n3. **运行验收脚本**：`node scripts/verify-async-build.mjs`\n   - 输出：`async build verifier: PASS job-1791096326701-45018`\n   - 退出码：0\n\n4. **确认产物**：`dist/async-build.txt` 存在，14 字节，内容为 `release-ready`。\n\n**结果汇总**\n\n| 项目 | 值 |\n| --- | --- |\n| Job ID | `job-1791096326701-45018` |\n| 最终状态 | `ready` |\n| 产物 | `dist/async-build.txt`（14 字节，内容 `release-ready`） |\n| Verifier 结果 | `async build verifier: PASS job-1791096326701-45018`（退出码 0） |\n\n报告已写入 `.test-artifact/async-build-report.md`，包含上述 job id、最终状态、产物路径与 verifier 结果。",
+    "ref": "artifact:final-answer",
+    "note": "verbatim assistant transcript; not summarized or interpreted by the Recorder"
+  },
+  "excluded": [
+    "executor self-score",
+    "executor advocacy",
+    "runner explanation of why Mira should pass",
+    "hidden author reasoning"
+  ],
+  "judgeFields": {
+    "semanticScore": null,
+    "semanticOutcome": null,
+    "semanticResults": null
+  }
+}

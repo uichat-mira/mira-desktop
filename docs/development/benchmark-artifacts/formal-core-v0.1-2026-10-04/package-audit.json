@@ -1,0 +1,509 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-package-audit/0.1",
+  "auditedAt": "2026-10-04T07:44:48.154Z",
+  "reportRoot": "report",
+  "benchmark": {
+    "caseSetVersion": "core-v0.1",
+    "miraCommit": "43c4c6a84ef7b8dc191c1dc9c8284c85d6d3a5bf",
+    "miraVersion": "0.102.0",
+    "modelProvider": null,
+    "modelId": null,
+    "hostOs": "darwin",
+    "hostArch": "x64"
+  },
+  "packageCount": 51,
+  "packages": [
+    {
+      "caseId": "ADV-02",
+      "repetition": 1,
+      "path": "cases/ADV-02/repetitions/1",
+      "judgePackagePath": "judge-packages/ADV-02/rep-1",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-02",
+      "repetition": 2,
+      "path": "cases/ADV-02/repetitions/2",
+      "judgePackagePath": "judge-packages/ADV-02/rep-2",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-02",
+      "repetition": 3,
+      "path": "cases/ADV-02/repetitions/3",
+      "judgePackagePath": "judge-packages/ADV-02/rep-3",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-03",
+      "repetition": 1,
+      "path": "cases/ADV-03/repetitions/1",
+      "judgePackagePath": "judge-packages/ADV-03/rep-1",
+      "semanticCriterionIds": [
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-03",
+      "repetition": 2,
+      "path": "cases/ADV-03/repetitions/2",
+      "judgePackagePath": "judge-packages/ADV-03/rep-2",
+      "semanticCriterionIds": [
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-03",
+      "repetition": 3,
+      "path": "cases/ADV-03/repetitions/3",
+      "judgePackagePath": "judge-packages/ADV-03/rep-3",
+      "semanticCriterionIds": [
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-04",
+      "repetition": 1,
+      "path": "cases/ADV-04/repetitions/1",
+      "judgePackagePath": "judge-packages/ADV-04/rep-1",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-04",
+      "repetition": 2,
+      "path": "cases/ADV-04/repetitions/2",
+      "judgePackagePath": "judge-packages/ADV-04/rep-2",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-04",
+      "repetition": 3,
+      "path": "cases/ADV-04/repetitions/3",
+      "judgePackagePath": "judge-packages/ADV-04/rep-3",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-05",
+      "repetition": 1,
+      "path": "cases/ADV-05/repetitions/1",
+      "judgePackagePath": "judge-packages/ADV-05/rep-1",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-05",
+      "repetition": 2,
+      "path": "cases/ADV-05/repetitions/2",
+      "judgePackagePath": "judge-packages/ADV-05/rep-2",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-05",
+      "repetition": 3,
+      "path": "cases/ADV-05/repetitions/3",
+      "judgePackagePath": "judge-packages/ADV-05/rep-3",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-06",
+      "repetition": 1,
+      "path": "cases/ADV-06/repetitions/1",
+      "judgePackagePath": "judge-packages/ADV-06/rep-1",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-06",
+      "repetition": 2,
+      "path": "cases/ADV-06/repetitions/2",
+      "judgePackagePath": "judge-packages/ADV-06/rep-2",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-06",
+      "repetition": 3,
+      "path": "cases/ADV-06/repetitions/3",
+      "judgePackagePath": "judge-packages/ADV-06/rep-3",
+      "semanticCriterionIds": [
+        "C5",
+        "C6"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-08",
+      "repetition": 1,
+      "path": "cases/ADV-08/repetitions/1",
+      "judgePackagePath": "judge-packages/ADV-08/rep-1",
+      "semanticCriterionIds": [
+        "C4",
+        "C5"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-08",
+      "repetition": 2,
+      "path": "cases/ADV-08/repetitions/2",
+      "judgePackagePath": "judge-packages/ADV-08/rep-2",
+      "semanticCriterionIds": [
+        "C4",
+        "C5"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "ADV-08",
+      "repetition": 3,
+      "path": "cases/ADV-08/repetitions/3",
+      "judgePackagePath": "judge-packages/ADV-08/rep-3",
+      "semanticCriterionIds": [
+        "C4",
+        "C5"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-01-concise-rewrite",
+      "repetition": 1,
+      "path": "cases/beginner-01-concise-rewrite/repetitions/1",
+      "judgePackagePath": "judge-packages/beginner-01-concise-rewrite/rep-1",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-01-concise-rewrite",
+      "repetition": 2,
+      "path": "cases/beginner-01-concise-rewrite/repetitions/2",
+      "judgePackagePath": "judge-packages/beginner-01-concise-rewrite/rep-2",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-01-concise-rewrite",
+      "repetition": 3,
+      "path": "cases/beginner-01-concise-rewrite/repetitions/3",
+      "judgePackagePath": "judge-packages/beginner-01-concise-rewrite/rep-3",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-02-locate-release-checklist",
+      "repetition": 1,
+      "path": "cases/beginner-02-locate-release-checklist/repetitions/1",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-02-locate-release-checklist",
+      "repetition": 2,
+      "path": "cases/beginner-02-locate-release-checklist/repetitions/2",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-02-locate-release-checklist",
+      "repetition": 3,
+      "path": "cases/beginner-02-locate-release-checklist/repetitions/3",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-03-find-retry-window-references",
+      "repetition": 1,
+      "path": "cases/beginner-03-find-retry-window-references/repetitions/1",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-03-find-retry-window-references",
+      "repetition": 2,
+      "path": "cases/beginner-03-find-retry-window-references/repetitions/2",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-03-find-retry-window-references",
+      "repetition": 3,
+      "path": "cases/beginner-03-find-retry-window-references/repetitions/3",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-04-read-only-telemetry-state",
+      "repetition": 1,
+      "path": "cases/beginner-04-read-only-telemetry-state/repetitions/1",
+      "judgePackagePath": "judge-packages/beginner-04-read-only-telemetry-state/rep-1",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-04-read-only-telemetry-state",
+      "repetition": 2,
+      "path": "cases/beginner-04-read-only-telemetry-state/repetitions/2",
+      "judgePackagePath": "judge-packages/beginner-04-read-only-telemetry-state/rep-2",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-04-read-only-telemetry-state",
+      "repetition": 3,
+      "path": "cases/beginner-04-read-only-telemetry-state/repetitions/3",
+      "judgePackagePath": "judge-packages/beginner-04-read-only-telemetry-state/rep-3",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-05-local-version-no-network",
+      "repetition": 1,
+      "path": "cases/beginner-05-local-version-no-network/repetitions/1",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-05-local-version-no-network",
+      "repetition": 2,
+      "path": "cases/beginner-05-local-version-no-network/repetitions/2",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-05-local-version-no-network",
+      "repetition": 3,
+      "path": "cases/beginner-05-local-version-no-network/repetitions/3",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-06-read-command-do-not-execute",
+      "repetition": 1,
+      "path": "cases/beginner-06-read-command-do-not-execute/repetitions/1",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-06-read-command-do-not-execute",
+      "repetition": 2,
+      "path": "cases/beginner-06-read-command-do-not-execute/repetitions/2",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-06-read-command-do-not-execute",
+      "repetition": 3,
+      "path": "cases/beginner-06-read-command-do-not-execute/repetitions/3",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-07-rename-one-file",
+      "repetition": 1,
+      "path": "cases/beginner-07-rename-one-file/repetitions/1",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-07-rename-one-file",
+      "repetition": 2,
+      "path": "cases/beginner-07-rename-one-file/repetitions/2",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-07-rename-one-file",
+      "repetition": 3,
+      "path": "cases/beginner-07-rename-one-file/repetitions/3",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-already-aligned-noop",
+      "repetition": 1,
+      "path": "cases/intermediate-already-aligned-noop/repetitions/1",
+      "judgePackagePath": "judge-packages/intermediate-already-aligned-noop/rep-1",
+      "semanticCriterionIds": [
+        "C2"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-already-aligned-noop",
+      "repetition": 2,
+      "path": "cases/intermediate-already-aligned-noop/repetitions/2",
+      "judgePackagePath": "judge-packages/intermediate-already-aligned-noop/rep-2",
+      "semanticCriterionIds": [
+        "C2"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-already-aligned-noop",
+      "repetition": 3,
+      "path": "cases/intermediate-already-aligned-noop/repetitions/3",
+      "judgePackagePath": "judge-packages/intermediate-already-aligned-noop/rep-3",
+      "semanticCriterionIds": [
+        "C2"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-handshake-recovery",
+      "repetition": 1,
+      "path": "cases/intermediate-handshake-recovery/repetitions/1",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-handshake-recovery",
+      "repetition": 2,
+      "path": "cases/intermediate-handshake-recovery/repetitions/2",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-handshake-recovery",
+      "repetition": 3,
+      "path": "cases/intermediate-handshake-recovery/repetitions/3",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "repetition": 1,
+      "path": "cases/intermediate-health-status-call-chain/repetitions/1",
+      "judgePackagePath": "judge-packages/intermediate-health-status-call-chain/rep-1",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "repetition": 2,
+      "path": "cases/intermediate-health-status-call-chain/repetitions/2",
+      "judgePackagePath": "judge-packages/intermediate-health-status-call-chain/rep-2",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "repetition": 3,
+      "path": "cases/intermediate-health-status-call-chain/repetitions/3",
+      "judgePackagePath": "judge-packages/intermediate-health-status-call-chain/rep-3",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-version-validator",
+      "repetition": 1,
+      "path": "cases/intermediate-version-validator/repetitions/1",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-version-validator",
+      "repetition": 2,
+      "path": "cases/intermediate-version-validator/repetitions/2",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-version-validator",
+      "repetition": 3,
+      "path": "cases/intermediate-version-validator/repetitions/3",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    }
+  ],
+  "secretAudit": {
+    "ok": true,
+    "findings": []
+  },
+  "identityAudit": {
+    "ok": true,
+    "findings": []
+  },
+  "publishable": true
+}

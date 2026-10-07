@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import Github from "../GithubIcon";
 import {
   Copy,
   ExternalLink,
@@ -11,7 +10,7 @@ import {
 } from "lucide-react";
 import Badge from "@/shared/ui/Badge";
 import Card from "@/shared/ui/Card";
-import { Button } from "@/shared/ui";
+import { Button, GithubIcon as Github } from "@/shared/ui";
 import { message } from "@/shared/ui/Message";
 import {
   disconnectGitHub,

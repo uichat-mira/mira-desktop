@@ -109,8 +109,12 @@ describe("chat file context", () => {
     await expect(
       fs.readFile(materialized[0]!.absolutePath, "utf8"),
     ).resolves.toBe("# Article\n\nHello Mira");
-    expect(buildAgentAttachmentGoalContext(materialized)).toContain(
-      materialized[0]!.relativePath,
+    const goalContext = buildAgentAttachmentGoalContext(materialized);
+    expect(goalContext).toContain(materialized[0]!.relativePath);
+    expect(goalContext).toContain("canonical read");
+    expect(goalContext).not.toContain("read_open");
+    expect(goalContext).toContain(
+      "真实命令、进程、git、build 或 test 才需要 terminal",
     );
   });
 

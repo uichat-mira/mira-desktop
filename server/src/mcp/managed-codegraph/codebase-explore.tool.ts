@@ -1,6 +1,6 @@
 import type { AgentEvidenceSummary, AgentRetrievalEvidence } from "@/agent/types";
 import { getActiveCodeGraphStudioService } from "@/microapps/codegraph/index.js";
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import {
   type CodebaseExploreTrace,
@@ -95,7 +95,7 @@ const createCodebaseExploreRetrievalSummary = (input: {
       : []),
     ...(input.verification.unverifiable.length > 0
       ? [
-          `${input.verification.unverifiable.length} CodeGraph candidate(s) lacked a stable verifiable range; targeted read_open is appropriate only for those specific unresolved targets.`,
+          `${input.verification.unverifiable.length} CodeGraph candidate(s) lacked a stable verifiable range; targeted read is appropriate only for those specific unresolved targets.`,
         ]
       : []),
     ...(input.exploreTrace.fallbackReason
@@ -164,12 +164,12 @@ const createInvocationWorkspaceRuntimeContext = (input: {
   };
 };
 
-export const codebaseExploreTool: McpToolImplementation = {
+export const codebaseExploreTool: ToolImplementation = {
   definition: {
     id: "codebase_explore",
     title: "Codebase Explore",
     description:
-      "Primary local code-understanding tool for architecture, symbols, relationships, and impact. Candidates are re-read from the workspace before Evidence. Successful results include bounded verified source excerpts with paths and line ranges; treat those verified excerpts as source-body evidence and do not mechanically read_open the same files unless a specific unresolved line/context gap remains.",
+      "Primary local code-understanding tool for architecture, symbols, relationships, and impact. Candidates are re-read from the workspace before Evidence. Successful results include bounded verified source excerpts with paths and line ranges; treat those verified excerpts as source-body evidence and do not mechanically read the same files unless a specific unresolved line/context gap remains.",
     domain: "read",
     source: "internal",
     mode: "sync",
@@ -319,22 +319,8 @@ export const codebaseExploreTool: McpToolImplementation = {
       };
 
       return {
-        evidence: {
-          actionTaken: `Attempted controlled CodeGraph exploration for "${queryValue.trim()}".`,
-          facts: [
-            "capabilityId=codebase_explore",
-            "plannerExposure=controlled_tool_only",
-            "verifiedChunkCount=0",
-          ],
-          gaps: [blockedReason],
-          status: "partial",
-          data: {
-            kind: "codebase_explore",
-            runtimeMode: "unavailable",
-            fallbackRequired: true,
-          },
-        },
-        result: {
+
+        structuredContent: {
           capabilityId: "codebase_explore",
           plannerExposure: "controlled_tool_only",
           query: queryValue.trim(),
@@ -409,23 +395,8 @@ export const codebaseExploreTool: McpToolImplementation = {
     });
 
     return {
-      evidence: {
-        actionTaken: retrievalSummary.actionTaken,
-        facts: retrievalSummary.keyFindings,
-        ...(retrievalSummary.gaps?.length
-          ? { gaps: retrievalSummary.gaps }
-          : {}),
-        status:
-          retrievalSummary.status === "completed" ? "completed" : "partial",
-        data: {
-          kind: "codebase_explore",
-          runtimeMode,
-          workspaceRoot,
-          query: retrieval.query,
-          verifiedChunkCount: retrieval.chunkCount,
-        },
-      },
-      result: {
+
+      structuredContent: {
         capabilityId: "codebase_explore",
         plannerExposure: "controlled_tool_only",
         workspaceRoot,

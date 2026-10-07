@@ -4,8 +4,9 @@ import * as embedding from "@/services/internal-capabilities/local-embedding.js"
 import * as rerank from "@/services/internal-capabilities/local-rerank.js";
 import * as harnessInvocations from "@/harness/invocations";
 import * as registry from "@/harness/registry";
-import { clearHarnessRegistry, registerCapability } from "@/harness/registry";
+import { clearHarnessRegistry, registerTool } from "@/harness/registry";
 import { resolveHarnessCapabilityDiagnostics } from "@/harness/capability-diagnostics";
+import { normalizeToolResult, projectToolEvidence } from "@/mcp/core/tool-result.js";
 import { contextBudgetService } from "@/services/context-budget/index";
 import { providerProxyService } from "@/services/provider-proxy.service/index";
 import * as intentMatcherModule from "../intent/embedding-capability-matcher";
@@ -65,9 +66,9 @@ const makeToolDefinition = (input: {
   },
 });
 
-const readOpenTool = () =>
+const canonicalReadTool = () =>
   makeToolDefinition({
-    id: "read_open",
+    id: "read",
     domain: "read",
     inputSchema: {
       type: "object",
@@ -97,7 +98,7 @@ const webSearchTool = () =>
 
 const terminalTool = () =>
   makeToolDefinition({
-    id: "terminal_session",
+    id: "terminal",
     domain: "terminal",
     inputSchema: {
       type: "object",
@@ -147,13 +148,14 @@ const makeToolIntentResult = (
     exposedDefinitions: definitions,
     reason: [],
     blockedCapabilityIds: [],
-  },});
+  },
+});
 
 const setupToolExposure = (
   query: string,
   definitions: Array<ReturnType<typeof makeToolDefinition>>,
 ) => {
-  vi.spyOn(registry, "listCapabilityDefinitions").mockReturnValue(definitions);
+  vi.spyOn(registry, "listToolDefinitions").mockReturnValue(definitions);
   vi.spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding").mockResolvedValue(
     makeToolIntentResult(query, definitions),
   );
@@ -228,39 +230,39 @@ afterEach(() => {
 });
 
 test("diagnostics closure explains workspace-local web_search hiding with blocked ids and scores", async () => {
-  registerCapability({
-    definition: readOpenTool(),
+  registerTool({
+    definition: canonicalReadTool(),
     execute() {
       return {};
     },
   });
-  registerCapability({
+  registerTool({
     definition: webSearchTool(),
     execute() {
       return {};
     },
   });
-  mockRecallOrder(["read_open"]);
+  mockRecallOrder(["read"]);
 
   const result = await resolveHarnessCapabilityDiagnostics({
     query: "请打开 README.md 看看 Runtime 部分",
     source: "agent_intent",
   });
 
-  assert.deepEqual(result.toolExposure.exposedToolIds, ["read_open", "web_search"]);
+  assert.deepEqual(result.toolExposure.exposedToolIds, ["read", "web_search"]);
   assert.equal(result.blockedCapabilityIds.includes("web_search"), false);
   assert.equal(result.toolCandidates.length > 0, true);
-  assert.equal(result.toolCandidates.some((candidate) => candidate.toolId === "read_open"), true);
+  assert.equal(result.toolCandidates.some((candidate) => candidate.toolId === "read"), true);
 });
 
 test("diagnostics closure records planner and normalize reasons when the selected tool is not exposed", async () => {
-  const readOpen = readOpenTool();
+  const canonicalRead = canonicalReadTool();
   const plannerEvents: Array<Record<string, unknown>> = [];
   const normalizeEvents: Array<Record<string, unknown>> = [];
 
   vi.spyOn(providerProxyService, "streamTaskChatText").mockImplementation(
     async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"dir"},"reason":"Need terminal."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"dir"},"reason":"Need terminal."}';
     },
   );
 
@@ -273,17 +275,17 @@ test("diagnostics closure records planner and normalize reasons when the selecte
       plan: basePlan,
       messages: [makeMessage("open README.md")],
       toolExposure: {
-        exposedTools: ["read_open"],
+        exposedTools: ["read"],
         toolMeta: [
           {
-            toolId: readOpen.id,
-            title: readOpen.title,
-            description: readOpen.description,
-            inputSchema: readOpen.inputSchema,
-            domain: readOpen.domain,
-            source: readOpen.source,
-            tags: readOpen.tags,
-            capabilities: readOpen.capabilities,
+            toolId: canonicalRead.id,
+            title: canonicalRead.title,
+            description: canonicalRead.description,
+            inputSchema: canonicalRead.inputSchema,
+            domain: canonicalRead.domain,
+            source: canonicalRead.source,
+            tags: canonicalRead.tags,
+            capabilities: canonicalRead.capabilities,
           },
         ],
       },
@@ -314,22 +316,22 @@ test("diagnostics closure records planner and normalize reasons when the selecte
       messages: [makeMessage("open README.md")],
       nextAction: {
         type: "use_tool",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args: { command: "dir" },
         reason: "Need terminal.",
       },
       toolExposure: {
-        exposedTools: ["read_open"],
+        exposedTools: ["read"],
         toolMeta: [
           {
-            toolId: readOpen.id,
-            title: readOpen.title,
-            description: readOpen.description,
-            inputSchema: readOpen.inputSchema,
-            domain: readOpen.domain,
-            source: readOpen.source,
-            tags: readOpen.tags,
-            capabilities: readOpen.capabilities,
+            toolId: canonicalRead.id,
+            title: canonicalRead.title,
+            description: canonicalRead.description,
+            inputSchema: canonicalRead.inputSchema,
+            domain: canonicalRead.domain,
+            source: canonicalRead.source,
+            tags: canonicalRead.tags,
+            capabilities: canonicalRead.capabilities,
           },
         ],
       },
@@ -346,14 +348,14 @@ test("diagnostics closure records planner and normalize reasons when the selecte
 });
 
 test("diagnostics closure keeps schema invalid bounded replan out of Generate", async () => {
-  const readOpen = readOpenTool();
-  setupToolExposure("open README.md", [readOpen]);
+  const canonicalRead = canonicalReadTool();
+  setupToolExposure("open README.md", [canonicalRead]);
   vi.spyOn(providerProxyService, "streamTaskChatText")
     .mockImplementationOnce(async function* () {
-      yield '{"type":"use_tool","toolId":"read_open","args":{"missing":"README.md"},"reason":"Need file content."}';
+      yield '{"type":"use_tool","toolId":"read","args":{"missing":"README.md"},"reason":"Need file content."}';
     })
     .mockImplementationOnce(async function* () {
-      yield '{"type":"use_tool","toolId":"read_open","args":{"missing":"README.md"},"reason":"Still invalid."}';
+      yield '{"type":"use_tool","toolId":"read","args":{"missing":"README.md"},"reason":"Still invalid."}';
     });
   vi.spyOn(harnessInvocations, "executeHarnessInvocation");
   vi.spyOn(runnablesModule.agentGenerateTextRunnable, "invoke");
@@ -395,7 +397,7 @@ test("diagnostics closure records runtime timedOut evidence as not answer-ready"
   setupToolExposure("run pwd", [terminalSession]);
   vi.spyOn(providerProxyService, "streamTaskChatText")
     .mockImplementationOnce(async function* () {
-      yield '{"type":"use_tool","toolId":"terminal_session","args":{"command":"pwd"},"reason":"Need command output."}';
+      yield '{"type":"use_tool","toolId":"terminal","args":{"command":"pwd"},"reason":"Need command output."}';
     })
     .mockImplementationOnce(async function* () {
       yield '{"type":"answer","reason":"Timeout evidence is not enough for a grounded command result.","completionProof":[{"criterion":"report the command outcome","evidenceRefs":["tool:0"]}],"unresolvedGaps":[]}';
@@ -404,24 +406,30 @@ test("diagnostics closure records runtime timedOut evidence as not answer-ready"
     type: "allow",
     reason: "Diagnostics regression allows terminal execution.",
   });
+  const timedOutResult = {
+    sessionId: "terminal-session-timeout-1",
+    command: "pwd",
+    cwd: "D:\\workspace\\rag-demo",
+    exitCode: null,
+    output: "",
+    stdout: "",
+    stderr: "Command timed out",
+    timedOut: true,
+    reusedSession: false,
+    sessionMode: "ephemeral",
+    streamMode: "split",
+    stderrSeparated: true,
+  };
+  const timedOutEvidence = projectToolEvidence(
+    terminalSession,
+    normalizeToolResult({ structuredContent: timedOutResult }),
+  );
   vi.spyOn(harnessInvocations, "executeHarnessInvocation").mockResolvedValue({
     id: "invocation-terminal-timeout-1",
-    toolId: "terminal_session",
+    toolId: "terminal",
     status: "completed",
-    result: {
-      sessionId: "terminal-session-timeout-1",
-      command: "pwd",
-      cwd: "D:\\workspace\\rag-demo",
-      exitCode: null,
-      output: "",
-      stdout: "",
-      stderr: "Command timed out",
-      timedOut: true,
-      reusedSession: false,
-      sessionMode: "ephemeral",
-      streamMode: "split",
-      stderrSeparated: true,
-    },
+    result: timedOutResult,
+    evidence: timedOutEvidence,
     startedAt: "2026-07-05T00:00:00.000Z",
     finishedAt: "2026-07-05T00:00:30.000Z",
   } as never);

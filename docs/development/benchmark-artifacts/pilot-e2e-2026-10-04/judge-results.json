@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-semantic-results/0.1",
+  "judge": {
+    "mode": "same-thread-maintainer-authorized",
+    "independentBlank": false,
+    "note": "Maintainer explicitly authorized this current thread to act as Semantic Judge after the cross-thread handoff path/commit mismatch caused repeated retrieval failures. This result is not represented as an independent fresh-blank review."
+  },
+  "source": {
+    "repository": "uichat-mira/mira-desktop",
+    "exactCommit": "af988a6ce5b2c628870d7beaf2dddfbb0353f777",
+    "packages": [
+      "docs/development/benchmark-artifacts/pilot-e2e-2026-10-04/judge-packages/intermediate-health-status-call-chain/rep-1/",
+      "docs/development/benchmark-artifacts/pilot-e2e-2026-10-04/judge-packages/ADV-08/rep-1/"
+    ]
+  },
+  "repetitions": [
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "repetition": 1,
+      "semanticResults": [
+        {
+          "questionId": "J1",
+          "criterionId": "C1",
+          "outcome": "pass",
+          "evidenceRefs": [
+            "trajectory:58",
+            "artifact:final-answer"
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "ADV-08",
+      "repetition": 1,
+      "semanticResults": [
+        {
+          "questionId": "J1",
+          "criterionId": "C4",
+          "outcome": "pass",
+          "evidenceRefs": [
+            "trajectory:220",
+            "artifact:final-answer"
+          ]
+        },
+        {
+          "questionId": "J2",
+          "criterionId": "C5",
+          "outcome": "pass",
+          "evidenceRefs": [
+            "trajectory:269",
+            "artifact:final-answer"
+          ]
+        }
+      ]
+    }
+  ]
+}

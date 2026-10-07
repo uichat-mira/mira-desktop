@@ -108,6 +108,8 @@ import { chatMediaRepository } from "@/db/repositories/chat-media.repository.js"
 import { imageGenerationJobsRepository } from "@/db/repositories/image-generation-jobs.repository.js";
 import { microAppProviderConfigsRepository } from "@/db/repositories/micro-app-provider-configs.repository.js";
 import { chatMediaService } from "@/services/chat-media.service.js";
+import { hostNotificationDeliveryService } from "@/services/host-notification-delivery.service.js";
+import { canonicalMessageCleanupService } from "@/services/canonical-message-cleanup.service.js";
 import { managedMediaCleanupService } from "@/services/managed-media-cleanup.service.js";
 import { microAppCapabilityBindingsRepository } from "@/db/repositories/micro-app-capability-bindings.repository.js";
 import { ttsRefAudiosRepository } from "@/db/repositories/tts-ref-audios.repository.js";
@@ -133,8 +135,8 @@ import {
   migrateLegacyMicroAppBindings,
 } from "@/microapps/legacy-sync.js";
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability.js";
-import { getCapabilityImplementation } from "@/harness/registry.js";
-import { registerCapability } from "@/harness/registry.js";
+import { getToolImplementation } from "@/harness/registry.js";
+import { registerTool } from "@/harness/registry.js";
 import { computerUseRepository, createPersistentComputerUseTaskStore, createPersistentComputerUseEvidenceStore } from "@/db/repositories/computer-use/repository.js";
 import {
   initializeForgeRuntime,
@@ -188,6 +190,8 @@ const readSwaggerLogo = async () => {
 app.setErrorHandler(sendRouteError);
 
 app.addHook("onClose", async () => {
+  canonicalMessageCleanupService.stop();
+  hostNotificationDeliveryService.stop();
   await shutdownForgeRuntime();
 });
 
@@ -251,7 +255,7 @@ const computerUseBrowserSessions = new BrowserSessionManager({
 });
 const computerUseBrowserService = new BrowserService(computerUseBrowserSessions);
 for (const tool of createComputerUseBrowserTools(computerUseBrowserService, { sessionManager: computerUseBrowserSessions })) {
-  registerCapability(tool);
+  registerTool(tool);
 }
 const nowIso = () => new Date().toISOString();
 
@@ -556,7 +560,7 @@ const newsHubService = createNewsHubService({
 });
 const codeGraphStudioService = createCodeGraphStudioService({
   getCapabilityRegistrationState: () =>
-    Boolean(getCapabilityImplementation("codebase_explore")),
+    Boolean(getToolImplementation("codebase_explore")),
   onStateChanged: () => {
     reconcileCodeGraphHarnessCapability();
   },
@@ -898,6 +902,8 @@ const start = async () => {
     await setupDatabase();
     await setupRoutes();
     await startServer();
+    canonicalMessageCleanupService.start();
+    hostNotificationDeliveryService.start();
     await setupForgeRuntime();
   } catch (error) {
     if (

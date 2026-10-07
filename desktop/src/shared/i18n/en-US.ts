@@ -64,7 +64,6 @@ const enUS = {
       developmentGroup: "Development",
       persona: "Role",
       roles: "Roles",
-      skills: "Skills",
       personas: "Roles",
       evaluationCenter: "Knowledge Evaluation Center",
       development: "Development",

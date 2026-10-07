@@ -1,4 +1,4 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import { mcpBadRequest, mcpInternalError } from "../core/errors.js";
 import { hasWecomRobotConfig } from "@/integrations/wecom/config.js";
 import { sendWecomRobotMarkdownMessage } from "@/integrations/wecom/robot.js";
@@ -8,7 +8,7 @@ const normalizeText = (value: unknown, fallback = "") => {
   return text || fallback;
 };
 
-export const wecomRobotNotifyTool: McpToolImplementation = {
+export const wecomRobotNotifyTool: ToolImplementation = {
   definition: {
     id: "wecom_robot_notify",
     title: "WeCom Robot Notify",
@@ -61,7 +61,7 @@ export const wecomRobotNotifyTool: McpToolImplementation = {
     await sendWecomRobotMarkdownMessage({ title, content });
 
     return {
-      result: {
+      structuredContent: {
         success: true,
         target: "robot-webhook",
         summary: `WeCom robot notification sent: ${title}`,

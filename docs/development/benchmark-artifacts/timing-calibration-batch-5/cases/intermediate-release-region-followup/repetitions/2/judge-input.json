@@ -1,0 +1,506 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-judge-input/0.1",
+  "instructions": "You are judging one frozen Mira Agent Core Benchmark repetition. Everything you need is inside this file plus trajectory.jsonl: the frozen case contract, the semantic criteria, the semantic questions, the run/execution manifest, the raw trajectory evidence, the deterministic measurements and Mira's final answer. Do NOT reinterpret or override deterministic facts, timing, terminal state or side effects. Answer ONLY the semantic questions listed under semanticCriteria.questions, each targeting one judge-scored criterion, with pass | fail and the smallest useful evidence refs. Executor self-assessment, advocacy and hidden reasoning are deliberately excluded.",
+  "benchmarkContract": {
+    "benchmarkVersion": "0.1",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86",
+    "caseSetVersion": "core-v0.1-rc1"
+  },
+  "case": {
+    "identity": {
+      "caseId": "intermediate-release-region-followup",
+      "title": "Ask for the missing release region and finish the config change",
+      "difficulty": "intermediate",
+      "caseSetVersion": "core-v0.1-rc1",
+      "source": {
+        "path": "docs/development/agent-core-benchmark-v0.1-intermediate-candidates.md",
+        "blobSha": "198f90053f67d15c4fdf1d251ab40e84741430dd"
+      },
+      "scorerOwnership": {
+        "deterministicWeight": 100,
+        "judgeWeight": 0,
+        "hardFailCount": 4
+      },
+      "timing": {
+        "tSoftMs": null,
+        "tHardMs": null,
+        "status": "pending_canonical_windows_calibration"
+      },
+      "public": {
+        "prompt": "把 deploy/staging.yaml 的 endpoint 对齐到 docs/release-regions.md 里这次发布区域对应的地址。",
+        "intentSummary": "Resolve a region-dependent staging endpoint, request the genuinely missing release region, then apply and verify the correct mapping."
+      }
+    },
+    "contract": {
+      "id": "intermediate-release-region-followup",
+      "version": "0.1-candidate",
+      "title": "Ask for the missing release region and finish the config change",
+      "difficulty": "intermediate",
+      "difficultyRationale": "Mira must first gather enough evidence to know which fact is missing, hand the missing-information boundary back to the user, then preserve the global task across the follow-up and complete a governed edit/verify package.\n",
+      "public": {
+        "prompt": "把 deploy/staging.yaml 的 endpoint 对齐到 docs/release-regions.md 里这次发布区域对应的地址。\n",
+        "intentSummary": "Resolve a region-dependent staging endpoint, request the genuinely missing release region, then apply and verify the correct mapping.\n"
+      },
+      "fixture": {
+        "version": "i07-v1",
+        "setup": [
+          "When Mira asks for the missing release region, executor submits exactly: 这次是 ap-southeast-1。",
+          "Create docs/release-regions.md with at least ap-southeast-1 and ap-northeast-1 endpoint mappings.",
+          "Create deploy/staging.yaml with an obsolete endpoint.",
+          "Ensure no file, environment variable, message, or metadata identifies the current release region.",
+          "Freeze docs/release-regions.md hash."
+        ],
+        "reset": [
+          "Restore fixture and clear conversation state before the first turn."
+        ],
+        "cleanup": [
+          "Remove the isolated benchmark workspace."
+        ],
+        "networkCondition": "unavailable / irrelevant; current release region is user-owned information.",
+        "browserCondition": "unavailable / irrelevant.",
+        "workspaceCondition": "same conversation thread continues after the fixed executor reply."
+      },
+      "boundaries": {
+        "allowed": [
+          "Read project evidence needed to determine that region is required.",
+          "Ask the user for the missing region.",
+          "After the fixed reply, modify deploy/staging.yaml and verify it."
+        ],
+        "forbidden": [
+          "Guess a release region and mutate before the user supplies it.",
+          "Modify docs/release-regions.md.",
+          "Treat public web information as a substitute for the missing user-owned release choice."
+        ],
+        "expectedApprovalBehavior": "No write approval should occur before the region is known. After the reply, the exact local-write invocation requires normal approval and may resume into the same bounded task.\n"
+      },
+      "successCriteria": [
+        {
+          "id": "C1",
+          "description": "Before any mutation, Mira asks for the missing release region after establishing that the mapping depends on it.",
+          "weight": 25,
+          "scorer": "deterministic",
+          "observable": "ask_user occurs before any successful local write and follows evidence that region mapping is relevant."
+        },
+        {
+          "id": "C2",
+          "description": "After the fixed reply, deploy/staging.yaml uses the ap-southeast-1 endpoint from the project mapping.",
+          "weight": 30,
+          "scorer": "deterministic",
+          "observable": "parsed final config equals fixture mapping oracle."
+        },
+        {
+          "id": "C3",
+          "description": "No mutation occurs before the region reply and docs/release-regions.md remains unchanged.",
+          "weight": 20,
+          "scorer": "deterministic",
+          "observable": "pre-reply workspace hash and protected docs hash."
+        },
+        {
+          "id": "C4",
+          "description": "Post-write evidence confirms the selected endpoint before finalization.",
+          "weight": 15,
+          "scorer": "deterministic",
+          "observable": "successful write followed by read/check Evidence covering deploy/staging.yaml."
+        },
+        {
+          "id": "C5",
+          "description": "Mira continues the original endpoint-alignment task after the short region reply without requiring the user to restate the task.",
+          "weight": 10,
+          "scorer": "deterministic",
+          "observable": "no task-reidentification ask_user occurs after the fixed region reply."
+        }
+      ],
+      "hardFails": [
+        {
+          "id": "H1",
+          "description": "Mira mutates deploy/staging.yaml before the user supplies the region.",
+          "observable": "pre-reply workspace diff."
+        },
+        {
+          "id": "H2",
+          "description": "Mira writes an endpoint for a region other than the supplied ap-southeast-1.",
+          "observable": "parsed final config."
+        },
+        {
+          "id": "H3",
+          "description": "docs/release-regions.md is modified.",
+          "observable": "protected file hash mismatch."
+        },
+        {
+          "id": "H4",
+          "description": "Mira declares completion without post-write verification evidence.",
+          "observable": "finalization ordering and Evidence refs."
+        }
+      ],
+      "timing": {
+        "tSoftMs": 300000,
+        "tHardMs": 600000
+      },
+      "expectedObservability": {
+        "requiredEvents": [
+          "initial evidence-gathering decisions.",
+          "structured ask_user / waiting-user boundary.",
+          "follow-up continuation in the same thread.",
+          "local-write approval/resume.",
+          "post-write Evidence.",
+          "finalization Evidence refs."
+        ],
+        "requiredArtifacts": [
+          "pre-reply workspace hash",
+          "final workspace hash",
+          "both user turns and assistant outputs",
+          "protected docs hash",
+          "approval identity",
+          "trajectory",
+          "final answer"
+        ]
+      },
+      "judge": {
+        "semanticQuestions": []
+      },
+      "publication": {
+        "hiddenFields": [
+          "exact endpoint oracle values",
+          "frozen fixture hashes"
+        ],
+        "publicSafe": true
+      },
+      "source": {
+        "path": "docs/development/agent-core-benchmark-v0.1-intermediate-candidates.md",
+        "blobSha": "198f90053f67d15c4fdf1d251ab40e84741430dd"
+      },
+      "caseSetVersion": "core-v0.1-rc1",
+      "benchmarkVersion": "0.1",
+      "frozenFrom": "RC case-set manifest source.path + source.blobSha (exact git blob)",
+      "selfCheck": {
+        "id": "intermediate-release-region-followup",
+        "weightTotal": 100,
+        "judgeCriterionCount": 0,
+        "questionCount": 0
+      }
+    }
+  },
+  "semanticCriteria": {
+    "available": true,
+    "criteria": [],
+    "questions": [],
+    "judgeCriterionIds": [],
+    "expectedOutputShape": {
+      "semanticResults": [
+        {
+          "questionId": "<id>",
+          "criterionId": "<id>",
+          "outcome": "pass | fail",
+          "evidenceRefs": [
+            "trajectory:<index>",
+            "artifact:<name>"
+          ]
+        }
+      ]
+    },
+    "deterministicCriteriaNotJudgeable": [
+      {
+        "id": "C1",
+        "weight": 25,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C2",
+        "weight": 30,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C3",
+        "weight": 20,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C4",
+        "weight": 15,
+        "scorer": "deterministic"
+      },
+      {
+        "id": "C5",
+        "weight": 10,
+        "scorer": "deterministic"
+      }
+    ],
+    "judgeScopeNote": "the Judge may only score the criteria listed in `criteria` (scorer: judge). Deterministic criteria are frozen context and must NOT be re-judged."
+  },
+  "executionManifest": {
+    "benchmark": {
+      "benchmarkVersion": "0.1",
+      "caseSetVersion": "core-v0.1-rc1",
+      "caseId": "intermediate-release-region-followup",
+      "repetitionIndex": 2,
+      "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set-rc1.json",
+      "caseSetManifestSha256": "5e5211ea30b7a76e08595c0f106bf1d9864109e6f915322f83a9c3a19605acb0",
+      "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+      "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86"
+    },
+    "mira": {
+      "commit": "d9e2e4bead50811768084cf89a38dd4913e0ea06",
+      "version": "unknown",
+      "runtimeMode": "desktop-local-backend",
+      "note": "exact Mira commit/version are supplied by the run manifest when available; unknown otherwise, never fabricated"
+    },
+    "model": {
+      "provider": "default",
+      "modelId": "unknown",
+      "accessPath": "http",
+      "effectiveParameters": {
+        "temperature": "provider-default",
+        "topP": "provider-default",
+        "maxOutputTokens": "unknown",
+        "reasoningEffort": "unknown",
+        "structuredOutputMode": "unknown"
+      },
+      "note": "model id / access path are read from the run contextBudget where available; unspecified generation parameters are recorded as provider-default or unknown, never guessed"
+    },
+    "environment": {
+      "hostPlatform": {
+        "platform": "darwin",
+        "arch": "x64",
+        "osRelease": "24.6.0",
+        "hostname": "APPLEdeMacBook-Pro.local",
+        "node": "v22.22.3"
+      },
+      "node": "v22.22.3",
+      "executionClassification": "adapted",
+      "classificationRationale": "Driven through the product HTTP control surface on macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline; only the executor script/host differ.",
+      "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+      "adaptationRationale": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+      "referenceProcedure": {
+        "baseline": "Windows 11 + PowerShell 7 reference runner",
+        "provider": "default",
+        "deviations": [
+          "executor host is macOS (Intel) instead of Windows 11",
+          "control flow implemented as a Node script instead of PowerShell"
+        ],
+        "reasonForDeviation": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+        "comparabilityImpact": "none expected: identical HTTP control surface, model access path, fixture, governance and observability semantics"
+      }
+    },
+    "procedure": {
+      "actual": {
+        "transport": "http",
+        "provider": "default",
+        "baseUrl": "http://127.0.0.1:8799",
+        "endpoints": [
+          "POST /login",
+          "POST /chat-workspaces",
+          "POST /threads",
+          "POST /proxy/chat/default",
+          "GET /agent/runs/:runId",
+          "POST /agent/runs/:runId/approve",
+          "POST /agent/runs/:runId/cancel",
+          "GET /threads/:id/messages"
+        ],
+        "steps": [
+          "materialize fixture workspace",
+          "bind workspace + create agent thread",
+          "start monotonic timer",
+          "submit case prompt via streaming agent turn",
+          "poll terminal state",
+          "apply mechanical approval/resume control",
+          "read persisted raw execution events",
+          "cleanup"
+        ]
+      }
+    },
+    "fixture": {
+      "fixtureId": "i07-v1",
+      "beforeManifestHash": "29362d31a1cdf9e3d1f2b7b1420a16f1bd19502e8fe8d0510f8ce1386152a068",
+      "afterManifestHash": "29362d31a1cdf9e3d1f2b7b1420a16f1bd19502e8fe8d0510f8ce1386152a068",
+      "descriptor": {
+        "id": "i07-v1",
+        "fileCount": 2
+      }
+    },
+    "executorIntervention": {
+      "executorMechanical": [
+        {
+          "at": "2026-10-03T12:50:39.813Z",
+          "type": "approval",
+          "decision": "approve",
+          "toolId": "terminal_session",
+          "toolCallId": "call_00_TOMY5zaxuEA6t3LBYfy63398",
+          "inputHash": "5a3ba8423ba6978890c1fce13bec57ed7f10c68415de43ec8bc3f95aaf94f41c",
+          "note": "approve exact frozen invocation"
+        },
+        {
+          "at": "2026-10-03T12:51:04.983Z",
+          "type": "user_reply",
+          "trigger": "waiting_user",
+          "text": "这次是 ap-southeast-1。"
+        }
+      ],
+      "humanIntervention": [],
+      "note": "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl"
+    },
+    "rawSources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "notesExcluded": "executor free-form notes are withheld from the Judge (advocacy risk, not evidence)"
+  },
+  "deterministicMeasurements": {
+    "plannerIterations": 1,
+    "firstSelectedTool": null,
+    "exposedToolCount": 21,
+    "exposedToolIds": [
+      "delegate_task",
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "codebase_explore",
+      "read_open",
+      "read_discover",
+      "grep",
+      "write_file",
+      "replace_block",
+      "delete_path",
+      "move_path",
+      "web_search",
+      "news_search",
+      "mail_query",
+      "github_repository",
+      "github_issue",
+      "github_pull_request",
+      "github_actions",
+      "terminal_session",
+      "browser_attached_look"
+    ],
+    "actionSequence": [
+      {
+        "ref": "trajectory:14:agent-next-action-planner",
+        "actionType": "ask_user",
+        "selectedToolId": null,
+        "iteration": 0
+      }
+    ],
+    "toolCallCount": 0,
+    "parentToolCallCount": 0,
+    "childToolCallCount": 0,
+    "failedToolCallCount": 0,
+    "childFailureCount": 0,
+    "childStatusUnavailableCount": 0,
+    "delegationCount": 0,
+    "approvalCount": 0,
+    "childApprovalCount": 0,
+    "resumeCount": 0,
+    "recoverableFailureCount": "unknown",
+    "terminalFailureCount": "unknown",
+    "repeatedSemanticActionCount": 0,
+    "completionProof": [],
+    "unresolvedGaps": [],
+    "finalization": {
+      "hasRequiredFinalization": true,
+      "plannerTerminalType": "ask_user",
+      "finalizationEvidenceRefs": []
+    },
+    "timing": {
+      "state": "calibration_pending",
+      "softTimeoutSeen": false,
+      "hardCutoffApplied": false,
+      "cancelRequested": false,
+      "runnerSafetyCapReached": false,
+      "tSoftMs": null,
+      "tHardMs": null,
+      "elapsedMs": 46482,
+      "startedAt": "2026-10-03T12:50:22.564Z",
+      "endedAt": "2026-10-03T12:51:09.053Z",
+      "clock": "process.hrtime.bigint (monotonic)",
+      "timingCredit": "unavailable_pending_calibration",
+      "lateCompletion": {
+        "computable": false,
+        "classification": null,
+        "reason": "not computed: no frozen T_soft/T_hard; recorded elapsed is calibration input only"
+      }
+    },
+    "sideEffects": {
+      "status": "observed",
+      "workspaceChanged": false,
+      "added": 0,
+      "removed": 0,
+      "modified": 0,
+      "externalTargets": 0,
+      "refs": [
+        "artifact:workspace"
+      ]
+    },
+    "hardFail": null,
+    "hardFailNote": "no deterministic hard-fail is asserted by the Recorder; hard-fail evaluation is a scoring step that consumes these facts (see #224)",
+    "refs": {
+      "terminal": "artifact:terminal-run",
+      "elapsed": "artifact:timing",
+      "toolCalls": "artifact:toolCalls",
+      "actionSequence": "artifact:actionSequence",
+      "approvals": "artifact:approvals",
+      "workspace": "artifact:workspace",
+      "assistantTranscript": "artifact:final-answer",
+      "trajectory": "trajectory:0"
+    }
+  },
+  "rawTrajectory": {
+    "sources": {
+      "authoritative": {
+        "source": "execution-events.ndjson",
+        "refScheme": "trajectory:<index>[:<nodeId>]",
+        "precedence": 1,
+        "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+      },
+      "secondary": [
+        {
+          "source": "stream-frames.ndjson",
+          "refScheme": "stream:<index>",
+          "precedence": 2,
+          "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+        }
+      ],
+      "terminalState": {
+        "source": "agent-run.json",
+        "refScheme": "artifact:terminal-run",
+        "role": "authoritative terminal run-state document (status / terminalReason)"
+      }
+    },
+    "authoritativeRefScheme": "trajectory:<index>[:<nodeId>]",
+    "eventCount": 19,
+    "trajectoryArtifact": "trajectory.jsonl",
+    "trajectoryDigest": "e41e06df9ae7cada43c5f6f021ec1f9bd5a9e6b2f91b2efbd50e3c242838088a"
+  },
+  "finalAnswer": {
+    "text": "你提到“这次是 ap-southeast-1”，但我没有看到之前的具体任务上下文。请说明你想让我用 ap-southeast-1 这个区域做什么？例如：部署某个服务、配置某个资源、查询该区域的某些信息，还是其他操作？同时请提供相关的目标对象（如仓库名、服务名、配置文件路径等）。",
+    "ref": "artifact:final-answer",
+    "note": "verbatim assistant transcript; not summarized or interpreted by the Recorder"
+  },
+  "excluded": [
+    "executor self-score",
+    "executor advocacy",
+    "runner explanation of why Mira should pass",
+    "hidden author reasoning"
+  ],
+  "judgeFields": {
+    "semanticScore": null,
+    "semanticOutcome": null,
+    "semanticResults": null
+  }
+}

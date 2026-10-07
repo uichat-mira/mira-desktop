@@ -1,4 +1,4 @@
-export type McpToolDomain =
+export type ToolDomain =
   | "read"
   | "edit"
   | "web_search"
@@ -7,17 +7,17 @@ export type McpToolDomain =
   | "external_mcp"
   | (string & {});
 
-export type McpToolMode = "sync" | "stream";
+export type ToolMode = "sync" | "stream";
 
-export type McpToolSideEffect = "none" | "local-write" | "process" | "network";
+export type ToolSideEffect = "none" | "local-write" | "process" | "network";
 
-export type McpSandboxProfile =
+export type SandboxProfile =
   | "read_only"
   | "workspace_write"
   | "command"
   | "networked_command";
 
-export type McpInvocationStatus =
+export type ToolInvocationStatus =
   | "queued"
   | "running"
   | "awaiting_approval"
@@ -25,7 +25,7 @@ export type McpInvocationStatus =
   | "failed"
   | "cancelled";
 
-export type McpInvocationFailureCode =
+export type ToolInvocationFailureCode =
   | "approval_mismatch"
   | "policy_denied"
   | "schema_invalid"
@@ -36,14 +36,14 @@ export type McpInvocationFailureCode =
   | "cancelled"
   | "unknown";
 
-export interface McpStructuredInvocationErrorDetail {
+export interface StructuredInvocationErrorDetail {
   code: string;
   message: string;
   retryable: boolean;
   suggestedAction?: string | null;
 }
 
-export type McpTraceSpanKind =
+export type ToolTraceSpanKind =
   | "invocation"
   | "permission_check"
   | "strategy_selection"
@@ -54,7 +54,7 @@ export type McpTraceSpanKind =
   | "artifact_emit"
   | "result_normalization";
 
-export type McpArtifactKind =
+export type ToolArtifactKind =
   | "text"
   | "markdown"
   | "code"
@@ -66,8 +66,8 @@ export type McpArtifactKind =
   | "html"
   | "terminal-log";
 
-export interface McpCapabilityMetadata {
-  sideEffect: McpToolSideEffect;
+export interface ToolPolicyMetadata {
+  sideEffect: ToolSideEffect;
   requiresApproval: boolean;
   workspaceBound?: boolean;
   workspaceBoundary?: {
@@ -77,10 +77,10 @@ export interface McpCapabilityMetadata {
   networkAccess?: boolean;
   longRunning?: boolean;
   sandboxRequired?: boolean;
-  sandboxProfile?: McpSandboxProfile;
+  sandboxProfile?: SandboxProfile;
 }
 
-export interface McpExecutionEnvironmentCapability {
+export interface RuntimeCapability {
   id: string;
   kind:
     | "directory"
@@ -98,11 +98,11 @@ export interface McpExecutionEnvironmentCapability {
   extensions?: string[];
 }
 
-export interface McpExecutionEnvironment {
+export interface ToolExecutionEnvironment {
   source: "harness";
   workspace: {
     rootPath: string | null;
-    source: "selected" | "configured" | "unset";
+    source: "selected" | "configured" | "managed" | "unset";
   };
   approvals: {
     outsideWorkspace: "prompt";
@@ -112,16 +112,16 @@ export interface McpExecutionEnvironment {
     streamEvents: true;
   };
   read: {
-    capabilities: McpExecutionEnvironmentCapability[];
+    capabilities: RuntimeCapability[];
   };
   edit: {
-    capabilities: McpExecutionEnvironmentCapability[];
+    capabilities: RuntimeCapability[];
   };
   web_search: {
-    capabilities: McpExecutionEnvironmentCapability[];
+    capabilities: RuntimeCapability[];
   };
   terminal: {
-    capabilities: McpExecutionEnvironmentCapability[];
+    capabilities: RuntimeCapability[];
     shellProfile: {
       shell: string;
       shellFamily: "powershell" | "cmd" | "posix";
@@ -153,13 +153,13 @@ export interface McpResourceDefinition {
 
 export interface McpResourceReadContext {
   args: Record<string, unknown>;
-  environment?: McpExecutionEnvironment;
-  pushEvent?: (event: McpStreamEventInput) => void;
+  environment?: ToolExecutionEnvironment;
+  pushEvent?: (event: ToolInvocationEventInput) => void;
 }
 
 export interface McpResourceReadResult {
   contents: unknown;
-  artifacts?: McpArtifact[];
+  artifacts?: ToolArtifact[];
 }
 
 export interface McpResourceImplementation {
@@ -169,21 +169,21 @@ export interface McpResourceImplementation {
   ) => Promise<McpResourceReadResult> | McpResourceReadResult;
 }
 
-export interface McpToolDefinition {
+export interface ToolDefinition {
   id: string;
   title: string;
   description: string;
-  domain: McpToolDomain;
+  domain: ToolDomain;
   source: "internal" | "external";
   sourceLabel?: string;
-  mode: McpToolMode;
+  mode: ToolMode;
   inputSchema: Record<string, unknown>;
   inputSchemaByExposure?: Partial<
     Record<"tools_list" | "agent_intent" | "chat_surface", Record<string, unknown>>
   >;
   outputSchema?: Record<string, unknown>;
   tags: string[];
-  capabilities: McpCapabilityMetadata;
+  capabilities: ToolPolicyMetadata;
   workbench?: {
     groupId: string;
     groupLabel: string;
@@ -191,6 +191,13 @@ export interface McpToolDefinition {
     groupOrder: number;
     icon: string;
     defaultArgs?: Record<string, unknown>;
+    cases?: Array<{
+      id: string;
+      title: string;
+      description: string;
+      args: Record<string, unknown>;
+      fixture?: string;
+    }>;
   };
   legacyProjection?: {
     category: "rag" | "system" | "tool";
@@ -200,9 +207,9 @@ export interface McpToolDefinition {
   };
 }
 
-export interface McpArtifact {
+export interface ToolArtifact {
   id: string;
-  kind: McpArtifactKind;
+  kind: ToolArtifactKind;
   title: string;
   mimeType?: string;
   data?: unknown;
@@ -210,7 +217,7 @@ export interface McpArtifact {
   metadata?: Record<string, unknown>;
 }
 
-export interface McpToolEvidence {
+export interface ToolEvidence {
   actionTaken: string;
   facts: string[];
   gaps?: string[];
@@ -219,22 +226,22 @@ export interface McpToolEvidence {
   data?: unknown;
 }
 
-export interface McpInvocationRecord {
+export interface ToolInvocation {
   id: string;
   toolId: string;
-  status: McpInvocationStatus;
+  status: ToolInvocationStatus;
   args: Record<string, unknown>;
   inputHash?: string;
   userId?: number;
   traceId?: string;
   result?: unknown;
-  evidence?: McpToolEvidence;
+  evidence?: ToolEvidence;
   error?: {
     message: string;
-    failureCode?: McpInvocationFailureCode;
-    code?: McpStructuredInvocationErrorDetail["code"];
-    retryable?: McpStructuredInvocationErrorDetail["retryable"];
-    suggestedAction?: McpStructuredInvocationErrorDetail["suggestedAction"];
+    failureCode?: ToolInvocationFailureCode;
+    code?: StructuredInvocationErrorDetail["code"];
+    retryable?: StructuredInvocationErrorDetail["retryable"];
+    suggestedAction?: StructuredInvocationErrorDetail["suggestedAction"];
   };
   approval?: {
     required: true;
@@ -247,44 +254,49 @@ export interface McpInvocationRecord {
       reason?: string;
     };
   };
-  artifacts: McpArtifact[];
+  artifacts: ToolArtifact[];
   threadId?: string;
   turnId?: string;
   startedAt?: string;
   finishedAt?: string;
 }
 
-export interface McpTraceSpan {
+export type ToolContentBlock = {
+  type: string;
+  [key: string]: unknown;
+};
+
+export interface ToolTraceSpan {
   id: string;
   traceId: string;
   invocationId: string;
   parentSpanId?: string;
   name: string;
-  kind: McpTraceSpanKind;
+  kind: ToolTraceSpanKind;
   status: "running" | "completed" | "failed" | "cancelled";
   startedAt: string;
   finishedAt?: string;
   metadata?: Record<string, unknown>;
 }
 
-export interface McpInvocationTrace {
+export interface ToolTrace {
   traceId: string;
   invocationId: string;
   toolId: string;
   startedAt: string;
   finishedAt?: string;
-  spans: McpTraceSpan[];
+  spans: ToolTraceSpan[];
   debugView?: {
     invocationId: string;
     toolId: string;
     traceId: string;
     spanCount: number;
     runningSpanCount: number;
-    kinds: McpTraceSpanKind[];
+    kinds: ToolTraceSpanKind[];
   };
 }
 
-export type McpStreamEvent =
+export type ToolInvocationEvent =
   | {
       type: "invocation:start";
       invocationId: string;
@@ -314,7 +326,7 @@ export type McpStreamEvent =
   | {
       type: "invocation:artifact";
       invocationId: string;
-      artifact: McpArtifact;
+      artifact: ToolArtifact;
       at: string;
     }
   | {
@@ -332,11 +344,11 @@ export type McpStreamEvent =
   | {
       type: "invocation:finish";
       invocationId: string;
-      status: Exclude<McpInvocationStatus, "queued" | "running">;
+      status: Exclude<ToolInvocationStatus, "queued" | "running">;
       at: string;
     };
 
-export type McpStreamEventInput =
+export type ToolInvocationEventInput =
   | {
       type: "invocation:start";
       toolId: string;
@@ -357,7 +369,7 @@ export type McpStreamEventInput =
     }
   | {
       type: "invocation:artifact";
-      artifact: McpArtifact;
+      artifact: ToolArtifact;
     }
   | {
       type: "invocation:result";
@@ -369,10 +381,10 @@ export type McpStreamEventInput =
     }
   | {
       type: "invocation:finish";
-      status: Exclude<McpInvocationStatus, "queued" | "running">;
+      status: Exclude<ToolInvocationStatus, "queued" | "running">;
     };
 
-export interface McpInvocationContext {
+export interface ToolInvocationContext {
   invocationId: string;
   args: Record<string, unknown>;
   userId?: number;
@@ -382,12 +394,12 @@ export interface McpInvocationContext {
   };
   threadId?: string;
   turnId?: string;
-  pushEvent: (event: McpStreamEventInput) => void;
-  addArtifact: (artifact: Omit<McpArtifact, "id">) => McpArtifact;
+  pushEvent: (event: ToolInvocationEventInput) => void;
+  addArtifact: (artifact: Omit<ToolArtifact, "id">) => ToolArtifact;
   trace: {
     startSpan: (input: {
       name: string;
-      kind: McpTraceSpanKind;
+      kind: ToolTraceSpanKind;
       parentSpanId?: string;
       metadata?: Record<string, unknown>;
     }) => {
@@ -399,17 +411,18 @@ export interface McpInvocationContext {
     };
   };
   signal: AbortSignal;
-  environment?: McpExecutionEnvironment;
+  environment?: ToolExecutionEnvironment;
 }
 
-export interface McpToolExecutionResult {
-  result?: unknown;
-  evidence?: McpToolEvidence;
+export interface ToolResult<S = unknown> {
+  content?: ToolContentBlock[];
+  structuredContent?: S;
+  isError?: boolean;
 }
 
-export interface McpToolImplementation {
-  definition: McpToolDefinition;
+export interface ToolImplementation {
+  definition: ToolDefinition;
   execute: (
-    context: McpInvocationContext,
-  ) => Promise<McpToolExecutionResult> | McpToolExecutionResult;
+    context: ToolInvocationContext,
+  ) => Promise<ToolResult> | ToolResult;
 }

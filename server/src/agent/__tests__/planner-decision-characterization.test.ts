@@ -143,7 +143,7 @@ describe("Planner decision characterization", () => {
     const result = decodePlannerDecision(
       JSON.stringify({
         type: "use_tool",
-        toolId: "terminal_session",
+        toolId: "terminal",
         args: { command: "dir" },
         reason: "Inspect the workspace through a terminal.",
       }),

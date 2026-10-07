@@ -1,11 +1,16 @@
 import type {
-  McpArtifact,
-  McpInvocationEvent,
-  McpToolDefinition,
+  HarnessToolDefinition,
   McpWorkspaceSelection,
+  ToolArtifact,
+  ToolInvocationEvent,
 } from "@/shared/api/tools";
 
 export type ToolWorkbenchGroupId = string;
+
+export type ToolWorkbenchHandoff = {
+  toolId: string;
+  args: Record<string, unknown>;
+};
 
 export type ToolGroupSummary = {
   id: ToolWorkbenchGroupId;
@@ -16,9 +21,9 @@ export type ToolGroupSummary = {
   icon: string;
 };
 
-export type WorkbenchToolDefinition = McpToolDefinition & {
+export type WorkbenchToolDefinition = HarnessToolDefinition & {
   source: "internal";
-  workbench: NonNullable<McpToolDefinition["workbench"]>;
+  workbench: NonNullable<HarnessToolDefinition["workbench"]>;
 };
 
 export type ToolsWorkbenchState = {
@@ -32,9 +37,9 @@ export type ToolsWorkbenchState = {
   tools: WorkbenchToolDefinition[];
   workspaceSelection: McpWorkspaceSelection | null;
   workspaceRootInput: string;
-  events: McpInvocationEvent[];
+  events: ToolInvocationEvent[];
   result: unknown;
-  artifacts: McpArtifact[];
+  artifacts: ToolArtifact[];
   runError: string | null;
   runStatus: "idle" | "completed" | "failed" | "cancelled";
 };

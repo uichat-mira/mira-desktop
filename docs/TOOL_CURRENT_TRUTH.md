@@ -1,7 +1,7 @@
 ---
 status: current
 owner: runtime
-last_verified: 2026-07-30
+last_verified: 2026-10-06
 layer: wiki
 module: Tool
 feature: ToolRuntime
@@ -45,21 +45,11 @@ Harness 是 concrete tool 的控制平面，不是 Planner、SubAgent 编排器�
 
 ## 2. Registry 与 Public Surface 必须分开
 
-`server/src/harness/runtime.ts` 注册内置能力，也保留部分历史兼容实现。
+`server/src/harness/runtime.ts` 注册当前可执行内置能力。历史 Evidence 可以继续读取旧 summary，但不会为了旧调用保留第二套 File Mutation runtime。
 
 **注册存在不等于 Planner 可见。**
 
-当前 exposure policy 会隐藏：
-
-- `read`
-- `read_list`
-- `read_locate`
-- `read_extract`
-- `read_slice`
-- `edit_file`
-- `workspace_mutation`
-
-这些对象可以继续服务持久化旧调用、内部 primitive 或兼容逻辑，但不是当前 `agent_intent` 的公共 Planner 工具。
+Universal Read 当前只存在 canonical `read / list / glob / grep` executable surface，不保留第二套兼容 Tool、隐藏 Tool 或 Evidence 解释路径。旧本地 mutation id 的处理另按各自合同治理。
 
 动态注册还包括：
 
@@ -79,105 +69,163 @@ Harness 是 concrete tool 的控制平面，不是 Planner、SubAgent 编排器�
 
 ## 3. 当前公共 Read 面
 
-Planner 当前看到的 Read 认知动作是：
+Phase 2 canonical Universal Read 已收敛为：
 
 ```text
-Read
-├─ read_discover
-├─ grep
-├─ read_open
-└─ codebase_explore
+read
+list
+glob
+grep
 ```
 
-### `read_discover`
+当前真实 Agent exposure 中：
 
-只负责 workspace 的目录、路径、文件名和候选目标发现：
+- canonical Universal Read 只暴露 `read / list / glob / grep`；
+- `codebase_explore`：独立 Code / Work Context 能力，不属于 Universal Read；
 
-- `mode: list`：列出目录对象；
-- `mode: locate`：按路径或名称定位候选；
-- 返回有限 preview；
-- 不进行内容 grep；
-- 不打开正文。
+### `read`
+
+已知文件读取：
+
+- 输入保持简单：`path / offset? / limit?`；
+- `offset` 表示跳过多少行，返回的人类行号仍从 1 开始；
+- 单次输出有限，但通过 `nextOffset` 可以继续读取，不把单次上限当成文件能力上限；
+- 常见 UTF BOM / UTF-16 文本按明确编码读取；
+- 二进制返回 structured unsupported；
+- DOCX / XLSX / PPTX / PDF 不由 generic `read` 解析，返回 Office/WenShu Skill routing outcome；
+- 图片通过同一个 `read` 返回，不新增 `read_image`；
+- 图片实现以 Gemini CLI `read_file` 为单一参考基线：SVG 继续按文本读取，其他 `image/*` 文件在 20 MB 单文件上限内以 MIME + base64 的 model-facing image block 进入 Harness；
+- base64 不进入 structured result、Evidence、普通 invocation 读取或日志；Harness 仅把图片作为当前模型调用所需的内容传递；
+- 图片 payload 不是 durable Evidence；若 backend 重启或 retention 后 payload 已不可用，Planner 必须重新 `read` 该图片，Generate 不允许仅凭旧的“已读图片”元数据完成回答；
+- Planner 与 Generate 把需要的 Tool 图片投影到 Mira 已有的 latest-user image message path，Provider 继续使用既有图片适配，不由 `read` 了解 provider wire format。
+
+### `list`
+
+已知目录的直接子项观察：
+
+- 不递归；
+- 目录优先、稳定排序；
+- `offset / limit / nextOffset` 分页；
+- 默认应用 workspace ignore 规则；
+- `includeIgnored=true` 可显式查看默认忽略项，但不会扩大 workspace/symlink authority。
+
+### `glob`
+
+按文件路径 glob pattern 找文件：
+
+- 例如 `**/*.tsx`、`src/**/index.*`、`**/package.json`；
+- 不搜索文件正文；
+- `path` 只限定搜索起点，不改变 workspace authority；
+- `offset / limit / nextOffset` 分页；
+- 默认 ignore 可由 `includeIgnored=true` 显式覆盖；
+- 不跟随 symlink 目录越界。
 
 ### `grep`
 
-负责 deterministic workspace 内容搜索：
+按正文搜索并返回匹配位置：
 
-- 字面文本；
-- 代码符号；
-- 引用；
-- 配置键；
-- 文档正文；
-- 可选 root、扩展名和结果上限。
+- `pattern` 默认是正则；`literal=true` 时按字面文本；
+- omitted `caseSensitive` 使用 smart-case，显式 true/false 可覆盖；
+- `include` 使用 glob 筛选候选文件；
+- `context` 可返回有限上下文行；
+- `offset / limit / nextOffset` 支持继续取后续匹配；
+- `includeIgnored=true` 可显式搜索默认忽略项；
+- provider 顺序是 bundled ripgrep → system ripgrep → deterministic async Node fallback；
+- timeout / AbortSignal cancellation 适用于整个 provider/fallback deadline；
+- no-match 是成功空结果，不等于 runtime/provider failure。
 
-`grep` 是当前公开工具，不是 `read_locate` 的隐藏实现。
+四个 Tool 的选择原则是：
 
-### `read_open`
+```text
+read   known file      -> contents
+list   known directory -> direct children
+glob   path pattern    -> matching file paths
+grep   content query   -> matching content locations
+```
 
-打开已知目标：
-
-- workspace 文件；
-- 已披露的 `skill://` Resource；
-- 可选正数闭区间 line/range selection；
-- 结果可形成 text / code artifact。
+它们追求首选意图清晰，不追求为了“绝对互斥”而削弱能力。
 
 ### `codebase_explore`
 
 用于代码架构、关系、调用链和影响面探索：
 
-- Planner 只看见 `codebase_explore`；
 - 原生 CodeGraph 命令留在 wrapper 内；
 - 候选会回到当前 workspace 做 source verification；
 - 已核验 excerpt 可以进入 retrieval Evidence；
 - provider 不可用时工具仍存在，并返回结构化 degraded / fallback signal。
 
-它不是第二个 Planner，也不是“只要 Studio ready 就算 E2E 成功”。
+它不是 Universal Read，也不是第二个 Planner。
 
 ## 4. 当前公共 Edit 面
 
-Planner 当前直接看到四个动作：
+Workspace Edit 当前注册两种 model-facing facade，但单个 Agent turn 只 materialize 一种：
 
 ```text
-Edit
-├─ write_file
-├─ replace_block
-├─ delete_path
-└─ move_path
+primitive facade
+├─ write
+├─ edit
+├─ delete
+└─ move
+
+compound facade
+└─ apply_patch
 ```
 
-### `write_file`
+`tools_list` / Tool Lab 可以查看两种 facade 以便验收；Main Agent 不会同时拿到两套重叠入口。
+当前 model adapter 对 patch-friendly GPT/Codex family materialize `apply_patch`，其他模型保持
+`write / edit / delete / move`。无论 facade 如何选择，唯一执行权都落在
+`server/src/mcp/file-mutation/` 的 File Mutation Runtime，不存在第二套本地写 runtime。
+
+### `write`
 
 - 新建文件；
-- 明确 `overwrite=true` 时整文件覆盖；
+- 只有显式 `overwrite=true` 才整文件覆盖；
 - `content` 是完整目标内容；
-- 不承担局部 patch。
+- 创建父目录；
+- 不承担局部 patch；
+- 覆盖既有文本时保留已识别的 BOM / encoding / dominant line ending。
 
-### `replace_block`
+### `edit`
 
-- 使用 exact `expectedOldText -> newText`；
-- 只允许唯一匹配；
+- 面向已存在文本文件；
+- 一次接受多个 `edits[]`；
+- exact match 优先；
+- 只允许有限、可解释的 whitespace / line-ending / 常见 Unicode quote-space-dash 容差；
 - 0 次或多次匹配都失败；
-- 不负责创建新文件。
+- 所有 edit 在 commit 前一起验证，重叠 edit 失败；
+- 不做 fuzzy distance、regex 猜测、AST 或 LLM repair。
 
-### `delete_path`
+### `delete`
 
 - 删除文件或目录；
-- 目录删除需要显式 `recursive=true`；
+- 非空目录需要显式 `recursive=true`；
+- final symlink / junction mutation target 被拒绝；
 - 不把失败伪装成成功。
 
-### `move_path`
+### `move`
 
 - 移动或重命名文件 / 目录；
-- 默认不覆盖目标；
-- 不创建目标父目录。
+- 默认不覆盖目标，覆盖必须显式 `overwrite=true`；
+- 支持 case-only rename；
+- 不采用 delete-destination-first；
+- `EXDEV` 不偷偷降级为 copy+delete，而是安全失败并保留 source / destination。
 
-四个公开 Edit 工具都声明：
+两种 Edit facade 都声明 `sideEffect = local-write`、`requiresApproval = true`、`workspaceBound = true`。
+Approval 只授权 frozen exact invocation；它不会扩大 workspace authority。
 
-- `sideEffect = local-write`；
-- `requiresApproval = true`；
-- `workspaceBound = true`。
+### `apply_patch`
 
-旧 `edit_file(operation=...)` 与 `workspace_mutation(operation=...)` 只保留兼容，不再是公共 Planner 合同。
+- 接受 Codex-compatible `*** Begin Patch ... *** End Patch` grammar；
+- 支持 Add / Update / Delete / `Move to`；
+- parser 纯解析，不直接写盘；
+- 整包路径先解析和预验证，再按确定顺序获取 multi-path locks；
+- commit 仍复用 canonical write/edit/move/delete runtime；
+- 中途失败不伪造事务回滚：明确报告 definitely committed prefix、failed hunk、unapplied remainder；
+- 若失败动作是否跨过 OS commit point 无法确定，`committedDeltaExact=false` 明示不确定性；
+- 每个已提交 mutation 继续产生其 File Mutation Artifact，同时 patch 产生 patch-level summary Artifact；
+- Evidence 使用 `file_mutation_patch`，不会把 partial 当 completed。
+
+primitive 结果统一进入 `file_mutation` Evidence。旧 `write_file / replace_block / delete_path / move_path / edit_file / workspace_mutation` 已退出本地可执行 registry；旧 `edit_file / workspace_mutation` Evidence shape 仅用于读取历史持久化 run。
 
 ## 5. Search 不是一个含糊入口
 
@@ -188,13 +236,33 @@ Edit
 - 搜索当前公共互联网；
 - provider 在受信任 runtime config 中选择；
 - 当前支持 Tavily / SearXNG；
-- 模型只提供 `query` 与 `maxResults`；
-- 默认 4 条，限幅 1–10；
-- provider 失败按计划尝试下一可用 provider；
-- 所有 provider 失败才返回结构化错误；
+- 模型只提供 `queries`（1–4 条查询，去重非空字符串）与 `maxResults`；
+- Runtime 对所有 query 并发 fan-out，结果按 URL 归一化去重合并；
+- `maxResults` 是最终 merged 结果总上限，默认 4，限幅 1–10；
+- 当前 provider 任一 query 出现真实 provider failure 时，整批 queries 按既有计划尝试下一可用 provider；
+- provider 批次都失败时返回结构化错误；
 - `sideEffect = network`，但 definition 当前 `requiresApproval = false`。
 
 `apiKey`、`baseUrl` 和 provider 不是 LLM 参数。
+
+### `web_fetch`
+
+- 抓取并提取已知公网 `http` / `https` URL 的可读正文；
+- 模型只提供 `url`；
+- 仅允许公网 http/https 目标：内网 / loopback / link-local / 云元数据地址、非 http(s) 协议以及携带凭据的 URL 都会被拒绝；
+- 直连走 SSRF-safe 的 guarded transport；代理（SOCKS）路径在请求前重新校验目标，并对每个 redirect hop 重新校验；
+- 具备 timeout、caller cancellation 与响应体大小上限；
+- transport 返回有界原始字节；提取层按 `Content-Type` / charset（含 BOM 与 HTML meta 声明）用 `iconv-lite` 解码，不假定 UTF-8；
+- HTML 经 `jsdom → @mozilla/readability → turndown` 转为主正文 Markdown；`text/*`、JSON、XML 作为可靠文本输出；
+- 返回 `url` / `finalUrl` / `status` / `contentType` / `byteLength` / `truncated` / `kind`，以及 `title` / `content`（`html` / `text`）或 `reason`（非成功 outcome）；
+- 明确依赖 JS、登录或 anti-bot challenge 的页面优先返回结构化 `browser_required`，即使页面同时包含大段文本；
+- 无上述浏览器证据且无法获得可信正文时（如静态短页面）返回结构化 `unsupported`，既不返回整页导航 / 脚本垃圾，也不误报 `browser_required`；
+- 不支持的二进制内容返回结构化 `unsupported`；PDF / 文档暂不解析，返回 `unsupported`（deferred），不新建第二套文档解析器；
+- transport 结构化失败可区分 `blocked` / `http` / `network` / `timeout` / `cancelled`，caller cancel 的最终语义是 `cancelled`；
+- provider、proxy、parser 与安全实现细节不进入模型可见契约；
+- `sideEffect = network`，definition 当前 `requiresApproval = false`。
+
+`web_fetch` 不会因为页面依赖 JavaScript 或登录状态而自动升级为浏览器自动化；Attached / Managed Browser 仍是独立能力面。
 
 ### `news_search`
 
@@ -211,8 +279,10 @@ Edit
 当前唯一 Terminal 工具是：
 
 ```text
-terminal_session
+terminal
 ```
+
+兼容边界：旧 `terminal_session` 仅作为 persisted approval/run 的隐藏兼容 ID 保留，不进入新的 Agent Tool Exposure；待受支持的旧 checkpoint 不再可能引用该 ID 后删除。
 
 它支持：
 
@@ -227,11 +297,37 @@ terminal_session
 - Windows Job Object / taskkill fallback；
 - POSIX process group。
 
+Persistent 输出当前采用有界返回 + continuation：
+
+- 单次结果默认最多返回 8 MiB，最大可请求 64 MiB；
+- 未返回的 persistent 输出不会因为本轮结果截断而丢失，而是写入受 session 生命周期管理的临时 spool；
+- 返回 `continuationId / nextOutputOffset / outputBytesAvailable`，后续调用同一个 `terminal` 且只提供 continuation 参数即可继续读取，不会向 PTY 写入新命令；
+- observation timeout 只结束本轮等待，collector 继续接收该 persistent command 的后续输出；命令完成后 continuation 可以读取最终剩余日志与 exit code；
+- cursor 使用 UTF-8 byte offset，并由 runtime 返回稳定的 `nextOutputOffset`，避免分页切断多字节字符；
+- session 被移除时，对应 spool 会一并清理。
+
+Persistent session 控制仍然通过同一个 `terminal` Tool 完成：
+
+- `operation: "status" + sessionId` 只观察最新 persistent work 状态，不向 PTY 写入命令；
+- 状态为 `running / completed / failed / cancelled`，其中完成/失败由实际 exit code 驱动；
+- `operation: "stop" + sessionId` 停止该 session 所拥有的进程树；
+- stop 会等待现有 Windows Job Object / taskkill tree 或 POSIX process group cleanup 完成后，才返回 `state: "cancelled"` 与 `cleanupCompleted: true`；
+- stop 不创建第二套进程 runtime，也不引入 `job_*` Tool；
+- unknown / stale `sessionId` 明确失败，不静默退化成新 session。
+
+Tool Lab 当前把 #236 的验收路径直接暴露出来：
+
+- Terminal 注册短命令成功、短命令失败、持久任务、失效会话四个固定 acceptance case；
+- approval-bound 调用在 Tool Lab 内使用现有 Approval API 显式批准/拒绝，不绕过治理；
+- persistent 结果出现 session 后，可直接 Continue output、Inspect status、Stop；
+- Continue 使用 runtime 返回的 continuation cursor，不会执行第二条命令；
+- 状态与 session identity 会同时显示在 Terminal package / execution stream 中，便于真人验收。
+
 它不是 generic integration container，但也不是已经退役的 command sandbox。
 
 ### Terminal 与 workspace 的真实边界
 
-`terminal_session` 仍声明：
+`terminal` 仍声明：
 
 - `requiresApproval = true`；
 - `workspaceBound = true`；
@@ -508,7 +604,6 @@ CodeGraph verified retrieval 会走 retrieval Evidence；普通工具、Mail、G
 当前不能这样描述 Tool 系统：
 
 - Planner 公共 Read 面仍是六个 `read_*` primitive；
-- grep 只是隐藏在 `read_locate` 里的实现；
 - 公共 Edit 只有一个 `edit_file` wrapper；
 - 删除、移动仍未实现；
 - Harness 会按任务语义隐藏“看起来用不到”的公开工具；

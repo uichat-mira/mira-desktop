@@ -1,4 +1,4 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import * as S from "./github-domain.shared.js";
 
 const {
@@ -15,8 +15,8 @@ type WorkflowJobsResponse = S.WorkflowJobsResponse;
 export const createActionsTool = (
   client: GitHubReadClient,
   api: GitHubApi,
-  baseTool: McpToolImplementation,
-): McpToolImplementation => ({
+  baseTool: ToolImplementation,
+): ToolImplementation => ({
   definition: {
     id: "github_actions",
     title: "GitHub Actions",

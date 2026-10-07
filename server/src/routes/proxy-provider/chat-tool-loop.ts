@@ -3,6 +3,7 @@ import { createOpenAICompatibleClient } from "@/services/openai-compatible-provi
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol.js";
 import { ConversationTrimmer } from "@/services/conversation-trimmer.js";
 import { executeHarnessInvocation } from "@/harness/invocations.js";
+import { getHarnessLlmContentText } from "@/harness/llm-content.js";
 import { resolveProviderForRole } from "@/services/provider-proxy.service/resolution.js";
 import { getProviderDefinition } from "@/providers/catalog.js";
 import { toOpenAICompatibleChatOptions } from "@/services/provider-proxy.service/params.js";
@@ -90,7 +91,9 @@ const trimToolLoopMessages = (messages: NormalizedChatMessage[]) => {
       content.includes("<parameter>") ||
       content.includes("read_list") ||
       content.includes("read_locate") ||
-      content.includes("terminal_session")
+      content.includes("terminal_session") ||
+      content.includes("terminal <tool_input>") ||
+      content.includes("terminal<tool_input>")
     );
   });
 
@@ -131,13 +134,11 @@ const buildToolResultMessage = (
   toolCallId: string,
   toolName: string,
   result: unknown,
+  modelContent?: string,
 ): OpenAI.Chat.Completions.ChatCompletionToolMessageParam => ({
   role: "tool",
   tool_call_id: toolCallId,
-  content: JSON.stringify({
-    toolName,
-    result,
-  }),
+  content: modelContent || JSON.stringify({ toolName, result }),
 });
 
 const buildAssistantToolCallMessage = (
@@ -365,6 +366,7 @@ export const executeDefaultChatToolLoop = async (
           toolCall.id,
           toolCall.function.name,
           invocation.result ?? null,
+          getHarnessLlmContentText(invocation.llmContent),
         ),
       );
       usedToolCount += 1;

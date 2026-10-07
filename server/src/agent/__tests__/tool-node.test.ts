@@ -40,6 +40,16 @@ test("toolNode executes the frozen pendingToolCall without rebuilding args", asy
       toolId: "web_search",
       status: "completed",
       result: { ok: true },
+      llmContent: {
+        version: 1,
+        source: "harness_result",
+        blocks: [{ type: "text", text: "explicit harness content" }],
+        truncated: false,
+        originalCharCount: 24,
+        includedCharCount: 24,
+        omittedArrayItems: 0,
+        omittedObjectKeys: 0,
+      },
       startedAt: "2026-06-30T00:00:00.000Z",
       finishedAt: "2026-06-30T00:00:01.000Z",
     });
@@ -78,6 +88,10 @@ test("toolNode executes the frozen pendingToolCall without rebuilding args", asy
     assert.equal(result.lastToolExecution?.inputHash, "hash-frozen-query");
     assert.deepEqual(result.lastToolExecution?.args, { query: "frozen query" });
     assert.equal(result.lastToolExecution?.toolId, "web_search");
+    const llmContent = (result.lastToolExecution as typeof result.lastToolExecution & {
+      llmContent?: { blocks: Array<{ text: string }> };
+    })?.llmContent;
+    assert.equal(llmContent?.blocks[0]?.text, "explicit harness content");
     assert.equal(result.errorMessage, undefined);
     assert.equal(result.pendingToolCall, undefined);
   } finally {
@@ -94,7 +108,7 @@ test("toolNode remaps approvedInvocations to Harness arg hashes before execution
     .spyOn(harnessInvocations, "executeHarnessInvocation")
     .mockResolvedValue({
       id: "invocation-approved-terminal-1",
-      toolId: "terminal_session",
+      toolId: "terminal",
       status: "completed",
       result: { command: "dir", stdout: "ok", stderr: "", exitCode: 0, timedOut: false },
       startedAt: "2026-07-04T00:00:00.000Z",
@@ -106,13 +120,13 @@ test("toolNode remaps approvedInvocations to Harness arg hashes before execution
       createBaseState({
         policyDecision: {
           type: "allow",
-          toolId: "terminal_session",
+          toolId: "terminal",
           inputHash: "agent-frozen-hash",
           reason: "Allowed in test.",
         },
         approvedInvocations: [
           {
-            toolId: "terminal_session",
+            toolId: "terminal",
             input: frozenArgs,
             inputHash: "agent-frozen-hash",
             approvedAt: "2026-07-04T00:00:00.000Z",
@@ -121,7 +135,7 @@ test("toolNode remaps approvedInvocations to Harness arg hashes before execution
         ],
         pendingToolCall: {
           id: "pending-approved-terminal-1",
-          toolId: "terminal_session",
+          toolId: "terminal",
           args: frozenArgs,
           inputHash: "agent-frozen-hash",
           source: "planner",
@@ -134,7 +148,7 @@ test("toolNode remaps approvedInvocations to Harness arg hashes before execution
     assert.equal(executeHarnessInvocationSpy.mock.calls.length, 1);
     assert.deepEqual(executeHarnessInvocationSpy.mock.calls[0]?.[0].approvedInvocations, [
       {
-        toolId: "terminal_session",
+        toolId: "terminal",
         inputHash: createInvocationInputHash(frozenArgs),
       },
     ]);
@@ -252,7 +266,7 @@ test("toolNode blocks execution when pendingToolCall is missing", async () => {
   try {
     const result = await toolNode(
       createBaseState({
-        selectedToolId: "terminal_session",
+        selectedToolId: "terminal",
       }),
     );
 
@@ -280,7 +294,7 @@ test("toolNode ignores selectedToolId drift and only executes the frozen pending
   try {
     const result = await toolNode(
       createBaseState({
-        selectedToolId: "terminal_session",
+        selectedToolId: "terminal",
         policyDecision: {
           type: "allow",
           toolId: "web_search",
@@ -313,17 +327,17 @@ test("toolNode reports a Harness approval request without creating Policy approv
     .spyOn(harnessInvocations, "executeHarnessInvocation")
     .mockResolvedValue({
       id: "invocation-awaiting-approval-1",
-      toolId: "terminal_session",
+      toolId: "terminal",
       status: "awaiting_approval",
       approval: {
-        reason: "terminal_session requires reviewed approval.",
+        reason: "terminal requires reviewed approval.",
       },
       startedAt: "2026-07-04T00:00:00.000Z",
     } as never);
 
   const pendingToolCall = {
     id: "pending-approval-1",
-    toolId: "terminal_session",
+    toolId: "terminal",
     args: {
       command: "dir",
       cwd: "D:\\workspace\\rag-demo",

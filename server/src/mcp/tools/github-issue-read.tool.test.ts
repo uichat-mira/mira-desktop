@@ -21,7 +21,7 @@ describe("constrained GitHub Issue reader", () => {
   it("turns free search text into title/body text instead of GitHub qualifiers", async () => {
     const executeSpy = vi
       .spyOn(baseGitHubIssueReadTool, "execute")
-      .mockResolvedValue({ result: {} });
+      .mockResolvedValue({ structuredContent: {} });
 
     await githubIssueReadTool.execute(
       createContext({

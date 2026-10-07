@@ -1,11 +1,11 @@
 /**
  * 工具执行节点：执行已审批或免审的工具调用，并将结果加入证据。
  */
-import { executeHarnessInvocation } from "@/harness/invocations";
-import { getCapabilityImplementation } from "@/harness/registry";
+import { executeHarnessInvocation, type HarnessInvocationRecord } from "@/harness/invocations";
+import { getToolImplementation } from "@/harness/registry";
 import { createHarnessEnvironmentSnapshot } from "@/harness/environment";
 import { runWithWorkspaceRootOverride } from "@/mcp/workspace";
-import type { McpInvocationFailureCode } from "@/mcp/core/definitions";
+import type { ToolInvocationFailureCode } from "@/mcp/core/definitions";
 import { createInvocationInputHash } from "../approval-fingerprint";
 import { getAgentRunSignal } from "../run-control";
 import {
@@ -81,12 +81,13 @@ const buildExecutionRecord = (input: {
   errorMessage?: string;
   result?: unknown;
   evidence?: AgentToolExecutionResult["evidence"];
-}): AgentToolExecutionResult => ({
+  llmContent?: HarnessInvocationRecord["llmContent"];
+}): AgentToolExecutionResult & { llmContent?: HarnessInvocationRecord["llmContent"] } => ({
   toolCallId: input.pendingToolCall.id,
   toolId: input.toolId,
   inputHash: input.pendingToolCall.inputHash,
   args:
-    (getCapabilityImplementation(input.toolId)?.definition.source === "external" ||
+    (getToolImplementation(input.toolId)?.definition.source === "external" ||
       input.toolId.startsWith("mcp:"))
       ? (redactExternalMcpValue(input.pendingToolCall.args) as Record<string, unknown>)
       : input.pendingToolCall.args,
@@ -98,6 +99,7 @@ const buildExecutionRecord = (input: {
   errorMessage: input.errorMessage,
   result: input.result,
   ...(input.evidence ? { evidence: input.evidence } : {}),
+  ...(input.llmContent ? { llmContent: input.llmContent } : {}),
   startedAt: input.startedAt,
   finishedAt: input.finishedAt,
 });
@@ -105,7 +107,7 @@ const buildExecutionRecord = (input: {
 const classifyHarnessFailure = (input: {
   invocationStatus: "failed" | "cancelled";
   errorMessage: string;
-  failureCode?: McpInvocationFailureCode;
+  failureCode?: ToolInvocationFailureCode;
 }): AgentToolExecutionResult["failureKind"] => {
   if (input.invocationStatus === "cancelled") {
     return "terminal";
@@ -520,6 +522,7 @@ export const toolNode = async (
     status: "completed",
     result: invocation.result,
     evidence: invocation.evidence,
+    llmContent: invocation.llmContent,
     startedAt,
     finishedAt,
   });

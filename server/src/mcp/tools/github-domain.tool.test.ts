@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubConnectionRecord } from "@/db/repositories/github-connection.repository.js";
-import type { McpInvocationContext } from "../core/definitions.js";
-import { McpApprovalRequiredError } from "../core/errors.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
+import { ToolApprovalRequiredError } from "../core/errors.js";
 import { validateInvocationArgs } from "../core/schema.js";
 import { sanitizeIssueSearchQuery } from "./github-domain.api.js";
 import { createGitHubDomainTools } from "./github-domain.tool.js";
@@ -43,7 +43,7 @@ const jsonResponse = (body: unknown, status = 200) =>
 const createContext = (
   args: Record<string, unknown>,
   approvalGranted = false,
-): McpInvocationContext => ({
+): ToolInvocationContext => ({
   invocationId: "github-domain-test",
   args,
   ...(approvalGranted
@@ -170,8 +170,8 @@ const expectApproval = async (
     await invocation;
     throw new Error("Expected GitHub write approval");
   } catch (error) {
-    expect(error).toBeInstanceOf(McpApprovalRequiredError);
-    expect((error as McpApprovalRequiredError).scope).toBe(scope);
+    expect(error).toBeInstanceOf(ToolApprovalRequiredError);
+    expect((error as ToolApprovalRequiredError).scope).toBe(scope);
   }
 };
 
@@ -348,7 +348,7 @@ describe("GitHub domain capability package", () => {
         true,
       ),
     );
-    expect(branch.result).toMatchObject({
+    expect(branch.structuredContent).toMatchObject({
       operation: "create_branch",
       branch: "feature/domain",
       sha: "base-sha",
@@ -365,7 +365,7 @@ describe("GitHub domain capability package", () => {
         true,
       ),
     );
-    expect(issue.result).toMatchObject({
+    expect(issue.structuredContent).toMatchObject({
       operation: "create",
       number: 42,
       state: "open",
@@ -383,7 +383,7 @@ describe("GitHub domain capability package", () => {
         true,
       ),
     );
-    expect(pull.result).toMatchObject({
+    expect(pull.structuredContent).toMatchObject({
       operation: "create",
       number: 43,
       state: "open",
@@ -401,7 +401,7 @@ describe("GitHub domain capability package", () => {
         true,
       ),
     );
-    expect(dispatch.result).toMatchObject({
+    expect(dispatch.structuredContent).toMatchObject({
       operation: "dispatch",
       workflow: "ci.yml",
       ref: "main",

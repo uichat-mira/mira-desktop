@@ -1,0 +1,207 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-execution/0.1",
+  "benchmark": {
+    "benchmarkVersion": "0.1",
+    "caseSetVersion": "core-v0.1-rc1",
+    "caseId": "intermediate-handshake-recovery",
+    "repetitionIndex": 2,
+    "caseSetManifestPath": "docs/development/agent-core-benchmark-v0.1-case-set-rc1.json",
+    "caseSetManifestSha256": "5e5211ea30b7a76e08595c0f106bf1d9864109e6f915322f83a9c3a19605acb0",
+    "contractPath": "docs/development/agent-core-benchmark-v0.1.md",
+    "contractBlobSha": "98a31a5128f62a45d910994a0fd52e744bcb8b86"
+  },
+  "mira": {
+    "commit": "d0a8a98aec2d8cac3dfd04029f99cd4e9707c24d",
+    "version": "unknown",
+    "runtimeMode": "desktop-local-backend",
+    "note": "exact Mira commit/version are supplied by the run manifest when available; unknown otherwise, never fabricated"
+  },
+  "model": {
+    "provider": "default",
+    "modelId": "deepseek-v4.1-flash",
+    "accessPath": "http",
+    "effectiveParameters": {
+      "temperature": "provider-default",
+      "topP": "provider-default",
+      "maxOutputTokens": 2048,
+      "reasoningEffort": "unknown",
+      "structuredOutputMode": "unknown"
+    },
+    "note": "model id / access path are read from the run contextBudget where available; unspecified generation parameters are recorded as provider-default or unknown, never guessed"
+  },
+  "environment": {
+    "hostPlatform": {
+      "platform": "darwin",
+      "arch": "x64",
+      "osRelease": "24.6.0",
+      "hostname": "APPLEdeMacBook-Pro.local",
+      "node": "v22.22.3"
+    },
+    "node": "v22.22.3",
+    "executionClassification": "adapted",
+    "classificationRationale": "Driven through the product HTTP control surface on macOS. Same information, capability, fixture and governance boundaries as the Windows 11 + PowerShell 7 reference baseline; only the executor script/host differ.",
+    "comparabilityImpact": "none: same Mira backend control surface, frozen case contract, fixture boundaries and observability semantics; executor host/script may differ.",
+    "adaptationRationale": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+    "referenceProcedure": {
+      "baseline": "Windows 11 + PowerShell 7 reference runner",
+      "provider": "default",
+      "deviations": [
+        "executor host is macOS (Intel) instead of Windows 11",
+        "control flow implemented as a Node script instead of PowerShell"
+      ],
+      "reasonForDeviation": "current development/dry-run host is Intel macOS; acceptance is platform-neutral",
+      "comparabilityImpact": "none expected: identical HTTP control surface, model access path, fixture, governance and observability semantics"
+    }
+  },
+  "procedure": {
+    "actual": {
+      "transport": "http",
+      "provider": "default",
+      "baseUrl": "http://127.0.0.1:8799",
+      "endpoints": [
+        "POST /login",
+        "POST /chat-workspaces",
+        "POST /threads",
+        "POST /proxy/chat/default",
+        "GET /agent/runs/:runId",
+        "POST /agent/runs/:runId/approve",
+        "POST /agent/runs/:runId/cancel",
+        "GET /threads/:id/messages"
+      ],
+      "steps": [
+        "materialize fixture workspace",
+        "bind workspace + create agent thread",
+        "start monotonic timer",
+        "submit case prompt via streaming agent turn",
+        "poll terminal state",
+        "apply mechanical approval/resume control",
+        "read persisted raw execution events",
+        "cleanup"
+      ]
+    },
+    "notes": []
+  },
+  "fixture": {
+    "fixtureId": "i03-v1",
+    "beforeManifestHash": "1f0e6e6d04c23c884f49b8120b9f6eb9705115dda676ac54c308021bc2baf9ea",
+    "afterManifestHash": "1f0e6e6d04c23c884f49b8120b9f6eb9705115dda676ac54c308021bc2baf9ea",
+    "descriptor": {
+      "id": "i03-v1",
+      "fileCount": 1
+    }
+  },
+  "executorIntervention": {
+    "executorMechanical": [
+      {
+        "at": "2026-10-03T09:15:37.528Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_00_F0JQozYyhGHwuc0iyZnu3973",
+        "inputHash": "4919bf172f4933b58bafce2c84925173a45c95b2fdf66185510e166ba088a360",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-03T09:15:44.607Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_00_dS4G4sMqUfphRaP6Avrz4378",
+        "inputHash": "35dee9b71bba319ef3e74a3ad006c7a3335578346592b5bca291e892f4f51278",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-03T09:15:50.691Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_00_LUcwZB3nSuzJGDPPgtUU2476",
+        "inputHash": "1946bbbc56d6eadf86cbd4fe305af0580ecd4daaa2ef3955fb387938f08e8212",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-03T09:15:58.810Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "terminal_session",
+        "toolCallId": "call_01_UFCINUhdCyE5CQuJz7oa9470",
+        "inputHash": "6f0292a2c29d2592d6755d9e3b89e553be3fbf754bc0df0a9a43fe70224b60c4",
+        "note": "approve exact frozen invocation"
+      },
+      {
+        "at": "2026-10-03T09:16:11.965Z",
+        "type": "approval",
+        "decision": "approve",
+        "toolId": "read_open",
+        "toolCallId": "call_01_TMYMhrrRN12KMkW2GwdA4266",
+        "inputHash": "2a551efd5c1a57bbcc4217ca1556f8e24254d337e679b002871e88356f729b73",
+        "note": "approve exact frozen invocation"
+      }
+    ],
+    "humanIntervention": [],
+    "note": "entries here are mechanically executed by the #221 executor on the product control surface; Mira's own actions live only in trajectory.jsonl"
+  },
+  "provenance": {
+    "executionEvents": {
+      "file": "execution-events.ndjson",
+      "present": true,
+      "sha256": "20dc4d5d754840347d5c6d00e8bd2ca50273744a6b755146ba0d950064456fd8"
+    },
+    "streamFrames": {
+      "file": "stream-frames.ndjson",
+      "present": true,
+      "sha256": "309066198a2d22d448bbde1bb62c8209172e05ab43bbf7aa78696169b6833122"
+    },
+    "agentRun": {
+      "file": "agent-run.json",
+      "present": true,
+      "sha256": "8aa33b38343b0134723fbd56e4e312e0f0f2001f02b285c2104fe859babf7842"
+    },
+    "executorFacts": {
+      "file": "executor-facts.json",
+      "present": true,
+      "sha256": "51f076897ebed3b419a9e64f509ce1f901374fe7a76b7a57c3aa5021f02be957"
+    },
+    "workspaceBefore": {
+      "file": "workspace-manifest.before.json",
+      "present": true,
+      "sha256": "8ffc24ddc3284e212898165edd9e0b298f1651889bd31dd88fbd6192c42b4c1c"
+    },
+    "workspaceAfter": {
+      "file": "workspace-manifest.after.json",
+      "present": true,
+      "sha256": "8ffc24ddc3284e212898165edd9e0b298f1651889bd31dd88fbd6192c42b4c1c"
+    },
+    "workspaceDiff": {
+      "file": "workspace-diff.json",
+      "present": true,
+      "sha256": "518c2ff4224f1d63e1d7811f48eed6516f64df5569abef01b8737857260798a0"
+    },
+    "assistantTranscript": {
+      "file": "assistant-transcript.txt",
+      "present": true,
+      "sha256": "404032aeaa565a729f6306296e0b01635c384b356665eaf060130127da7ed78e"
+    }
+  },
+  "rawSources": {
+    "authoritative": {
+      "source": "execution-events.ndjson",
+      "refScheme": "trajectory:<index>[:<nodeId>]",
+      "precedence": 1,
+      "role": "raw persisted execution-node / Agent trace; ordered, full history incl. resumed segments"
+    },
+    "secondary": [
+      {
+        "source": "stream-frames.ndjson",
+        "refScheme": "stream:<index>",
+        "precedence": 2,
+        "role": "live SSE transport observation; may be truncated by executor abort/cancel; never used to override the persisted trajectory"
+      }
+    ],
+    "terminalState": {
+      "source": "agent-run.json",
+      "refScheme": "artifact:terminal-run",
+      "role": "authoritative terminal run-state document (status / terminalReason)"
+    }
+  }
+}

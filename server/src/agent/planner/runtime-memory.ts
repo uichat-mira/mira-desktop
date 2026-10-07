@@ -2,6 +2,7 @@ import {
   getHarnessLlmContentText,
   type HarnessLlmContent,
 } from "@/harness/llm-content";
+import { getInvocationImageMessageParts } from "../harness-multimodal";
 import type {
   AgentExecutionObservation,
   AgentToolExecutionResult,
@@ -61,8 +62,6 @@ const getSemanticActionKey = (observation: AgentExecutionObservation) => {
 
     if (
       (observation.actionType === "retrieve" ||
-        observation.toolId === "read_discover" ||
-        observation.toolId === "read_locate" ||
         observation.toolId === "codebase_explore") &&
       typeof query === "string" &&
       query.trim()
@@ -72,11 +71,21 @@ const getSemanticActionKey = (observation: AgentExecutionObservation) => {
 
     if (
       observation.actionType === "tool" &&
-      observation.toolId?.startsWith("read_") &&
+      (observation.toolId === "read" || observation.toolId === "list") &&
       typeof path === "string" &&
       path.trim()
     ) {
       return `${observation.actionType}:${observation.toolId}:path:${path.trim()}`;
+    }
+
+    const pattern = observation.argsPreview.pattern;
+    if (
+      observation.actionType === "tool" &&
+      (observation.toolId === "glob" || observation.toolId === "grep") &&
+      typeof pattern === "string" &&
+      pattern.trim()
+    ) {
+      return `${observation.actionType}:${observation.toolId}:pattern:${pattern.trim()}`;
     }
   }
 
@@ -189,6 +198,16 @@ type CanonicalEvidenceItem = {
   content: string;
 };
 
+export const buildPlannerRecentImageEvidenceParts = (
+  state: AgentGraphState,
+) =>
+  (state.evidence?.toolExecutions ?? [])
+    .filter((execution) => execution.status === "completed")
+    .slice(-PLANNER_RECENT_EVIDENCE_ITEM_LIMIT)
+    .flatMap((execution) =>
+      getInvocationImageMessageParts(execution.invocationId),
+    );
+
 const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
   const items: CanonicalEvidenceItem[] = [];
 
@@ -201,6 +220,7 @@ const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
     if (!llmContent || !text) {
       continue;
     }
+    const content = text;
     items.push({
       createdAt: execution.finishedAt || execution.startedAt,
       header: [
@@ -209,7 +229,7 @@ const collectRecentCanonicalEvidence = (state: AgentGraphState) => {
         `args=${JSON.stringify(execution.args)}`,
         ...(execution.inputHash ? [`inputHash=${execution.inputHash}`] : []),
       ].join("\n"),
-      content: clipEvidenceText(text, PLANNER_SINGLE_EVIDENCE_CONTENT_CHAR_LIMIT),
+      content: clipEvidenceText(content, PLANNER_SINGLE_EVIDENCE_CONTENT_CHAR_LIMIT),
     });
   }
 

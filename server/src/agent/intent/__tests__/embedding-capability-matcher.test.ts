@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { expect, test, vi } from "vitest";
 import * as toolCandidates from "@/harness/tool-candidates";
-import { clearHarnessRegistry, registerCapability } from "@/harness/registry";
+import { clearHarnessRegistry, registerTool } from "@/harness/registry";
 import { resolveAgentEligibleExternalMcpCapabilities } from "@/mcp/external";
 import {
   cosineSimilarity,
@@ -154,7 +154,7 @@ test("matchToolCandidatesByEmbedding returns exposed tool candidates without sel
 
 test("matchToolCandidatesByEmbedding carries a T001-eligible projected capability into real candidates", async () => {
   clearHarnessRegistry();
-  registerCapability(eligibleProjectedCapability);
+  registerTool(eligibleProjectedCapability);
   vi.mocked(resolveAgentEligibleExternalMcpCapabilities).mockReturnValue([
     eligibleProjectedCapability.definition,
   ]);
@@ -192,8 +192,8 @@ test("matchToolCandidatesByEmbedding excludes unauthorized, disabled, stale, and
     ...eligibleProjectedCapability,
     definition: { ...eligibleProjectedCapability.definition, id },
   }));
-  registerCapability(eligibleProjectedCapability);
-  blockedDefinitions.forEach(registerCapability);
+  registerTool(eligibleProjectedCapability);
+  blockedDefinitions.forEach(registerTool);
   vi.mocked(resolveAgentEligibleExternalMcpCapabilities).mockReturnValue([
     eligibleProjectedCapability.definition,
   ]);
@@ -267,8 +267,8 @@ test("matchToolCandidatesByEmbedding respects topK while keeping selection empty
           finalScore: 0.66,
         },
         {
-          toolId: "edit_file",
-          title: "Edit File",
+          toolId: "edit",
+          title: "Edit",
           description: "Modify workspace files through managed editing",
           domain: "edit",
           source: "internal",

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveHarnessToolCandidatesForTurn } from "../candidates-core/resolver.js";
-import { clearHarnessRegistry, registerCapability } from "../registry.js";
+import { clearHarnessRegistry, registerTool } from "../registry.js";
 import { createComputerUseBrowserTools } from "@/mcp/tools/browser-tools.tool.js";
 
 describe("Computer Use Harness exposure", () => {
@@ -9,7 +9,7 @@ describe("Computer Use Harness exposure", () => {
 
   it("exposes browser tools for an explicit browser request without changing AgentGraph", async () => {
     const browser = { observe: async () => ({ ok: true }), act: async () => ({ ok: true }), assert: async () => ({ ok: true }) };
-    createComputerUseBrowserTools(browser as never).forEach(registerCapability);
+    createComputerUseBrowserTools(browser as never).forEach(registerTool);
 
     const result = await resolveHarnessToolCandidatesForTurn({
       source: "agent_intent",
@@ -24,7 +24,7 @@ describe("Computer Use Harness exposure", () => {
 
   it("keeps registered browser tools visible to chat_surface", async () => {
     const browser = { observe: async () => ({ ok: true }), act: async () => ({ ok: true }), assert: async () => ({ ok: true }) };
-    createComputerUseBrowserTools(browser as never).forEach(registerCapability);
+    createComputerUseBrowserTools(browser as never).forEach(registerTool);
 
     const result = await resolveHarnessToolCandidatesForTurn({ source: "chat_surface", query: "打开网页读取标题" });
 
@@ -33,10 +33,10 @@ describe("Computer Use Harness exposure", () => {
 
   it("keeps browser tools available for a browser-intent Agent turn", async () => {
     const browser = { observe: async () => ({ ok: true }), act: async () => ({ ok: true }), assert: async () => ({ ok: true }) };
-    createComputerUseBrowserTools(browser as never).forEach(registerCapability);
-    registerCapability({
+    createComputerUseBrowserTools(browser as never).forEach(registerTool);
+    registerTool({
       definition: {
-        id: "terminal_session",
+        id: "terminal",
         title: "Terminal Session",
         description: "Run a local command.",
         domain: "terminal",

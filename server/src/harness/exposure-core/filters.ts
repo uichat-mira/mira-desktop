@@ -1,41 +1,24 @@
-import type { McpToolDefinition } from "../../mcp/core/definitions.js";
+import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessExposurePolicyInput } from "./types.js";
 
-const INTERNAL_READ_PRIMITIVE_TOOL_IDS = new Set([
-  "read",
-  "read_list",
-  "read_locate",
-  "read_extract",
-  "read_slice",
+const INTERNAL_TERMINAL_COMPAT_TOOL_IDS = new Set([
+  "terminal_session",
 ]);
-
-const INTERNAL_EDIT_COMPAT_TOOL_IDS = new Set([
-  "edit_file",
-  "workspace_mutation",
-]);
-
-export const isInternalIntentOnlyTool = (definition: McpToolDefinition) =>
-  definition.source === "internal" && INTERNAL_READ_PRIMITIVE_TOOL_IDS.has(definition.id);
-
-export const isInternalEditCompatibilityTool = (definition: McpToolDefinition) =>
-  definition.source === "internal" && INTERNAL_EDIT_COMPAT_TOOL_IDS.has(definition.id);
 
 export const shouldIncludeDefinition = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
   input: HarnessExposurePolicyInput,
 ) => !getDefinitionBlockReason(definition, input);
 
 export const getDefinitionBlockReason = (
-  definition: McpToolDefinition,
+  definition: ToolDefinition,
   input?: HarnessExposurePolicyInput,
 ): string | undefined => {
-  // These are implementation/compatibility primitives, not public Agent tools.
-  if (isInternalIntentOnlyTool(definition)) {
-    return "Internal read primitive is not part of the public Read contract.";
-  }
-
-  if (isInternalEditCompatibilityTool(definition)) {
-    return "Legacy edit wrapper is not part of the public Edit contract.";
+  if (
+    definition.source === "internal" &&
+    INTERNAL_TERMINAL_COMPAT_TOOL_IDS.has(definition.id)
+  ) {
+    return "Legacy terminal alias is not part of the public Terminal contract.";
   }
 
   // External MCP exposure follows the user's explicit Agent Access switch only.

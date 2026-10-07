@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-package-audit/0.1",
+  "auditedAt": "2026-10-04T05:05:55.504Z",
+  "reportRoot": "pilot-e2e-2026-10-04",
+  "benchmark": {
+    "caseSetVersion": "core-v0.1",
+    "miraCommit": "65d134ee99b35b733419061b7d4ded5655958cc1",
+    "miraVersion": "0.102.0",
+    "modelProvider": "volcengine",
+    "modelId": "deepseek-v4.1-flash",
+    "hostOs": "darwin",
+    "hostArch": "x64"
+  },
+  "packageCount": 4,
+  "packages": [
+    {
+      "caseId": "ADV-08",
+      "repetition": 1,
+      "path": "cases/ADV-08/repetitions/1",
+      "judgePackagePath": "judge-packages/ADV-08/rep-1",
+      "semanticCriterionIds": [
+        "C4",
+        "C5"
+      ],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-02-locate-release-checklist",
+      "repetition": 1,
+      "path": "cases/beginner-02-locate-release-checklist/repetitions/1",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "beginner-07-rename-one-file",
+      "repetition": 1,
+      "path": "cases/beginner-07-rename-one-file/repetitions/1",
+      "judgePackagePath": null,
+      "semanticCriterionIds": [],
+      "identityOk": true
+    },
+    {
+      "caseId": "intermediate-health-status-call-chain",
+      "repetition": 1,
+      "path": "cases/intermediate-health-status-call-chain/repetitions/1",
+      "judgePackagePath": "judge-packages/intermediate-health-status-call-chain/rep-1",
+      "semanticCriterionIds": [
+        "C1"
+      ],
+      "identityOk": true
+    }
+  ],
+  "secretAudit": {
+    "ok": true,
+    "findings": []
+  },
+  "identityAudit": {
+    "ok": true,
+    "findings": []
+  },
+  "publishable": true
+}

@@ -1,7 +1,6 @@
 import type {
-  McpInvocationContext,
-  McpToolEvidence,
-  McpToolImplementation,
+  ToolInvocationContext,
+  ToolImplementation,
 } from "../core/definitions.js";
 import { mcpBadRequest } from "../core/errors.js";
 import { BrowserService } from "@/microapps/computer-use/browser/service.js";
@@ -79,7 +78,7 @@ const agentAssertSchema = {
 } as const;
 
 const emitBrowserArtifacts = (
-  context: McpInvocationContext,
+  context: ToolInvocationContext,
   result: BrowserToolResult,
 ) => {
   for (const artifact of result.artifacts) {
@@ -92,34 +91,6 @@ const emitBrowserArtifacts = (
   }
 };
 
-const createBrowserEvidence = (
-  operation: "observe" | "act" | "assert",
-  result: BrowserToolResult,
-): McpToolEvidence => ({
-  actionTaken: result.ok
-    ? `Completed managed browser ${operation}.`
-    : `Managed browser ${operation} failed.`,
-  facts: [
-    `operation=${operation}`,
-    `ok=${result.ok}`,
-    `url=${result.page.url}`,
-    `title=${result.page.title}`,
-    ...(result.page.snapshotHash ? [`snapshotHash=${result.page.snapshotHash}`] : []),
-    ...(result.observation?.visibleText ? [`visibleText=${result.observation.visibleText.slice(0, 280)}`] : []),
-    ...(result.assertion ? [`assertion=${result.assertion.kind}`, `passed=${result.assertion.passed}`] : []),
-  ],
-  ...(result.error ? { error: result.error.message } : {}),
-  status: result.ok ? "completed" : "failed",
-  data: {
-    kind: "computer_use_browser",
-    operation,
-    page: result.page,
-    ...(result.observation ? { observation: result.observation } : {}),
-    ...(result.assertion ? { assertion: result.assertion } : {}),
-    ...(result.artifacts.length ? { artifacts: result.artifacts } : {}),
-  },
-});
-
 const requireObject = <T extends object>(value: unknown, name: string): T => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw mcpBadRequest(`${name} must be an object`);
@@ -130,10 +101,10 @@ const requireObject = <T extends object>(value: unknown, name: string): T => {
 export const createComputerUseBrowserTools = (
   browser: BrowserService,
   options: { sessionManager?: BrowserSessionManager } = {},
-): McpToolImplementation[] => {
+): ToolImplementation[] => {
   const sessionsByContext = new Map<string, string>();
   const sessionManager = options.sessionManager;
-  const resolveSessionId = async (context: McpInvocationContext, args: Record<string, unknown>) => {
+  const resolveSessionId = async (context: ToolInvocationContext, args: Record<string, unknown>) => {
     const explicitSessionId = typeof args.sessionId === "string" ? args.sessionId : undefined;
     if (explicitSessionId) {
       if (context.threadId) sessionsByContext.set(context.threadId, explicitSessionId);
@@ -169,7 +140,7 @@ export const createComputerUseBrowserTools = (
     return created.id;
   };
 
-  const observe: McpToolImplementation = {
+  const observe: ToolImplementation = {
     definition: {
       id: "browser_observe",
       title: "Browser Observe",
@@ -200,11 +171,11 @@ export const createComputerUseBrowserTools = (
       delete args.url;
       const result = await browser.observe(args);
       emitBrowserArtifacts(context, result);
-      return { result, evidence: createBrowserEvidence("observe", result) };
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
     },
   };
 
-  const act: McpToolImplementation = {
+  const act: ToolImplementation = {
     definition: {
       id: "browser_act",
       title: "Browser Act",
@@ -235,11 +206,11 @@ export const createComputerUseBrowserTools = (
       args.sessionId = await resolveSessionId(context, args as unknown as Record<string, unknown>);
       const result = await browser.act(args);
       emitBrowserArtifacts(context, result);
-      return { result, evidence: createBrowserEvidence("act", result) };
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
     },
   };
 
-  const assert: McpToolImplementation = {
+  const assert: ToolImplementation = {
     definition: {
       id: "browser_assert",
       title: "Browser Assert",
@@ -268,7 +239,7 @@ export const createComputerUseBrowserTools = (
       args.sessionId = await resolveSessionId(context, args as unknown as Record<string, unknown>);
       const result = await browser.assert(args);
       emitBrowserArtifacts(context, result);
-      return { result, evidence: createBrowserEvidence("assert", result) };
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
     },
   };
 

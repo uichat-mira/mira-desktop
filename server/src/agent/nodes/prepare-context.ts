@@ -2,10 +2,11 @@
  * 上下文准备节点：收集线程消息、可用工具、策略允许的自动工具列表和按需 Skill 语义。
  */
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability";
-import { listCapabilityDefinitions } from "@/harness/registry";
+import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
 import { withWorkbenchMetadata } from "@/mcp/workbench-metadata.js";
+import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 import { prepareSkillContext, type SkillContext } from "@/skills/context/index.js";
 import { readSkillDirectiveFromRequestContext } from "@/skills/flow/context.js";
 import type {
@@ -51,7 +52,7 @@ const filterExternalExpertExposure = <T extends Awaited<
 };
 
 const resolveRequestedToolGroupHints = (
-  definitions: ReturnType<typeof listCapabilityDefinitions>,
+  definitions: ReturnType<typeof listToolDefinitions>,
   requestedGroupIds: string[] | undefined,
 ): AgentRequestedToolGroupHint[] => {
   const requested = [
@@ -313,6 +314,14 @@ const summarizeSkillTrace = (skillContext: SkillContext | undefined) => {
   return `已识别 ${skillContext.primary.name}（${skillContext.primary.id}），${source} 匹配，披露 ${disclosedCount} 个参考资源`;
 };
 
+const resolveAgentToolModelHint = () => {
+  try {
+    return resolveAgentTaskProvider("default").model;
+  } catch {
+    return undefined;
+  }
+};
+
 export const prepareContextNode = async (
   state: AgentNodeState,
   emit?: EmitAgentExecutionNode,
@@ -330,7 +339,7 @@ export const prepareContextNode = async (
   const wenshuCapabilityState = reconcileWenshuOfficeHarnessCapabilities();
   const externalExpertAvailable = externalExpertService.isAgentAvailable(state.userId);
 
-  const toolDefinitions = listCapabilityDefinitions();
+  const toolDefinitions = listToolDefinitions();
   const autoAllowedTools = toolDefinitions
     .filter((definition) =>
       evaluateAgentToolPolicy(definition).type === "allow"
@@ -345,6 +354,7 @@ export const prepareContextNode = async (
     await matchToolCandidatesByEmbedding({
       query: buildToolGroupBiasedQuery(query, requestedToolGroups),
       config: state.intentConfig,
+      modelHint: resolveAgentToolModelHint(),
     }),
     externalExpertAvailable,
   );

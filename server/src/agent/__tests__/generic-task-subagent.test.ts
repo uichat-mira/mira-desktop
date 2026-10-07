@@ -47,7 +47,7 @@ const createState = (
     completionCriteria: ["global task is complete"],
   },
   toolExposure: {
-    exposedTools: ["read_open", "terminal_session"],
+    exposedTools: ["read_open", "terminal"],
     toolMeta: [
       {
         toolId: "read_open",
@@ -55,7 +55,7 @@ const createState = (
         description: "Open a known workspace file.",
       },
       {
-        toolId: "terminal_session",
+        toolId: "terminal",
         title: "Terminal Session",
         description: "Run a governed workspace command.",
       },
@@ -122,11 +122,11 @@ test("planner-only delegation surface preserves dynamic Harness tools", () => {
   const base = createState().toolExposure!;
   const exposed = withGenericTaskDelegationTool(base);
 
-  assert.deepEqual(base.exposedTools, ["read_open", "terminal_session"]);
+  assert.deepEqual(base.exposedTools, ["read_open", "terminal"]);
   assert.deepEqual(exposed.exposedTools, [
     GENERIC_TASK_DELEGATE_TOOL_ID,
     "read_open",
-    "terminal_session",
+    "terminal",
   ]);
   assert.equal(
     exposed.toolMeta[0]?.toolId,
@@ -146,7 +146,7 @@ test("planner-only delegation surface preserves dynamic Harness tools", () => {
   });
   assert.deepEqual(childContext.primary?.execution?.allowedTools, [
     "read_open",
-    "terminal_session",
+    "terminal",
   ]);
   assert.equal(
     childContext.primary?.execution?.allowedTools.includes(
@@ -201,7 +201,7 @@ test("generic worker returns completed task evidence to Main Planner", async () 
     assert.equal(frame?.skillContext?.primary?.id, GENERIC_TASK_SUBAGENT_SKILL_ID);
     assert.deepEqual(frame?.skillContext?.primary?.execution?.allowedTools, [
       "read_open",
-      "terminal_session",
+      "terminal",
     ]);
     return {
       pendingEvidenceObservation: createObservation({
@@ -252,7 +252,7 @@ test("generic worker preserves exact approval handoff", async () => {
       id: "approval-generic-task",
       runId: "run-generic-task",
       stepId: `subagent:${GENERIC_TASK_SUBAGENT_SKILL_ID}`,
-      toolId: "terminal_session",
+      toolId: "terminal",
       toolCallId: "tool-call-generic-task",
       reason: "Command execution requires approval.",
       input: { command: "npm test" },
@@ -262,7 +262,7 @@ test("generic worker preserves exact approval handoff", async () => {
   });
   const result = await createGenericTaskSubAgentNode(runner)(createState());
 
-  assert.equal(result.pendingApproval?.toolId, "terminal_session");
+  assert.equal(result.pendingApproval?.toolId, "terminal");
   assert.notEqual(result.nextAction?.type, "ask_user");
 });
 
@@ -289,7 +289,7 @@ test("generic worker maps malformed packets to schema replan", async () => {
 test("generic approval marker is distinguishable from normal Skill approvals", () => {
   const genericPending = {
     id: "tool-call-generic",
-    toolId: "terminal_session",
+    toolId: "terminal",
     args: { command: "npm test" },
     inputHash: "hash-generic",
     source: "llm_tool_call" as const,

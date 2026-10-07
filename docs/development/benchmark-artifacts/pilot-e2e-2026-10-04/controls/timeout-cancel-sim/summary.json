@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "mira-agent-core-benchmark-summary/0.1",
+  "runCount": 1,
+  "repetitionCounts": {
+    "total": 1,
+    "validComparable": 1,
+    "noncanonical": 0,
+    "invalid": 0
+  },
+  "terminalDistribution": {
+    "cancelled": 1
+  },
+  "executionModeDistribution": {
+    "adapted": 1
+  },
+  "timingObservations": {
+    "policyState": "frozen",
+    "scope": "valid_comparable_terminal_elapsed_not_success_filtered",
+    "note": "Recorder aggregate timing is descriptive terminal elapsed only. Final timing calibration must select observations by the frozen case-defined success boundary; failed or semantically unsuccessful terminal outcomes must not be treated as successful completion timing.",
+    "elapsedMs": {
+      "values": [
+        1463
+      ],
+      "median": 1463,
+      "max": 1463,
+      "count": 1
+    },
+    "elapsedMsByTerminal": {
+      "cancelled": {
+        "values": [
+          1463
+        ],
+        "median": 1463,
+        "max": 1463,
+        "count": 1
+      }
+    }
+  },
+  "deterministicMeasurements": {
+    "toolCallCountMean": 0,
+    "plannerIterationsMean": 0,
+    "delegationCountMean": 0,
+    "approvalCountTotal": 0,
+    "resumeCountTotal": 0,
+    "workspaceChangedCount": 0
+  },
+  "unresolvedGaps": [
+    {
+      "caseId": "beginner-02-locate-release-checklist",
+      "repetition": 1,
+      "fact": "recoverableFailureCount",
+      "requiredBy": "#216 §12/§13 recoverable-failure diagnostic; #221 failureRetry",
+      "availableSources": [
+        "execution-events tool node details.status",
+        "artifact:toolCalls"
+      ],
+      "missingReason": "current #221 execution-node schema exposes per-tool `status` but not `failureKind`, so recoverable vs terminal failure cannot be proven from the raw trajectory alone",
+      "scoringImpact": "recoverable-failure diagnostics and any hard-fail that depends on failure classification stay unresolved for this repetition"
+    }
+  ],
+  "scoreComponents": {
+    "taskSuccessSemantic": "pending",
+    "autonomy": "pending",
+    "reliability": "pending",
+    "governance": "pending",
+    "note": "these components require deterministic scoring (#224) and/or a fresh blank Judge; the Recorder intentionally does not populate them"
+  }
+}

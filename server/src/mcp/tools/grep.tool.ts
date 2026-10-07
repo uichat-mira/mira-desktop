@@ -1,14 +1,13 @@
-import type { McpToolImplementation } from "../core/definitions.js";
-import { mcpBadRequest } from "../core/errors.js";
-import { executeReadLocateRuntime } from "../read/runtime.js";
+import type { ToolImplementation } from "../core/definitions.js";
+import { executeGrep } from "../read/grep.js";
 import { emitArtifacts } from "./artifact-utils.js";
 
-export const grepTool: McpToolImplementation = {
+export const grepTool: ToolImplementation = {
   definition: {
     id: "grep",
     title: "Grep",
     description:
-      "Search workspace text for exact strings or ripgrep-style patterns and return matching files, lines, columns, and previews. Prefer this for symbols, references, imports, config keys, error strings, and repeated code search before opening files.",
+      "Search workspace file contents and return matching locations. Use glob for path-name discovery and read for full or contextual inspection after a match. pattern is regex by default; set literal=true for exact text.",
     domain: "read",
     source: "internal",
     mode: "sync",
@@ -17,85 +16,70 @@ export const grepTool: McpToolImplementation = {
       required: ["pattern"],
       additionalProperties: false,
       properties: {
-        pattern: { type: "string" },
-        root: { type: "string" },
-        extensions: {
-          type: "array",
-          items: { type: "string" },
+        pattern: {
+          type: "string",
+          description: "Regex search pattern by default; interpreted literally when literal=true.",
         },
-        maxResults: {
+        path: {
+          type: "string",
+          description: "Optional directory to search; defaults to the workspace root.",
+        },
+        include: {
+          type: "string",
+          description: "Optional glob that limits candidate file paths inside path.",
+        },
+        literal: {
+          type: "boolean",
+          description: "Treat pattern as literal text instead of a regular expression.",
+        },
+        caseSensitive: {
+          type: "boolean",
+          description: "Explicit case sensitivity. When omitted, smart-case is used.",
+        },
+        context: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of surrounding lines to return before and after each match.",
+        },
+        offset: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of ordered matches to skip.",
+        },
+        limit: {
           type: "integer",
           minimum: 1,
-          maximum: 100,
+          description: "Maximum matches to return in this call.",
+        },
+        includeIgnored: {
+          type: "boolean",
+          description: "Include paths hidden by default workspace ignore rules; does not expand workspace authority.",
         },
       },
     },
-    outputSchema: {
-      type: "object",
-    },
-    tags: [
-      "read",
-      "workspace",
-      "grep",
-      "search",
-      "text",
-      "code",
-      "symbol",
-      "reference",
-      "regex",
-    ],
+    outputSchema: { type: "object" },
+    tags: ["grep", "content", "search"],
     capabilities: {
       sideEffect: "none",
       requiresApproval: false,
       workspaceBound: true,
       workspaceBoundary: {
-        argKeys: ["root"],
-        argTypes: { root: "directory" },
+        argKeys: ["path"],
+        argTypes: { path: "directory" },
       },
     },
   },
   execute: async (context) => {
-    const pattern = context.args.pattern;
-    if (typeof pattern !== "string" || !pattern.trim()) {
-      throw mcpBadRequest("pattern is required");
-    }
-
-    const maxResults = context.args.maxResults;
-    if (
-      maxResults !== undefined &&
-      (typeof maxResults !== "number" ||
-        !Number.isInteger(maxResults) ||
-        maxResults < 1 ||
-        maxResults > 100)
-    ) {
-      throw mcpBadRequest("maxResults must be an integer between 1 and 100");
-    }
-
-    const extensions = context.args.extensions;
-    if (
-      extensions !== undefined &&
-      (!Array.isArray(extensions) ||
-        extensions.some((extension) => typeof extension !== "string" || !extension.trim()))
-    ) {
-      throw mcpBadRequest("extensions must be a non-empty string array when provided");
-    }
-
-    const result = await executeReadLocateRuntime({
-      args: {
-        query: pattern,
-        searchMode: "content",
-        ...(typeof context.args.root === "string" ? { path: context.args.root } : {}),
-        ...(Array.isArray(extensions) ? { extensions } : {}),
-        ...(typeof maxResults === "number" ? { limit: maxResults } : {}),
-      },
+    const result = await executeGrep({
+      args: context.args,
       environment: context.environment,
+      signal: context.signal,
       pushEvent: context.pushEvent,
     });
 
     emitArtifacts(context, result.artifacts);
-
     return {
-      result: result.contents,
+      structuredContent: result.contents,
     };
   },
 };

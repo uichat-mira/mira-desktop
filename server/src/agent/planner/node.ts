@@ -32,7 +32,9 @@ import { buildNextActionPlannerMessages, normalizeToolExposure } from "./prompt"
 import {
   buildPlannerAccumulatedActionLedger,
   buildPlannerLatestEvidenceContent,
+  buildPlannerRecentImageEvidenceParts,
 } from "./runtime-memory";
+import { appendHarnessImagesToLatestUserMessage } from "../harness-multimodal";
 import {
   applyPlannerTaskPlan,
   getPlannerTaskPlanDiagnostics,
@@ -325,16 +327,20 @@ export const nextActionPlannerNode = async (
   } else if (recoveryExhausted) {
     nextAction = getRecoveryExhaustedPlannerConclusion(observationContext);
   } else {
-    const messages: NormalizedChatMessage[] = withPlannerTaskPlanContract(
-      buildNextActionPlannerMessages({
-        question,
-        messages: state.messages,
-        observationContext,
-        toolExposure,
-        iteration,
-        maxIterations,
-      }),
-    );
+    const messages: NormalizedChatMessage[] =
+      appendHarnessImagesToLatestUserMessage(
+        withPlannerTaskPlanContract(
+          buildNextActionPlannerMessages({
+            question,
+            messages: state.messages,
+            observationContext,
+            toolExposure,
+            iteration,
+            maxIterations,
+          }),
+        ),
+        buildPlannerRecentImageEvidenceParts(plannerState),
+      );
 
     const resolvePlannerModelAction = async (
       plannerMessages: NormalizedChatMessage[],

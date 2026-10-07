@@ -1,4 +1,4 @@
-import type { McpToolImplementation } from "../core/definitions.js";
+import type { ToolImplementation } from "../core/definitions.js";
 import * as S from "./github-domain.shared.js";
 
 const {
@@ -19,8 +19,8 @@ type MergeResponse = S.MergeResponse;
 export const createPullRequestTool = (
   client: GitHubReadClient,
   api: GitHubApi,
-  baseTool: McpToolImplementation,
-): McpToolImplementation => ({
+  baseTool: ToolImplementation,
+): ToolImplementation => ({
   definition: {
     id: "github_pull_request",
     title: "GitHub Pull Request",

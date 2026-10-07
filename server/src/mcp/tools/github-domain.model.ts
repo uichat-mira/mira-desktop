@@ -1,10 +1,10 @@
 import type {
-  McpInvocationContext,
-  McpToolExecutionResult,
-  McpToolImplementation,
+  ToolInvocationContext,
+  ToolResult,
+  ToolImplementation,
 } from "../core/definitions.js";
 import {
-  McpApprovalRequiredError,
+  ToolApprovalRequiredError,
   mcpBadRequest,
   mcpNotFound,
 } from "../core/errors.js";
@@ -22,9 +22,9 @@ import {
 } from "./github-domain.api.js";
 
 export const rewriteArtifactToolId = (
-  context: McpInvocationContext,
+  context: ToolInvocationContext,
   toolId: string,
-): McpInvocationContext["addArtifact"] =>
+): ToolInvocationContext["addArtifact"] =>
   (artifact) =>
     context.addArtifact({
       ...artifact,
@@ -35,40 +35,28 @@ export const rewriteArtifactToolId = (
     });
 
 export const runReadDelegate = async (
-  tool: McpToolImplementation,
-  context: McpInvocationContext,
+  tool: ToolImplementation,
+  context: ToolInvocationContext,
   toolId: string,
   operation: string,
   args: Record<string, unknown>,
-): Promise<McpToolExecutionResult> => {
+): Promise<ToolResult> => {
   const delegated = await tool.execute({
     ...context,
     args,
     addArtifact: rewriteArtifactToolId(context, toolId),
   });
   return {
-    ...delegated,
-    ...(delegated.result !== undefined
-      ? { result: withOperation(operation, delegated.result) }
+    ...(delegated.structuredContent !== undefined
+      ? { structuredContent: withOperation(operation, delegated.structuredContent) }
       : {}),
-    ...(delegated.evidence
-      ? {
-          evidence: {
-            ...delegated.evidence,
-            data: {
-              ...(isRecord(delegated.evidence.data)
-                ? delegated.evidence.data
-                : {}),
-              operation,
-            },
-          },
-        }
-      : {}),
+    ...(delegated.content ? { content: delegated.content } : {}),
+    ...(delegated.isError ? { isError: true } : {}),
   };
 };
 
 export const authorizeRepository = async (
-  context: McpInvocationContext,
+  context: ToolInvocationContext,
   client: GitHubReadClient,
   repository: string,
 ) => {
@@ -96,7 +84,7 @@ export const authorizeRepository = async (
 };
 
 export const requireRemoteWriteApproval = (
-  context: McpInvocationContext,
+  context: ToolInvocationContext,
   input: {
     operation: string;
     repository: string;
@@ -105,7 +93,7 @@ export const requireRemoteWriteApproval = (
   },
 ) => {
   if (context.approval?.granted) return;
-  throw new McpApprovalRequiredError(
+  throw new ToolApprovalRequiredError(
     `${input.summary} This will modify GitHub repository ${input.repository}.`,
     {
       scope: input.highRisk ? "github.high_risk" : "github.remote_write",
@@ -114,7 +102,7 @@ export const requireRemoteWriteApproval = (
 };
 
 export const addArtifact = (
-  context: McpInvocationContext,
+  context: ToolInvocationContext,
   input: {
     toolId: string;
     operation: string;
@@ -142,14 +130,8 @@ export const completed = (
   repository: string,
   result: unknown,
   facts: string[],
-): McpToolExecutionResult => ({
-  result: withOperation(operation, result),
-  evidence: {
-    actionTaken: `Executed GitHub ${operation} for ${repository}`,
-    facts,
-    status: "completed",
-    data: { operation, repository },
-  },
+): ToolResult => ({
+  structuredContent: withOperation(operation, result),
 });
 
 export type RepoContentResponse = {

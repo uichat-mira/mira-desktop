@@ -10,9 +10,9 @@ import {
 } from "../src/agent/delegation/contract.js";
 import type { AgentNodeState } from "../src/agent/node-runtime.js";
 import type { AgentNextAction } from "../src/agent/types.js";
-import { readOpenTool } from "../src/mcp/tools/read-open.tool.js";
+import { readTool } from "../src/mcp/tools/read.tool.js";
 import { editFileTool } from "../src/mcp/tools/edit-file.tool.js";
-import { terminalSessionTool } from "../src/mcp/tools/terminal-session.tool.js";
+import { terminalTool } from "../src/mcp/tools/terminal-session.tool.js";
 import { codebaseExploreTool } from "../src/mcp/managed-codegraph/codebase-explore.tool.js";
 
 const runs = Number(process.argv[2] ?? 3);
@@ -25,9 +25,9 @@ if (!process.env.DATABASE_URL) {
 }
 
 const runtimeDefinitions = [
-  readOpenTool.definition,
+  readTool.definition,
   editFileTool.definition,
-  terminalSessionTool.definition,
+  terminalTool.definition,
   codebaseExploreTool.definition,
 ];
 
@@ -61,7 +61,7 @@ const cases = [
   {
     id: "single-read",
     question: "读取 package.json。",
-    expected: "read_open",
+    expected: "read",
   },
   {
     id: "pure-answer",

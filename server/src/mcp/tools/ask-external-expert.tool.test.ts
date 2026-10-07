@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { McpInvocationContext } from "../core/definitions.js";
+import type { ToolInvocationContext } from "../core/definitions.js";
 import { executeHarnessInvocation } from "@/harness/invocations.js";
-import { registerCapability, unregisterCapability } from "@/harness/registry.js";
+import { registerTool, unregisterTool } from "@/harness/registry.js";
 import {
   attachHarnessLlmContentToExecution,
 } from "@/agent/nodes/harness-tool-result.js";
@@ -14,7 +14,7 @@ import {
   createAskExternalExpertTool,
 } from "./ask-external-expert.tool.js";
 
-const context = (args: Record<string, unknown>): McpInvocationContext => ({
+const context = (args: Record<string, unknown>): ToolInvocationContext => ({
   invocationId: "invocation-external-expert",
   args,
   userId: 7,
@@ -27,7 +27,7 @@ const context = (args: Record<string, unknown>): McpInvocationContext => ({
 });
 
 afterEach(() => {
-  unregisterCapability(askExternalExpertTool.definition.id);
+  unregisterTool(askExternalExpertTool.definition.id);
 });
 
 describe("ask_external_expert", () => {
@@ -50,18 +50,11 @@ describe("ask_external_expert", () => {
       }),
     );
     expect(output).toEqual({
-      result: {
+      structuredContent: {
         answer: "建议先验证数据来源。",
         status: "completed",
         latencyMs: 123,
       },
-      evidence: expect.objectContaining({
-        facts: expect.arrayContaining([
-          "tool=ask_external_expert",
-          "status=completed",
-        ]),
-        data: expect.objectContaining({ answer: "建议先验证数据来源。" }),
-      }),
     });
     expect(tool.definition.inputSchema).toMatchObject({
       required: ["question"],
@@ -80,7 +73,7 @@ describe("ask_external_expert", () => {
         latencyMs: 88,
       }),
     });
-    registerCapability(tool);
+    registerTool(tool);
 
     const invocation = await executeHarnessInvocation({
       toolId: "ask_external_expert",

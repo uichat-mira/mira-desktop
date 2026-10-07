@@ -45,7 +45,7 @@ describe("wecom_robot_notify", () => {
     expect(context.pushEvent).toHaveBeenCalledWith(expect.objectContaining({
       type: "invocation:progress",
     }));
-    expect(result.result).toEqual({
+    expect(result.structuredContent).toEqual({
       success: true,
       target: "robot-webhook",
       summary: "WeCom robot notification sent: Release",

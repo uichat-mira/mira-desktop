@@ -340,7 +340,7 @@ Package / Runtime Pack：
 - `server/src/microapps/office-suite/runtime-pack-paths.ts`
 - `server/src/routes/microapps/office-suite/capability-pack.ts`
 - `server/tools/wenshu/requirements.txt`
-- `desktop/src/features/Settings/pages/Skills/`
+- `desktop/src/features/Skills/`
 
 Harness execution eligibility：
 
