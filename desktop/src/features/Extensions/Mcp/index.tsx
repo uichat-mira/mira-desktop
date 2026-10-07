@@ -1,6 +1,5 @@
 import {
   Boxes,
-  ChevronRight,
   LibraryBig,
   Mail,
   MousePointerClick,
@@ -11,6 +10,7 @@ import { useMemo, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import AppPageLayout from "@/app/Layouts/AppPageLayout";
 import {
+  Alert,
   Button,
   Card,
   GithubIcon,
@@ -163,6 +163,10 @@ export default function McpPage() {
       scrollBody={false}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-5">
+        <Alert variant="info" title="原型预览">
+          本页用于验证扩展信息架构；连接状态仅为界面示意，不代表当前运行时真实状态。
+        </Alert>
+
         <div className="flex min-w-0 shrink-0 items-center gap-3">
           <div className="stable-scrollbar min-w-0 flex-1 overflow-x-auto pb-1">
             <div className="flex gap-1">
@@ -240,8 +244,8 @@ function IntegrationCard({
   const Icon = integration.icon;
 
   return (
-    <Card interactive padding="none" className="min-h-[132px] overflow-hidden">
-      <div className="group flex h-full w-full flex-col p-4 text-left">
+    <Card padding="none" className="min-h-[132px] overflow-hidden">
+      <div className="flex h-full w-full flex-col p-4 text-left">
         <div className="flex items-start gap-3">
           <div
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[11px] ${integration.iconClassName}`}
@@ -263,10 +267,6 @@ function IntegrationCard({
               来自 {integration.source}
             </p>
           </div>
-          <ChevronRight
-            size={17}
-            className="text-text-tertiary transition-transform group-hover:translate-x-0.5"
-          />
         </div>
         <p className="mt-4 line-clamp-2 text-xs leading-5 text-text-secondary">
           {integration.description}
