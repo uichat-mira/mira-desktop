@@ -50,6 +50,7 @@ export type ApplyPatchFailure = {
   path: string;
   destinationPath?: string;
   stage: "add" | "update" | "move" | "delete";
+  targetCommitAttempted: boolean;
   message: string;
 };
 
@@ -484,6 +485,15 @@ export const executeApplyPatchMutation = async (
       };
 
       for (const item of prepared) {
+        let targetCommitAttempted = false;
+        const operationContext: FileMutationRuntimeContext = {
+          ...batchContext,
+          commitObserver: {
+            markTargetCommitAttempted() {
+              targetCommitAttempted = true;
+            },
+          },
+        };
         let stage: ApplyPatchFailure["stage"] =
           item.hunk.type === "add"
             ? "add"
@@ -497,7 +507,7 @@ export const executeApplyPatchMutation = async (
                 path: item.hunk.path,
                 content: item.hunk.contents,
               },
-              batchContext,
+              operationContext,
             );
             committed.push({
               hunkIndex: item.hunkIndex,
@@ -511,7 +521,7 @@ export const executeApplyPatchMutation = async (
           if (item.hunk.type === "delete") {
             const mutation = await executeDeleteMutation(
               { path: item.hunk.path },
-              batchContext,
+              operationContext,
             );
             committed.push({
               hunkIndex: item.hunkIndex,
@@ -529,7 +539,7 @@ export const executeApplyPatchMutation = async (
                 content: item.replacementContent,
                 overwrite: true,
               },
-              batchContext,
+              operationContext,
             );
             committed.push({
               hunkIndex: item.hunkIndex,
@@ -549,7 +559,7 @@ export const executeApplyPatchMutation = async (
                 path: item.hunk.path,
                 destinationPath: item.hunk.movePath,
               },
-              batchContext,
+              operationContext,
             );
             committed.push({
               hunkIndex: item.hunkIndex,
@@ -564,7 +574,12 @@ export const executeApplyPatchMutation = async (
           return {
             operation: "apply_patch",
             status: committed.length > 0 ? "partial" : "failed",
-            changed: committed.length > 0 ? true : "unknown",
+            changed:
+              committed.length > 0
+                ? true
+                : targetCommitAttempted
+                  ? "unknown"
+                  : false,
             hunkCount: prepared.length,
             committed,
             failed: {
@@ -575,14 +590,14 @@ export const executeApplyPatchMutation = async (
                 ? { destinationPath: item.hunk.movePath }
                 : {}),
               stage,
+              targetCommitAttempted,
               message,
             },
             unapplied: summarizeUnapplied(prepared, item.hunkIndex),
-            // The failed runtime operation may have reached its OS commit point
-            // before surfacing an I/O error. Earlier returned results are
-            // definitely committed; the failed operation is conservatively
-            // marked uncertain instead of inventing rollback semantics.
-            committedDeltaExact: false,
+            // Pre-commit validation/scratch failures are known not to have
+            // changed the target. Once the target publish/rename/delete was
+            // attempted, an I/O error is conservatively treated as uncertain.
+            committedDeltaExact: !targetCommitAttempted,
           };
         }
       }
