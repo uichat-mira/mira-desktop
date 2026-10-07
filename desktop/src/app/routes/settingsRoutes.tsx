@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { RouteObject } from "react-router-dom";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Outlet } from "react-router-dom";
+import { Navigate, Outlet } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Blend,
@@ -96,6 +96,10 @@ const settingsRouteTree: SettingsRouteConfig[] = [
     path: "roles",
     element: <RoleSettings />,
     nav: { labelKey: "settings.navigation.roles", icon: UserRoundPen, group: "app", order: 10 },
+  },
+  {
+    path: "skills",
+    element: <Navigate to="/extensions/skills" replace />,
   },
   {
     path: "micro-apps",
