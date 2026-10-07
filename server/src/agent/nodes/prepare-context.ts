@@ -6,6 +6,7 @@ import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
 import { withWorkbenchMetadata } from "@/mcp/workbench-metadata.js";
+import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 import { prepareSkillContext, type SkillContext } from "@/skills/context/index.js";
 import { readSkillDirectiveFromRequestContext } from "@/skills/flow/context.js";
 import type {
@@ -313,6 +314,14 @@ const summarizeSkillTrace = (skillContext: SkillContext | undefined) => {
   return `已识别 ${skillContext.primary.name}（${skillContext.primary.id}），${source} 匹配，披露 ${disclosedCount} 个参考资源`;
 };
 
+const resolveAgentToolModelHint = () => {
+  try {
+    return resolveAgentTaskProvider("default").model;
+  } catch {
+    return undefined;
+  }
+};
+
 export const prepareContextNode = async (
   state: AgentNodeState,
   emit?: EmitAgentExecutionNode,
@@ -345,6 +354,7 @@ export const prepareContextNode = async (
     await matchToolCandidatesByEmbedding({
       query: buildToolGroupBiasedQuery(query, requestedToolGroups),
       config: state.intentConfig,
+      modelHint: resolveAgentToolModelHint(),
     }),
     externalExpertAvailable,
   );

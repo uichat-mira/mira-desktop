@@ -74,11 +74,7 @@ export const getToolTraceTargetPreview = (
   args: Record<string, unknown>,
 ) => {
   if (
-    (toolId === "read" ||
-      toolId === "read_open" ||
-      toolId === "list" ||
-      toolId === "read_list" ||
-      toolId === "read_locate") &&
+    (toolId === "read" || toolId === "list") &&
     typeof args.path === "string"
   ) {
     return getTraceValuePreview(args.path);

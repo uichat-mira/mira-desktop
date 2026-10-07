@@ -7,7 +7,7 @@ export const globTool: ToolImplementation = {
     id: "glob",
     title: "Glob",
     description:
-      "Find file paths matching a glob pattern. Does not search file contents.",
+      "Find workspace paths by glob pattern when the exact path is unknown. Use list for direct children of a known directory and grep for file-content search; glob never searches file contents.",
     domain: "read",
     source: "internal",
     mode: "sync",
@@ -16,11 +16,28 @@ export const globTool: ToolImplementation = {
       required: ["pattern"],
       additionalProperties: false,
       properties: {
-        pattern: { type: "string" },
-        path: { type: "string" },
-        offset: { type: "integer", minimum: 0 },
-        limit: { type: "integer", minimum: 1 },
-        includeIgnored: { type: "boolean" },
+        pattern: {
+          type: "string",
+          description: "Workspace-relative glob pattern such as **/*.tsx.",
+        },
+        path: {
+          type: "string",
+          description: "Optional directory that scopes pattern matching; defaults to the workspace root.",
+        },
+        offset: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of sorted matches to skip.",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          description: "Maximum matching paths to return in this call.",
+        },
+        includeIgnored: {
+          type: "boolean",
+          description: "Include paths hidden by default workspace ignore rules; does not expand workspace authority.",
+        },
       },
     },
     outputSchema: { type: "object" },

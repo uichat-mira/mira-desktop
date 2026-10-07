@@ -117,183 +117,136 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("createToolExecutionEvidenceSummary prioritizes documentation content over build artifacts for read_locate", () => {
-  const summary = createToolExecutionEvidenceSummary({
-    question: "请检索 workspace 中关于 UIChat Mira 的说明，然后基于检索结果回答 UIChat Mira 是什么。",
-    execution: {
-      toolId: "read_locate",
-      args: { query: "UIChat Mira" },
-      status: "completed",
-      inputHash: "hash-read-locate",
-      result: {
-        type: "locate",
-        scope: ".",
-        query: "UIChat Mira",
-        searchMode: "auto",
-        matches: [
-          {
-            path: "release/v0.7.1_20260704_205127/electron/UIChat Mira Setup 0.7.1.exe",
-            matchType: "path",
-          },
-          {
-            path: "README.md",
-            matchType: "content",
-            line: 3,
-            column: 1,
-            preview: "UIChat Mira is a local-first desktop workspace for chat, knowledge, tools, and docs.",
-          },
-          {
-            path: "AGENTS.md",
-            matchType: "content",
-            line: 5,
-            column: 1,
-            preview: "UIChat Mira is a local-first desktop workspace with an Electron shell, a React renderer, and a bundled Fastify backend.",
-          },
-        ],
+test("createToolExecutionEvidenceSummary preserves canonical grep content matches", () => {
+  const result = {
+    type: "grep",
+    pattern: "UIChat Mira",
+    path: ".",
+    provider: "ripgrep",
+    matches: [
+      {
+        path: "README.md",
+        line: 3,
+        column: 1,
+        preview:
+          "UIChat Mira is a local-first desktop workspace for chat, knowledge, tools, and docs.",
       },
-      evidence: normalizedEvidence("read_locate", {
-        type: "locate",
-        scope: ".",
-        query: "UIChat Mira",
-        searchMode: "auto",
-        matches: [
-          { path: "release/v0.7.1_20260704_205127/electron/UIChat Mira Setup 0.7.1.exe", matchType: "path" },
-          { path: "README.md", matchType: "content", line: 3, column: 1, preview: "UIChat Mira is a local-first desktop workspace for chat, knowledge, tools, and docs." },
-          { path: "AGENTS.md", matchType: "content", line: 5, column: 1, preview: "UIChat Mira is a local-first desktop workspace with an Electron shell, a React renderer, and a bundled Fastify backend." },
-        ],
-      }),
+      {
+        path: "AGENTS.md",
+        line: 5,
+        column: 1,
+        preview:
+          "UIChat Mira is a local-first desktop workspace with an Electron shell, a React renderer, and a bundled Fastify backend.",
+      },
+    ],
+    returnedCount: 2,
+    hasMore: false,
+    truncated: false,
+  };
+  const summary = createToolExecutionEvidenceSummary({
+    question:
+      "请检索 workspace 中关于 UIChat Mira 的说明，然后基于检索结果回答 UIChat Mira 是什么。",
+    execution: {
+      toolId: "grep",
+      args: { pattern: "UIChat Mira", path: "." },
+      status: "completed",
+      inputHash: "hash-grep-uichat-mira",
+      result,
+      evidence: normalizedEvidence("grep", result),
       startedAt: "2026-07-04T00:00:00.000Z",
       finishedAt: "2026-07-04T00:00:01.000Z",
     },
     evidenceIndex: 0,
   });
 
-  assert.equal(summary?.data?.kind, "read_locate");
-  assert.deepEqual(
-    summary?.data?.matchesPreview.slice(0, 2).map((entry) => entry.includes("README.md") || entry.includes("AGENTS.md")),
-    [true, true],
-  );
-  assert.equal(
-    (summary?.data?.matchesPreview[0] ?? "").startsWith("[path] release/"),
-    false,
-  );
-});
-
-test("createToolExecutionEvidenceSummary preserves read_discover facts and truncation", () => {
-  const summary = createToolExecutionEvidenceSummary({
-    execution: {
-      toolId: "read_discover",
-      args: { mode: "list", path: "docs", maxResults: 1 },
-      status: "completed",
-      inputHash: "hash-read-discover",
-      result: {
-        type: "discover",
-        mode: "list",
-        operation: "list",
-        path: "docs",
-        entries: [{ name: "settings.md", type: "file" }],
-        returnedCount: 1,
-        totalCount: 3,
-        hasMore: true,
-        truncated: true,
-      },
-      evidence: normalizedEvidence("read_discover", {
-        type: "discover",
-        mode: "list",
-        operation: "list",
-        path: "docs",
-        entries: [{ name: "settings.md", type: "file" }],
-        returnedCount: 1,
-        totalCount: 3,
-        hasMore: true,
-        truncated: true,
-      }),
-      startedAt: "2026-07-11T00:00:00.000Z",
-      finishedAt: "2026-07-11T00:00:01.000Z",
-    },
-    evidenceIndex: 0,
-  });
-
-  assert.equal(summary.data?.kind, "read_discover");
-  if (summary.data?.kind === "read_discover") {
-    assert.equal(summary.data.mode, "list");
-    assert.equal(summary.data.operation, "list");
-    assert.equal(summary.data.path, "docs");
-    assert.deepEqual(summary.data.candidatePaths, ["settings.md"]);
-    assert.equal(summary.data.candidateCount, 1);
-    assert.equal(summary.data.returnedCount, 1);
-    assert.equal(summary.data.totalCount, 3);
-    assert.equal(summary.data.hasMore, true);
-    assert.equal(summary.status, "truncated");
-    assert.match(summary.facts.join("\n"), /path=docs/);
-    assert.match(summary.facts.join("\n"), /returnedCount=1/);
-    assert.match(summary.facts.join("\n"), /totalCount=3/);
-    assert.match(summary.facts.join("\n"), /candidatePath=settings\.md/);
+  assert.equal(summary?.data?.kind, "grep");
+  if (summary?.data?.kind === "grep") {
+    assert.deepEqual(summary.data.matchedPaths, ["README.md", "AGENTS.md"]);
+    assert.equal(summary.data.matchesPreview.length, 2);
+    assert.match(summary.data.matchesPreview[0] ?? "", /^README\.md:3:1:/);
+    assert.match(summary.facts.join("\n"), /provider=ripgrep/);
   }
 });
 
-test("createToolExecutionEvidenceSummary limits read_discover candidatePaths to preview size", () => {
+test("createToolExecutionEvidenceSummary preserves canonical list facts and truncation", () => {
+  const result = {
+    type: "list",
+    path: "docs",
+    entries: [{ name: "settings.md", type: "file" }],
+    offset: 0,
+    returnedCount: 1,
+    totalCount: 3,
+    nextOffset: 1,
+    hasMore: true,
+    truncated: true,
+  };
   const summary = createToolExecutionEvidenceSummary({
     execution: {
-      toolId: "read_discover",
-      args: { mode: "locate", query: "settings" },
+      toolId: "list",
+      args: { path: "docs", limit: 1 },
       status: "completed",
-      inputHash: "hash-read-discover-preview-limit",
-      result: {
-        type: "discover",
-        mode: "locate",
-        operation: "locate",
-        root: "workspace-root",
-        query: "settings",
-        matches: [
-          { path: "docs/settings-1.md", matchType: "path" },
-          { path: "docs/settings-2.md", matchType: "path" },
-          { path: "docs/settings-3.md", matchType: "path" },
-          { path: "docs/settings-4.md", matchType: "path" },
-          { path: "docs/settings-5.md", matchType: "path" },
-          { path: "docs/settings-6.md", matchType: "path" },
-        ],
-        returnedCount: 6,
-        hasMore: true,
-        truncated: true,
-      },
-      evidence: normalizedEvidence("read_discover", {
-        type: "discover",
-        mode: "locate",
-        operation: "locate",
-        root: "workspace-root",
-        query: "settings",
-        matches: [
-          { path: "docs/settings-1.md", matchType: "path" },
-          { path: "docs/settings-2.md", matchType: "path" },
-          { path: "docs/settings-3.md", matchType: "path" },
-          { path: "docs/settings-4.md", matchType: "path" },
-          { path: "docs/settings-5.md", matchType: "path" },
-          { path: "docs/settings-6.md", matchType: "path" },
-        ],
-        returnedCount: 6,
-        hasMore: true,
-        truncated: true,
-      }),
+      inputHash: "hash-list-docs",
+      result,
+      evidence: normalizedEvidence("list", result),
       startedAt: "2026-07-11T00:00:00.000Z",
       finishedAt: "2026-07-11T00:00:01.000Z",
     },
     evidenceIndex: 0,
   });
 
-  assert.equal(summary.data?.kind, "read_discover");
-  if (summary.data?.kind === "read_discover") {
-    assert.equal(summary.data.candidateCount, 6);
-    assert.equal(summary.data.returnedCount, 6);
-    assert.equal(summary.data.candidatePaths.length, 5);
-    assert.deepEqual(summary.data.candidatePaths, [
-      "docs/settings-1.md",
-      "docs/settings-2.md",
-      "docs/settings-3.md",
-      "docs/settings-4.md",
-      "docs/settings-5.md",
-    ]);
+  assert.equal(summary.data?.kind, "list");
+  if (summary.data?.kind === "list") {
+    assert.equal(summary.data.path, "docs");
+    assert.equal(summary.data.entryCount, 3);
+    assert.equal(summary.data.fileCount, 1);
+    assert.deepEqual(summary.data.entriesPreview, ["[F] settings.md"]);
+    assert.equal(summary.data.nextOffset, 1);
+    assert.equal(summary.status, "truncated");
+    assert.match(summary.facts.join("\n"), /path=docs/);
+    assert.match(summary.facts.join("\n"), /entryCount=3/);
+    assert.match(summary.facts.join("\n"), /nextOffset=1/);
+  }
+});
+
+test("createToolExecutionEvidenceSummary bounds canonical glob path previews", () => {
+  const matches = Array.from(
+    { length: 22 },
+    (_, index) => `docs/settings-${index + 1}.md`,
+  );
+  const result = {
+    type: "glob",
+    pattern: "docs/settings-*.md",
+    path: ".",
+    matches,
+    offset: 0,
+    returnedCount: 22,
+    totalCount: 30,
+    nextOffset: 22,
+    hasMore: true,
+    truncated: true,
+  };
+  const summary = createToolExecutionEvidenceSummary({
+    execution: {
+      toolId: "glob",
+      args: { pattern: "docs/settings-*.md", path: "." },
+      status: "completed",
+      inputHash: "hash-glob-preview-limit",
+      result,
+      evidence: normalizedEvidence("glob", result),
+      startedAt: "2026-07-11T00:00:00.000Z",
+      finishedAt: "2026-07-11T00:00:01.000Z",
+    },
+    evidenceIndex: 0,
+  });
+
+  assert.equal(summary.data?.kind, "glob");
+  if (summary.data?.kind === "glob") {
+    assert.equal(summary.data.matchCount, 30);
+    assert.equal(summary.data.matchedPaths.length, 20);
+    assert.equal(summary.data.matchesPreview.length, 5);
+    assert.deepEqual(summary.data.matchesPreview, matches.slice(0, 5));
     assert.equal(summary.facts.some((fact) => fact.includes("settings-6.md")), false);
+    assert.equal(summary.status, "truncated");
   }
 });
 
@@ -303,7 +256,7 @@ test("generateNode blocks function_calls protocol text without treating it as ex
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_list",
+        toolId: "list",
         args: { path: "." },
         status: "completed",
         inputHash: "hash-read-list",
@@ -315,7 +268,7 @@ test("generateNode blocks function_calls protocol text without treating it as ex
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_list",
+          toolId: "list",
           inputHash: "hash-read-list",
           actionTaken: "Listed workspace directory .",
           keyFindings: ["entryCount=3", "[F] README.md", "[D] docs"],
@@ -324,7 +277,7 @@ test("generateNode blocks function_calls protocol text without treating it as ex
             reason: "Directory listing is sufficient for the user's workspace overview question.",
           },
           data: {
-            kind: "read_list",
+            kind: "list",
             path: ".",
             entryCount: 3,
             fileCount: 2,
@@ -345,7 +298,7 @@ test("generateNode blocks function_calls protocol text without treating it as ex
 
   const invokeSpy = vi
     .spyOn(providerProxyService, "generateTextForRole")
-    .mockResolvedValue('<function_calls>{"toolId":"read_list"}</function_calls>');
+    .mockResolvedValue('<function_calls>{"toolId":"list"}</function_calls>');
   const executionEvents: Array<{
     nodeId: string;
     phase: string;
@@ -565,7 +518,7 @@ test("generateNode does not semantically rewrite ordinary model text", async () 
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_open",
+        toolId: "read",
         args: { path: "README.md" },
         status: "completed",
         inputHash: "hash-read-open",
@@ -573,7 +526,7 @@ test("generateNode does not semantically rewrite ordinary model text", async () 
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_open",
+          toolId: "read",
           inputHash: "hash-read-open",
           actionTaken: "Opened file README.md.",
           keyFindings: ["contentLength=42", "# UIChat Mira"],
@@ -582,7 +535,7 @@ test("generateNode does not semantically rewrite ordinary model text", async () 
             reason: "Opened file content is available for answer generation.",
           },
           data: {
-            kind: "read_open",
+            kind: "read",
             path: "README.md",
             contentPreview: "# UIChat Mira UIChat Mira is a local-first desktop workspace.",
             contentLength: 42,
@@ -601,12 +554,12 @@ test("generateNode does not semantically rewrite ordinary model text", async () 
   citeFirstTool(state);
 
   vi.spyOn(providerProxyService, "generateTextForRole").mockResolvedValue(
-    "我将调用 read_open 来打开 README.md。",
+    "我将调用 read 来打开 README.md。",
   );
 
   const result = await generateNode(state);
 
-  assert.equal(result.answer, "我将调用 read_open 来打开 README.md。");
+  assert.equal(result.answer, "我将调用 read 来打开 README.md。");
 });
 
 test("createToolExecutionEvidenceSummary preserves historical edit_file mutation evidence", () => {
@@ -728,7 +681,7 @@ test("generateNode treats a tool protocol after incomplete evidence as delivery 
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_list",
+        toolId: "list",
         args: { path: "." },
         status: "completed",
         inputHash: "hash-read-list-missing-content",
@@ -736,7 +689,7 @@ test("generateNode treats a tool protocol after incomplete evidence as delivery 
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_list",
+          toolId: "list",
           inputHash: "hash-read-list-missing-content",
           actionTaken: "Listed workspace directory .",
           keyFindings: ["entryCount=3", "[F] README.md", "[D] docs"],
@@ -746,7 +699,7 @@ test("generateNode treats a tool protocol after incomplete evidence as delivery 
             missingInfo: ["target file content or a narrower path"],
           },
           data: {
-            kind: "read_list",
+            kind: "list",
             path: ".",
             entryCount: 3,
             fileCount: 2,
@@ -766,7 +719,7 @@ test("generateNode treats a tool protocol after incomplete evidence as delivery 
   citeFirstTool(state);
 
   vi.spyOn(providerProxyService, "generateTextForRole").mockResolvedValue(
-    "<function_calls>{\"toolId\":\"read_open\"}</function_calls>",
+    "<function_calls>{\"toolId\":\"read\"}</function_calls>",
   );
 
   const result = await generateNode(state);
@@ -1098,7 +1051,7 @@ test("Generate only blocks protocol envelopes, not ordinary text containing a to
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_open",
+        toolId: "read",
         args: { path: "README.md" },
         status: "completed",
         inputHash: "hash-read-open",
@@ -1106,7 +1059,7 @@ test("Generate only blocks protocol envelopes, not ordinary text containing a to
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_open",
+          toolId: "read",
           inputHash: "hash-read-open",
           actionTaken: "Opened file README.md.",
           keyFindings: ["contentLength=42", "# UIChat Mira"],
@@ -1115,7 +1068,7 @@ test("Generate only blocks protocol envelopes, not ordinary text containing a to
             reason: "Opened file content is available for answer generation.",
           },
           data: {
-            kind: "read_open",
+            kind: "read",
             path: "README.md",
             contentPreview: "# UIChat Mira UIChat Mira is a local-first desktop workspace.",
             contentLength: 42,
@@ -1134,14 +1087,14 @@ test("Generate only blocks protocol envelopes, not ordinary text containing a to
   citeFirstTool(state);
 
   vi.spyOn(providerProxyService, "generateTextForRole").mockResolvedValue(
-    "read_open completed, README.md says UIChat Mira is a local-first desktop workspace.",
+    "read completed, README.md says UIChat Mira is a local-first desktop workspace.",
   );
 
   const result = await generateNode(state);
 
   assert.equal(
     result.answer,
-    "read_open completed, README.md says UIChat Mira is a local-first desktop workspace.",
+    "read completed, README.md says UIChat Mira is a local-first desktop workspace.",
   );
 });
 
@@ -1151,7 +1104,7 @@ test("generateNode fails delivery when model answer is empty despite completed e
     observations: [],
     toolExecutions: [
       {
-        toolId: "read_open",
+        toolId: "read",
         args: { path: "README.md" },
         status: "completed",
         inputHash: "hash-read-open",
@@ -1159,7 +1112,7 @@ test("generateNode fails delivery when model answer is empty despite completed e
         summary: {
           source: "tool",
           status: "completed",
-          toolId: "read_open",
+          toolId: "read",
           inputHash: "hash-read-open",
           actionTaken: "Opened file README.md.",
           keyFindings: ["contentLength=42", "# UIChat Mira"],
@@ -1168,7 +1121,7 @@ test("generateNode fails delivery when model answer is empty despite completed e
             reason: "Opened file content is available for answer generation.",
           },
           data: {
-            kind: "read_open",
+            kind: "read",
             path: "README.md",
             contentPreview: "# UIChat Mira UIChat Mira is a local-first desktop workspace.",
             contentLength: 42,
@@ -1208,10 +1161,10 @@ test("generateNode refuses to run without a Planner answer finalization packet",
   const state = createBaseState("README.md 的 Runtime 一节具体列了哪些运行组件？请基于文件内容回答。");
   state.schemaReplanDiagnostics = {
     schemaError: "args.limit is not allowed",
-    toolId: "read_open",
+    toolId: "read",
     invalidAction: {
       type: "use_tool",
-      toolId: "read_open",
+      toolId: "read",
       args: {
         path: "README.md",
         limit: 3,

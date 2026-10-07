@@ -85,14 +85,13 @@ describe("resolveHarnessCapabilityProfiles", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "workspace_lookup",
-          preferredToolId: "read",
           supportingToolIds: ["glob", "grep", "list", "read"],
         }),
       ]),
     );
   });
 
-  it("exposes action profile metadata for terminal and edit capability groups", () => {
+  it("keeps coarse workspace capabilities free of action defaults", () => {
     const profiles = resolveHarnessCapabilityProfiles([
       {
         id: "terminal",
@@ -147,11 +146,13 @@ describe("resolveHarnessCapabilityProfiles", () => {
         }),
         expect.objectContaining({
           id: "workspace_edit",
-          preferredToolId: "write",
-          actionProfileId: "edit_create_file",
+          supportingToolIds: ["write", "edit"],
         }),
       ]),
     );
+    const workspaceEdit = profiles.find((profile) => profile.id === "workspace_edit");
+    expect(workspaceEdit).not.toHaveProperty("preferredToolId");
+    expect(workspaceEdit).not.toHaveProperty("actionProfileId");
   });
 
   it("keeps unknown tools as one-to-one fallback profiles", () => {

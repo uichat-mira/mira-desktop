@@ -6,6 +6,47 @@ import {
 } from "./filters.js";
 import type { HarnessExposureDecision, HarnessExposurePolicyInput, HarnessExposureSource } from "./types.js";
 
+const PRIMITIVE_EDIT_TOOL_IDS = new Set(["write", "edit", "move", "delete"]);
+
+const materializeWorkspaceEditFacade = (
+  definitions: ToolDefinition[],
+  input: HarnessExposurePolicyInput,
+) => {
+  const requested =
+    input.editFacade ?? (input.source === "tools_list" ? "all" : "primitives");
+  const hasApplyPatch = definitions.some(
+    (definition) => definition.id === "apply_patch",
+  );
+  const downgraded =
+    requested === "apply_patch" && !hasApplyPatch;
+  const facade = downgraded ? "primitives" : requested;
+
+  if (facade === "all") {
+    return { definitions, reason: undefined };
+  }
+
+  if (facade === "apply_patch") {
+    return {
+      definitions: definitions.filter(
+        (definition) => !PRIMITIVE_EDIT_TOOL_IDS.has(definition.id),
+      ),
+      reason:
+        "Workspace Edit materialized as apply_patch for this exposure.",
+    };
+  }
+
+  return {
+    definitions: definitions.filter(
+      (definition) => definition.id !== "apply_patch",
+    ),
+    reason: downgraded
+      ? "Workspace Edit requested apply_patch, but apply_patch is not available; materialized as write/edit/move/delete."
+      : hasApplyPatch
+        ? "Workspace Edit materialized as write/edit/move/delete for this exposure."
+        : undefined,
+  };
+};
+
 const applyExposureSchema = (
   definition: ToolDefinition,
   source: HarnessExposureSource,
@@ -28,7 +69,7 @@ export const resolveHarnessToolExposure = (
   const blockedCapabilityIds: string[] = [];
   const blockedCapabilityReasons: Record<string, string> = {};
 
-  const visibleDefinitions = definitions
+  const publicDefinitions = definitions
     .filter((definition) => {
       const allowed = shouldIncludeDefinition(definition, input);
       if (!allowed) {
@@ -38,17 +79,25 @@ export const resolveHarnessToolExposure = (
           "Capability is an internal implementation primitive and is not part of the public tool surface.";
       }
       return allowed;
-    })
-    .map((definition) => applyExposureSchema(definition, input.source));
+    });
+
+  const materialized = materializeWorkspaceEditFacade(
+    publicDefinitions,
+    input,
+  );
+  const visibleDefinitions = materialized.definitions.map((definition) =>
+    applyExposureSchema(definition, input.source),
+  );
+  const reasons = materialized.reason ? [materialized.reason] : [];
 
   return {
     exposedToolIds: visibleDefinitions.map((definition) => definition.id),
     exposedDefinitions: visibleDefinitions,
-    reason: [],
+    reason: reasons,
     visibleDefinitions,
     blockedCapabilityIds,
     blockedCapabilityReasons,
-    reasons: [],
+    reasons,
   };
 };
 

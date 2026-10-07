@@ -7,7 +7,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   description: string;
   domain: ToolDefinition["domain"];
   tags: string[];
-  preferredToolId: string;
+  preferredToolId?: string;
   supportingToolIds: string[];
   actionProfileId?: string;
   actionProfileTitle?: string;
@@ -18,10 +18,9 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     id: "workspace_lookup",
     title: "Workspace Lookup",
     description:
-      "Find, search text, inspect, and read relevant workspace files and excerpts for the current task.",
+      "Inspect workspace paths and contents when local file context is relevant to the current task.",
     domain: "read",
     tags: ["workspace", "read", "list", "directory", "glob", "pattern", "lookup", "locate", "search", "grep", "symbol", "reference", "open"],
-    preferredToolId: "read",
     supportingToolIds: ["glob", "grep", "list", "read"],
   },
   {
@@ -45,14 +44,11 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   {
     id: "workspace_edit",
     title: "Workspace Edit",
-    description: "Create, patch, delete, move, or rename workspace paths through direct edit tools.",
+    description:
+      "Modify workspace files or path identity when governed local file mutation is relevant.",
     domain: "edit",
     tags: ["workspace", "edit", "write", "replace", "delete", "move", "rename"],
-    preferredToolId: "write",
-    supportingToolIds: ["write", "edit", "delete", "move"],
-    actionProfileId: "edit_create_file",
-    actionProfileTitle: "Edit Create File",
-    actionProfileDescription: "Create a new workspace file through managed editing.",
+    supportingToolIds: ["write", "edit", "delete", "move", "apply_patch"],
   },
   {
     id: "web",
@@ -185,7 +181,10 @@ export const resolveHarnessCapabilityProfiles = (
 
   for (const blueprint of INTERNAL_PROFILE_BLUEPRINTS) {
     const matchedToolIds = blueprint.supportingToolIds.filter((toolId) => definitionMap.has(toolId));
-    if (matchedToolIds.length === 0 || !definitionMap.has(blueprint.preferredToolId)) {
+    if (
+      matchedToolIds.length === 0 ||
+      (blueprint.preferredToolId && !definitionMap.has(blueprint.preferredToolId))
+    ) {
       continue;
     }
 
@@ -197,7 +196,7 @@ export const resolveHarnessCapabilityProfiles = (
       domain: blueprint.domain,
       source: "internal",
       tags: blueprint.tags,
-      preferredToolId: blueprint.preferredToolId,
+      ...(blueprint.preferredToolId ? { preferredToolId: blueprint.preferredToolId } : {}),
       supportingToolIds: matchedToolIds,
       ...(blueprint.workbench ? { workbench: blueprint.workbench } : {}),
       ...(blueprint.actionProfileId

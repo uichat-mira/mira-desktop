@@ -3,7 +3,7 @@ import { mcpBadRequest } from "../core/errors.js";
 
 const lockTails = new Map<string, Promise<void>>();
 
-const normalizeLockKey = (value: string) => {
+export const normalizeMutationLockKey = (value: string) => {
   const normalized = path.normalize(path.resolve(value)).normalize("NFC");
   return process.platform === "win32" || process.platform === "darwin"
     ? normalized.toLowerCase()
@@ -49,7 +49,7 @@ const acquireMutationLock = async (
   rawKey: string,
   signal?: AbortSignal,
 ) => {
-  const key = normalizeLockKey(rawKey);
+  const key = normalizeMutationLockKey(rawKey);
   const previous = lockTails.get(key) ?? Promise.resolve();
 
   let releaseGate!: () => void;
@@ -79,21 +79,26 @@ const acquireMutationLock = async (
   return releaseGate;
 };
 
+export type MutationLockScope = ReadonlySet<string>;
+
+export const normalizeMutationLockKeys = (rawKeys: string[]) =>
+  [...new Set(rawKeys.map(normalizeMutationLockKey))].sort((left, right) =>
+    left.localeCompare(right),
+  );
+
 export const withMutationLocks = async <T>(
   rawKeys: string[],
   signal: AbortSignal | undefined,
-  run: () => Promise<T> | T,
+  run: (scope: MutationLockScope) => Promise<T> | T,
 ): Promise<T> => {
-  const keys = [...new Set(rawKeys.map(normalizeLockKey))].sort((left, right) =>
-    left.localeCompare(right),
-  );
+  const keys = normalizeMutationLockKeys(rawKeys);
   const releases: Array<() => void> = [];
 
   try {
     for (const key of keys) {
       releases.push(await acquireMutationLock(key, signal));
     }
-    return await run();
+    return await run(new Set(keys));
   } finally {
     for (const release of releases.reverse()) {
       release();

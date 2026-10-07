@@ -107,7 +107,7 @@ describe("glob tool", () => {
   });
 
   it("has a path-search contract rather than a content-search contract", () => {
-    expect(globTool.definition.description).toContain("Does not search file contents");
+    expect(globTool.definition.description).toMatch(/never searches file contents/i);
     expect(Object.keys(globTool.definition.inputSchema.properties ?? {})).toEqual([
       "pattern",
       "path",

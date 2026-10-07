@@ -40,7 +40,6 @@ export const toCapabilityIntentDocument = (
     profile.description,
     profile.domain,
     profile.tags.join(" "),
-    profile.preferredToolId,
     supportingToolsText,
     schemaSummary,
     profile.sourceLabel,
@@ -57,7 +56,7 @@ export const toCapabilityIntentDocument = (
     tags: profile.tags,
     ...(profile.inputSchema ? { inputSchema: profile.inputSchema } : {}),
     ...(profile.sourceLabel ? { sourceLabel: profile.sourceLabel } : {}),
-    preferredToolId: profile.preferredToolId,
+    ...(profile.preferredToolId ? { preferredToolId: profile.preferredToolId } : {}),
     supportingToolIds: profile.supportingToolIds,
     actionProfileId: profile.actionProfileId,
   };

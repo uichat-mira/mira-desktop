@@ -11,7 +11,7 @@ export const moveTool: ToolImplementation = {
     id: "move",
     title: "Move",
     description:
-      "Move or rename a workspace file or directory. Existing destination replacement is explicit and never delete-first.",
+      "Move or rename a workspace file or directory when its content should remain semantically unchanged and only path identity changes. Use write/edit to change contents and delete to remove a path. Destination replacement requires overwrite=true.",
     domain: "edit",
     source: "internal",
     mode: "sync",
@@ -20,9 +20,18 @@ export const moveTool: ToolImplementation = {
       required: ["path", "destinationPath"],
       additionalProperties: false,
       properties: {
-        path: { type: "string" },
-        destinationPath: { type: "string" },
-        overwrite: { type: "boolean" },
+        path: {
+          type: "string",
+          description: "Existing workspace file or directory to move.",
+        },
+        destinationPath: {
+          type: "string",
+          description: "New workspace path for the same file or directory identity.",
+        },
+        overwrite: {
+          type: "boolean",
+          description: "Must be true to replace an existing compatible destination.",
+        },
       },
     },
     outputSchema: { type: "object" },

@@ -11,7 +11,7 @@ export const deleteTool: ToolImplementation = {
     id: "delete",
     title: "Delete",
     description:
-      "Delete a workspace file or directory. Non-empty directory deletion requires recursive=true.",
+      "Remove a workspace file or directory. Use move when the path should continue to exist elsewhere, and write/edit when content should remain. Non-empty directory deletion requires recursive=true.",
     domain: "edit",
     source: "internal",
     mode: "sync",
@@ -20,8 +20,14 @@ export const deleteTool: ToolImplementation = {
       required: ["path"],
       additionalProperties: false,
       properties: {
-        path: { type: "string" },
-        recursive: { type: "boolean" },
+        path: {
+          type: "string",
+          description: "Existing workspace file or directory to remove.",
+        },
+        recursive: {
+          type: "boolean",
+          description: "Required to remove a non-empty directory; unnecessary for files or empty directories.",
+        },
       },
     },
     outputSchema: { type: "object" },
