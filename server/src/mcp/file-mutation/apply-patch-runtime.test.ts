@@ -217,7 +217,7 @@ describe("apply_patch File Mutation Runtime", () => {
     });
   });
 
-  it("reports a definitely committed prefix and uncertain failed operation", async () => {
+  it("reports an exact committed prefix when the next operation fails pre-commit", async () => {
     const failingFilesystem = {
       ...nodeFileMutationFilesystem,
       async writeAtomic(
