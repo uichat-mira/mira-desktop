@@ -137,6 +137,52 @@ describe("withWorkbenchMetadata", () => {
     expect(projected[0]?.workbench?.cases).toBeUndefined();
   });
 
+  it("attaches clickable Tool Lab acceptance cases to apply_patch in the edit group", () => {
+    const projected = withWorkbenchMetadata([
+      {
+        id: "apply_patch",
+        title: "Apply Patch",
+        description: "Apply a patch.",
+        domain: "edit",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {},
+        tags: ["workspace", "edit", "patch", "apply_patch"],
+        capabilities: {
+          sideEffect: "write",
+          requiresApproval: true,
+          workspaceBound: true,
+        },
+      },
+    ]);
+
+    expect(projected[0]?.workbench).toMatchObject({
+      groupId: "edit",
+      groupLabel: "编辑",
+    });
+
+    const cases = projected[0]?.workbench?.cases;
+    expect(cases?.map((item) => item.id)).toEqual([
+      "apply-patch-add",
+      "apply-patch-update",
+      "apply-patch-move",
+      "apply-patch-delete",
+      "apply-patch-controlled-error",
+    ]);
+    expect(cases?.every((item) => item.fixture === "file-mutation")).toBe(true);
+
+    const patchTextOf = (id: string) =>
+      String(cases?.find((item) => item.id === id)?.args.patchText ?? "");
+    expect(patchTextOf("apply-patch-add")).toContain("*** Add File:");
+    expect(patchTextOf("apply-patch-update")).toContain("*** Update File:");
+    expect(patchTextOf("apply-patch-move")).toContain("*** Move to:");
+    expect(patchTextOf("apply-patch-delete")).toContain("*** Delete File:");
+    for (const item of cases ?? []) {
+      expect(String(item.args.patchText)).toContain("*** Begin Patch");
+      expect(String(item.args.patchText)).toContain("*** End Patch");
+    }
+  });
+
   it("groups exactly four GitHub domain tools and supplies operation drafts", () => {
     const projected = withWorkbenchMetadata([
       createGitHubTool("github_repository"),

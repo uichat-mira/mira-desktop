@@ -7,6 +7,7 @@ import {
   getMcpTools,
   getMcpWebSearchConfig,
   getMcpWorkspaceSelection,
+  resetMcpCapabilityFixture,
   resolveMcpInvocationApproval,
   saveMcpWebSearchConfig,
   selectMcpWorkspaceRoot,
@@ -93,6 +94,10 @@ export function useToolsWorkbench(
     continuationId: string;
     nextOutputOffset: number;
     outputLimitBytes?: number;
+  } | null>(null);
+  const [activeCase, setActiveCase] = useState<{
+    id: string;
+    fixture?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -259,6 +264,7 @@ export function useToolsWorkbench(
 
   const selectTool = (tool: WorkbenchToolDefinition) => {
     setTerminalContinuation(null);
+    setActiveCase(null);
     setSelectedToolId(tool.id);
     setActiveGroupId(tool.workbench.groupId);
     setArgsDraft(buildToolDraft(tool));
@@ -351,7 +357,12 @@ export function useToolsWorkbench(
       return;
     }
 
-    if (selectedTool.capabilities.workspaceBound && !workspaceSelection?.rootPath) {
+    const caseFixture = activeCase?.fixture ?? null;
+    if (
+      selectedTool.capabilities.workspaceBound &&
+      !caseFixture &&
+      !workspaceSelection?.rootPath
+    ) {
       message.error(t("settings.tools.messages.workspaceRootRequired"));
       return;
     }
@@ -359,11 +370,18 @@ export function useToolsWorkbench(
     resetRunState();
     setIsRunning(true);
     try {
+      if (caseFixture) {
+        await resetMcpCapabilityFixture(caseFixture);
+      }
+
       let invocationId = "";
       await executeMcpInvocationStream(
         {
           toolId: selectedTool.id,
           args,
+          ...(caseFixture
+            ? { workspaceContext: "tool_lab_managed" as const }
+            : {}),
         },
         async (event) => {
           if (event.type === "invocation:done") {
@@ -487,6 +505,7 @@ export function useToolsWorkbench(
 
   const selectGroup = (groupId: ToolWorkbenchGroupId) => {
     setTerminalContinuation(null);
+    setActiveCase(null);
     setActiveGroupId(groupId);
     const nextTool = tools.find((tool) => tool.workbench.groupId === groupId) ?? null;
     if (nextTool) {
@@ -500,6 +519,7 @@ export function useToolsWorkbench(
   };
 
   return {
+    activeCase,
     activeGroupId,
     argsDraft,
     artifacts,
@@ -539,8 +559,12 @@ export function useToolsWorkbench(
     resolvePendingApproval,
     selectGroup,
     selectTool,
-    selectCase: (args: Record<string, unknown>) => {
+    selectCase: (
+      args: Record<string, unknown>,
+      caseMeta?: { id: string; fixture?: string },
+    ) => {
       setTerminalContinuation(null);
+      setActiveCase(caseMeta ?? null);
       setArgsDraft(JSON.stringify(args, null, 2));
       resetRunState();
     },

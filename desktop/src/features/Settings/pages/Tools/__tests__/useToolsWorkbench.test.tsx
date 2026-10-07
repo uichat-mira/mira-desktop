@@ -10,6 +10,7 @@ const selectMcpWorkspaceRootMock = vi.fn();
 const executeMcpInvocationStreamMock = vi.fn();
 const getMcpInvocationTraceMock = vi.fn();
 const resolveMcpInvocationApprovalMock = vi.fn();
+const resetMcpCapabilityFixtureMock = vi.fn();
 function stableT(key: string) {
   return key;
 }
@@ -24,6 +25,8 @@ vi.mock("@/shared/api/tools", () => ({
   getMcpInvocationTrace: (...args: unknown[]) => getMcpInvocationTraceMock(...args),
   resolveMcpInvocationApproval: (...args: unknown[]) =>
     resolveMcpInvocationApprovalMock(...args),
+  resetMcpCapabilityFixture: (...args: unknown[]) =>
+    resetMcpCapabilityFixtureMock(...args),
 }));
 
 vi.mock("@/shared/ui/Message", () => ({
@@ -54,6 +57,7 @@ describe("useToolsWorkbench", () => {
     executeMcpInvocationStreamMock.mockReset();
     getMcpInvocationTraceMock.mockReset();
     resolveMcpInvocationApprovalMock.mockReset();
+    resetMcpCapabilityFixtureMock.mockReset();
 
     getMcpToolsMock.mockResolvedValue([
       {
@@ -97,6 +101,12 @@ describe("useToolsWorkbench", () => {
       spans: [],
     });
     executeMcpInvocationStreamMock.mockImplementation(async () => {});
+    resetMcpCapabilityFixtureMock.mockResolvedValue({
+      fixtureId: "file-mutation",
+      workspace: "tool_lab_managed",
+      fixtureRoot: ".tool-lab-fixtures/file-mutation",
+      resetAt: "2026-10-06T00:00:00.000Z",
+    });
   });
 
   it("persists web search settings while keeping provider config out of runtime tool args", async () => {
@@ -385,6 +395,115 @@ describe("useToolsWorkbench", () => {
     });
   });
 
+  it("arms an apply_patch acceptance case, resets its fixture, and runs in the managed workspace", async () => {
+    const patchText = [
+      "*** Begin Patch",
+      "*** Update File: .tool-lab-fixtures/file-mutation/overwrite.txt",
+      "@@",
+      "-before overwrite",
+      "+after overwrite",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    getMcpToolsMock.mockResolvedValueOnce([
+      {
+        id: "apply_patch",
+        title: "Apply Patch",
+        description: "",
+        domain: "edit",
+        source: "internal",
+        mode: "sync",
+        inputSchema: { type: "object" },
+        tags: ["workspace", "edit", "patch", "apply_patch"],
+        capabilities: {
+          sideEffect: "write",
+          requiresApproval: true,
+          workspaceBound: true,
+        },
+        workbench: {
+          groupId: "edit",
+          groupLabel: "编辑",
+          groupDescription: "编辑验收。",
+          groupOrder: 20,
+          icon: "pencil",
+          cases: [
+            {
+              id: "apply-patch-update",
+              title: "更新文件",
+              description: "update",
+              fixture: "file-mutation",
+              args: { patchText },
+            },
+          ],
+        },
+      },
+    ]);
+    getMcpWorkspaceSelectionMock.mockResolvedValueOnce({
+      rootPath: null,
+      source: "unset",
+    });
+    executeMcpInvocationStreamMock.mockImplementation(
+      async (
+        _input: unknown,
+        onEvent: (event: Record<string, unknown>) => Promise<void>,
+      ) => {
+        await onEvent({
+          type: "invocation:start",
+          invocationId: "inv-patch",
+          toolId: "apply_patch",
+          at: "2026-10-06T00:00:00.000Z",
+        });
+        await onEvent({
+          type: "invocation:finish",
+          invocationId: "inv-patch",
+          status: "completed",
+          at: "2026-10-06T00:00:01.000Z",
+        });
+      },
+    );
+
+    const useToolsWorkbench = await importHook();
+    const { result } = renderHook(() => useToolsWorkbench());
+
+    await waitFor(() => {
+      expect(result.current.selectedTool?.id).toBe("apply_patch");
+    });
+
+    const acceptanceCase = result.current.selectedTool?.workbench.cases?.[0];
+    expect(acceptanceCase?.fixture).toBe("file-mutation");
+
+    act(() => {
+      result.current.selectCase(acceptanceCase!.args, {
+        id: acceptanceCase!.id,
+        fixture: acceptanceCase!.fixture,
+      });
+    });
+
+    expect(result.current.activeCase).toEqual({
+      id: "apply-patch-update",
+      fixture: "file-mutation",
+    });
+    expect(result.current.argsDraft).toBe(
+      JSON.stringify({ patchText }, null, 2),
+    );
+    expect(result.current.argsDraft).toContain("*** Begin Patch");
+    expect(result.current.argsDraft).toContain("*** Update File:");
+
+    await act(async () => {
+      await result.current.runSelectedTool();
+    });
+
+    expect(resetMcpCapabilityFixtureMock).toHaveBeenCalledWith("file-mutation");
+    expect(executeMcpInvocationStreamMock).toHaveBeenCalledWith(
+      {
+        toolId: "apply_patch",
+        args: { patchText },
+        workspaceContext: "tool_lab_managed",
+      },
+      expect.any(Function),
+    );
+  });
+
   it("does not require workspace when running web_search", async () => {
     getMcpWorkspaceSelectionMock.mockResolvedValueOnce({
       rootPath: null,
@@ -437,8 +556,8 @@ describe("useToolsWorkbench", () => {
         },
       },
       {
-        id: "read_open",
-        title: "Read Open",
+        id: "read",
+        title: "Read",
         description: "",
         domain: "read",
         source: "internal",
@@ -462,7 +581,7 @@ describe("useToolsWorkbench", () => {
 
     const useToolsWorkbench = await importHook();
     const handoff = {
-      toolId: "read_open",
+      toolId: "read",
       args: { path: "README.md" },
     };
     const { result } = renderHook(() =>
@@ -470,7 +589,7 @@ describe("useToolsWorkbench", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.selectedTool?.id).toBe("read_open");
+      expect(result.current.selectedTool?.id).toBe("read");
     });
 
     expect(result.current.activeGroupId).toBe("read");
@@ -509,7 +628,7 @@ describe("useToolsWorkbench", () => {
     });
     getMcpToolsMock.mockResolvedValue([
       createTool("web_search", "Web Search", "web_search"),
-      createTool("read_open", "Read Open", "read", true),
+      createTool("read", "Read", "read", true),
     ]);
 
     const useToolsWorkbench = await importHook();
@@ -522,7 +641,7 @@ describe("useToolsWorkbench", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.selectedTool?.id).toBe("read_open");
+      expect(result.current.selectedTool?.id).toBe("read");
     });
 
     rerender({
@@ -569,7 +688,7 @@ describe("useToolsWorkbench", () => {
     });
     getMcpToolsMock.mockResolvedValueOnce([
       createTool("ask_external_expert", "Ask External Expert", "external_expert", "问策", 70),
-      createTool("read_open", "Read Open", "read", "阅读", 10),
+      createTool("read", "Read", "read", "阅读", 10),
     ]);
 
     const useToolsWorkbench = await importHook();
@@ -584,8 +703,8 @@ describe("useToolsWorkbench", () => {
       "external_expert",
     ]);
     expect(result.current.activeGroupId).toBe("read");
-    expect(result.current.selectedTool?.id).toBe("read_open");
-    expect(result.current.filteredTools.map((tool) => tool.id)).toEqual(["read_open"]);
+    expect(result.current.selectedTool?.id).toBe("read");
+    expect(result.current.filteredTools.map((tool) => tool.id)).toEqual(["read"]);
   });
 
   it("groups and filters tools by capability ownership instead of runtime domain", async () => {

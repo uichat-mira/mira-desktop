@@ -13,11 +13,15 @@ type ToolsPackagePanelProps = {
   runStatus: "idle" | "completed" | "failed" | "cancelled" | "awaiting_approval";
   isRunning: boolean;
   pendingApproval: boolean;
+  activeCase: { id: string; fixture?: string } | null;
   tracePanel: ReactNode;
   onSelectTool: (tool: WorkbenchToolDefinition) => void;
   onOpenArgsModal: () => void;
   onRun: () => void;
-  onSelectCase: (args: Record<string, unknown>) => void;
+  onSelectCase: (
+    args: Record<string, unknown>,
+    caseMeta?: { id: string; fixture?: string },
+  ) => void;
   onApprove: () => void;
   onReject: () => void;
   onTerminalContinue: () => void;
@@ -39,6 +43,7 @@ type ToolsPackagePanelProps = {
     terminalCwd: (cwd: string) => string;
     terminalState: (state: string) => string;
     acceptanceCases: string;
+    caseFixtureHint: (fixture: string) => string;
     approve: string;
     reject: string;
     continueOutput: string;
@@ -54,6 +59,7 @@ export default function ToolsPackagePanel({
   runStatus,
   isRunning,
   pendingApproval,
+  activeCase,
   tracePanel,
   onSelectTool,
   onOpenArgsModal,
@@ -126,16 +132,26 @@ export default function ToolsPackagePanel({
                   {selectedTool.workbench.cases.map((item) => (
                     <Button
                       key={item.id}
-                      variant="outline"
+                      variant={activeCase?.id === item.id ? "secondary" : "outline"}
                       size="xs"
                       title={item.description}
                       disabled={isRunning}
-                      onClick={() => onSelectCase(item.args)}
+                      onClick={() =>
+                        onSelectCase(item.args, {
+                          id: item.id,
+                          fixture: item.fixture,
+                        })
+                      }
                     >
                       {item.title}
                     </Button>
                   ))}
                 </div>
+                {activeCase?.fixture ? (
+                  <div className="text-[11px] text-text-tertiary">
+                    {labels.caseFixtureHint(activeCase.fixture)}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

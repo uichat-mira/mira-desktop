@@ -46,6 +46,94 @@ const DOMAIN_METADATA: Record<string, WorkbenchPresentation> = {
   },
 };
 
+type WorkbenchCase = NonNullable<
+  NonNullable<ToolDefinition["workbench"]>["cases"]
+>[number];
+
+const FILE_MUTATION_FIXTURE_ROOT = ".tool-lab-fixtures/file-mutation";
+
+const WORKBENCH_CASES: Record<string, WorkbenchCase[]> = {
+  apply_patch: [
+    {
+      id: "apply-patch-add",
+      title: "新增文件",
+      description:
+        "确认 apply_patch 在审批后通过 Add File 创建新文件，并输出可审计的逐步 diff。",
+      fixture: "file-mutation",
+      args: {
+        patchText: `*** Begin Patch
+*** Add File: ${FILE_MUTATION_FIXTURE_ROOT}/apply-patch-added.txt
++alpha patch line
++omega patch line
+*** End Patch
+`,
+      },
+    },
+    {
+      id: "apply-patch-update",
+      title: "更新文件",
+      description:
+        "确认 apply_patch 通过 Update File 精确替换已有内容，并保留上下文校验。",
+      fixture: "file-mutation",
+      args: {
+        patchText: `*** Begin Patch
+*** Update File: ${FILE_MUTATION_FIXTURE_ROOT}/overwrite.txt
+@@
+-before overwrite
++after overwrite
+*** End Patch
+`,
+      },
+    },
+    {
+      id: "apply-patch-move",
+      title: "移动文件",
+      description:
+        "确认 apply_patch 在同一 hunk 中更新内容并通过 Move to 迁移到新路径。",
+      fixture: "file-mutation",
+      args: {
+        patchText: `*** Begin Patch
+*** Update File: ${FILE_MUTATION_FIXTURE_ROOT}/move-source.txt
+*** Move to: ${FILE_MUTATION_FIXTURE_ROOT}/move-target.txt
+@@
+-move me
++moved by patch
+*** End Patch
+`,
+      },
+    },
+    {
+      id: "apply-patch-delete",
+      title: "删除文件",
+      description:
+        "确认 apply_patch 通过 Delete File 删除文件，并把 committed delete 投影到 Result / Artifact。",
+      fixture: "file-mutation",
+      args: {
+        patchText: `*** Begin Patch
+*** Delete File: ${FILE_MUTATION_FIXTURE_ROOT}/delete-file.txt
+*** End Patch
+`,
+      },
+    },
+    {
+      id: "apply-patch-controlled-error",
+      title: "受控失败：源文件缺失",
+      description:
+        "确认 apply_patch 在 Update File 源文件不存在时明确失败，而不是产生部分写入。",
+      fixture: "file-mutation",
+      args: {
+        patchText: `*** Begin Patch
+*** Update File: ${FILE_MUTATION_FIXTURE_ROOT}/does-not-exist.txt
+@@
+-ghost
++phantom
+*** End Patch
+`,
+      },
+    },
+  ],
+};
+
 const DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
   read: { path: "" },
   list: { path: "." },
@@ -142,6 +230,9 @@ export const withWorkbenchMetadata = (
           fallbackDomainMetadata(definition.domain)),
         ...(DEFAULT_ARGS[definition.id]
           ? { defaultArgs: DEFAULT_ARGS[definition.id] }
+          : {}),
+        ...(WORKBENCH_CASES[definition.id]
+          ? { cases: WORKBENCH_CASES[definition.id] }
           : {}),
       },
     };
