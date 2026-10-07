@@ -11,7 +11,7 @@ export const writeTool: ToolImplementation = {
     id: "write",
     title: "Write",
     description:
-      "Create a file or intentionally replace its full contents. Existing files require overwrite=true.",
+      "Write the complete desired contents of one file. Use this for file creation or intentional whole-file replacement; use edit for localized changes that should preserve unrelated content. Existing files require overwrite=true.",
     domain: "edit",
     source: "internal",
     mode: "sync",
@@ -20,9 +20,18 @@ export const writeTool: ToolImplementation = {
       required: ["path", "content"],
       additionalProperties: false,
       properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-        overwrite: { type: "boolean" },
+        path: {
+          type: "string",
+          description: "Workspace file path to create or replace.",
+        },
+        content: {
+          type: "string",
+          description: "Complete desired file contents, not a patch or fragment.",
+        },
+        overwrite: {
+          type: "boolean",
+          description: "Must be true to replace an existing file; omitted/false is create-only.",
+        },
       },
     },
     outputSchema: { type: "object" },

@@ -174,7 +174,7 @@ export interface AgentFinalizationPacket {
 }
 
 export interface AgentReadListEvidenceData {
-  kind: "list" | "read_list";
+  kind: "list";
   path: string;
   entryCount: number;
   fileCount: number;
@@ -183,21 +183,6 @@ export interface AgentReadListEvidenceData {
   entriesPreview: string[];
   offset?: number;
   nextOffset?: number;
-  truncated: boolean;
-}
-
-export interface AgentReadDiscoverEvidenceData {
-  kind: "read_discover";
-  mode: "list" | "locate";
-  operation: "list" | "locate";
-  path?: string;
-  root?: string;
-  query?: string;
-  candidateCount: number;
-  candidatePaths: string[];
-  returnedCount: number;
-  totalCount?: number;
-  hasMore: boolean;
   truncated: boolean;
 }
 
@@ -219,22 +204,6 @@ export interface AgentReadEvidenceData {
     startLine?: number;
     endLine?: number;
     nextOffset?: number;
-  };
-}
-
-export interface AgentReadOpenEvidenceData {
-  kind: "read_open";
-  path: string;
-  contentPreview: string;
-  contentLength: number;
-  truncated: boolean;
-  keySections?: string[];
-  window?: {
-    startLine: number;
-    endLine: number;
-    totalLines: number;
-    truncated: boolean;
-    nextStartLine?: number;
   };
 }
 
@@ -260,17 +229,6 @@ export interface AgentGrepEvidenceData {
   provider: string;
   offset?: number;
   nextOffset?: number;
-  truncated: boolean;
-}
-
-export interface AgentReadLocateEvidenceData {
-  kind: "read_locate";
-  scope: string;
-  query: string;
-  searchMode: "auto" | "path" | "content";
-  matchCount: number;
-  matchedPaths: string[];
-  matchesPreview: string[];
   truncated: boolean;
 }
 
@@ -387,6 +345,18 @@ export interface AgentFileMutationEvidenceData {
   diffUnavailableReason?: string;
 }
 
+export interface AgentApplyPatchEvidenceData {
+  kind: "file_mutation_patch";
+  status: "completed" | "partial" | "failed";
+  changed: boolean | "unknown";
+  hunkCount: number;
+  committedMutationCount: number;
+  unappliedHunkCount: number;
+  committedDeltaExact: boolean;
+  artifactId?: string;
+  failed?: Record<string, unknown>;
+}
+
 export interface AgentExternalMcpEvidenceData {
   kind: "external_mcp";
   serverId: string;
@@ -413,13 +383,10 @@ export interface AgentEditFileEvidenceData {
 
 export type AgentEvidenceSummaryData =
   | AgentGenericStructuredEvidenceData
-  | AgentReadDiscoverEvidenceData
   | AgentReadListEvidenceData
   | AgentReadEvidenceData
-  | AgentReadOpenEvidenceData
   | AgentGlobEvidenceData
   | AgentGrepEvidenceData
-  | AgentReadLocateEvidenceData
   | AgentWebSearchEvidenceData
   | AgentWebFetchEvidenceData
   | AgentTerminalSessionEvidenceData
@@ -427,6 +394,7 @@ export type AgentEvidenceSummaryData =
   | AgentObservationEvidenceData
   | AgentExternalMcpEvidenceData
   | AgentFileMutationEvidenceData
+  | AgentApplyPatchEvidenceData
   | AgentWorkspaceMutationEvidenceData
   | AgentEditFileEvidenceData;
 

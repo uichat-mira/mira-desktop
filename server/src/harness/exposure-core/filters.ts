@@ -1,21 +1,9 @@
 import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessExposurePolicyInput } from "./types.js";
 
-const INTERNAL_READ_PRIMITIVE_TOOL_IDS = new Set([
-  "read_discover",
-  "read_open",
-  "read_list",
-  "read_locate",
-  "read_extract",
-  "read_slice",
-]);
-
 const INTERNAL_TERMINAL_COMPAT_TOOL_IDS = new Set([
   "terminal_session",
 ]);
-
-export const isInternalIntentOnlyTool = (definition: ToolDefinition) =>
-  definition.source === "internal" && INTERNAL_READ_PRIMITIVE_TOOL_IDS.has(definition.id);
 
 export const shouldIncludeDefinition = (
   definition: ToolDefinition,
@@ -26,11 +14,6 @@ export const getDefinitionBlockReason = (
   definition: ToolDefinition,
   input?: HarnessExposurePolicyInput,
 ): string | undefined => {
-  // These are implementation/compatibility primitives, not public Agent tools.
-  if (isInternalIntentOnlyTool(definition)) {
-    return "Internal read primitive is not part of the public Read contract.";
-  }
-
   if (
     definition.source === "internal" &&
     INTERNAL_TERMINAL_COMPAT_TOOL_IDS.has(definition.id)

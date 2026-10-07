@@ -5,7 +5,7 @@ import {
 } from "./action-profiles.js";
 
 describe("resolveHarnessActionProfiles", () => {
-  it("returns terminal and edit action profiles when the backing runtime tools exist", () => {
+  it("returns only independently justified action profiles", () => {
     const profiles = resolveHarnessActionProfiles([
       {
         id: "terminal",
@@ -53,16 +53,10 @@ describe("resolveHarnessActionProfiles", () => {
 
     expect(profiles.map((profile) => profile.id)).toEqual([
       "terminal_execute_command",
-      "edit_create_file",
-      "edit_replace_block",
     ]);
     expect(profiles[0]).toMatchObject({
       id: "terminal_execute_command",
       runtimeToolId: "terminal",
-    });
-    expect(profiles[1]).toMatchObject({
-      id: "edit_create_file",
-      runtimeToolId: "write",
     });
   });
 });
@@ -88,42 +82,12 @@ describe("resolveActionProfileInvocation", () => {
     });
   });
 
-  it("maps edit action profiles to canonical write/edit runtime args", () => {
-    expect(
+  it("does not retain obsolete edit action aliases", () => {
+    expect(() =>
       resolveActionProfileInvocation({
         actionProfileId: "edit_create_file",
-        args: {
-          path: "notes/todo.txt",
-        },
+        args: { path: "notes/todo.txt" },
       }),
-    ).toEqual({
-      toolId: "write",
-      args: {
-        path: "notes/todo.txt",
-        content: "",
-      },
-    });
-
-    expect(
-      resolveActionProfileInvocation({
-        actionProfileId: "edit_replace_block",
-        args: {
-          path: "notes/todo.txt",
-          expectedOldText: "old",
-          newText: "new",
-        },
-      }),
-    ).toEqual({
-      toolId: "edit",
-      args: {
-        path: "notes/todo.txt",
-        edits: [
-          {
-            oldText: "old",
-            newText: "new",
-          },
-        ],
-      },
-    });
+    ).toThrow(/Unknown action profile/);
   });
 });

@@ -6,6 +6,7 @@ import { writeTool } from "../mcp/tools/write.tool.js";
 import { editTool } from "../mcp/tools/edit.tool.js";
 import { moveTool } from "../mcp/tools/move.tool.js";
 import { deleteTool } from "../mcp/tools/delete.tool.js";
+import { applyPatchTool } from "../mcp/tools/apply-patch.tool.js";
 import { grepTool } from "../mcp/tools/grep.tool.js";
 import { globTool } from "../mcp/tools/glob.tool.js";
 import { listTool } from "../mcp/tools/list.tool.js";
@@ -16,8 +17,6 @@ import {
   githubRepositoryTool,
 } from "../mcp/tools/github-domain.tool.js";
 import { newsSearchTool } from "../mcp/tools/news-search.tool.js";
-import { readExtractTool } from "../mcp/tools/read-extract.tool.js";
-import { readOpenTool } from "../mcp/tools/read-open.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 import { terminalSessionCompatibilityTool, terminalTool } from "../mcp/tools/terminal-session.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
@@ -47,16 +46,11 @@ export const initializeHarnessRuntime = () => {
   registerTool(grepTool);
   registerTool(readTool);
 
-  // Office/WenShu subAgent profiles still declare these two compatibility
-  // readers. Keep them registered but hidden from the public Agent surface
-  // until those verified Skill consumers migrate.
-  registerTool(readOpenTool);
-  registerTool(readExtractTool);
-
   registerTool(writeTool);
   registerTool(editTool);
   registerTool(moveTool);
   registerTool(deleteTool);
+  registerTool(applyPatchTool);
 
   // WenShu document types are exposed as Skills, not duplicate Harness tools.
   // Keep runtime-pack readiness observable while ensuring legacy office_* wrappers

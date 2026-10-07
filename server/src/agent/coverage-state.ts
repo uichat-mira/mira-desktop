@@ -1,7 +1,6 @@
 import type {
   AgentEvidencePayload,
   AgentEvidenceSummary,
-  AgentReadLocateEvidenceData,
   AgentToolExecutionResult,
   CurrentTaskFrame,
 } from "./types";
@@ -64,11 +63,6 @@ const WORKSPACE_READ_TOOL_IDS = new Set([
   "list",
   "glob",
   "grep",
-  "read_list",
-  "read_open",
-  "read_locate",
-  "read_extract",
-  "read_slice",
 ]);
 
 const buildReason = (input: {
@@ -116,7 +110,7 @@ const ensureTargetProgress = (
 
 const addLocateMatchTargets = (
   map: Map<string, TargetProgress>,
-  matchedPaths: AgentReadLocateEvidenceData["matchedPaths"],
+  matchedPaths: string[],
 ) => {
   for (const path of matchedPaths) {
     const normalized = normalizeTaskTargetPath(path);
@@ -136,9 +130,6 @@ const markCompletedSummary = (
   }
 
   switch (summary.data.kind) {
-    case "read_locate":
-      addLocateMatchTargets(map, summary.data.matchedPaths);
-      return;
     case "glob":
       addLocateMatchTargets(map, summary.data.matchedPaths);
       return;
@@ -159,17 +150,6 @@ const markCompletedSummary = (
       if (summary.status !== "truncated") {
         progress.verified = true;
       }
-      return;
-    }
-    case "read_open": {
-      const target = normalizeTaskTargetPath(summary.data.path);
-      if (!target) {
-        return;
-      }
-      const progress = ensureTargetProgress(map, target);
-      progress.located = true;
-      progress.opened = true;
-      progress.verified = true;
       return;
     }
     case "file_mutation": {
@@ -330,9 +310,6 @@ const hasListEvidence = (input: {
   return summaries.some((summary) => {
     if (summary?.data?.kind === "list") {
       return summary.status === "completed";
-    }
-    if (summary?.data?.kind === "read_list") {
-      return summary.status === "completed" || summary.status === "truncated";
     }
     return false;
   });

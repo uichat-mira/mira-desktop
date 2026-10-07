@@ -147,8 +147,10 @@ const METADATA_VALUE_KEYS: Record<string, Record<string, string>> = {
 };
 
 const METADATA_TOOL_KEYS: Record<string, string> = {
-  read_discover: "settings.skills.metadata.values.tools.readDiscover",
-  read_open: "settings.skills.metadata.values.tools.readOpen",
+  read: "settings.skills.metadata.values.tools.read",
+  list: "settings.skills.metadata.values.tools.list",
+  glob: "settings.skills.metadata.values.tools.glob",
+  grep: "settings.skills.metadata.values.tools.grep",
   terminal: "settings.skills.metadata.values.tools.terminalSession",
   github_repository: "settings.skills.metadata.values.tools.githubRepository",
   github_pull_request: "settings.skills.metadata.values.tools.githubPullRequest",

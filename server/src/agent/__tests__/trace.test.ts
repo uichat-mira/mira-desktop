@@ -69,25 +69,25 @@ test("summarizePlannerNextAction turns use_tool into a user-visible next step", 
     summarizePlannerNextAction({
       nextAction: {
         type: "use_tool",
-        toolId: "read_open",
+        toolId: "read",
         args: { path: "README.md" },
         reason: "Need the file content.",
       },
       pendingApprovalActive: false,
       recoveryExhausted: false,
     }),
-    "下一步改为执行 read_open：README.md",
+    "下一步改为执行 read：README.md",
   );
 });
 
 test("summarizeToolExecutionFailure explains recoverable retry intent", () => {
   assert.equal(
     summarizeToolExecutionFailure({
-      toolId: "read_open",
+      toolId: "read",
       failureKind: "recoverable",
       args: { path: "missing.md" },
     }),
-    "read_open 执行失败：missing.md，正在重新判断下一步",
+    "read 执行失败：missing.md，正在重新判断下一步",
   );
   assert.equal(getToolTraceTargetPreview("terminal", { command: "pnpm check" }), "pnpm check");
   assert.equal(

@@ -19,8 +19,15 @@ export const commitFileBuffer = async (input: {
   content: Buffer;
   overwrite: boolean;
   filesystem: FileMutationFilesystem;
+  onTargetCommitAttempt?: () => void;
 }) => {
-  const { targetPath, content, overwrite, filesystem } = input;
+  const {
+    targetPath,
+    content,
+    overwrite,
+    filesystem,
+    onTargetCommitAttempt,
+  } = input;
   const scratchPath = createSiblingScratchPath(targetPath, "write");
   const existingMode = overwrite
     ? filesystem.stat(targetPath).mode
@@ -32,6 +39,8 @@ export const commitFileBuffer = async (input: {
   await filesystem.writeAtomic(scratchPath, content, {
     ...(existingMode === undefined ? {} : { mode: existingMode }),
   });
+
+  onTargetCommitAttempt?.();
 
   try {
     if (overwrite) {

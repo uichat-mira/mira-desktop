@@ -6,11 +6,18 @@ describe("context read bench", () => {
     const report = await runContextReadBenchCases();
 
     expect(report.cases).toHaveLength(11);
-    expect(report.cases.every((item) => item.status === "passed")).toBe(true);
-    expect(report.cases.find((item) => item.caseId === "read-open-gbk")?.encoding).toMatch(
-      /^(uncertain|decoded)$/,
+    expect(
+      report.cases
+        .filter((item) => item.status !== "passed")
+        .map((item) => ({
+          caseId: item.caseId,
+          diagnostics: item.diagnostics,
+        })),
+    ).toEqual([]);
+    expect(report.cases.find((item) => item.caseId === "read-gbk")?.encoding).toBe(
+      "gb18030",
     );
-    expect(report.cases.find((item) => item.caseId === "read-open-binary")?.encoding).toBe(
+    expect(report.cases.find((item) => item.caseId === "read-binary")?.encoding).toBe(
       "binaryDetected",
     );
     expect(report.cases.find((item) => item.caseId === "inspect-max-files")?.filesRead).toBe(1);

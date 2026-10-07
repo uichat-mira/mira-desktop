@@ -5,6 +5,7 @@ export type HarnessExposureSource = HarnessTurnSource;
 
 export interface HarnessExposurePolicyInput {
   source: HarnessExposureSource;
+  editFacade?: import("../edit-facade.js").WorkspaceEditFacade;
   query?: string;
   allowExternal?: boolean;
   allowedExternalToolIds?: string[];

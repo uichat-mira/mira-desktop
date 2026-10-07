@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { withMutationLocks } from "./locks.js";
+import {
+  normalizeMutationLockKeys,
+  withMutationLocks,
+} from "./locks.js";
 
 const deferred = () => {
   let resolve!: () => void;
@@ -10,6 +13,18 @@ const deferred = () => {
 };
 
 describe("file mutation locks", () => {
+  it("normalizes, deduplicates and sorts a batch lock scope deterministically", () => {
+    expect(
+      normalizeMutationLockKeys([
+        "/workspace/b.txt",
+        "/workspace/a.txt",
+        "/workspace/b.txt",
+      ]),
+    ).toEqual([
+      normalizeMutationLockKeys(["/workspace/a.txt"])[0],
+      normalizeMutationLockKeys(["/workspace/b.txt"])[0],
+    ]);
+  });
   it("serializes same-path mutations in call order", async () => {
     const order: string[] = [];
     const firstEntered = deferred();

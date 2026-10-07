@@ -31,7 +31,7 @@ export const editTool: ToolImplementation = {
     id: "edit",
     title: "Edit",
     description:
-      "Modify an existing file with one or more non-overlapping text edits. All edits must validate before commit.",
+      "Apply localized text changes to one existing file while preserving unrelated content. Use write when the complete replacement contents are known. Each oldText target must resolve uniquely, and all edits validate before one commit.",
     domain: "edit",
     source: "internal",
     mode: "sync",
@@ -40,7 +40,10 @@ export const editTool: ToolImplementation = {
       required: ["path", "edits"],
       additionalProperties: false,
       properties: {
-        path: { type: "string" },
+        path: {
+          type: "string",
+          description: "Existing workspace text file to modify.",
+        },
         edits: {
           type: "array",
           minItems: 1,
@@ -49,8 +52,14 @@ export const editTool: ToolImplementation = {
             required: ["oldText", "newText"],
             additionalProperties: false,
             properties: {
-              oldText: { type: "string" },
-              newText: { type: "string" },
+              oldText: {
+                type: "string",
+                description: "Existing text that must resolve to one unambiguous target.",
+              },
+              newText: {
+                type: "string",
+                description: "Replacement text for the matched target; may be empty to remove it.",
+              },
             },
           },
         },
