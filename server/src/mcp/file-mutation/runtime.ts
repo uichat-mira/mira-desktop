@@ -649,6 +649,8 @@ export const executeEditMutation = async (
             content: encoded,
             overwrite: true,
             filesystem,
+            onTargetCommitAttempt: () =>
+              context.commitObserver?.markTargetCommitAttempted(),
           }),
       );
 
