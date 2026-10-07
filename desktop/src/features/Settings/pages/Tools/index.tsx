@@ -91,6 +91,7 @@ export default function ToolsSettings() {
             runStatus={workbench.runStatus}
             isRunning={workbench.isRunning}
             pendingApproval={Boolean(workbench.pendingApproval)}
+            activeCase={workbench.activeCase}
             tracePanel={
               <ToolsTracePanel
                 activeToolId={workbench.selectedTool?.id ?? null}
@@ -132,6 +133,8 @@ export default function ToolsSettings() {
               terminalState: (state) =>
                 t("settings.tools.package.terminalState", { state }),
               acceptanceCases: t("settings.tools.package.acceptanceCases"),
+      caseFixtureHint: (fixture: string) =>
+        t("settings.tools.package.caseFixtureHint", { fixture }),
               approve: t("settings.tools.package.approve"),
               reject: t("settings.tools.package.reject"),
               continueOutput: t("settings.tools.package.continueOutput"),

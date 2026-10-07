@@ -15,6 +15,7 @@ const hookCapture = vi.hoisted(() => ({
 }));
 
 const workbench = {
+  activeCase: null,
   activeGroupId: "web_search",
   argsDraft: "{}",
   artifacts: [],
@@ -93,7 +94,7 @@ describe("ToolsSettings", () => {
 
   it("passes a valid Capability handoff into the existing workbench", () => {
     const handoff = {
-      toolId: "read_open",
+      toolId: "read",
       args: { path: "README.md" },
     };
 
@@ -108,8 +109,8 @@ describe("ToolsSettings", () => {
     {},
     { capabilitiesHandoff: [] },
     { capabilitiesHandoff: { toolId: 7, args: {} } },
-    { capabilitiesHandoff: { toolId: "read_open", args: null } },
-    { capabilitiesHandoff: { toolId: "read_open", args: [] } },
+    { capabilitiesHandoff: { toolId: "read", args: null } },
+    { capabilitiesHandoff: { toolId: "read", args: [] } },
   ])("rejects malformed Capability handoff state %#", (state) => {
     renderToolsSettings(state);
 

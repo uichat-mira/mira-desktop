@@ -196,6 +196,7 @@ export interface ToolDefinition {
       title: string;
       description: string;
       args: Record<string, unknown>;
+      fixture?: string;
     }>;
   };
   legacyProjection?: {

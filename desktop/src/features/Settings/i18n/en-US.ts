@@ -1427,6 +1427,7 @@ const settingsPending = {
         terminalCwd: "CWD {{cwd}}",
         terminalState: "State {{state}}",
         acceptanceCases: "Acceptance cases",
+        caseFixtureHint: "Fixture {{fixture}} armed — auto-reset before each run",
         approve: "Approve & continue",
         reject: "Reject",
         continueOutput: "Continue output",

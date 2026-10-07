@@ -337,6 +337,113 @@ export const nativeCapabilityAcceptanceCases: CapabilityAcceptanceCase[] = [
     fixture: FILE_MUTATION_FIXTURE,
   },
   {
+    id: "file-mutation-apply-patch-add",
+    toolId: "apply_patch",
+    title: "Apply Patch 新增文件",
+    purpose: "确认 apply_patch 在审批后通过 Add File 创建新文件，并输出可审计的逐步 diff。",
+    expectedObservation:
+      "Awaiting Approval；批准后 Completed，apply-patch-added.txt 真实出现，Artifact 包含 Add File diff。",
+    args: {
+      patchText: [
+        "*** Begin Patch",
+        `*** Add File: ${fixturePath(FILE_MUTATION_FIXTURE, "apply-patch-added.txt")}`,
+        "+alpha patch line",
+        "+omega patch line",
+        "*** End Patch",
+        "",
+      ].join("\n"),
+    },
+    group: "File Mutation",
+    workspace: "managed",
+    fixture: FILE_MUTATION_FIXTURE,
+  },
+  {
+    id: "file-mutation-apply-patch-update",
+    toolId: "apply_patch",
+    title: "Apply Patch 更新文件",
+    purpose: "确认 apply_patch 通过 Update File 精确替换已有内容，并保留上下文校验。",
+    expectedObservation:
+      "Awaiting Approval；批准后 Completed，overwrite.txt 从 before overwrite 变为 after overwrite，diff 可审计。",
+    args: {
+      patchText: [
+        "*** Begin Patch",
+        `*** Update File: ${fixturePath(FILE_MUTATION_FIXTURE, "overwrite.txt")}`,
+        "@@",
+        "-before overwrite",
+        "+after overwrite",
+        "*** End Patch",
+        "",
+      ].join("\n"),
+    },
+    group: "File Mutation",
+    workspace: "managed",
+    fixture: FILE_MUTATION_FIXTURE,
+  },
+  {
+    id: "file-mutation-apply-patch-move",
+    toolId: "apply_patch",
+    title: "Apply Patch 移动文件",
+    purpose: "确认 apply_patch 在同一 hunk 中更新内容并通过 Move to 迁移到新路径。",
+    expectedObservation:
+      "Awaiting Approval；批准后 Completed，move-source.txt 消失，move-target.txt 出现且内容为 moved by patch。",
+    args: {
+      patchText: [
+        "*** Begin Patch",
+        `*** Update File: ${fixturePath(FILE_MUTATION_FIXTURE, "move-source.txt")}`,
+        `*** Move to: ${fixturePath(FILE_MUTATION_FIXTURE, "move-target.txt")}`,
+        "@@",
+        "-move me",
+        "+moved by patch",
+        "*** End Patch",
+        "",
+      ].join("\n"),
+    },
+    group: "File Mutation",
+    workspace: "managed",
+    fixture: FILE_MUTATION_FIXTURE,
+  },
+  {
+    id: "file-mutation-apply-patch-delete",
+    toolId: "apply_patch",
+    title: "Apply Patch 删除文件",
+    purpose: "确认 apply_patch 通过 Delete File 删除文件，并把 committed delete 投影到 Result / Artifact。",
+    expectedObservation:
+      "Awaiting Approval；批准后 Completed，delete-file.txt 真实消失。",
+    args: {
+      patchText: [
+        "*** Begin Patch",
+        `*** Delete File: ${fixturePath(FILE_MUTATION_FIXTURE, "delete-file.txt")}`,
+        "*** End Patch",
+        "",
+      ].join("\n"),
+    },
+    group: "File Mutation",
+    workspace: "managed",
+    fixture: FILE_MUTATION_FIXTURE,
+  },
+  {
+    id: "file-mutation-apply-patch-controlled-error",
+    toolId: "apply_patch",
+    title: "Apply Patch 受控失败：源文件缺失",
+    purpose: "确认 apply_patch 在 Update File 源文件不存在时明确失败，而不是产生部分写入。",
+    expectedObservation:
+      "Awaiting Approval；批准后 Failed，错误明确源文件不存在，fixture 其他内容保持原样。",
+    args: {
+      patchText: [
+        "*** Begin Patch",
+        `*** Update File: ${fixturePath(FILE_MUTATION_FIXTURE, "does-not-exist.txt")}`,
+        "@@",
+        "-ghost",
+        "+phantom",
+        "*** End Patch",
+        "",
+      ].join("\n"),
+    },
+    group: "File Mutation",
+    workspace: "managed",
+    fixture: FILE_MUTATION_FIXTURE,
+  },
+  {
     id: "terminal-short-success",
     toolId: "terminal",
     title: "短命令成功",

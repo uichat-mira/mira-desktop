@@ -1420,6 +1420,7 @@ const settingsPending = {
         terminalCwd: "目录 {{cwd}}",
         terminalState: "状态 {{state}}",
         acceptanceCases: "验收用例",
+        caseFixtureHint: "已挂接 fixture {{fixture}}，执行前自动重置",
         approve: "批准并继续",
         reject: "拒绝",
         continueOutput: "继续读取",

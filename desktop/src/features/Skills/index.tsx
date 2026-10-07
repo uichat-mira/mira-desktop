@@ -19,6 +19,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import AppPageLayout from "@/app/Layouts/AppPageLayout";
 import { Button, Card, IconButton, MarkdownText, Modal, Result, Skeleton, TextInput } from "@/shared/ui";
 import { ModalShell } from "@/shared/ui/Modal";
 import {
@@ -34,7 +35,6 @@ import {
   type SkillFileDescriptor,
   type SkillRuntimeStatus,
 } from "@/shared/api/skills";
-import SettingsPageLayout from "../../components/SettingsPageLayout";
 import { getSkillPresentation, type SkillIconKind } from "./catalog";
 
 const BASE_CATEGORIES = ["精选技能"];
@@ -339,7 +339,7 @@ export default function SkillsSettings() {
 
   return (
     <>
-      <SettingsPageLayout
+      <AppPageLayout
         miniTitle="SKILLS"
         title="技能"
         description="将经验、方法和文档转化为技能，相似任务轻松复用"
@@ -404,7 +404,7 @@ export default function SkillsSettings() {
             )}
           </div>
         </div>
-      </SettingsPageLayout>
+      </AppPageLayout>
 
       {notice ? <div role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-[10px] bg-ink px-4 py-2 text-xs text-white shadow-shadow-md">{notice}</div> : null}
       {selectedSkill ? (

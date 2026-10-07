@@ -54,6 +54,12 @@ vi.mock("@/features/Development/pages/ServerTests/index", () => ({
 vi.mock("@/features/Extensions/Capabilities/index", () => ({
   default: () => <div data-testid="extensions-capabilities">extensions-capabilities</div>,
 }));
+vi.mock("@/features/Extensions/Mcp/index", () => ({
+  default: () => <div data-testid="extensions-mcp">extensions-mcp</div>,
+}));
+vi.mock("@/features/Skills/index", () => ({
+  default: () => <div data-testid="extensions-skills">extensions-skills</div>,
+}));
 
 function renderStandaloneRoute(path: string) {
   const router = createMemoryRouter(
@@ -101,6 +107,18 @@ describe("standalone routes", () => {
     renderStandaloneRoute("/extensions/capabilities");
 
     expect(await screen.findByTestId("extensions-capabilities")).toBeInTheDocument();
+  });
+
+  it("mounts the MCP surface at /extensions/mcp", async () => {
+    renderStandaloneRoute("/extensions/mcp");
+
+    expect(await screen.findByTestId("extensions-mcp")).toBeInTheDocument();
+  });
+
+  it("mounts the Skills surface at /extensions/skills", async () => {
+    renderStandaloneRoute("/extensions/skills");
+
+    expect(await screen.findByTestId("extensions-skills")).toBeInTheDocument();
   });
 
   it("redirects the legacy tools route to the Capabilities surface", async () => {

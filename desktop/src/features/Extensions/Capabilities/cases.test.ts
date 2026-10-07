@@ -66,6 +66,11 @@ describe("Capability acceptance cases", () => {
       "file-mutation-delete-recursive",
       "file-mutation-boundary-rejection",
       "file-mutation-controlled-failure",
+      "file-mutation-apply-patch-add",
+      "file-mutation-apply-patch-update",
+      "file-mutation-apply-patch-move",
+      "file-mutation-apply-patch-delete",
+      "file-mutation-apply-patch-controlled-error",
       "terminal-short-success",
       "terminal-short-failure",
       "terminal-persistent-start",
@@ -247,7 +252,7 @@ describe("Capability acceptance cases", () => {
       (item) => item.group === "File Mutation",
     );
 
-    expect(fileMutationCases).toHaveLength(11);
+    expect(fileMutationCases).toHaveLength(16);
     expect(fileMutationCases.every((item) => item.workspace === "managed")).toBe(
       true,
     );
@@ -255,6 +260,7 @@ describe("Capability acceptance cases", () => {
       true,
     );
     expect([...new Set(fileMutationCases.map((item) => item.toolId))].sort()).toEqual([
+      "apply_patch",
       "delete",
       "edit",
       "move",
@@ -388,6 +394,51 @@ describe("Capability acceptance cases", () => {
         path: ".tool-lab-fixtures/file-mutation/controlled-dir",
       },
     });
+  });
+
+  it("registers apply_patch acceptance cases against the file-mutation fixture", () => {
+    const applyPatchCases = nativeCapabilityAcceptanceCases.filter(
+      (item) => item.toolId === "apply_patch",
+    );
+
+    expect(applyPatchCases.map((item) => item.id)).toEqual([
+      "file-mutation-apply-patch-add",
+      "file-mutation-apply-patch-update",
+      "file-mutation-apply-patch-move",
+      "file-mutation-apply-patch-delete",
+      "file-mutation-apply-patch-controlled-error",
+    ]);
+    expect(applyPatchCases.every((item) => item.group === "File Mutation")).toBe(true);
+    expect(applyPatchCases.every((item) => item.workspace === "managed")).toBe(true);
+    expect(applyPatchCases.every((item) => item.fixture === "file-mutation")).toBe(true);
+
+    const patchTextOf = (id: string) =>
+      String(applyPatchCases.find((item) => item.id === id)?.args.patchText ?? "");
+    for (const item of applyPatchCases) {
+      expect(String(item.args.patchText)).toContain("*** Begin Patch");
+      expect(String(item.args.patchText)).toContain("*** End Patch");
+    }
+    expect(patchTextOf("file-mutation-apply-patch-add")).toContain(
+      "*** Add File: .tool-lab-fixtures/file-mutation/apply-patch-added.txt",
+    );
+    expect(patchTextOf("file-mutation-apply-patch-update")).toContain(
+      "*** Update File: .tool-lab-fixtures/file-mutation/overwrite.txt",
+    );
+    expect(patchTextOf("file-mutation-apply-patch-update")).toContain("-before overwrite");
+    expect(patchTextOf("file-mutation-apply-patch-move")).toContain(
+      "*** Move to: .tool-lab-fixtures/file-mutation/move-target.txt",
+    );
+    expect(patchTextOf("file-mutation-apply-patch-delete")).toContain(
+      "*** Delete File: .tool-lab-fixtures/file-mutation/delete-file.txt",
+    );
+    expect(patchTextOf("file-mutation-apply-patch-controlled-error")).toContain(
+      "does-not-exist.txt",
+    );
+    expect(
+      applyPatchCases.find(
+        (item) => item.id === "file-mutation-apply-patch-controlled-error",
+      )?.expectedObservation,
+    ).toContain("Failed");
   });
 
   it("registers only deterministic zero-input External MCP cases", () => {

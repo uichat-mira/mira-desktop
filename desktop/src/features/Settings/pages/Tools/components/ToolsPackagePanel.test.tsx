@@ -56,6 +56,7 @@ const labels = {
   terminalCwd: (cwd: string) => `cwd ${cwd}`,
   terminalState: (state: string) => `state ${state}`,
   acceptanceCases: "acceptance cases",
+  caseFixtureHint: (fixture: string) => `fixture ${fixture} armed`,
   approve: "approve",
   reject: "reject",
   continueOutput: "continue",
@@ -93,6 +94,7 @@ describe("ToolsPackagePanel terminal acceptance controls", () => {
         runStatus="awaiting_approval"
         isRunning={false}
         pendingApproval={true}
+        activeCase={null}
         tracePanel={<div>trace</div>}
         onSelectTool={vi.fn()}
         onOpenArgsModal={vi.fn()}
@@ -121,11 +123,93 @@ describe("ToolsPackagePanel terminal acceptance controls", () => {
 
     expect(onSelectCase).toHaveBeenCalledWith(
       terminalTool.workbench.cases?.[0]?.args,
+      { id: "persistent-start", fixture: undefined },
     );
     expect(onTerminalContinue).toHaveBeenCalledOnce();
     expect(onTerminalStatus).toHaveBeenCalledOnce();
     expect(onTerminalStop).toHaveBeenCalledOnce();
     expect(onApprove).toHaveBeenCalledOnce();
     expect(onReject).toHaveBeenCalledOnce();
+  });
+
+  it("emits fixture metadata for apply_patch cases and shows the armed fixture hint", async () => {
+    const patchText = [
+      "*** Begin Patch",
+      "*** Update File: .tool-lab-fixtures/file-mutation/overwrite.txt",
+      "@@",
+      "-before overwrite",
+      "+after overwrite",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    const applyPatchTool: WorkbenchToolDefinition = {
+      id: "apply_patch",
+      title: "Apply Patch",
+      description: "Apply a patch",
+      domain: "edit",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {},
+      tags: ["workspace", "edit", "patch", "apply_patch"],
+      capabilities: {
+        sideEffect: "write",
+        requiresApproval: true,
+        workspaceBound: true,
+      },
+      workbench: {
+        groupId: "edit",
+        groupLabel: "编辑",
+        groupDescription: "编辑验收。",
+        groupOrder: 20,
+        icon: "pencil",
+        cases: [
+          {
+            id: "apply-patch-update",
+            title: "更新文件",
+            description: "update",
+            fixture: "file-mutation",
+            args: { patchText },
+          },
+        ],
+      },
+    };
+    const user = userEvent.setup();
+    const onSelectCase = vi.fn();
+
+    render(
+      <ToolsPackagePanel
+        tools={[applyPatchTool]}
+        selectedTool={applyPatchTool}
+        terminalSummary={null}
+        runStatus="idle"
+        isRunning={false}
+        pendingApproval={false}
+        activeCase={{ id: "apply-patch-update", fixture: "file-mutation" }}
+        tracePanel={<div>trace</div>}
+        onSelectTool={vi.fn()}
+        onOpenArgsModal={vi.fn()}
+        onRun={vi.fn()}
+        onSelectCase={onSelectCase}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onTerminalContinue={vi.fn()}
+        onTerminalStatus={vi.fn()}
+        onTerminalStop={vi.fn()}
+        labels={labels}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "更新文件" })).toBeInTheDocument();
+    expect(screen.getByText("fixture file-mutation armed")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "更新文件" }));
+
+    expect(onSelectCase).toHaveBeenCalledWith(
+      { patchText },
+      { id: "apply-patch-update", fixture: "file-mutation" },
+    );
+    expect(String(onSelectCase.mock.calls[0]?.[0]?.patchText)).toContain(
+      "*** Update File:",
+    );
   });
 });
