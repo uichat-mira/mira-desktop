@@ -158,11 +158,41 @@ describe("apply_patch File Mutation Runtime", () => {
     expect(fs.existsSync(path.join(tempRoot, "first.txt"))).toBe(false);
   });
 
-  it("reports unknown changed state when the first failed operation may have crossed commit", async () => {
+  it("reports exact no-change when scratch preparation fails before target commit", async () => {
     const failingFilesystem = {
       ...nodeFileMutationFilesystem,
       async writeAtomic() {
-        throw new Error("simulated first write failure");
+        throw new Error("simulated scratch write failure");
+      },
+    };
+
+    const result = await executeApplyPatchMutation(
+      parseApplyPatch(`*** Begin Patch
+*** Add File: first.txt
++first
+*** End Patch`),
+      { filesystem: failingFilesystem },
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      changed: false,
+      committed: [],
+      committedDeltaExact: true,
+      failed: {
+        hunkIndex: 0,
+        stage: "add",
+        targetCommitAttempted: false,
+      },
+    });
+    expect(fs.existsSync(path.join(tempRoot, "first.txt"))).toBe(false);
+  });
+
+  it("reports uncertain changed state after target publish is attempted", async () => {
+    const failingFilesystem = {
+      ...nodeFileMutationFilesystem,
+      link() {
+        throw new Error("simulated target publish failure");
       },
     };
 
@@ -182,6 +212,7 @@ describe("apply_patch File Mutation Runtime", () => {
       failed: {
         hunkIndex: 0,
         stage: "add",
+        targetCommitAttempted: true,
       },
     });
   });
@@ -219,12 +250,13 @@ describe("apply_patch File Mutation Runtime", () => {
       operation: "apply_patch",
       status: "partial",
       changed: true,
-      committedDeltaExact: false,
+      committedDeltaExact: true,
       failed: {
         hunkIndex: 1,
         hunkType: "add",
         path: "second.txt",
         stage: "add",
+        targetCommitAttempted: false,
       },
       unapplied: [],
     });
@@ -233,6 +265,42 @@ describe("apply_patch File Mutation Runtime", () => {
       "first\n",
     );
     expect(fs.existsSync(path.join(tempRoot, "second.txt"))).toBe(false);
+  });
+
+  it("rejects canonical path drift between batch preflight and execution", async () => {
+    const targetPath = path.join(tempRoot, "stable.txt");
+    const alternatePath = path.join(tempRoot, "alternate.txt");
+    fs.writeFileSync(targetPath, "old\n", "utf8");
+    fs.writeFileSync(alternatePath, "alternate\n", "utf8");
+
+    let targetRealpathCalls = 0;
+    const unstableFilesystem = {
+      ...nodeFileMutationFilesystem,
+      realpath(candidate: string) {
+        if (path.resolve(candidate) === path.resolve(targetPath)) {
+          targetRealpathCalls += 1;
+          return targetRealpathCalls === 1
+            ? nodeFileMutationFilesystem.realpath(targetPath)
+            : nodeFileMutationFilesystem.realpath(alternatePath);
+        }
+        return nodeFileMutationFilesystem.realpath(candidate);
+      },
+    };
+
+    await expect(
+      executeApplyPatchMutation(
+        parseApplyPatch(`*** Begin Patch
+*** Update File: stable.txt
+@@
+-old
++new
+*** End Patch`),
+        { filesystem: unstableFilesystem },
+      ),
+    ).rejects.toThrow(/target changed while waiting for batch lock/);
+
+    expect(fs.readFileSync(targetPath, "utf8")).toBe("old\n");
+    expect(fs.readFileSync(alternatePath, "utf8")).toBe("alternate\n");
   });
 
   it("rejects overlapping resolved path ownership before mutation", async () => {
