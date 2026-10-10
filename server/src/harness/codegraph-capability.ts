@@ -9,12 +9,13 @@ import {
   disposeRepoLocalManagedCodeGraphManagers,
 } from "@/mcp/managed-codegraph/repo-local-manager-cache.js";
 import {
-  isRealCodeGraphCommand,
-} from "@/mcp/managed-codegraph/repo-local-process-manager.js";
-import {
   getToolImplementation,
   registerTool,
 } from "./registry.js";
+import {
+  registerToolRuntimeReadiness,
+  type HarnessToolRuntimeReadiness,
+} from "./runtime-readiness.js";
 
 let lastRuntimeConfigFingerprint: string | null = null;
 
@@ -36,10 +37,50 @@ const getRuntimeConfigFingerprint = (
     timeoutMs: draft.timeoutMs,
   });
 
+export const resolveCodeGraphHarnessRuntimeReadiness =
+  (): HarnessToolRuntimeReadiness => {
+    const service = getActiveCodeGraphStudioService();
+
+    if (!service) {
+      return {
+        state: "unavailable",
+        reason: "Code intelligence runtime is not configured.",
+        code: "codegraph_runtime_unavailable",
+      };
+    }
+
+    const draft = service.getDraft();
+    const gate = normalizeDeclaredRepoLocalCapabilityGate(
+      service.getCapabilityGate(),
+      {
+        command: draft.command,
+        capabilityRegistered: true,
+      },
+    );
+
+    if (gate.available) {
+      return {
+        state: "ready",
+        reason: "Code intelligence runtime is ready for Agent use.",
+      };
+    }
+
+    return {
+      state: "unavailable",
+      reason:
+        gate.reasons[0]?.message ??
+        "Code intelligence runtime is not ready for Agent use.",
+      code: gate.reasons[0]?.code ?? "codegraph_runtime_unavailable",
+    };
+  };
+
 export const reconcileCodeGraphHarnessCapability = () => {
-  // Keep the public read contract stable: codebase_explore is always registered.
-  // Runtime/provider availability is reported by the tool result itself and can
-  // degrade to its controlled fallback signal without changing the tool surface.
+  // Registration remains stable for diagnostics and Tool Lab. Runtime readiness
+  // independently controls whether the Agent may see this capability.
+  registerToolRuntimeReadiness(
+    "codebase_explore",
+    resolveCodeGraphHarnessRuntimeReadiness,
+  );
   if (!getToolImplementation("codebase_explore")) {
     registerTool(codebaseExploreTool);
   }
@@ -62,20 +103,8 @@ export const reconcileCodeGraphHarnessCapability = () => {
   }
   lastRuntimeConfigFingerprint = runtimeConfigFingerprint;
 
-  const gate = normalizeDeclaredRepoLocalCapabilityGate(
-    service.getCapabilityGate(),
-    {
-      command: draft.command,
-      capabilityRegistered: true,
-    },
-  );
-  const lazyManagedWorkspaceAvailable =
-    draft.microAppEnabled &&
-    isRealCodeGraphCommand(draft.command) &&
-    gate.checks.appDataRootValid;
-  const available = gate.available || lazyManagedWorkspaceAvailable;
-
-  if (available) {
+  const readiness = resolveCodeGraphHarnessRuntimeReadiness();
+  if (readiness.state !== "unavailable") {
     return true;
   }
 
