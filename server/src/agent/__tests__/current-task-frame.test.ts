@@ -198,6 +198,9 @@ test("prepareContextNode initializes runtime toolExposure independently from too
   // readiness of its own, which would make this diagnostic-independence test
   // accidentally depend on provider configuration.
   const diagnosticTool = makeToolDefinition("diagnostic_tool", "research");
+  const registrySpy = vi
+    .spyOn(harnessRegistry, "listToolDefinitions")
+    .mockReturnValue([readOpen, diagnosticTool]);
   const matcherSpy = vi
     .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
     .mockResolvedValue({
@@ -266,6 +269,7 @@ test("prepareContextNode initializes runtime toolExposure independently from too
     );
   } finally {
     matcherSpy.mockRestore();
+    registrySpy.mockRestore();
   }
 });
 
