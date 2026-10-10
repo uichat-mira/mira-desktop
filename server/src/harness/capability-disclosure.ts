@@ -157,6 +157,14 @@ export const materializeCapabilitySchema = (
   }
   const definition = findDefinition(definitions, capabilityId);
   if (!definition) return undefined;
+
+  // A Capability View is a projection snapshot. Re-check runtime readiness at
+  // materialization time so a Tool that became unavailable after projection
+  // cannot keep leaking a stale full schema.
+  if (resolveToolRuntimeReadiness(definition.id).state === "unavailable") {
+    return undefined;
+  }
+
   return {
     capabilityId: definition.id,
     disclosure: "schema",
@@ -167,9 +175,10 @@ export const materializeCapabilitySchema = (
 const blockedTransition = (
   entry: CapabilityViewEntry,
   capabilityId: string,
+  readiness: HarnessToolRuntimeReadiness = entry.readiness,
 ): CapabilityDisclosureTransition => {
   const reason: CapabilityDisclosureTransitionReason =
-    entry.readiness.state === "unavailable"
+    readiness.state === "unavailable"
       ? "blocked-unavailable"
       : !entry.discoverable
         ? "blocked-not-discoverable"
@@ -224,6 +233,18 @@ export const promoteCapabilitySchema = (input: {
     };
   }
 
+  const currentReadiness = resolveToolRuntimeReadiness(definition.id);
+  if (currentReadiness.state === "unavailable") {
+    return {
+      view: input.view,
+      transition: blockedTransition(
+        entry,
+        input.capabilityId,
+        currentReadiness,
+      ),
+    };
+  }
+
   if (entry.disclosure === SCHEMA_DISCLOSURE) {
     return {
       view: input.view,
@@ -244,10 +265,16 @@ export const promoteCapabilitySchema = (input: {
 
   if (
     !entry.discoverable ||
-    entry.readiness.state === "unavailable" ||
     input.view.maxDisclosure !== SCHEMA_DISCLOSURE
   ) {
-    return { view: input.view, transition: blockedTransition(entry, input.capabilityId) };
+    return {
+      view: input.view,
+      transition: blockedTransition(
+        entry,
+        input.capabilityId,
+        currentReadiness,
+      ),
+    };
   }
 
   const nextView = withCapabilityDisclosure(
