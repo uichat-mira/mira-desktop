@@ -276,6 +276,34 @@ test("graph routes delegate_task to the generic worker", () => {
   );
 });
 
+test("legacy exposure without eligibleTools falls back to Parent visible Tools for Generic Child", async () => {
+  const runner: ForkedTaskRunner = async (state) => {
+    const frame = state.currentTaskFrame as typeof state.currentTaskFrame & {
+      skillContext?: ReturnType<typeof createGenericTaskSkillContext>;
+    };
+    assert.deepEqual(frame?.skillContext?.primary?.execution?.allowedTools, [
+      "read",
+    ]);
+    return {
+      pendingEvidenceObservation: createObservation({
+        status: "ok",
+        resultStatus: "completed",
+      }),
+    };
+  };
+
+  const legacyExposure = {
+    exposedTools: ["read"],
+    toolMeta: createState().toolExposure?.toolMeta ?? [],
+  };
+  const result = await createGenericTaskSubAgentNode(runner)(
+    createState({ toolExposure: legacyExposure }),
+  );
+
+  assert.equal(result.errorMessage, undefined);
+  assert.equal(result.pendingEvidenceObservation?.status, "ok");
+});
+
 test("generic worker returns completed task evidence to Main Planner", async () => {
   const runner: ForkedTaskRunner = async (state) => {
     const frame = state.currentTaskFrame as typeof state.currentTaskFrame & {
