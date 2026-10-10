@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { clearHarnessRegistry, registerTool } from "./registry.js";
+import {
+  clearHarnessRegistry,
+  listToolDefinitions,
+  registerTool,
+} from "./registry.js";
 import { resolveHarnessToolExposure } from "./exposure.js";
 import { terminalSessionCompatibilityTool, terminalTool } from "../mcp/tools/terminal-session.tool.js";
 import { readTool } from "../mcp/tools/read.tool.js";
@@ -56,6 +60,43 @@ describe("resolveHarnessToolExposure", () => {
 
     expect(Object.keys(properties)).toEqual(terminalSchemaKeys);
     expect(definition?.capabilities.requiresApproval).toBe(true);
+  });
+
+  it("keeps unavailable tools registered while excluding them from Agent exposure until readiness recovers", () => {
+    let ready = false;
+    registerTool(webSearchTool, {
+      resolveReadiness: () =>
+        ready
+          ? {
+              state: "ready",
+              reason: "Runtime prerequisites are satisfied.",
+            }
+          : {
+              state: "unavailable",
+              reason: "Runtime prerequisite is missing.",
+              code: "test_runtime_unavailable",
+            },
+    });
+
+    expect(listToolDefinitions().map((definition) => definition.id)).toContain(
+      "web_search",
+    );
+
+    const blocked = resolveHarnessToolExposure({
+      source: "agent_intent",
+      query: "find current information",
+    });
+    expect(blocked.exposedToolIds).not.toContain("web_search");
+    expect(blocked.blockedCapabilityReasons.web_search).toBe(
+      "Runtime prerequisite is missing.",
+    );
+
+    ready = true;
+    const recovered = resolveHarnessToolExposure({
+      source: "agent_intent",
+      query: "find current information",
+    });
+    expect(recovered.exposedToolIds).toContain("web_search");
   });
 
   it("hides the legacy terminal_session alias from new Agent exposure", () => {
