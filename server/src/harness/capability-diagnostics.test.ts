@@ -246,6 +246,9 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
     const result = await resolveHarnessCapabilityDiagnostics({
       query: "请打开 README.md 看看 Runtime 部分",
       source: "agent_intent",
+      nativeReadiness: {
+        web_search: { state: "ready", missingPrerequisites: [] },
+      },
     });
 
     expect(result.toolExposure.exposedToolIds).toEqual([
@@ -253,10 +256,58 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
       "web_search",
     ]);
     expect(result.blockedCapabilityIds).not.toContain("web_search");
+    expect(result.nativeCapabilityReadiness.web_search).toEqual({
+      state: "ready",
+      missingPrerequisites: [],
+    });
     expect(result.exposureReasons).toContain(
       "All public tools are exposed because the tool set is at most 20 tools.",
     );
     expect(result.toolCandidates[0]).toMatchObject({ toolId: "read" });
+  });
+
+  it("reports a registered-but-unavailable native capability with a secret-safe block reason", async () => {
+    registerTool(webSearchTool);
+
+    vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
+      embeddingModel: "test",
+      embeddingModelConfigId: "test-config",
+      embeddings: [
+        [1, 0],
+        [1, 0],
+      ],
+    });
+    vi.spyOn(rerank, "executeLocalRerank").mockResolvedValue({
+      rerankedCandidates: [],
+      rerankModel: "test-rerank",
+      rerankModelConfigId: "test-rerank-config",
+    });
+
+    const result = await resolveHarnessCapabilityDiagnostics({
+      query: "今天最新新闻是什么",
+      source: "agent_intent",
+      nativeReadiness: {
+        web_search: {
+          state: "blocked",
+          reason: "Web Search requires a configured provider.",
+          missingPrerequisites: ["web_search_provider"],
+        },
+      },
+    });
+
+    expect(result.toolExposure.exposedToolIds).not.toContain("web_search");
+    expect(result.blockedCapabilityIds).toContain("web_search");
+    expect(result.blockedCapabilityReasons.web_search).toBe(
+      "Web Search requires a configured provider.",
+    );
+    expect(result.nativeCapabilityReadiness.web_search).toEqual({
+      state: "blocked",
+      reason: "Web Search requires a configured provider.",
+      missingPrerequisites: ["web_search_provider"],
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /bearerToken|customHeaders|envJson|api-key|top-secret-token/i,
+    );
   });
 
   it.each([
@@ -348,6 +399,9 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
         allowExternal,
         allowedExternalToolIds,
         sandboxProfiles,
+        nativeReadiness: {
+          web_search: { state: "ready", missingPrerequisites: [] },
+        },
       });
 
       expect(result.toolExposure.exposedToolIds).toEqual(

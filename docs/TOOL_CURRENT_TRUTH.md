@@ -491,6 +491,8 @@ public eligible tools > 20
 
 ranking infrastructure 失败时，按 registry 顺序确定性暴露前 20。
 
+Native availability 由 Harness readiness 提供：没有满足强制前置条件的 native capability（例如未配置 provider 的 `web_search`、runtime 未就绪的 `codebase_explore`）会以 `blocked` 出现在 registry / Tool Lab / diagnostics，但默认不进入 Agent-visible exposure；`web_fetch` 不依赖 Web Search provider，保持 ready。readiness 只表达 eligibility，true invocation 仍会再次校验并 fail closed，且 readiness 投影不包含 secret。
+
 ### 用户选择的工具包
 
 `requestedToolGroupIds` 当前只：

@@ -29,6 +29,16 @@ export type HarnessToolDefinition = {
     networkAccess?: boolean;
     longRunning?: boolean;
   };
+  /**
+   * Server/Harness-supplied native runtime readiness. React must not infer
+   * provider readiness from local secrets or duplicate runtime rules; it only
+   * renders this secret-safe projection.
+   */
+  runtimeReadiness?: {
+    state: "ready" | "blocked" | "unavailable";
+    reason?: string;
+    missingPrerequisites?: string[];
+  };
   workbench?: {
     groupId: string;
     groupLabel: string;

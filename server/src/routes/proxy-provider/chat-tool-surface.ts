@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "@/mcp/core/definitions.js";
 import { resolveHarnessToolExposure } from "@/harness/exposure.js";
+import { resolveRegistryNativeCapabilityReadiness } from "@/harness/native-capability-readiness.js";
 
 export interface ChatToolSurfaceDefinition {
   id: string;
@@ -50,6 +51,7 @@ export const resolveChatToolSurface = (
 ): ChatToolSurfaceDefinition[] => {
   const definitions = resolveHarnessToolExposure({
     source: input.agentEnabled ? "agent_intent" : "chat_surface",
+    nativeReadiness: resolveRegistryNativeCapabilityReadiness(),
   }).visibleDefinitions;
 
   if (input.agentEnabled) {

@@ -29,5 +29,18 @@ export const getDefinitionBlockReason = (
     }
   }
 
+  // Native runtime readiness is authoritative Harness data. A registered Tool
+  // whose mandatory prerequisite is missing is not Agent-visible; readiness is
+  // supplied by the caller so diagnostics can still project the block reason.
+  if (definition.source === "internal") {
+    const readiness = input?.nativeReadiness?.[definition.id];
+    if (readiness && readiness.state !== "ready") {
+      return (
+        readiness.reason ??
+        `Native capability ${definition.id} is ${readiness.state}.`
+      );
+    }
+  }
+
   return undefined;
 };

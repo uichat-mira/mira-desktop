@@ -17,6 +17,7 @@ function stableT(key: string) {
 
 vi.mock("@/shared/api/tools", () => ({
   getMcpTools: () => getMcpToolsMock(),
+  getMcpRegisteredTools: () => getMcpToolsMock(),
   getMcpWorkspaceSelection: () => getMcpWorkspaceSelectionMock(),
   getMcpWebSearchConfig: () => getMcpWebSearchConfigMock(),
   saveMcpWebSearchConfig: (...args: unknown[]) => saveMcpWebSearchConfigMock(...args),

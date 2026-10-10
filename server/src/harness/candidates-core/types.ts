@@ -1,4 +1,5 @@
 import type { SandboxProfile, ToolDefinition } from "../../mcp/core/definitions.js";
+import type { NativeCapabilityReadiness } from "../native-capability-readiness.js";
 import type { HarnessTurnSource } from "../shared/types.js";
 
 export interface HarnessCapabilityMatch {
@@ -41,6 +42,7 @@ export interface HarnessToolExposure {
   reason: string[];
   blockedCapabilityIds: string[];
   blockedCapabilityReasons: Record<string, string>;
+  nativeReadiness?: Record<string, NativeCapabilityReadiness>;
 }
 
 
@@ -55,6 +57,7 @@ export interface ResolveHarnessToolCandidatesForTurnInput {
   allowExternal?: boolean;
   allowedExternalToolIds?: string[];
   sandboxProfiles?: Partial<Record<SandboxProfile, boolean>>;
+  nativeReadiness?: Record<string, NativeCapabilityReadiness>;
 }
 
 export interface ResolveHarnessToolCandidatesForTurnResult {

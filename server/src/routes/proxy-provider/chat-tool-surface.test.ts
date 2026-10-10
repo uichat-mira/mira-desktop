@@ -35,9 +35,11 @@ describe("chat tool surface", () => {
 
     const tools = resolveChatToolSurface();
 
-    expect(resolveHarnessToolExposureMock).toHaveBeenCalledWith({
-      source: "chat_surface",
-    });
+    expect(resolveHarnessToolExposureMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "chat_surface",
+      }),
+    );
 
     expect(tools.map((tool) => tool.id)).toEqual(["web_search"]);
   });
@@ -94,9 +96,11 @@ describe("chat tool surface", () => {
       agentEnabled: true,
     });
 
-    expect(resolveHarnessToolExposureMock).toHaveBeenCalledWith({
-      source: "agent_intent",
-    });
+    expect(resolveHarnessToolExposureMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "agent_intent",
+      }),
+    );
 
     expect(tools.map((tool) => tool.id)).toEqual([
       "read_list",

@@ -53,8 +53,23 @@ import { resolveWecomConfig } from "@/integrations/wecom/config.js";
 import { knowledgeBaseService } from "@/services/knowledge-base.service.js";
 import { mcpBadRequest } from "./core/errors.js";
 import { withWorkbenchMetadata } from "./workbench-metadata.js";
+import {
+  resolveNativeCapabilityReadiness,
+  type NativeCapabilityReadiness,
+} from "../harness/native-capability-readiness.js";
 
 const objectSchema = { type: "object", additionalProperties: true } as const;
+
+const withRuntimeReadiness = (
+  definitions: ReturnType<typeof withWorkbenchMetadata>,
+  readiness: Record<string, NativeCapabilityReadiness>,
+) =>
+  definitions.map((definition) => {
+    const nativeReadiness = readiness[definition.id];
+    return nativeReadiness
+      ? { ...definition, runtimeReadiness: nativeReadiness }
+      : definition;
+  });
 
 const upsertDefaultWecomResources = (input: {
   corpId?: string;
@@ -833,18 +848,30 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
     },
     routeHandler("Failed to list MCP tools", async (request) => {
       const internalDefinitions = listInternalToolDefinitions();
+      const nativeReadiness = resolveNativeCapabilityReadiness(
+        internalDefinitions.map((definition) => definition.id),
+      );
       if (!request.query.query && !request.query.source) {
-        return success(withWorkbenchMetadata(internalDefinitions));
+        return success(
+          withRuntimeReadiness(
+            withWorkbenchMetadata(internalDefinitions),
+            nativeReadiness,
+          ),
+        );
       }
 
       const decision = resolveHarnessToolExposure({
         source: request.query.source ?? "tools_list",
         query: request.query.query,
+        nativeReadiness,
       });
       return success(
-        withWorkbenchMetadata(
-          decision.exposedDefinitions.filter((definition) => definition.source === "internal"),
-          internalDefinitions,
+        withRuntimeReadiness(
+          withWorkbenchMetadata(
+            decision.exposedDefinitions.filter((definition) => definition.source === "internal"),
+            internalDefinitions,
+          ),
+          nativeReadiness,
         ),
       );
     }),

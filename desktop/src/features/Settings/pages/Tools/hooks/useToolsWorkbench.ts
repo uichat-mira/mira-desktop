@@ -4,7 +4,7 @@ import { message } from "@/shared/ui/Message";
 import {
   executeMcpInvocationStream,
   getMcpInvocationTrace,
-  getMcpTools,
+  getMcpRegisteredTools,
   getMcpWebSearchConfig,
   getMcpWorkspaceSelection,
   resetMcpCapabilityFixture,
@@ -108,7 +108,7 @@ export function useToolsWorkbench(
       setIsWorkspaceLoading(true);
       try {
         const [toolList, workspace, persistedWebSearchConfig] = await Promise.all([
-          getMcpTools(),
+          getMcpRegisteredTools(),
           getMcpWorkspaceSelection(),
           getMcpWebSearchConfig().catch(() => defaultWebSearchConfig),
         ]);

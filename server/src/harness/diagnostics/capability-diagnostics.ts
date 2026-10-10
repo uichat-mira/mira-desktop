@@ -5,6 +5,7 @@ import { resolveHarnessToolCandidatesForTurn } from "../candidates-core/index.js
 import { resolveHarnessToolExposure } from "../exposure-core/index.js";
 import type { ToolIntentCandidate } from "@/agent/intent/types.js";
 import type { HarnessTurnSource } from "../shared/types.js";
+import type { NativeCapabilityReadiness } from "../native-capability-readiness.js";
 import { listToolDefinitions } from "../registry.js";
 import { resolveAgentEligibleExternalMcpCapabilities } from "@/mcp/external";
 
@@ -18,6 +19,7 @@ export interface HarnessCapabilityDiagnosticsInput {
   allowExternal?: boolean;
   allowedExternalToolIds?: string[];
   sandboxProfiles?: Partial<Record<SandboxProfile, boolean>>;
+  nativeReadiness?: Record<string, NativeCapabilityReadiness>;
 }
 
 export interface HarnessCapabilityDiagnosticsResult {
@@ -26,6 +28,7 @@ export interface HarnessCapabilityDiagnosticsResult {
   exposureReasons: string[];
   blockedCapabilityIds: string[];
   blockedCapabilityReasons: Record<string, string>;
+  nativeCapabilityReadiness: Record<string, NativeCapabilityReadiness>;
   eligibleExternalCapabilityIds: string[];
   registeredBlockedExternalCapabilityIds: string[];
   externalExposure: Array<{ id: string; status: "exposed" | "candidate" | "blocked"; reason: string }>;
@@ -108,6 +111,7 @@ export const resolveHarnessCapabilityDiagnostics = async (
     allowExternal: input.allowExternal,
     allowedExternalToolIds: input.allowedExternalToolIds,
     sandboxProfiles: input.sandboxProfiles,
+    nativeReadiness: input.nativeReadiness,
   });
   const profiles = resolveHarnessCapabilityProfiles(
     candidateResolution.toolExposure.exposedDefinitions,
@@ -160,6 +164,7 @@ export const resolveHarnessCapabilityDiagnostics = async (
       : candidateResolution.toolExposure.reason,
     blockedCapabilityIds: candidateResolution.toolExposure.blockedCapabilityIds,
     blockedCapabilityReasons: candidateResolution.toolExposure.blockedCapabilityReasons,
+    nativeCapabilityReadiness: candidateResolution.toolExposure.nativeReadiness ?? {},
     eligibleExternalCapabilityIds,
     registeredBlockedExternalCapabilityIds: registeredExternal
       .filter((item) => !exposureSet.has(item.id))

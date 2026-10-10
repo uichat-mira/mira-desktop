@@ -49,6 +49,9 @@ fs.mkdirSync(defaultWorkspaceRoot, { recursive: true });
 
 process.env.DATABASE_URL = `file:${testDbPath}`;
 process.env.UI_CHAT_WORKSPACE_ROOT = defaultWorkspaceRoot;
+// web_search is only Agent-visible when a provider is configured; these route
+// tests exercise the default allowlist, so configure a deterministic provider.
+process.env.TAVILY_API_KEY = "proxy-provider-test-key";
 
 initializeAuthDatabase();
 initializeModelConfigDatabase();

@@ -89,12 +89,75 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
       topK: 1,
       maxTools: 1,
       minScore: 0.99,
+      nativeReadiness: {
+        web_search: { state: "ready", missingPrerequisites: [] },
+      },
     });
 
     expect(result.toolExposure.exposedToolIds).toEqual(
       expect.arrayContaining(["read", "web_search", "terminal"]),
     );
     expect(result.toolCandidates).toHaveLength(3);
+  });
+
+  it("filters a registered-but-unavailable native capability from Agent exposure and promotes it once ready", async () => {
+    registerTool(readTool);
+    registerTool(webSearchTool);
+
+    const blocked = await resolveHarnessToolCandidatesForTurn({
+      query: "search the web",
+      source: "agent_intent",
+      nativeReadiness: {
+        web_search: {
+          state: "blocked",
+          reason: "Web Search requires a configured provider.",
+          missingPrerequisites: ["web_search_provider"],
+        },
+      },
+    });
+
+    expect(blocked.toolExposure.exposedToolIds).toEqual(["read"]);
+    expect(blocked.toolExposure.blockedCapabilityIds).toContain("web_search");
+    expect(blocked.toolExposure.nativeReadiness?.web_search?.state).toBe("blocked");
+
+    const ready = await resolveHarnessToolCandidatesForTurn({
+      query: "search the web",
+      source: "agent_intent",
+      nativeReadiness: {
+        web_search: { state: "ready", missingPrerequisites: [] },
+      },
+    });
+
+    expect(ready.toolExposure.exposedToolIds).toEqual(
+      expect.arrayContaining(["read", "web_search"]),
+    );
+  });
+
+  it("applies the same readiness/exposure contract to a runtime-dependent capability like codebase_explore", async () => {
+    registerTool(createEligibleTool("codebase_explore"));
+
+    const blocked = await resolveHarnessToolCandidatesForTurn({
+      query: "explain the architecture",
+      source: "agent_intent",
+      nativeReadiness: {
+        codebase_explore: {
+          state: "blocked",
+          reason: "CodeGraph runtime is unavailable.",
+          missingPrerequisites: ["codegraph_runtime"],
+        },
+      },
+    });
+    expect(blocked.toolExposure.exposedToolIds).not.toContain("codebase_explore");
+    expect(blocked.toolExposure.blockedCapabilityIds).toContain("codebase_explore");
+
+    const ready = await resolveHarnessToolCandidatesForTurn({
+      query: "explain the architecture",
+      source: "agent_intent",
+      nativeReadiness: {
+        codebase_explore: { state: "ready", missingPrerequisites: [] },
+      },
+    });
+    expect(ready.toolExposure.exposedToolIds).toContain("codebase_explore");
   });
 
   it("ranks only when the public tool set exceeds 20 and exposes exactly the top 20", async () => {

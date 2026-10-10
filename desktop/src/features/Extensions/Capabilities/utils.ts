@@ -16,15 +16,37 @@ const unavailable = (reason: string, settingsPath?: string): CapabilityReadiness
   ...(settingsPath ? { settingsPath } : {}),
 });
 
-export function toNativeCapabilityTool(definition: HarnessToolDefinition): CapabilityTool {
+const toCapabilityReadiness = (
+  readiness: HarnessToolDefinition["runtimeReadiness"],
+): CapabilityReadiness | null => {
+  if (!readiness) {
+    return null;
+  }
+  if (readiness.state === "ready") {
+    return {
+      state: "ready",
+      reason: readiness.reason ?? "前置条件已满足，可以运行。",
+    };
+  }
   return {
-    ...definition,
+    state: "unavailable",
+    reason: readiness.reason ?? "Native Tool 当前不可用。",
+    settingsPath: "/settings/tools",
+  };
+};
+
+export function toNativeCapabilityTool(definition: HarnessToolDefinition): CapabilityTool {
+  const { runtimeReadiness, ...rest } = definition;
+  const readiness = toCapabilityReadiness(runtimeReadiness);
+  return {
+    ...rest,
     sourceInfo: {
       kind: "native",
       label: "Native",
       detail: definition.domain,
       settingsPath: "/settings/tools",
     },
+    ...(readiness ? { runtimeReadiness: readiness } : {}),
   };
 }
 

@@ -36,10 +36,69 @@ const getRuntimeConfigFingerprint = (
     timeoutMs: draft.timeoutMs,
   });
 
+const resolveCodeGraphGate = (
+  service: NonNullable<ReturnType<typeof getActiveCodeGraphStudioService>>,
+) => {
+  const draft = service.getDraft();
+  const gate = normalizeDeclaredRepoLocalCapabilityGate(
+    service.getCapabilityGate(),
+    {
+      command: draft.command,
+      capabilityRegistered: true,
+    },
+  );
+  return { draft, gate };
+};
+
+const isCodeGraphRuntimeAvailable = (input: {
+  draft: ReturnType<
+    NonNullable<ReturnType<typeof getActiveCodeGraphStudioService>>["getDraft"]
+  >;
+  gate: ReturnType<typeof normalizeDeclaredRepoLocalCapabilityGate>;
+}) => {
+  const lazyManagedWorkspaceAvailable =
+    input.draft.microAppEnabled &&
+    isRealCodeGraphCommand(input.draft.command) &&
+    input.gate.checks.appDataRootValid;
+  return input.gate.available || lazyManagedWorkspaceAvailable;
+};
+
+/**
+ * Pure readiness probe for the CodeGraph-backed `codebase_explore` capability.
+ *
+ * Unlike `reconcileCodeGraphHarnessCapability`, this does not mutate runtime
+ * state or register tools. Exposure/readiness resolution needs to know whether
+ * the current machine can actually run the capability without triggering a
+ * dispose side effect on every turn.
+ */
+export const resolveCodeGraphHarnessAvailability = (): {
+  available: boolean;
+  reason?: string;
+} => {
+  const service = getActiveCodeGraphStudioService();
+  if (!service) {
+    return {
+      available: false,
+      reason: "CodeGraph microapp configuration is unavailable.",
+    };
+  }
+
+  const { draft, gate } = resolveCodeGraphGate(service);
+  if (isCodeGraphRuntimeAvailable({ draft, gate })) {
+    return { available: true };
+  }
+
+  const reason =
+    gate.reasons[0]?.message ??
+    (!draft.microAppEnabled ? "CodeGraph microapp is disabled." : undefined);
+  return { available: false, ...(reason ? { reason } : {}) };
+};
+
 export const reconcileCodeGraphHarnessCapability = () => {
-  // Keep the public read contract stable: codebase_explore is always registered.
-  // Runtime/provider availability is reported by the tool result itself and can
-  // degrade to its controlled fallback signal without changing the tool surface.
+  // Keep the public read contract stable: codebase_explore stays registered so
+  // Tool Lab / diagnostics retain the contract. Agent visibility is gated
+  // separately by native capability readiness; a runtime that degrades after
+  // exposure still reports its controlled fallback signal from the tool result.
   if (!getToolImplementation("codebase_explore")) {
     registerTool(codebaseExploreTool);
   }
@@ -52,7 +111,7 @@ export const reconcileCodeGraphHarnessCapability = () => {
     return false;
   }
 
-  const draft = service.getDraft();
+  const { draft, gate } = resolveCodeGraphGate(service);
   const runtimeConfigFingerprint = getRuntimeConfigFingerprint(draft);
   if (
     lastRuntimeConfigFingerprint &&
@@ -62,20 +121,7 @@ export const reconcileCodeGraphHarnessCapability = () => {
   }
   lastRuntimeConfigFingerprint = runtimeConfigFingerprint;
 
-  const gate = normalizeDeclaredRepoLocalCapabilityGate(
-    service.getCapabilityGate(),
-    {
-      command: draft.command,
-      capabilityRegistered: true,
-    },
-  );
-  const lazyManagedWorkspaceAvailable =
-    draft.microAppEnabled &&
-    isRealCodeGraphCommand(draft.command) &&
-    gate.checks.appDataRootValid;
-  const available = gate.available || lazyManagedWorkspaceAvailable;
-
-  if (available) {
+  if (isCodeGraphRuntimeAvailable({ draft, gate })) {
     return true;
   }
 

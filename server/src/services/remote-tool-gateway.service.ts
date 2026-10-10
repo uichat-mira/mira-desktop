@@ -6,6 +6,7 @@ import {
   type HarnessInvocationRecord,
 } from "@/harness/invocations.js";
 import { resolveHarnessToolExposure } from "@/harness/exposure.js";
+import { resolveRegistryNativeCapabilityReadiness } from "@/harness/native-capability-readiness.js";
 import { initializeHarnessRuntime } from "@/mcp/bootstrap.js";
 import type {
   ToolInvocationFailureCode,
@@ -111,6 +112,7 @@ const resolveRemoteToolDefinitions = async (): Promise<ToolDefinition[]> => {
     source: "agent_intent",
     allowExternal: true,
     allowedExternalToolIds: eligibleExternalToolIds,
+    nativeReadiness: resolveRegistryNativeCapabilityReadiness(),
   });
 
   return exposure.exposedDefinitions;

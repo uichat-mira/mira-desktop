@@ -77,6 +77,28 @@ describe("Capability view helpers", () => {
     ).toBe("ready");
   });
 
+  it("projects Server/Harness native readiness without duplicating runtime rules", () => {
+    const blocked = toNativeCapabilityTool({
+      ...readTool,
+      runtimeReadiness: {
+        state: "blocked",
+        reason: "Web Search requires a configured provider.",
+        missingPrerequisites: ["web_search_provider"],
+      },
+    });
+    expect(blocked.runtimeReadiness).toEqual({
+      state: "unavailable",
+      reason: "Web Search requires a configured provider.",
+      settingsPath: "/settings/tools",
+    });
+
+    const ready = toNativeCapabilityTool({
+      ...readTool,
+      runtimeReadiness: { state: "ready", missingPrerequisites: [] },
+    });
+    expect(ready.runtimeReadiness).toMatchObject({ state: "ready" });
+  });
+
   it("projects External MCP source identity and unavailable runtime state", () => {
     const server = {
       id: "server-1",

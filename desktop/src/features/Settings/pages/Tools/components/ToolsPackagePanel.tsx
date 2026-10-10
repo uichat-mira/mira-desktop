@@ -123,6 +123,16 @@ export default function ToolsPackagePanel({
               />
             </div>
 
+            {selectedTool?.runtimeReadiness &&
+            selectedTool.runtimeReadiness.state !== "ready" ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-ui-control border border-warning-border bg-warning-background px-3 py-2">
+                <Badge variant="warning">{selectedTool.runtimeReadiness.state}</Badge>
+                <span className="text-xs text-warning-text">
+                  {selectedTool.runtimeReadiness.reason ?? ""}
+                </span>
+              </div>
+            ) : null}
+
             {selectedTool?.workbench.cases?.length ? (
               <div className="space-y-2">
                 <div className="text-[11px] font-medium text-text-tertiary">

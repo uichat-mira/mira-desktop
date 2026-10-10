@@ -3,6 +3,7 @@ import { toCapabilityIntentDocuments } from "@/agent/intent/capability-documents
 import { resolveHarnessToolExposure } from "../exposure-core/index.js";
 import { resolveHarnessCapabilityProfiles } from "../profiles/index.js";
 import { resolveWorkspaceEditFacadeForModel } from "../edit-facade.js";
+import { resolveRegistryNativeCapabilityReadiness } from "../native-capability-readiness.js";
 import {
   expandHarnessToolCandidates,
   exposeAllHarnessToolCandidates,
@@ -38,6 +39,9 @@ export const resolveHarnessToolCandidatesForTurn = async (
 ): Promise<ResolveHarnessToolCandidatesForTurnResult> => {
   const source = input.source ?? "agent_intent";
 
+  const nativeReadiness =
+    input.nativeReadiness ?? resolveRegistryNativeCapabilityReadiness();
+
   const exposureDecision = resolveHarnessToolExposure({
     source,
     query: input.query,
@@ -49,6 +53,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
     allowExternal: input.allowExternal,
     allowedExternalToolIds: input.allowedExternalToolIds,
     sandboxProfiles: input.sandboxProfiles,
+    nativeReadiness,
   });
 
   // Registered public tools are available to Planner. Harness does not infer
@@ -62,6 +67,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
     reason: exposureDecision.reason,
     blockedCapabilityIds: exposureDecision.blockedCapabilityIds,
     blockedCapabilityReasons: exposureDecision.blockedCapabilityReasons,
+    nativeReadiness,
   };
 
   if (visibleDefinitions.length <= MAX_PLANNER_TOOLS) {
@@ -99,6 +105,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
         reason: [...initialToolExposure.reason, reason],
         blockedCapabilityIds: initialToolExposure.blockedCapabilityIds,
         blockedCapabilityReasons: initialToolExposure.blockedCapabilityReasons,
+        nativeReadiness,
       },
       ...(retrievalError ? { retrievalError } : {}),
     } satisfies ResolveHarnessToolCandidatesForTurnResult;
@@ -223,6 +230,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
     reason: [...exposureDecision.reason, rankingReason],
     blockedCapabilityIds: exposureDecision.blockedCapabilityIds,
     blockedCapabilityReasons: exposureDecision.blockedCapabilityReasons,
+    nativeReadiness,
   };
 
   return {

@@ -142,6 +142,17 @@ public eligible tools > 20
 
 Recall / rerank 只服务上下文预算，不是授权或执行决定。
 
+### Native Runtime Readiness
+
+Native Tool 的 registration 不等于 runtime ready。Harness 通过 `resolveNativeCapabilityReadiness` 计算权威 readiness：
+
+- `web_search`：需要已配置且可用的 provider（Tavily apiKey 或 SearXNG baseUrl），否则 `blocked`；
+- `web_fetch`：不依赖 Web Search provider，独立 `ready`；
+- `codebase_explore`：需要 CodeGraph microapp / runtime / index 就绪，否则 `blocked`；
+- 没有外部前置条件的 Tool 默认 `ready`。
+
+`blocked` / `unavailable` 的 native capability 默认不进入 Agent-visible Tool Exposure，但仍保留在 registry 与 Tool Lab / diagnostics 中，并附带 `missingPrerequisites` 与 provider-neutral、secret-safe 的 `reason`。readiness 只提供 eligibility，不构成 authorization；真实 invocation 仍会再次校验前置条件并 fail closed。readiness 投影不得包含 API key、token、`envJson` 等 secret。
+
 ## 5. Tool Group 不改变 Exposure
 
 用户选择的工具包：
