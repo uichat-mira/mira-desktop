@@ -186,6 +186,39 @@ describe("progressive Tool metadata and schema disclosure", () => {
     ).toBeUndefined();
   });
 
+  it("rechecks current readiness before reusing an already-disclosed schema", () => {
+    let available = true;
+    registerTool(readTool, {
+      resolveReadiness: () =>
+        available
+          ? {
+              state: "ready",
+              reason: "Runtime prerequisites are satisfied.",
+            }
+          : unavailableReadiness(),
+    });
+
+    const view = project(createMainAgentCapabilityScope({ scopeId: "main" }));
+    const promoted = promote(view, "read");
+    expect(promoted.transition.reason).toBe("promoted");
+    expect(promoted.schema?.inputSchema).toBe(readTool.definition.inputSchema);
+
+    available = false;
+
+    // The view still contains the old readiness snapshot, but schema reuse and
+    // materialization must resolve the current runtime state again.
+    expect(schemaFor(promoted.view, "read")).toBeUndefined();
+    const stalePromotion = promote(promoted.view, "read");
+    expect(stalePromotion.transition).toEqual({
+      capabilityId: "read",
+      from: "schema",
+      to: "schema",
+      reason: "blocked-unavailable",
+      schemaMaterialized: false,
+    });
+    expect(stalePromotion.schema).toBeUndefined();
+  });
+
   it("does not disclose an unavailable Tool that recovers to metadata then schema", () => {
     let ready = false;
     registerTool(webSearchTool, {
