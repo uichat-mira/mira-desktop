@@ -249,6 +249,32 @@ test("generic child materializes a full schema only for the Parent's exact-known
   assert.match(childContext.primary?.body ?? "", /- write:/);
 });
 
+test("generic child may start with only metadata when Parent has no exact-known Tool", () => {
+  const resolution = resolveGenericChildCapabilityView({
+    parentVisibleToolIds: [],
+    delegatedAuthorityToolIds: ["read", "write"],
+  });
+
+  assert.deepEqual(resolution.discoverableToolIds.slice().sort(), [
+    "read",
+    "write",
+  ]);
+  assert.deepEqual(resolution.allowedTools.slice().sort(), ["read", "write"]);
+  assert.deepEqual(resolution.disclosedToolIds, []);
+  assert.equal(resolution.disclosureTrace.metadataDisclosedCount, 2);
+  assert.equal(resolution.disclosureTrace.schemaDisclosedCount, 0);
+
+  const childContext = createGenericTaskSkillContext({
+    task: { goal: "do the bounded work", acceptanceCriteria: ["work done"] },
+    parentVisibleToolIds: [],
+    delegatedAuthorityToolIds: ["read", "write"],
+    capabilityResolution: resolution,
+  });
+  assert.deepEqual(childContext.disclosedTools, []);
+  assert.match(childContext.primary?.body ?? "", /- read:/);
+  assert.match(childContext.primary?.body ?? "", /- write:/);
+});
+
 test("a Tool outside the delegated authority envelope stays unavailable even when registered and ready", () => {
   const resolution = resolveGenericChildCapabilityView({
     parentVisibleToolIds: ["read"],
