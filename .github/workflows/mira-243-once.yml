@@ -1,0 +1,27 @@
+name: Mira #243 One-Off Tool Discovery POC
+
+on:
+  push:
+    branches:
+      - feat/tool-discovery-243-poc
+    paths:
+      - .github/workflows/mira-243-once.yml
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  run-isolated-tool-discovery-poc:
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@3e21560100eb3261a3ba76088060feb89b42e0a4
+    with:
+      issue_number: 243
+      base_branch: dev
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @ui-chat-mira/server exec vitest run src/harness/candidates-core/tool-discovery-poc.test.ts
+        pnpm --filter @ui-chat-mira/server typecheck
+    secrets:
+      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
