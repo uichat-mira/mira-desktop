@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import ToolsSettings from "./index";
 
 const runSelectedTool = vi.fn();
-const saveWebSearchConfig = vi.fn();
+const saveWebSearchConfig = vi.fn().mockResolvedValue(true);
 const selectGroup = vi.fn();
 const selectTool = vi.fn();
 const setArgsDraft = vi.fn();
@@ -38,6 +38,9 @@ const workbench = {
   terminalSummary: null,
   trace: null,
   webSearchConfig: { apiKey: "key", baseUrl: "http://localhost", maxResults: 5 },
+  webSearchConfigLoading: false,
+  webSearchConfigSaving: false,
+  webSearchConfigLoadError: null,
   workspaceRootInput: "",
   workspaceSelection: null,
   runSelectedTool,

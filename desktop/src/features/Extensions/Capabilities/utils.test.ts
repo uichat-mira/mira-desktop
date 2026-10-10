@@ -66,6 +66,24 @@ describe("Capability view helpers", () => {
     expect(resolveToolReadiness(tool)).toBe("unavailable");
   });
 
+  it("uses the localized reason when web search readiness is unavailable", () => {
+    const tool = toNativeCapabilityTool({
+      ...readTool,
+      id: "web_search",
+      title: "Web Search",
+      domain: "web_search",
+    });
+
+    expect(
+      resolveCapabilityReadiness({
+        caseDefinition: { ...caseDefinition, toolId: "web_search" },
+        tool,
+        workspaceRoot: null,
+        translate: () => "localized readiness reason",
+      }),
+    ).toMatchObject({ reason: "localized readiness reason" });
+  });
+
   it("keeps readiness separate from invocation failure", () => {
     const tool = toNativeCapabilityTool(readTool);
 

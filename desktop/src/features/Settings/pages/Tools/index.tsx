@@ -159,9 +159,15 @@ export default function ToolsSettings() {
             </Button>
             <Button
               variant="primary"
+              disabled={
+                workbench.selectedTool?.id === "web_search" &&
+                (workbench.webSearchConfigLoading || workbench.webSearchConfigSaving ||
+                  Boolean(workbench.webSearchConfigLoadError))
+              }
               onClick={async () => {
                 if (workbench.selectedTool?.id === "web_search") {
-                  await workbench.saveWebSearchConfig();
+                  const saved = await workbench.saveWebSearchConfig();
+                  if (!saved) return;
                 }
                 setIsArgsModalOpen(false);
               }}
@@ -204,10 +210,14 @@ export default function ToolsSettings() {
           {workbench.selectedTool?.id === "web_search" ? (
             <WebSearchConfigPanel
               config={workbench.webSearchConfig}
+              isLoading={workbench.webSearchConfigLoading}
+              isSaving={workbench.webSearchConfigSaving}
+              loadError={workbench.webSearchConfigLoadError}
+              onReload={workbench.reloadWebSearchConfig}
               onChange={(update) =>
                 workbench.setWebSearchConfig(update(workbench.webSearchConfig))
               }
-              onSave={() => workbench.saveWebSearchConfig()}
+              onSave={workbench.saveWebSearchConfig}
             />
           ) : (
             <>

@@ -153,6 +153,28 @@ describe("useToolsWorkbench", () => {
     );
   });
 
+  it("keeps the last web search config when reload fails and reports save failure", async () => {
+    const useToolsWorkbench = await importHook();
+    getMcpWebSearchConfigMock
+      .mockResolvedValueOnce({ apiKey: "saved-key", baseUrl: "", maxResults: 4 })
+      .mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useToolsWorkbench());
+
+    await waitFor(() => expect(result.current.webSearchConfig.apiKey).toBe("saved-key"));
+    await act(async () => {
+      await expect(result.current.reloadWebSearchConfig()).rejects.toThrow();
+    });
+    expect(result.current.webSearchConfig.apiKey).toBe("saved-key");
+    expect(result.current.webSearchConfigLoadError).toBeTruthy();
+
+    saveMcpWebSearchConfigMock.mockRejectedValueOnce(new Error("offline"));
+    let saved: boolean | undefined;
+    await act(async () => {
+      saved = await result.current.saveWebSearchConfig();
+    });
+    expect(saved).toBe(false);
+  });
+
   it("runs the terminal persistent acceptance flow through approval and continuation", async () => {
     const persistentArgs = {
       command:

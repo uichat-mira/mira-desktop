@@ -267,6 +267,7 @@ export default function CapabilitiesPage() {
                     caseDefinition,
                     tool: selectedTool,
                     workspaceRoot: capabilities.workspaceSelection?.rootPath ?? null,
+                    translate: t,
                   });
                   const runningThisCase =
                     (capabilities.isPreparingCase || capabilities.runState.isRunning) &&
@@ -554,6 +555,8 @@ export default function CapabilitiesPage() {
                 config={webSearchConfig.config}
                 isLoading={webSearchConfig.isLoading}
                 isSaving={webSearchConfig.isSaving}
+                loadError={webSearchConfig.loadError}
+                onReload={webSearchConfig.reload}
                 onChange={(update) => webSearchConfig.setConfig(update)}
                 onSave={webSearchConfig.save}
               />

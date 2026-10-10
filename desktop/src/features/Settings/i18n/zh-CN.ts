@@ -1437,6 +1437,7 @@ const settingsPending = {
         selectToolFirst: "请先选择一个工具",
         invalidArgsJson: "调用参数不是合法 JSON",
         webSearchConfigSaved: "Web Search 配置已保存",
+        webSearchConfigSaveFailed: "Web Search 配置保存失败",
         runFailed: "工具执行失败",
         approvalFailed: "处理工具审批失败",
       },
@@ -2400,6 +2401,7 @@ const settingsPending = {
         config: {
           description: "配置 Web Search 使用的搜索服务。凭据只用于后端搜索运行时。",
           loading: "正在读取 Web Search 配置…",
+          loadFailed: "Web Search 配置读取失败，请重试。",
           save: "保存配置",
           saving: "保存中…",
         },
@@ -2458,6 +2460,9 @@ const settingsPending = {
           ready: "Ready",
           degraded: "Degraded",
           unavailable: "Unavailable",
+        },
+        readinessReasons: {
+          webSearchUnavailable: "Web Search 运行时状态不可用。",
         },
         invocation: {
           idle: "Not run",

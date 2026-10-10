@@ -101,6 +101,7 @@ export function resolveCapabilityReadiness(input: {
   caseDefinition: CapabilityAcceptanceCase | null;
   tool: CapabilityTool | null;
   workspaceRoot: string | null;
+  translate?: (key: string) => string;
 }): CapabilityReadiness {
   if (!input.caseDefinition) {
     return unavailable("请选择一个验收用例。");
@@ -113,7 +114,9 @@ export function resolveCapabilityReadiness(input: {
   }
   if (input.tool.id === "web_search" && !input.tool.runtimeReadiness) {
     return unavailable(
-      "Web Search runtime readiness is unavailable.",
+      input.translate?.(
+        "settings.development.capabilities.readinessReasons.webSearchUnavailable",
+      ) ?? "Web Search runtime readiness is unavailable.",
       "/settings/tools",
     );
   }

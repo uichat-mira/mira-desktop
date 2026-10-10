@@ -12,14 +12,18 @@ type WebSearchConfigPanelProps = {
   config: WebSearchConfig;
   isLoading?: boolean;
   isSaving?: boolean;
+  loadError?: string | null;
+  onReload?: () => void | Promise<void>;
   onChange: (update: (current: WebSearchConfig) => WebSearchConfig) => void;
-  onSave: () => void | Promise<void>;
+  onSave: () => void | Promise<boolean | void>;
 };
 
 export default function WebSearchConfigPanel({
   config,
   isLoading = false,
   isSaving = false,
+  loadError = null,
+  onReload,
   onChange,
   onSave,
 }: WebSearchConfigPanelProps) {
@@ -34,6 +38,22 @@ export default function WebSearchConfigPanel({
       <div className="text-sm leading-6 text-text-secondary">
         {t("settings.development.capabilities.config.description")}
       </div>
+
+      {loadError ? (
+        <div className="flex items-center justify-between gap-3 rounded-ui-control border border-warning-border bg-warning-background px-3 py-2 text-sm text-warning-text">
+          <span>{loadError}</span>
+          {onReload ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={isLoading}
+              onClick={() => void Promise.resolve(onReload()).catch(() => undefined)}
+            >
+              {t("settings.development.capabilities.actions.refresh")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Card padding="none" className="p-4">
@@ -94,7 +114,7 @@ export default function WebSearchConfigPanel({
         <Button
           size="sm"
           variant="primary"
-          disabled={isSaving}
+          disabled={isLoading || isSaving || Boolean(loadError)}
           onClick={() => void onSave()}
         >
           <Save className="h-4 w-4" aria-hidden="true" />

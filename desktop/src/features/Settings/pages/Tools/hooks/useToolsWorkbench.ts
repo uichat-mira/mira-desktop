@@ -511,6 +511,9 @@ export function useToolsWorkbench(
     trace,
     tools,
     webSearchConfig: webSearchConfigState.config,
+    webSearchConfigLoading: webSearchConfigState.isLoading,
+    webSearchConfigSaving: webSearchConfigState.isSaving,
+    webSearchConfigLoadError: webSearchConfigState.loadError,
     workspaceRootInput: selectedTool?.capabilities.workspaceBound
       ? workspaceRootInput
       : "",
@@ -537,8 +540,7 @@ export function useToolsWorkbench(
       resetRunState();
     },
     updateWorkspaceRoot,
-    saveWebSearchConfig: async () => {
-      await webSearchConfigState.save();
-    },
+    saveWebSearchConfig: webSearchConfigState.save,
+    reloadWebSearchConfig: webSearchConfigState.reload,
   };
 }

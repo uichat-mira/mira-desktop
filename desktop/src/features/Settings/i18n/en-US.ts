@@ -1444,6 +1444,7 @@ const settingsPending = {
         selectToolFirst: "Select a tool first",
         invalidArgsJson: "Invocation args must be valid JSON",
         webSearchConfigSaved: "Web Search config saved",
+        webSearchConfigSaveFailed: "Failed to save Web Search config",
         runFailed: "Tool execution failed",
         approvalFailed: "Failed to resolve tool approval",
       },
@@ -2441,6 +2442,7 @@ const settingsPending = {
         config: {
           description: "Configure the search providers used by Web Search. Credentials are used only by the backend search runtime.",
           loading: "Loading Web Search configuration…",
+          loadFailed: "Failed to load Web Search configuration. Try again.",
           save: "Save configuration",
           saving: "Saving…",
         },
@@ -2499,6 +2501,9 @@ const settingsPending = {
           ready: "Ready",
           degraded: "Degraded",
           unavailable: "Unavailable",
+        },
+        readinessReasons: {
+          webSearchUnavailable: "Web Search runtime readiness is unavailable.",
         },
         invocation: {
           idle: "Not run",
