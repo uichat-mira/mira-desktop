@@ -99,6 +99,32 @@ describe("resolveHarnessToolExposure", () => {
     expect(recovered.exposedToolIds).toContain("web_search");
   });
 
+  it("clears stale readiness when an existing Tool is replaced without a resolver", () => {
+    registerTool(webSearchTool, {
+      resolveReadiness: () => ({
+        state: "unavailable",
+        reason: "Old runtime is unavailable.",
+        code: "old_runtime_unavailable",
+      }),
+    });
+
+    expect(
+      resolveHarnessToolExposure({
+        source: "agent_intent",
+        query: "search the web",
+      }).exposedToolIds,
+    ).not.toContain("web_search");
+
+    registerTool(webSearchTool);
+
+    const replaced = resolveHarnessToolExposure({
+      source: "agent_intent",
+      query: "search the web",
+    });
+    expect(replaced.exposedToolIds).toContain("web_search");
+    expect(replaced.blockedCapabilityReasons.web_search).toBeUndefined();
+  });
+
   it("hides the legacy terminal_session alias from new Agent exposure", () => {
     registerTool(terminalTool);
     registerTool(terminalSessionCompatibilityTool);
