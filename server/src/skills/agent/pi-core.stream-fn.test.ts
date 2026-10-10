@@ -70,6 +70,28 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           mocks.promptToolCall.args,
           undefined,
         );
+
+        const nextTurn = await mocks.agentOptions?.prepareNextTurnWithContext?.(
+          {
+            message: {
+              role: "assistant",
+              content: [],
+              timestamp: Date.now(),
+            },
+            toolResults: [],
+            context: {
+              messages: this.state.messages,
+              tools: this.state.tools,
+            },
+            newMessages: [],
+          } as any,
+          undefined,
+        );
+        if (nextTurn?.context?.tools) {
+          this.state.tools = [
+            ...(nextTurn.context.tools as Array<Record<string, any>>),
+          ];
+        }
       }
       this.state.messages.push({
         role: "assistant",
@@ -232,6 +254,8 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
     });
     expect(executionInput.skillContext.disclosedTools).toEqual(["write"]);
 
+    // The Pi-compatible next-turn hook swaps the provider-visible loadout only
+    // after the metadata-stage call has completed.
     const promoted = mocks.agentState?.tools.find(
       (tool) => tool.name === "write",
     );
