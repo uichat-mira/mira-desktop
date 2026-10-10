@@ -304,9 +304,10 @@ export const createGenericTaskSkillContext = (input: {
     });
   const allowedTools = resolution.allowedTools;
   const taskPacket = JSON.stringify(input.task, null, 2);
-  const discoverableToolLines = resolution.compactMetadata.map(
-    (tool) => `- ${tool.capabilityId}: ${tool.description}`,
-  );
+  const discoverableToolLines = resolution.compactMetadata.map((tool) => {
+    const description = tool.description.replace(/\s+/g, " ").trim();
+    return `- ${tool.capabilityId}: ${description}`;
+  });
 
   return {
     instruction:
