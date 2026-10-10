@@ -1,0 +1,28 @@
+name: Dispatch #300 Progressive Disclosure Closeout
+
+on:
+  push:
+    branches:
+      - chore/issue-300-worker-dispatch
+    paths:
+      - .github/workflows/issue-300-worker-dispatch.yml
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  run-progressive-disclosure-closeout:
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@3e21560100eb3261a3ba76088060feb89b42e0a4
+    with:
+      issue_number: 300
+      base_branch: dev
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm check
+      provider: opencode-go
+      model: deepseek-v4.1-flash
+    secrets:
+      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
