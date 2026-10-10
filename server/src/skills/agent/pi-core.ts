@@ -786,7 +786,7 @@ export const runPiSkillAgent = async (input: {
     : undefined;
   const pendingSchemaExecutions = new Set<string>();
   const stateReportingTool = createStateReportingTool({ ledger });
-  let agent: Agent;
+  let toolLoadoutDirty = false;
 
   const promoteToolSchema = (toolId: string) => {
     if (!disclosedToolIds || disclosedToolIds.has(toolId)) return false;
@@ -798,10 +798,11 @@ export const runPiSkillAgent = async (input: {
     // cannot regress it back to metadata-only.
     input.execution.skillContext.disclosedTools = [...disclosedToolIds];
 
-    // Pi 1.0 supports replacing the current Tool loadout. The next model turn
-    // therefore receives the promoted full schema without restarting the
-    // subAgent or bypassing its existing transcript.
-    agent.state.tools = buildAgentTools();
+    // Pi snapshots the Tool context at prompt start. Mark the loadout dirty
+    // here and apply it through prepareNextTurnWithContext at the supported
+    // turn boundary, so the current Tool call finishes against a stable
+    // snapshot and the next provider request receives the promoted schema.
+    toolLoadoutDirty = true;
     return true;
   };
 
@@ -995,7 +996,7 @@ export const runPiSkillAgent = async (input: {
     });
   }
 
-  agent = new Agent({
+  const agent = new Agent({
     initialState: {
       systemPrompt: buildSystemPrompt(input.execution),
       model,
@@ -1004,6 +1005,17 @@ export const runPiSkillAgent = async (input: {
     },
     getApiKey: () => apiKey || undefined,
     toolExecution: "sequential",
+    prepareNextTurnWithContext: (turn) => {
+      if (!toolLoadoutDirty) return undefined;
+      const tools = buildAgentTools();
+      toolLoadoutDirty = false;
+      return {
+        context: {
+          ...turn.context,
+          tools,
+        },
+      };
+    },
     sessionId: `mira-subagent:${primary.id}:${ledger.runId}`,
     streamFn: piStreamFn,
   });
