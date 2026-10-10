@@ -2,6 +2,16 @@
  * 上下文准备节点：收集线程消息、可用工具、策略允许的自动工具列表和按需 Skill 语义。
  */
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability";
+import {
+  createMainAgentCapabilityScope,
+  projectAgentCapabilityView,
+} from "@/harness/capability-view";
+import {
+  describeCapabilityDisclosure,
+  projectCapabilityToolMetadata,
+  promoteCapabilitySchema,
+  type CapabilityDisclosureTransition,
+} from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
@@ -134,13 +144,19 @@ const toAgentToolExposureState = (
   >,
   requestedToolGroups: AgentRequestedToolGroupHint[],
   eligibleToolIds: string[],
+  schemaDisclosedToolIds: ReadonlySet<string>,
 ) => ({
   exposedTools: exposedToolIds,
   toolMeta: exposedDefinitions.map((definition) => ({
     toolId: definition.id,
     title: definition.title,
     description: definition.description,
-    inputSchema: definition.inputSchema,
+    // Full schema is a disclosure stage, not an automatic property of exposure.
+    // Only Tools promoted to the schema stage carry their input schema; a Tool
+    // that never reached schema disclosure stays compact metadata only.
+    ...(schemaDisclosedToolIds.has(definition.id)
+      ? { inputSchema: definition.inputSchema }
+      : {}),
     domain: definition.domain,
     source: definition.source,
     tags: definition.tags,
@@ -149,6 +165,22 @@ const toAgentToolExposureState = (
   eligibleTools: eligibleToolIds,
   ...(requestedToolGroups.length > 0 ? { requestedToolGroups } : {}),
 });
+
+const mergeCapabilityDefinitions = (
+  registryDefinitions: ReturnType<typeof listToolDefinitions>,
+  exposedDefinitions: Array<
+    Awaited<ReturnType<typeof matchToolCandidatesByEmbedding>>["toolExposure"]["exposedDefinitions"][number]
+  >,
+): ReturnType<typeof listToolDefinitions> => {
+  const merged = [...registryDefinitions];
+  const known = new Set(merged.map((definition) => definition.id));
+  for (const definition of exposedDefinitions) {
+    if (known.has(definition.id)) continue;
+    merged.push(definition);
+    known.add(definition.id);
+  }
+  return merged;
+};
 
 type SkillRuntimeProjection = {
   skillId: string;
@@ -388,11 +420,73 @@ export const prepareContextNode = async (
 
   const eligibleToolIds =
     matcherResult.eligibleToolIds ?? matcherResult.toolExposure.exposedToolIds;
+
+  // The Main Agent consumes the same Capability View disclosure semantics as a
+  // delegated Child. Its scope makes the whole authority+readiness envelope
+  // discoverable at the compact-metadata stage; full schemas are then
+  // materialized only for the Tools Harness selected into this turn's exposure.
+  // Metadata disclosure changes model context only and never grants authority:
+  // every invocation still flows through Normalize / Policy / Approval / Harness.
+  const capabilityDefinitions = mergeCapabilityDefinitions(
+    toolDefinitions,
+    matcherResult.toolExposure.exposedDefinitions,
+  );
+  const initialMainAgentCapabilityView = projectAgentCapabilityView({
+    scope: createMainAgentCapabilityScope({
+      scopeId: "main_agent",
+      eligibleCapabilityIds: [...eligibleToolIds],
+      discoverableCapabilityIds: [...eligibleToolIds],
+    }),
+    definitions: capabilityDefinitions,
+  });
+
+  const capabilityDisclosureTransitions: CapabilityDisclosureTransition[] = [];
+  let mainAgentCapabilityView = initialMainAgentCapabilityView;
+  for (const toolId of matcherResult.toolExposure.exposedToolIds) {
+    const promoted = promoteCapabilitySchema({
+      view: mainAgentCapabilityView,
+      capabilityId: toolId,
+      definitions: capabilityDefinitions,
+    });
+    mainAgentCapabilityView = promoted.view;
+    capabilityDisclosureTransitions.push(promoted.transition);
+  }
+
+  const schemaDisclosedToolIds = new Set(
+    [...mainAgentCapabilityView.capabilities.values()]
+      .filter((entry) => entry.discoverable && entry.disclosure === "schema")
+      .map((entry) => entry.capabilityId),
+  );
+  const capabilityDisclosureTrace = describeCapabilityDisclosure(
+    mainAgentCapabilityView,
+  );
+  const compactCapabilityMetadata = projectCapabilityToolMetadata(
+    mainAgentCapabilityView,
+    capabilityDefinitions,
+  );
+
+  // Matcher exposure can be stale relative to Harness readiness. Keep compact
+  // metadata in the Capability View, but only currently eligible Tools may stay
+  // in the Planner-callable ToolExposure. Schema disclosure is not the filter:
+  // a metadata-stage Tool remains exposed when it is otherwise eligible.
+  const currentEligibleToolIds = [...mainAgentCapabilityView.capabilities.values()]
+    .filter((entry) => entry.eligible)
+    .map((entry) => entry.capabilityId);
+  const currentEligibleToolIdSet = new Set(currentEligibleToolIds);
+  const callableToolIds = matcherResult.toolExposure.exposedToolIds.filter(
+    (toolId) => currentEligibleToolIdSet.has(toolId),
+  );
+  const callableToolIdSet = new Set(callableToolIds);
+  const callableDefinitions = matcherResult.toolExposure.exposedDefinitions.filter(
+    (definition) => callableToolIdSet.has(definition.id),
+  );
+
   const toolExposure = toAgentToolExposureState(
-    [...matcherResult.toolExposure.exposedToolIds],
-    [...matcherResult.toolExposure.exposedDefinitions],
+    callableToolIds,
+    callableDefinitions,
     requestedToolGroupsWithAvailability,
-    [...eligibleToolIds],
+    currentEligibleToolIds,
+    schemaDisclosedToolIds,
   );
   const toolIntent = matcherResult;
 
@@ -483,6 +577,16 @@ export const prepareContextNode = async (
       wenshuRegisteredCapabilityIds: wenshuCapabilityState.registeredCapabilityIds,
       codebaseExploreExposed: toolExposure.exposedTools.includes("codebase_explore"),
       externalExpertAvailable,
+      capabilityMetadataToolIds: compactCapabilityMetadata.map(
+        (tool) => tool.capabilityId,
+      ),
+      capabilityMetadataDisclosedCount:
+        capabilityDisclosureTrace.metadataDisclosedCount,
+      capabilitySchemaDisclosedCount:
+        capabilityDisclosureTrace.schemaDisclosedCount,
+      capabilityDisclosureTrace,
+      capabilityDisclosureTransitions,
+      schemaMaterializedToolIds: [...schemaDisclosedToolIds],
       currentTaskFrameWriter:
         "prepareContextNode attaches SkillContext and a bounded Skill runtime projection; Planner remains the sole writer of goal/subtask/completion inference",
     },

@@ -10,6 +10,7 @@ import type { JsonValue } from "@earendil-works/pi-ai";
 import { streamSimple as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { createProviderVisibleInputSchema } from "@/mcp/core/provider-visible-schema.js";
+import { validateInvocationArgs } from "@/mcp/core/schema";
 import { getProviderDefinition } from "@/providers/catalog.js";
 import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 import type {
@@ -488,23 +489,75 @@ const toPiTool = (input: {
   toolCalls: string[];
   ledger: Ledger;
   projectComplexToolSchemas: boolean;
+  /**
+   * Progressive Tool disclosure: only exact-known Tools are presented to the
+   * model with their full schema. Metadata-stage Tools remain callable by name,
+   * but their first call only promotes the schema and never executes the binding.
+   */
+  schemaDisclosed: boolean;
+  promoteSchema?: () => boolean;
+  markSchemaExecutionAttempted?: () => void;
   parentSignal?: AbortSignal;
 }): AgentTool<any> => ({
   name: input.binding.id,
   label: input.binding.label,
-  description: input.binding.description,
-  parameters: projectProviderVisibleToolSchema({
-    schema: input.binding.inputSchema,
-    projectComplexToolSchemas: input.projectComplexToolSchemas,
-  }) as any,
+  description: input.schemaDisclosed
+    ? input.binding.description
+    : `${input.binding.description} Full input details are not disclosed yet. Invoke this Tool once to disclose its schema; that metadata-stage invocation will not execute the Tool.`,
+  parameters: (input.schemaDisclosed
+    ? projectProviderVisibleToolSchema({
+        schema: input.binding.inputSchema,
+        projectComplexToolSchemas: input.projectComplexToolSchemas,
+      })
+    : projectProviderVisibleToolSchema({
+        schema: { type: "object" },
+        projectComplexToolSchemas: input.projectComplexToolSchemas,
+      })) as any,
   executionMode: "sequential",
   execute: async (toolCallId, params, signal) => {
+    if (!input.schemaDisclosed) {
+      const promoted = input.promoteSchema?.() ?? false;
+      if (!promoted) {
+        throw new Error(
+          `Tool schema could not be disclosed for ${input.binding.id}; execution was blocked.`,
+        );
+      }
+      await input.ledger.emitTrace(
+        "plan.revised",
+        `${input.binding.label} 参数结构已披露`,
+        {
+          toolId: input.binding.id,
+          disclosureTransition: "metadata->schema",
+          bindingExecuted: false,
+        },
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: `The full input schema for ${input.binding.id} is now disclosed. Retry this Tool using the disclosed schema. This metadata-stage call did not execute the Tool.`,
+          },
+        ],
+        details: {
+          toolId: input.binding.id,
+          disclosure: "schema",
+          bindingExecuted: false,
+        },
+      };
+    }
+
+    const args = (params ?? {}) as Record<string, unknown>;
+    // Pi validates against the provider-visible Tool schema before execute().
+    // Keep the canonical Harness schema check here as the final adapter guard so
+    // a provider projection can never send unchecked args into the binding.
+    validateInvocationArgs(args, input.binding.inputSchema);
+
     const combined = combineAbortSignals(input.parentSignal, signal);
     try {
       const { toolResult } = await executeBinding({
         binding: input.binding,
         toolCallId,
-        args: (params ?? {}) as Record<string, unknown>,
+        args,
         signal: combined.signal,
         evidence: input.evidence,
         artifacts: input.artifacts,
@@ -513,6 +566,7 @@ const toPiTool = (input: {
         recordToolCall: true,
         ledger: input.ledger,
       });
+      input.markSchemaExecutionAttempted?.();
       return toolResult;
     } finally {
       combined.cleanup();
@@ -698,6 +752,12 @@ const failResult = (input: {
 export const runPiSkillAgent = async (input: {
   execution: SkillAgentExecutionInput;
   tools: SkillAgentToolBinding[];
+  /**
+   * Exact-known Tools that may be presented to the model with their full schema.
+   * Undefined means the Skill did not opt into progressive disclosure, so every
+   * allowed Tool keeps its full schema (the pre-existing behavior).
+   */
+  disclosedToolIds?: readonly string[];
 }): Promise<SkillAgentExecutionResult> => {
   const primary = input.execution.skillContext.primary;
   if (!primary) {
@@ -721,10 +781,38 @@ export const runPiSkillAgent = async (input: {
   const toolCalls: string[] = checkpoint ? [...checkpoint.toolCalls] : [];
   const ledger = createLedger({ execution: input.execution, skillId: primary.id });
   const { model, apiKey, projectComplexToolSchemas } = resolvePiModel();
-  const tools: AgentTool<any>[] = [createStateReportingTool({ ledger })];
-  tools.push(
-    ...input.tools.map((binding) =>
-      toPiTool({
+  const disclosedToolIds = input.disclosedToolIds
+    ? new Set(input.disclosedToolIds)
+    : undefined;
+  const pendingSchemaExecutions = new Set<string>();
+  const stateReportingTool = createStateReportingTool({ ledger });
+  let toolLoadoutDirty = false;
+
+  const promoteToolSchema = (toolId: string) => {
+    if (!disclosedToolIds || disclosedToolIds.has(toolId)) return false;
+    disclosedToolIds.add(toolId);
+    pendingSchemaExecutions.add(toolId);
+
+    // Disclosure is execution context, not authority. Persist the newly exact-
+    // known Tool into the local SkillContext so an approval checkpoint/resume
+    // cannot regress it back to metadata-only.
+    input.execution.skillContext.disclosedTools = [...disclosedToolIds];
+
+    // Pi snapshots the Tool context at prompt start. Mark the loadout dirty
+    // here and apply it through prepareNextTurnWithContext at the supported
+    // turn boundary, so the current Tool call finishes against a stable
+    // snapshot and the next provider request receives the promoted schema.
+    toolLoadoutDirty = true;
+    return true;
+  };
+
+  const buildAgentTools = (): AgentTool<any>[] => [
+    stateReportingTool,
+    ...input.tools.map((binding) => {
+      const schemaDisclosed = disclosedToolIds
+        ? disclosedToolIds.has(binding.id)
+        : true;
+      return toPiTool({
         binding,
         evidence,
         artifacts,
@@ -732,10 +820,21 @@ export const runPiSkillAgent = async (input: {
         toolCalls,
         ledger,
         projectComplexToolSchemas,
+        schemaDisclosed,
+        ...(disclosedToolIds && !schemaDisclosed
+          ? { promoteSchema: () => promoteToolSchema(binding.id) }
+          : {}),
+        ...(disclosedToolIds && schemaDisclosed
+          ? {
+              markSchemaExecutionAttempted: () => {
+                pendingSchemaExecutions.delete(binding.id);
+              },
+            }
+          : {}),
         parentSignal: input.execution.signal,
-      }),
-    ),
-  );
+      });
+    }),
+  ];
 
   let restoredMessages: AgentMessage[] | undefined;
   if (checkpoint) {
@@ -901,11 +1000,22 @@ export const runPiSkillAgent = async (input: {
     initialState: {
       systemPrompt: buildSystemPrompt(input.execution),
       model,
-      tools,
+      tools: buildAgentTools(),
       ...(restoredMessages ? { messages: restoredMessages } : {}),
     },
     getApiKey: () => apiKey || undefined,
     toolExecution: "sequential",
+    prepareNextTurnWithContext: (turn) => {
+      if (!toolLoadoutDirty) return undefined;
+      const tools = buildAgentTools();
+      toolLoadoutDirty = false;
+      return {
+        context: {
+          ...turn.context,
+          tools,
+        },
+      };
+    },
     sessionId: `mira-subagent:${primary.id}:${ledger.runId}`,
     streamFn: piStreamFn,
   });
@@ -1003,6 +1113,33 @@ export const runPiSkillAgent = async (input: {
 
   const status = completion.status as SkillAgentExecutionResult["status"];
   const summary = asNonEmptyString(completion.summary);
+
+  if (status === "completed" && pendingSchemaExecutions.size > 0) {
+    const pendingTools = [...pendingSchemaExecutions].sort();
+    await ledger.updateWorkingState({
+      phase: "failed",
+      currentJudgement:
+        "Tool schema 已披露，但对应的 governed Tool 调用尚未真正执行。",
+      currentAction: "拒绝过早完成 subAgent",
+      nextAction: "使用已披露的完整 schema 重试 Tool 调用",
+      blockingReason: `Pending schema-disclosed Tool execution: ${pendingTools.join(", ")}`,
+    });
+    await ledger.emitTrace(
+      "subagent.failed",
+      "subAgent 在 schema promotion 后过早完成",
+      { pendingSchemaExecutions: pendingTools },
+    );
+    return failResult({
+      skillId: primary.id,
+      error: `subAgent completed before executing promoted Tool(s): ${pendingTools.join(", ")}`,
+      recoverable: true,
+      evidence,
+      artifacts,
+      toolCalls,
+      ledger,
+    });
+  }
+
   const completionRequirements =
     status === "needs_input"
       ? normalizeCompletionRequirements(completion.requirements)
