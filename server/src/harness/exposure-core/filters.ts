@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessExposurePolicyInput } from "./types.js";
+import { resolveToolRuntimeReadiness } from "../runtime-readiness.js";
 
 const INTERNAL_TERMINAL_COMPAT_TOOL_IDS = new Set([
   "terminal_session",
@@ -27,6 +28,11 @@ export const getDefinitionBlockReason = (
     if (!input?.allowExternal || !input.allowedExternalToolIds?.includes(definition.id)) {
       return "External MCP capability is not explicitly enabled for Agent access.";
     }
+  }
+
+  const readiness = resolveToolRuntimeReadiness(definition.id);
+  if (readiness.state === "unavailable") {
+    return readiness.reason;
   }
 
   return undefined;

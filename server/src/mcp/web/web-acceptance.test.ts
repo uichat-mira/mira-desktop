@@ -19,6 +19,8 @@ vi.mock("./transport.js", async (importOriginal) => {
 import { webFetchTool } from "../tools/web-fetch.tool.js";
 import { webSearchTool } from "../tools/web-search.tool.js";
 import { WebFetchTransportError } from "./transport.js";
+import { resolveWebSearchProviderAvailability } from "./search.js";
+import { resolveWebSearchHarnessRuntimeReadiness } from "../../harness/web-search-readiness.js";
 
 const READABLE_HTML = `<!doctype html><html><head><title>Mira Acceptance</title></head><body><nav><a href="/">Home</a><a href="/about">About</a></nav><article><h1>Mira Acceptance</h1><p>${"Mira retrieves a known public URL and extracts its readable main content deterministically. ".repeat(2)}</p></article><footer>Copyright 2026 Mira</footer></body></html>`;
 
@@ -71,6 +73,66 @@ describe("web_search acceptance", () => {
     settingsMock.get.mockReset();
     delete process.env.TAVILY_API_KEY;
     delete process.env.SEARXNG_BASE_URL;
+  });
+
+  it("reports no usable provider when search credentials/configuration are absent", () => {
+    const environment = createHarnessEnvironmentSnapshot();
+
+    expect(resolveWebSearchProviderAvailability(environment)).toBe(false);
+  });
+
+  it("rejects malformed SearXNG endpoints from readiness and execution planning", async () => {
+    settingsMock.get.mockReturnValue({
+      tavilyApiKey: "",
+      searxngBaseUrl: "not-a-url",
+      maxResults: 4,
+    });
+    const environment = createHarnessEnvironmentSnapshot();
+
+    expect(resolveWebSearchProviderAvailability(environment)).toBe(false);
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await expect(
+      webSearchTool.execute(
+        createContext({
+          args: { queries: ["alpha"] },
+          environment,
+        }),
+      ),
+    ).rejects.toThrow("No web search provider is available");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reports readiness-check failures separately from missing provider configuration", () => {
+    settingsMock.get.mockImplementation(() => {
+      throw new Error("database unavailable");
+    });
+
+    const readiness = resolveWebSearchHarnessRuntimeReadiness(
+      createHarnessEnvironmentSnapshot(),
+    );
+
+    expect(readiness).toEqual({
+      state: "unavailable",
+      reason: "Web search runtime readiness could not be verified.",
+      code: "readiness_check_failed",
+    });
+    expect(JSON.stringify(readiness)).not.toContain("database unavailable");
+  });
+
+  it("reports a usable provider without exposing the configured secret", () => {
+    const secret = "acceptance-secret-key";
+    settingsMock.get.mockReturnValue({
+      tavilyApiKey: secret,
+      searxngBaseUrl: "",
+      maxResults: 4,
+    });
+    const environment = createHarnessEnvironmentSnapshot();
+
+    const available = resolveWebSearchProviderAvailability(environment);
+
+    expect(available).toBe(true);
+    expect(JSON.stringify(available)).not.toContain(secret);
   });
 
   it("fans out multiple queries, merges, dedupes by normalized URL, and caps results", async () => {

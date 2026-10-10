@@ -32,6 +32,7 @@ import { webSearchSettingsRepository } from "@/db/repositories/web-search-settin
 import { reconcileCodeGraphHarnessCapability } from "./codegraph-capability.js";
 import { registerTool, registerReadableResource } from "./registry.js";
 import { reconcileWenshuOfficeHarnessCapabilities } from "./wenshu-office-capability.js";
+import { resolveWebSearchHarnessRuntimeReadiness } from "./web-search-readiness.js";
 
 let initialized = false;
 
@@ -57,7 +58,9 @@ export const initializeHarnessRuntime = () => {
   // are not left registered from older bootstrap paths or persisted processes.
   reconcileWenshuOfficeHarnessCapabilities();
 
-  registerTool(webSearchTool);
+  registerTool(webSearchTool, {
+    resolveReadiness: resolveWebSearchHarnessRuntimeReadiness,
+  });
   registerTool(webFetchTool);
   registerTool(newsSearchTool);
   registerTool(mailQueryTool);

@@ -136,11 +136,28 @@ vi.mock("node:child_process", async (importOriginal) => {
 const tempRoot = createTimestampedTestArtifactPath("workspace", "rag-demo-mcp-routes");
 const tempDatabasePath = createTimestampedTestArtifactPath("db", "rag-demo-mcp-routes", ".sqlite");
 
+const originalWebSearchEnv = {
+  TAVILY_API_KEY: process.env.TAVILY_API_KEY,
+  SEARXNG_BASE_URL: process.env.SEARXNG_BASE_URL,
+};
+
+const restoreWebSearchEnv = () => {
+  for (const [key, value] of Object.entries(originalWebSearchEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+};
+
 describe("mcp routes", () => {
   beforeEach(() => {
     fs.mkdirSync(tempRoot, { recursive: true });
     process.env.UI_CHAT_WORKSPACE_ROOT = tempRoot;
     process.env.DATABASE_URL = `file:${tempDatabasePath}`;
+    delete process.env.TAVILY_API_KEY;
+    delete process.env.SEARXNG_BASE_URL;
     clearHarnessRegistry();
     clearHarnessInvocations();
     resetHarnessRuntime();
@@ -160,6 +177,7 @@ describe("mcp routes", () => {
     delete process.env.DATABASE_URL;
     delete process.env.UI_CHAT_DATABASE_DIR;
     delete process.env.UI_CHAT_WORKSPACE_ROOT;
+    restoreWebSearchEnv();
     clearWorkspaceSelection();
     vi.unstubAllGlobals();
     stdioMockHandlers.length = 0;
@@ -236,6 +254,39 @@ describe("mcp routes", () => {
       groupOrder: 10,
       icon: "file-search",
     });
+
+    expect(
+      (toolsResponse.json() as {
+        data: Array<{
+          id: string;
+          runtimeReadiness?: { state: string; reason: string; code?: string };
+        }>;
+      }).data.find((tool) => tool.id === "read")?.runtimeReadiness,
+    ).toMatchObject({
+      state: "ready",
+    });
+
+    const registeredWebSearch = (toolsResponse.json() as {
+      data: Array<{
+        id: string;
+        runtimeReadiness?: { state: string; reason: string; code?: string };
+      }>;
+    }).data.find((tool) => tool.id === "web_search");
+    expect(registeredWebSearch?.runtimeReadiness).toMatchObject({
+      state: "unavailable",
+      code: "web_search_provider_unavailable",
+    });
+
+    const agentToolsResponse = await app.inject({
+      method: "GET",
+      url: "/mcp/tools?source=agent_intent",
+    });
+    expect(agentToolsResponse.statusCode).toBe(200);
+    expect(
+      (agentToolsResponse.json() as { data: Array<{ id: string }> }).data.map(
+        (tool) => tool.id,
+      ),
+    ).not.toContain("web_search");
 
     const browserTools = (toolsResponse.json() as {
       data: Array<{

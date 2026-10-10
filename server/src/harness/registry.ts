@@ -15,9 +15,40 @@ import {
   unregisterTool as unregisterCoreTool,
 } from "../mcp/core/registry.js";
 
-export const registerTool = (tool: ToolImplementation) => registerCoreTool(tool);
+import {
+  clearToolRuntimeReadiness,
+  registerToolRuntimeReadiness,
+  unregisterToolRuntimeReadiness,
+  type HarnessToolRuntimeReadinessResolver,
+} from "./runtime-readiness.js";
 
-export const unregisterTool = (toolId: string) => unregisterCoreTool(toolId);
+export type RegisterHarnessToolOptions = {
+  resolveReadiness?: HarnessToolRuntimeReadinessResolver;
+};
+
+export const registerTool = (
+  tool: ToolImplementation,
+  options: RegisterHarnessToolOptions = {},
+) => {
+  const toolId = tool.definition.id;
+  const replacingExistingTool = Boolean(getCoreToolImplementation(toolId));
+
+  registerCoreTool(tool);
+
+  if (options.resolveReadiness) {
+    registerToolRuntimeReadiness(toolId, options.resolveReadiness);
+    return;
+  }
+
+  if (replacingExistingTool) {
+    unregisterToolRuntimeReadiness(toolId);
+  }
+};
+
+export const unregisterTool = (toolId: string) => {
+  unregisterToolRuntimeReadiness(toolId);
+  return unregisterCoreTool(toolId);
+};
 
 export const registerReadableResource = (resource: McpResourceImplementation) =>
   registerCoreResource(resource);
@@ -35,4 +66,7 @@ export const getToolImplementation = (toolId: string) => getCoreToolImplementati
 export const getReadableResourceImplementation = (resourceId: string) =>
   getCoreResourceImplementation(resourceId);
 
-export const clearHarnessRegistry = () => clearRegistry();
+export const clearHarnessRegistry = () => {
+  clearToolRuntimeReadiness();
+  clearRegistry();
+};

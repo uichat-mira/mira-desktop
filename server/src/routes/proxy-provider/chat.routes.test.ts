@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, test, vi } from "vitest";
+import { afterAll, afterEach, test, vi } from "vitest";
 import Fastify from "fastify";
 import { initializeAuthDatabase, createAccessToken } from "@/db/auth.db";
 import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
@@ -50,13 +50,42 @@ fs.mkdirSync(defaultWorkspaceRoot, { recursive: true });
 process.env.DATABASE_URL = `file:${testDbPath}`;
 process.env.UI_CHAT_WORKSPACE_ROOT = defaultWorkspaceRoot;
 
+const originalWebSearchEnv = {
+  TAVILY_API_KEY: process.env.TAVILY_API_KEY,
+  SEARXNG_BASE_URL: process.env.SEARXNG_BASE_URL,
+};
+
+const restoreWebSearchEnv = () => {
+  if (originalWebSearchEnv.TAVILY_API_KEY === undefined) {
+    delete process.env.TAVILY_API_KEY;
+  } else {
+    process.env.TAVILY_API_KEY = originalWebSearchEnv.TAVILY_API_KEY;
+  }
+  if (originalWebSearchEnv.SEARXNG_BASE_URL === undefined) {
+    delete process.env.SEARXNG_BASE_URL;
+  } else {
+    process.env.SEARXNG_BASE_URL = originalWebSearchEnv.SEARXNG_BASE_URL;
+  }
+};
+
+const enableTestWebSearchProvider = () => {
+  process.env.TAVILY_API_KEY = "chat-surface-test-key";
+  delete process.env.SEARXNG_BASE_URL;
+};
+
+
 initializeAuthDatabase();
 initializeModelConfigDatabase();
 initializeKnowledgeBaseDatabase();
 initializeRoleDatabase();
 initializeThreadDatabase();
 
+afterEach(() => {
+  restoreWebSearchEnv();
+});
+
 afterAll(() => {
+  restoreWebSearchEnv();
   try {
     fs.rmSync(testDbPath, { force: true });
     fs.rmSync(defaultWorkspaceRoot, { recursive: true, force: true });
@@ -133,7 +162,18 @@ test("shouldUseThreadRag only depends on knowledgeBaseId and required runtime in
   );
 });
 
+test("resolveChatToolSurface excludes the default web_search tool when its runtime is unavailable", () => {
+  delete process.env.TAVILY_API_KEY;
+  delete process.env.SEARXNG_BASE_URL;
+  clearHarnessRegistry();
+  resetHarnessRuntime();
+  initializeHarnessRuntime();
+
+  assert.deepEqual(resolveChatToolSurface(), []);
+});
+
 test("resolveChatToolSurface exposes only allowlisted safe chat tools by default", () => {
+  enableTestWebSearchProvider();
   clearHarnessRegistry();
   resetHarnessRuntime();
   initializeHarnessRuntime();
@@ -149,6 +189,7 @@ test("resolveChatToolSurface exposes only allowlisted safe chat tools by default
 });
 
 test("resolveChatToolSurface respects custom allowlist and maxTools trimming", () => {
+  enableTestWebSearchProvider();
   clearHarnessRegistry();
   resetHarnessRuntime();
   initializeHarnessRuntime();

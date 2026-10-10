@@ -29,6 +29,11 @@ export type HarnessToolDefinition = {
     networkAccess?: boolean;
     longRunning?: boolean;
   };
+  runtimeReadiness?: {
+    state: "ready" | "degraded" | "unavailable";
+    reason: string;
+    code?: string;
+  };
   workbench?: {
     groupId: string;
     groupLabel: string;
