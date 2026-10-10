@@ -53,6 +53,7 @@ import { resolveWecomConfig } from "@/integrations/wecom/config.js";
 import { knowledgeBaseService } from "@/services/knowledge-base.service.js";
 import { mcpBadRequest } from "./core/errors.js";
 import { withWorkbenchMetadata } from "./workbench-metadata.js";
+import { projectToolDefinitionsRuntimeReadiness } from "@/harness/runtime-readiness.js";
 
 const objectSchema = { type: "object", additionalProperties: true } as const;
 
@@ -834,7 +835,11 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
     routeHandler("Failed to list MCP tools", async (request) => {
       const internalDefinitions = listInternalToolDefinitions();
       if (!request.query.query && !request.query.source) {
-        return success(withWorkbenchMetadata(internalDefinitions));
+        return success(
+          projectToolDefinitionsRuntimeReadiness(
+            withWorkbenchMetadata(internalDefinitions),
+          ),
+        );
       }
 
       const decision = resolveHarnessToolExposure({
@@ -842,9 +847,13 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
         query: request.query.query,
       });
       return success(
-        withWorkbenchMetadata(
-          decision.exposedDefinitions.filter((definition) => definition.source === "internal"),
-          internalDefinitions,
+        projectToolDefinitionsRuntimeReadiness(
+          withWorkbenchMetadata(
+            decision.exposedDefinitions.filter(
+              (definition) => definition.source === "internal",
+            ),
+            internalDefinitions,
+          ),
         ),
       );
     }),
