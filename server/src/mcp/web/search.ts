@@ -148,6 +148,20 @@ const sortProviderPlans = (
         right.priority - left.priority || left.provider.localeCompare(right.provider),
     );
 
+export const resolveWebSearchProviderAvailability = (
+  environment: ToolExecutionEnvironment,
+) => {
+  try {
+    const tavilyApiKey = resolveTavilyApiKey(environment);
+    const searxngBaseUrl = resolveSearxngBaseUrl(environment);
+    return sortProviderPlans(environment, tavilyApiKey, searxngBaseUrl).length > 0;
+  } catch {
+    // Readiness checks fail closed. Execution keeps its stricter path below and
+    // still surfaces the underlying configuration/runtime failure when invoked.
+    return false;
+  }
+};
+
 const fetchTavilySearch = async (
   query: string,
   maxResults: number,
