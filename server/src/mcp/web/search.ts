@@ -125,6 +125,19 @@ const resolveSearxngBaseUrl = (environment: ToolExecutionEnvironment) =>
     .trim()
     .replace(/\/+$/, "");
 
+const isSupportedSearxngBaseUrl = (value: string) => {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const sortProviderPlans = (
   environment: ToolExecutionEnvironment,
   tavilyApiKey: string,
@@ -141,7 +154,9 @@ const sortProviderPlans = (
       } satisfies WebSearchProviderPlan;
     })
     .filter((plan) =>
-      plan.provider === "tavily" ? Boolean(tavilyApiKey) : Boolean(searxngBaseUrl),
+      plan.provider === "tavily"
+        ? Boolean(tavilyApiKey)
+        : isSupportedSearxngBaseUrl(searxngBaseUrl),
     )
     .sort(
       (left, right) =>
@@ -151,15 +166,9 @@ const sortProviderPlans = (
 export const resolveWebSearchProviderAvailability = (
   environment: ToolExecutionEnvironment,
 ) => {
-  try {
-    const tavilyApiKey = resolveTavilyApiKey(environment);
-    const searxngBaseUrl = resolveSearxngBaseUrl(environment);
-    return sortProviderPlans(environment, tavilyApiKey, searxngBaseUrl).length > 0;
-  } catch {
-    // Readiness checks fail closed. Execution keeps its stricter path below and
-    // still surfaces the underlying configuration/runtime failure when invoked.
-    return false;
-  }
+  const tavilyApiKey = resolveTavilyApiKey(environment);
+  const searxngBaseUrl = resolveSearxngBaseUrl(environment);
+  return sortProviderPlans(environment, tavilyApiKey, searxngBaseUrl).length > 0;
 };
 
 const fetchTavilySearch = async (
