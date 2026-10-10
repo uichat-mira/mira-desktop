@@ -352,19 +352,20 @@ test("prepareContextNode does not let schema disclosure bypass runtime readiness
 
   try {
     const patch = await prepareContextNode(createBaseState());
-    assert.deepEqual(patch.toolExposure?.exposedTools, [
-      "read_open",
-      "web_search",
-    ]);
+    // The unavailable Tool may still exist in registry/matcher data, but it is
+    // not Planner-callable and is not carried into the current eligible envelope.
+    assert.deepEqual(patch.toolExposure?.exposedTools, ["read_open"]);
+    assert.deepEqual(
+      patch.toolExposure?.toolMeta.map((tool) => tool.toolId),
+      ["read_open"],
+    );
+    assert.deepEqual(patch.toolExposure?.eligibleTools, ["read_open"]);
     assert.ok(
       patch.toolExposure?.toolMeta.find((tool) => tool.toolId === "read_open")
         ?.inputSchema,
     );
-    // web_search kept its authority envelope entry but Harness readiness keeps it
-    // out of the schema stage, so its schema is never materialized.
     assert.equal(
-      patch.toolExposure?.toolMeta.find((tool) => tool.toolId === "web_search")
-        ?.inputSchema,
+      patch.toolExposure?.toolMeta.find((tool) => tool.toolId === "web_search"),
       undefined,
     );
   } finally {
