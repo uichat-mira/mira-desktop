@@ -37,7 +37,7 @@ const resetRuntime = () => {
 describe("initializeHarnessRuntime tool registration", () => {
   afterEach(resetRuntime);
 
-  it("keeps codebase_explore registered by default", () => {
+  it("keeps codebase_explore registered for diagnostics while blocking Agent exposure until runtime readiness", () => {
     initializeHarnessRuntime();
 
     expect(listToolDefinitions().map((definition) => definition.id)).toContain(
@@ -48,7 +48,10 @@ describe("initializeHarnessRuntime tool registration", () => {
       source: "agent_intent",
       query: "请梳理 agent planner 和 tool node 的关系",
     });
-    expect(decision.exposedToolIds).toContain("codebase_explore");
+    expect(decision.exposedToolIds).not.toContain("codebase_explore");
+    expect(decision.blockedCapabilityReasons.codebase_explore).toBe(
+      "Code intelligence runtime is not configured.",
+    );
   });
 
   it("registers only canonical read tools and retires legacy read wrappers", () => {
