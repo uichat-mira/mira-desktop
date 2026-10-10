@@ -37,7 +37,7 @@ const filterExternalExpertExposure = <T extends Awaited<
     toolCandidates: matcherResult.toolCandidates.filter(
       (candidate) => candidate.toolId !== EXTERNAL_EXPERT_TOOL_ID,
     ),
-    eligibleToolIds: (matcherResult.eligibleToolIds ?? []).filter(
+    eligibleToolIds: matcherResult.eligibleToolIds?.filter(
       (toolId) => toolId !== EXTERNAL_EXPERT_TOOL_ID,
     ),
     toolExposure: {
@@ -386,7 +386,8 @@ export const prepareContextNode = async (
     skillRuntime,
   );
 
-  const eligibleToolIds = matcherResult.eligibleToolIds ?? [];
+  const eligibleToolIds =
+    matcherResult.eligibleToolIds ?? matcherResult.toolExposure.exposedToolIds;
   const toolExposure = toAgentToolExposureState(
     [...matcherResult.toolExposure.exposedToolIds],
     [...matcherResult.toolExposure.exposedDefinitions],
