@@ -117,4 +117,70 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
       },
     });
   });
+
+  it("presents a full schema only for exact-known Tools and compact metadata for the rest", async () => {
+    mocks.agentOptions = undefined;
+    mocks.completion = JSON.stringify({ status: "completed", summary: "done" });
+
+    const toBinding = (id: string) => ({
+      id,
+      label: id,
+      description: `${id} tool`,
+      inputSchema: {
+        type: "object",
+        required: ["path"],
+        properties: { path: { type: "string" } },
+        additionalProperties: false,
+      },
+      execute: async () => ({}),
+    });
+
+    await runPiSkillAgent({
+      execution: execution(),
+      tools: [toBinding("read"), toBinding("write")],
+      disclosedToolIds: ["read"],
+    });
+
+    const tools = (mocks.agentOptions?.initialState?.tools ?? []) as Array<{
+      name: string;
+      parameters: unknown;
+    }>;
+    const read = tools.find((tool) => tool.name === "read");
+    const write = tools.find((tool) => tool.name === "write");
+
+    expect(read?.parameters).toMatchObject({
+      properties: { path: { type: "string" } },
+    });
+    // A Tool that stayed at the metadata stage must not leak its full schema.
+    expect(write?.parameters).toEqual({ type: "object" });
+  });
+
+  it("keeps every allowed Tool schema-disclosed when the Skill does not opt into progressive disclosure", async () => {
+    mocks.agentOptions = undefined;
+    mocks.completion = JSON.stringify({ status: "completed", summary: "done" });
+
+    const binding = {
+      id: "read",
+      label: "read",
+      description: "read tool",
+      inputSchema: {
+        type: "object",
+        required: ["path"],
+        properties: { path: { type: "string" } },
+        additionalProperties: false,
+      },
+      execute: async () => ({}),
+    };
+
+    await runPiSkillAgent({ execution: execution(), tools: [binding] });
+
+    const tools = (mocks.agentOptions?.initialState?.tools ?? []) as Array<{
+      name: string;
+      parameters: unknown;
+    }>;
+    const read = tools.find((tool) => tool.name === "read");
+    expect(read?.parameters).toMatchObject({
+      properties: { path: { type: "string" } },
+    });
+  });
 });

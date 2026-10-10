@@ -179,7 +179,10 @@ export const createGenericTaskSubAgentNode = (
         childCompactMetadataToolIds: capabilityResolution.compactMetadata.map(
           (tool) => tool.capabilityId,
         ),
+        childDisclosedToolIds: capabilityResolution.disclosedToolIds,
         childCompactMetadata: capabilityResolution.compactMetadata,
+        capabilityDisclosureTransitions:
+          capabilityResolution.disclosureTransitions,
         capabilityDisclosureTrace: capabilityResolution.disclosureTrace,
         capabilityViewTrace: capabilityResolution.trace,
         recursiveDelegationExposed: capabilityResolution.allowedTools.includes(

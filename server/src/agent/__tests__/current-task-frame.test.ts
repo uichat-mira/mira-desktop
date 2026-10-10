@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 import * as harnessInvocations from "@/harness/invocations";
 import * as harnessRegistry from "@/harness/registry";
+import {
+  registerToolRuntimeReadiness,
+  unregisterToolRuntimeReadiness,
+} from "@/harness/runtime-readiness";
 import * as intentMatcherModule from "../intent/embedding-capability-matcher";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
 import { createInitialAgentGraphState } from "../graph/state";
@@ -259,6 +263,114 @@ test("prepareContextNode initializes runtime toolExposure independently from too
     );
   } finally {
     matcherSpy.mockRestore();
+  }
+});
+
+test("prepareContextNode discloses metadata for every eligible Tool but materializes schema only for exposed Tools", async () => {
+  const readOpen = makeToolDefinition("read_open");
+  const webSearch = makeToolDefinition("web_search", "web_search");
+  const registrySpy = vi
+    .spyOn(harnessRegistry, "listToolDefinitions")
+    .mockReturnValue([readOpen, webSearch]);
+  const matcherSpy = vi
+    .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
+    .mockResolvedValue({
+      query: "inspect docs",
+      topCandidates: [],
+      toolCandidates: [],
+      toolExposure: {
+        exposedToolIds: ["read_open"],
+        exposedDefinitions: [readOpen],
+        reason: ["matched read_open"],
+      },
+      // Two Tools are discoverable in the authority+readiness envelope, but only
+      // one is selected into this turn's schema-disclosed exposure.
+      eligibleToolIds: ["read_open", "web_search"],
+      exposureReasons: ["matched read_open"],
+    });
+  const events: Array<{ details?: Record<string, unknown> }> = [];
+
+  try {
+    const patch = await prepareContextNode(createBaseState(), async (event) => {
+      if (event.nodeId === "agent-prepare-context" && event.phase === "done") {
+        events.push({ details: event.details });
+      }
+    });
+
+    assert.deepEqual(patch.toolExposure?.exposedTools, ["read_open"]);
+    assert.deepEqual(
+      patch.toolExposure?.toolMeta.map((tool) => tool.toolId),
+      ["read_open"],
+    );
+    assert.ok(patch.toolExposure?.toolMeta[0]?.inputSchema);
+
+    const details = events[events.length - 1]?.details ?? {};
+    assert.equal(details.capabilityMetadataDisclosedCount, 2);
+    assert.equal(details.capabilitySchemaDisclosedCount, 1);
+    assert.deepEqual(
+      (details.capabilityMetadataToolIds as string[]).slice().sort(),
+      ["read_open", "web_search"],
+    );
+    assert.deepEqual(details.schemaMaterializedToolIds, ["read_open"]);
+    assert.deepEqual(
+      (details.capabilityDisclosureTransitions as Array<{ reason: string }>).map(
+        (transition) => transition.reason,
+      ),
+      ["promoted"],
+    );
+  } finally {
+    matcherSpy.mockRestore();
+    registrySpy.mockRestore();
+  }
+});
+
+test("prepareContextNode does not let schema disclosure bypass runtime readiness", async () => {
+  const readOpen = makeToolDefinition("read_open");
+  const webSearch = makeToolDefinition("web_search", "web_search");
+  const registrySpy = vi
+    .spyOn(harnessRegistry, "listToolDefinitions")
+    .mockReturnValue([readOpen, webSearch]);
+  registerToolRuntimeReadiness("web_search", () => ({
+    state: "unavailable",
+    reason: "Runtime prerequisite is missing.",
+    code: "test_runtime_unavailable",
+  }));
+  const matcherSpy = vi
+    .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
+    .mockResolvedValue({
+      query: "inspect docs",
+      topCandidates: [],
+      toolCandidates: [],
+      toolExposure: {
+        exposedToolIds: ["read_open", "web_search"],
+        exposedDefinitions: [readOpen, webSearch],
+        reason: ["matched tools"],
+      },
+      eligibleToolIds: ["read_open", "web_search"],
+      exposureReasons: ["matched tools"],
+    });
+
+  try {
+    const patch = await prepareContextNode(createBaseState());
+    assert.deepEqual(patch.toolExposure?.exposedTools, [
+      "read_open",
+      "web_search",
+    ]);
+    assert.ok(
+      patch.toolExposure?.toolMeta.find((tool) => tool.toolId === "read_open")
+        ?.inputSchema,
+    );
+    // web_search kept its authority envelope entry but Harness readiness keeps it
+    // out of the schema stage, so its schema is never materialized.
+    assert.equal(
+      patch.toolExposure?.toolMeta.find((tool) => tool.toolId === "web_search")
+        ?.inputSchema,
+      undefined,
+    );
+  } finally {
+    matcherSpy.mockRestore();
+    registrySpy.mockRestore();
+    unregisterToolRuntimeReadiness("web_search");
   }
 });
 

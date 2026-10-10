@@ -98,6 +98,14 @@ export type SkillContext = {
     uri: string;
     content: string;
   }>;
+  /**
+   * Optional progressive Tool disclosure for a forked execution. When present,
+   * only these exact-known Tool ids are presented to the subAgent model with
+   * their full input schema; the remaining allowed Tools stay at the compact
+   * metadata stage. Absent means the Skill did not request progressive
+   * disclosure and every allowed Tool is schema-disclosed.
+   */
+  disclosedTools?: string[];
   match?: {
     source: SkillMatchSource;
     reason: string;

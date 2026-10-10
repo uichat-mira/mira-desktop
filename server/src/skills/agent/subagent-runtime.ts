@@ -654,6 +654,7 @@ export const runSubAgent = async (
   const result = await runPiSkillAgent({
     execution: prepared.execution,
     tools: prepared.tools,
+    disclosedToolIds: input.skillContext.disclosedTools,
   });
   const normalizedCompletion = await normalizeMalformedCompletion({
     result,

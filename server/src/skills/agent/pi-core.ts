@@ -488,15 +488,27 @@ const toPiTool = (input: {
   toolCalls: string[];
   ledger: Ledger;
   projectComplexToolSchemas: boolean;
+  /**
+   * Progressive Tool disclosure: only exact-known Tools are presented to the
+   * model with their full schema. A Tool still at the metadata stage keeps its
+   * runtime binding schema for execution, but the model only sees its identity
+   * and description, so full schemas are not disclosed eagerly.
+   */
+  schemaDisclosed: boolean;
   parentSignal?: AbortSignal;
 }): AgentTool<any> => ({
   name: input.binding.id,
   label: input.binding.label,
   description: input.binding.description,
-  parameters: projectProviderVisibleToolSchema({
-    schema: input.binding.inputSchema,
-    projectComplexToolSchemas: input.projectComplexToolSchemas,
-  }) as any,
+  parameters: (input.schemaDisclosed
+    ? projectProviderVisibleToolSchema({
+        schema: input.binding.inputSchema,
+        projectComplexToolSchemas: input.projectComplexToolSchemas,
+      })
+    : projectProviderVisibleToolSchema({
+        schema: { type: "object" },
+        projectComplexToolSchemas: input.projectComplexToolSchemas,
+      })) as any,
   executionMode: "sequential",
   execute: async (toolCallId, params, signal) => {
     const combined = combineAbortSignals(input.parentSignal, signal);
@@ -698,6 +710,12 @@ const failResult = (input: {
 export const runPiSkillAgent = async (input: {
   execution: SkillAgentExecutionInput;
   tools: SkillAgentToolBinding[];
+  /**
+   * Exact-known Tools that may be presented to the model with their full schema.
+   * Undefined means the Skill did not opt into progressive disclosure, so every
+   * allowed Tool keeps its full schema (the pre-existing behavior).
+   */
+  disclosedToolIds?: readonly string[];
 }): Promise<SkillAgentExecutionResult> => {
   const primary = input.execution.skillContext.primary;
   if (!primary) {
@@ -721,6 +739,9 @@ export const runPiSkillAgent = async (input: {
   const toolCalls: string[] = checkpoint ? [...checkpoint.toolCalls] : [];
   const ledger = createLedger({ execution: input.execution, skillId: primary.id });
   const { model, apiKey, projectComplexToolSchemas } = resolvePiModel();
+  const disclosedToolIds = input.disclosedToolIds
+    ? new Set(input.disclosedToolIds)
+    : undefined;
   const tools: AgentTool<any>[] = [createStateReportingTool({ ledger })];
   tools.push(
     ...input.tools.map((binding) =>
@@ -732,6 +753,7 @@ export const runPiSkillAgent = async (input: {
         toolCalls,
         ledger,
         projectComplexToolSchemas,
+        schemaDisclosed: disclosedToolIds ? disclosedToolIds.has(binding.id) : true,
         parentSignal: input.execution.signal,
       }),
     ),

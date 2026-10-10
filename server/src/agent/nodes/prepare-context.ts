@@ -9,6 +9,8 @@ import {
 import {
   describeCapabilityDisclosure,
   projectCapabilityToolMetadata,
+  promoteCapabilitySchema,
+  type CapabilityDisclosureTransition,
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
@@ -142,13 +144,19 @@ const toAgentToolExposureState = (
   >,
   requestedToolGroups: AgentRequestedToolGroupHint[],
   eligibleToolIds: string[],
+  schemaDisclosedToolIds: ReadonlySet<string>,
 ) => ({
   exposedTools: exposedToolIds,
   toolMeta: exposedDefinitions.map((definition) => ({
     toolId: definition.id,
     title: definition.title,
     description: definition.description,
-    inputSchema: definition.inputSchema,
+    // Full schema is a disclosure stage, not an automatic property of exposure.
+    // Only Tools promoted to the schema stage carry their input schema; a Tool
+    // that never reached schema disclosure stays compact metadata only.
+    ...(schemaDisclosedToolIds.has(definition.id)
+      ? { inputSchema: definition.inputSchema }
+      : {}),
     domain: definition.domain,
     source: definition.source,
     tags: definition.tags,
@@ -157,6 +165,22 @@ const toAgentToolExposureState = (
   eligibleTools: eligibleToolIds,
   ...(requestedToolGroups.length > 0 ? { requestedToolGroups } : {}),
 });
+
+const mergeCapabilityDefinitions = (
+  registryDefinitions: ReturnType<typeof listToolDefinitions>,
+  exposedDefinitions: Array<
+    Awaited<ReturnType<typeof matchToolCandidatesByEmbedding>>["toolExposure"]["exposedDefinitions"][number]
+  >,
+): ReturnType<typeof listToolDefinitions> => {
+  const merged = [...registryDefinitions];
+  const known = new Set(merged.map((definition) => definition.id));
+  for (const definition of exposedDefinitions) {
+    if (known.has(definition.id)) continue;
+    merged.push(definition);
+    known.add(definition.id);
+  }
+  return merged;
+};
 
 type SkillRuntimeProjection = {
   skillId: string;
@@ -396,39 +420,59 @@ export const prepareContextNode = async (
 
   const eligibleToolIds =
     matcherResult.eligibleToolIds ?? matcherResult.toolExposure.exposedToolIds;
-  const toolExposure = toAgentToolExposureState(
-    [...matcherResult.toolExposure.exposedToolIds],
-    [...matcherResult.toolExposure.exposedDefinitions],
-    requestedToolGroupsWithAvailability,
-    [...eligibleToolIds],
-  );
-  const toolIntent = matcherResult;
 
   // The Main Agent consumes the same Capability View disclosure semantics as a
-  // delegated Child. Its scope narrows the authority+readiness envelope to this
-  // turn's eligible set and marks the exposed tools as schema-disclosed because
-  // Harness materializes their full schemas for this Planner turn. Compact
-  // metadata (no schemas) stays available as the lighter disclosure stage.
-  const mainAgentCapabilityView = projectAgentCapabilityView({
+  // delegated Child. Its scope makes the whole authority+readiness envelope
+  // discoverable at the compact-metadata stage; full schemas are then
+  // materialized only for the Tools Harness selected into this turn's exposure.
+  // Metadata disclosure changes model context only and never grants authority:
+  // every invocation still flows through Normalize / Policy / Approval / Harness.
+  const capabilityDefinitions = mergeCapabilityDefinitions(
+    toolDefinitions,
+    matcherResult.toolExposure.exposedDefinitions,
+  );
+  const initialMainAgentCapabilityView = projectAgentCapabilityView({
     scope: createMainAgentCapabilityScope({
       scopeId: "main_agent",
       eligibleCapabilityIds: [...eligibleToolIds],
-      discoverableCapabilityIds: [...matcherResult.toolExposure.exposedToolIds],
+      discoverableCapabilityIds: [...eligibleToolIds],
     }),
-    definitions: toolDefinitions,
-    requestedDisclosure: new Map(
-      matcherResult.toolExposure.exposedToolIds.map(
-        (toolId) => [toolId, "schema"] as const,
-      ),
-    ),
+    definitions: capabilityDefinitions,
   });
+
+  const capabilityDisclosureTransitions: CapabilityDisclosureTransition[] = [];
+  let mainAgentCapabilityView = initialMainAgentCapabilityView;
+  for (const toolId of matcherResult.toolExposure.exposedToolIds) {
+    const promoted = promoteCapabilitySchema({
+      view: mainAgentCapabilityView,
+      capabilityId: toolId,
+      definitions: capabilityDefinitions,
+    });
+    mainAgentCapabilityView = promoted.view;
+    capabilityDisclosureTransitions.push(promoted.transition);
+  }
+
+  const schemaDisclosedToolIds = new Set(
+    [...mainAgentCapabilityView.capabilities.values()]
+      .filter((entry) => entry.discoverable && entry.disclosure === "schema")
+      .map((entry) => entry.capabilityId),
+  );
   const capabilityDisclosureTrace = describeCapabilityDisclosure(
     mainAgentCapabilityView,
   );
   const compactCapabilityMetadata = projectCapabilityToolMetadata(
     mainAgentCapabilityView,
-    toolDefinitions,
+    capabilityDefinitions,
   );
+
+  const toolExposure = toAgentToolExposureState(
+    [...matcherResult.toolExposure.exposedToolIds],
+    [...matcherResult.toolExposure.exposedDefinitions],
+    requestedToolGroupsWithAvailability,
+    [...eligibleToolIds],
+    schemaDisclosedToolIds,
+  );
+  const toolIntent = matcherResult;
 
   // Skill matching/disclosure is a first-class observable event. Do not force
   // operators to infer Skill activation from model behavior or buried fields.
@@ -525,6 +569,8 @@ export const prepareContextNode = async (
       capabilitySchemaDisclosedCount:
         capabilityDisclosureTrace.schemaDisclosedCount,
       capabilityDisclosureTrace,
+      capabilityDisclosureTransitions,
+      schemaMaterializedToolIds: [...schemaDisclosedToolIds],
       currentTaskFrameWriter:
         "prepareContextNode attaches SkillContext and a bounded Skill runtime projection; Planner remains the sole writer of goal/subtask/completion inference",
     },

@@ -210,6 +210,45 @@ test("regression: a Tool hidden from Parent disclosure stays reachable to the Ch
   );
 });
 
+test("generic child materializes a full schema only for the Parent's exact-known Tools", () => {
+  const resolution = resolveGenericChildCapabilityView({
+    parentVisibleToolIds: ["read"],
+    delegatedAuthorityToolIds: ["read", "write"],
+  });
+
+  // Both Tools stay discoverable inside the delegated envelope...
+  assert.deepEqual(resolution.discoverableToolIds.slice().sort(), [
+    "read",
+    "write",
+  ]);
+  assert.deepEqual(resolution.allowedTools.slice().sort(), ["read", "write"]);
+  assert.deepEqual(
+    resolution.compactMetadata.map((tool) => tool.capabilityId).slice().sort(),
+    ["read", "write"],
+  );
+
+  // ...but only the Parent's exact-known Tool reaches the full schema stage.
+  assert.deepEqual(resolution.disclosedToolIds, ["read"]);
+  assert.deepEqual(
+    resolution.disclosureTransitions.map((transition) => transition.reason),
+    ["promoted"],
+  );
+  assert.equal(resolution.disclosureTrace.metadataDisclosedCount, 2);
+  assert.equal(resolution.disclosureTrace.schemaDisclosedCount, 1);
+
+  const childContext = createGenericTaskSkillContext({
+    task: { goal: "do the bounded work", acceptanceCriteria: ["work done"] },
+    parentVisibleToolIds: ["read"],
+    delegatedAuthorityToolIds: ["read", "write"],
+    capabilityResolution: resolution,
+  });
+  assert.deepEqual(childContext.disclosedTools, ["read"]);
+  // Compact metadata is production model context, not trace-only data.
+  assert.match(childContext.primary?.body ?? "", /<discoverable-tools>/);
+  assert.match(childContext.primary?.body ?? "", /- read:/);
+  assert.match(childContext.primary?.body ?? "", /- write:/);
+});
+
 test("a Tool outside the delegated authority envelope stays unavailable even when registered and ready", () => {
   const resolution = resolveGenericChildCapabilityView({
     parentVisibleToolIds: ["read"],
@@ -218,6 +257,8 @@ test("a Tool outside the delegated authority envelope stays unavailable even whe
 
   assert.equal(resolution.discoverableToolIds.includes("write"), false);
   assert.equal(resolution.allowedTools.includes("write"), false);
+  // A capability outside the scope envelope can never be promoted to schema.
+  assert.equal(resolution.disclosedToolIds.includes("write"), false);
 });
 
 test("a runtime-unavailable Tool is excluded even when it is inside the delegated envelope", () => {
