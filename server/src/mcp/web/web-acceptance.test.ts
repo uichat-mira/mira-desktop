@@ -19,6 +19,7 @@ vi.mock("./transport.js", async (importOriginal) => {
 import { webFetchTool } from "../tools/web-fetch.tool.js";
 import { webSearchTool } from "../tools/web-search.tool.js";
 import { WebFetchTransportError } from "./transport.js";
+import { resolveWebSearchProviderAvailability } from "./search.js";
 
 const READABLE_HTML = `<!doctype html><html><head><title>Mira Acceptance</title></head><body><nav><a href="/">Home</a><a href="/about">About</a></nav><article><h1>Mira Acceptance</h1><p>${"Mira retrieves a known public URL and extracts its readable main content deterministically. ".repeat(2)}</p></article><footer>Copyright 2026 Mira</footer></body></html>`;
 
@@ -71,6 +72,27 @@ describe("web_search acceptance", () => {
     settingsMock.get.mockReset();
     delete process.env.TAVILY_API_KEY;
     delete process.env.SEARXNG_BASE_URL;
+  });
+
+  it("reports no usable provider when search credentials/configuration are absent", () => {
+    const environment = createHarnessEnvironmentSnapshot();
+
+    expect(resolveWebSearchProviderAvailability(environment)).toBe(false);
+  });
+
+  it("reports a usable provider without exposing the configured secret", () => {
+    const secret = "acceptance-secret-key";
+    settingsMock.get.mockReturnValue({
+      tavilyApiKey: secret,
+      searxngBaseUrl: "",
+      maxResults: 4,
+    });
+    const environment = createHarnessEnvironmentSnapshot();
+
+    const available = resolveWebSearchProviderAvailability(environment);
+
+    expect(available).toBe(true);
+    expect(JSON.stringify(available)).not.toContain(secret);
   });
 
   it("fans out multiple queries, merges, dedupes by normalized URL, and caps results", async () => {
