@@ -215,6 +215,28 @@ describe("Agent Capability View", () => {
     });
   });
 
+  it("preserves the scope disclosure ceiling across later transitions", () => {
+    registerTool(readTool);
+
+    const view = project(
+      createMainAgentCapabilityScope({
+        scopeId: "main",
+        maxDisclosure: "metadata",
+      }),
+      {
+        requestedDisclosure: disclosure("read", "schema"),
+      },
+    );
+
+    expect(view.maxDisclosure).toBe("metadata");
+    expect(getCapabilityViewEntry(view, "read")?.disclosure).toBe("metadata");
+
+    const attemptedUpgrade = withCapabilityDisclosure(view, "read", "schema");
+    expect(getCapabilityViewEntry(attemptedUpgrade, "read")?.disclosure).toBe(
+      "metadata",
+    );
+  });
+
   it("keeps disclosure separate from Harness execution authority", () => {
     registerTool(webSearchTool, {
       resolveReadiness: () => ({
