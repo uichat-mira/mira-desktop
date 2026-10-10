@@ -5,11 +5,9 @@ import {
   executeMcpInvocationStream,
   getMcpInvocationTrace,
   getMcpTools,
-  getMcpWebSearchConfig,
   getMcpWorkspaceSelection,
   resetMcpCapabilityFixture,
   resolveMcpInvocationApproval,
-  saveMcpWebSearchConfig,
   selectMcpWorkspaceRoot,
   type HarnessToolDefinition,
   type ToolArtifact,
@@ -17,6 +15,9 @@ import {
   type ToolInvocationEvent,
   type ToolTrace,
 } from "@/shared/api/tools";
+import {
+  useWebSearchConfig,
+} from "@/features/Settings/hooks/useWebSearchConfig";
 import type {
   ToolGroupSummary,
   ToolWorkbenchGroupId,
@@ -30,34 +31,8 @@ import {
   formatToolGroup,
   getTerminalResultSummary,
 } from "../utils";
-const WEB_SEARCH_DEFAULT_MAX_RESULTS = 4;
-const WEB_SEARCH_MIN_RESULTS = 1;
-const WEB_SEARCH_MAX_RESULTS = 10;
-type WebSearchConfig = {
-  apiKey: string;
-  baseUrl: string;
-  maxResults: number;
-};
-
-const defaultWebSearchConfig: WebSearchConfig = {
-  apiKey: "",
-  baseUrl: "",
-  maxResults: WEB_SEARCH_DEFAULT_MAX_RESULTS,
-};
-
 const isWorkbenchTool = (tool: HarnessToolDefinition): tool is WorkbenchToolDefinition =>
   tool.source === "internal" && Boolean(tool.workbench?.groupId);
-
-const normalizeWebSearchMaxResults = (value: unknown) => {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return WEB_SEARCH_DEFAULT_MAX_RESULTS;
-  }
-
-  return Math.min(
-    WEB_SEARCH_MAX_RESULTS,
-    Math.max(WEB_SEARCH_MIN_RESULTS, Math.trunc(value)),
-  );
-};
 
 export function useToolsWorkbench(
   initialHandoff?: ToolWorkbenchHandoff | null,
@@ -76,7 +51,7 @@ export function useToolsWorkbench(
   const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(true);
   const [isSelectingWorkspace, setIsSelectingWorkspace] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  const [webSearchConfig, setWebSearchConfig] = useState<WebSearchConfig>(defaultWebSearchConfig);
+  const webSearchConfigState = useWebSearchConfig();
   const [events, setEvents] = useState<ToolInvocationEvent[]>([]);
   const [trace, setTrace] = useState<ToolTrace | null>(null);
   const [result, setResult] = useState<unknown>(null);
@@ -107,10 +82,9 @@ export function useToolsWorkbench(
       setIsLoading(true);
       setIsWorkspaceLoading(true);
       try {
-        const [toolList, workspace, persistedWebSearchConfig] = await Promise.all([
+        const [toolList, workspace] = await Promise.all([
           getMcpTools(),
           getMcpWorkspaceSelection(),
-          getMcpWebSearchConfig().catch(() => defaultWebSearchConfig),
         ]);
         if (disposed) {
           return;
@@ -124,12 +98,6 @@ export function useToolsWorkbench(
         setTools(sortedTools);
         setWorkspaceSelection(workspace);
         setWorkspaceRootInput(workspace.rootPath ?? "");
-        setWebSearchConfig({
-          apiKey: persistedWebSearchConfig.apiKey ?? "",
-          baseUrl: persistedWebSearchConfig.baseUrl ?? "",
-          maxResults: normalizeWebSearchMaxResults(persistedWebSearchConfig.maxResults),
-        });
-
         const handoff = initialHandoff ?? null;
         const requestedTool = handoff
           ? sortedTools.find((tool) => tool.id === handoff.toolId) ?? null
@@ -431,7 +399,7 @@ export function useToolsWorkbench(
     if (selectedTool.id === "web_search") {
       parsedArgs = {
         ...parsedArgs,
-        maxResults: normalizeWebSearchMaxResults(webSearchConfig.maxResults),
+        maxResults: webSearchConfigState.config.maxResults,
       };
     }
 
@@ -542,7 +510,7 @@ export function useToolsWorkbench(
     terminalSummary,
     trace,
     tools,
-    webSearchConfig,
+    webSearchConfig: webSearchConfigState.config,
     workspaceRootInput: selectedTool?.capabilities.workspaceBound
       ? workspaceRootInput
       : "",
@@ -550,7 +518,7 @@ export function useToolsWorkbench(
       ? workspaceSelection
       : null,
     setArgsDraft,
-    setWebSearchConfig,
+    setWebSearchConfig: webSearchConfigState.setConfig,
     setWorkspaceRootInput,
     runSelectedTool,
     runTerminalContinuation,
@@ -570,13 +538,7 @@ export function useToolsWorkbench(
     },
     updateWorkspaceRoot,
     saveWebSearchConfig: async () => {
-      const saved = await saveMcpWebSearchConfig(webSearchConfig);
-      setWebSearchConfig({
-        apiKey: saved.apiKey,
-        baseUrl: saved.baseUrl,
-        maxResults: normalizeWebSearchMaxResults(saved.maxResults),
-      });
-      message.success(t("settings.tools.messages.webSearchConfigSaved"));
+      await webSearchConfigState.save();
     },
   };
 }

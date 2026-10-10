@@ -28,6 +28,14 @@ export function toNativeCapabilityTool(definition: HarnessToolDefinition): Capab
   };
 }
 
+export function resolveToolReadiness(tool: CapabilityTool): CapabilityReadiness["state"] {
+  if (tool.runtimeReadiness?.state) {
+    return tool.runtimeReadiness.state;
+  }
+
+  return tool.id === "web_search" ? "unavailable" : "ready";
+}
+
 export function toUnavailableNativeCapabilityTool(toolId: string): CapabilityTool {
   return {
     id: toolId,
@@ -100,6 +108,12 @@ export function resolveCapabilityReadiness(input: {
   if (!input.tool) {
     return unavailable(
       `当前 Runtime 未注册 ${input.caseDefinition.toolId}。`,
+      "/settings/tools",
+    );
+  }
+  if (input.tool.id === "web_search" && !input.tool.runtimeReadiness) {
+    return unavailable(
+      "Web Search runtime readiness is unavailable.",
       "/settings/tools",
     );
   }

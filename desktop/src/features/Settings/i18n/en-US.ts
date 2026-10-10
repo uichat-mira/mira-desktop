@@ -1409,9 +1409,11 @@ const settingsPending = {
         argsModalDescription:
           "Maintain the current tool's JSON invocation args here. Closing the modal does not reset the draft.",
         webSearchTavilyHint: "Tavily is available when an API key is configured.",
+        webSearchTavily: "Tavily",
         webSearchApiKey: "Tavily API Key",
         webSearchApiKeyPlaceholder: "Enter the Tavily API key",
         webSearchSearxngHint: "SearXNG is available when a baseUrl is configured.",
+        webSearchSearxng: "SearXNG",
         webSearchBaseUrl: "SearXNG Base URL",
         webSearchBaseUrlPlaceholder: "For example http://localhost:8080",
         webSearchMaxResults: "Result Count",
@@ -2434,6 +2436,13 @@ const settingsPending = {
           input: "Input",
           output: "Output",
           capabilities: "Capabilities",
+          config: "Configuration",
+        },
+        config: {
+          description: "Configure the search providers used by Web Search. Credentials are used only by the backend search runtime.",
+          loading: "Loading Web Search configuration…",
+          save: "Save configuration",
+          saving: "Saving…",
         },
         caseGroups: {
           extension: "External MCP",

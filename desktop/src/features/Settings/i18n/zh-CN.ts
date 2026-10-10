@@ -1402,9 +1402,11 @@ const settingsPending = {
         argsModalDescription:
           "这里维护当前工具的 JSON 调用参数。关闭弹窗不会重置草稿。",
         webSearchTavilyHint: "Tavily 将在配置了 API Key 时可用。",
+        webSearchTavily: "Tavily",
         webSearchApiKey: "Tavily API Key",
         webSearchApiKeyPlaceholder: "填入 Tavily API Key",
         webSearchSearxngHint: "SearXNG 将在配置了 baseUrl 时可用。",
+        webSearchSearxng: "SearXNG",
         webSearchBaseUrl: "SearXNG Base URL",
         webSearchBaseUrlPlaceholder: "例如 http://localhost:8080",
         webSearchMaxResults: "返回条数",
@@ -2393,6 +2395,13 @@ const settingsPending = {
           input: "输入",
           output: "输出",
           capabilities: "能力",
+          config: "配置",
+        },
+        config: {
+          description: "配置 Web Search 使用的搜索服务。凭据只用于后端搜索运行时。",
+          loading: "正在读取 Web Search 配置…",
+          save: "保存配置",
+          saving: "保存中…",
         },
         caseGroups: {
           extension: "扩展 MCP",

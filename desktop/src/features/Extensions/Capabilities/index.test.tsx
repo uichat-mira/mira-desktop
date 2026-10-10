@@ -17,6 +17,13 @@ const resolveApproval = vi.fn();
 const runTerminalContinuation = vi.fn();
 const runTerminalStatus = vi.fn();
 const runTerminalStop = vi.fn();
+const webSearchConfigState = {
+  config: { apiKey: "saved-key", baseUrl: "", maxResults: 4 },
+  isLoading: false,
+  isSaving: false,
+  save: vi.fn(),
+  setConfig: vi.fn(),
+};
 
 const capabilities = {
   canOpenManual: true,
@@ -157,6 +164,12 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("./hooks/useCapabilities", () => ({
   useCapabilities: () => capabilities,
+}));
+
+vi.mock("@/features/Settings/hooks/useWebSearchConfig", () => ({
+  useWebSearchConfig: () => webSearchConfigState,
+  normalizeWebSearchMaxResults: (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) ? Math.min(10, Math.max(1, Math.trunc(value))) : 4,
 }));
 
 describe("CapabilitiesPage", () => {
@@ -489,6 +502,54 @@ describe("CapabilitiesPage", () => {
 
     expect(screen.getByText("Write workspace files.", { exact: true })).toBeInTheDocument();
     expect(screen.getByText("Native")).toBeInTheDocument();
+  });
+
+  it("shows web search configuration in the tool details tab", async () => {
+    const webSearchTool = {
+      ...capabilities.selectedTool,
+      id: "web_search",
+      title: "Web Search",
+      description: "Search the public web.",
+      domain: "web_search",
+      capabilities: {
+        sideEffect: "network" as const,
+        requiresApproval: false,
+        networkAccess: true,
+      },
+    };
+    const webSearchCase = {
+      ...capabilities.selectedCase,
+      id: "web-search-basic",
+      toolId: "web_search",
+      title: "基础搜索",
+      group: "Native",
+    };
+    capabilities.selectedTool = webSearchTool;
+    capabilities.selectedCase = webSearchCase;
+    capabilities.tools = [webSearchTool];
+    capabilities.cases = [webSearchCase];
+    capabilities.toolCases = [webSearchCase];
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "工具详情" }));
+    const configTab = screen.getByRole("tab", {
+      name: "settings.development.capabilities.detailTabs.config",
+    });
+    expect(configTab).toBeInTheDocument();
+    await user.click(configTab);
+    expect(screen.getByDisplayValue("saved-key")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.config.save",
+      }),
+    );
+    expect(webSearchConfigState.save).toHaveBeenCalledOnce();
   });
 
   it("shows persistent Terminal controls on the sidebar Capability surface", async () => {
