@@ -143,7 +143,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     expect(result.toolCandidates[0]?.finalScore).toBe(0.99);
     expect(result.toolExposure.exposedToolIds).toContain("tail_target_tool");
     expect(result.toolExposure.reason).toContain(
-      "Public tool set exceeds 20; Harness ranks the available tools for this turn and exposes the top 20. No additional semantic or runtime policy filtering is applied here.",
+      "Eligible public tool set exceeds 20; Harness ranks the runtime-ready tools for this turn and exposes the top 20. Ranking adds no semantic policy filter.",
     );
   });
 
