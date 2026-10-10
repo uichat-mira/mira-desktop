@@ -461,6 +461,14 @@ export type AgentNextAction =
 export interface AgentToolExposureState {
   exposedTools: string[];
   toolMeta: AgentToolMeta[];
+  /**
+   * Authoritative pre-ranking eligibility envelope for this run: every
+   * runtime-ready, Harness-eligible capability before the ranked <=20
+   * disclosure narrowing. It is the Parent authority+readiness surface a
+   * delegated scope may build from. It is independent of `exposedTools`, which
+   * stays the Parent's current disclosed/visible subset.
+   */
+  eligibleTools?: string[];
   requestedToolGroups?: AgentRequestedToolGroupHint[];
 }
 

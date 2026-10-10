@@ -62,6 +62,14 @@ export interface ResolveHarnessToolCandidatesForTurnResult {
   source: HarnessTurnSource;
   toolCandidates: HarnessToolCandidate[];
   toolExposure: HarnessToolExposure;
+  /**
+   * Authoritative pre-ranking eligibility envelope: every runtime-ready,
+   * Harness-eligible capability for this turn before the <=20 disclosure
+   * narrowing. It is the authority+readiness surface a delegated scope may
+   * build from, and it is deliberately independent of the ranked disclosure
+   * subset returned in `toolExposure`.
+   */
+  eligibleToolIds: string[];
   retrievalError?: string;
   retrievalModel?: {
     provider?: string;

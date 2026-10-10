@@ -173,6 +173,16 @@ eligible concrete tools
 - 只启动受控 Child execution；
 - Child concrete tool 仍受 binding、Policy、approval 与环境约束。
 
+Generic Child 的 capability ceiling 来自 Parent 的 authority + readiness envelope（Harness 在 disclosure 收窄前的 eligible 集合），而不是 Parent 当前可见 / disclosed 的 Tool 快照。Parent 当前可见集合只是 context：
+
+```text
+Parent authority + readiness envelope
+  -> Generic Child scoped Capability View
+  -> Child task-local visible / disclosed set
+```
+
+因此 Parent 的 ranked disclosure 漏掉的 runtime-ready Tool，只要在授权 envelope 内，仍可对 Child discoverable；envelope 之外（含未注册、未授权、runtime-unavailable）的 Tool 仍不可用；`delegate_task` 不进入 Child 面，V1 不引入递归委派。
+
 ## 6. Concrete Tool 不变量
 
 1. Planner 只提出 concrete `nextAction.use_tool`；

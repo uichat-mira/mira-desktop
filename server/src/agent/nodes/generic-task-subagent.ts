@@ -3,6 +3,7 @@ import {
   createGenericTaskSkillContext,
   GENERIC_TASK_DELEGATE_TOOL_ID,
   parseGenericTaskDelegationArgs,
+  resolveGenericChildCapabilityView,
 } from "../delegation/contract.js";
 import {
   emitStepNode,
@@ -128,10 +129,22 @@ export const createGenericTaskSubAgentNode = (
       });
     }
 
-    const actualExposedHarnessToolIds = state.toolExposure?.exposedTools ?? [];
+    // The Parent's current visible/disclosed Tool list is context, not the
+    // Child capability ceiling. The ceiling is derived from the Parent
+    // authority+readiness envelope so a Tool omitted from the Parent's ranked
+    // disclosure can still be reachable to the Child.
+    const parentVisibleToolIds = state.toolExposure?.exposedTools ?? [];
+    const delegatedAuthorityToolIds =
+      state.toolExposure?.eligibleTools ?? parentVisibleToolIds;
+    const capabilityResolution = resolveGenericChildCapabilityView({
+      parentVisibleToolIds,
+      delegatedAuthorityToolIds,
+    });
     const skillContext = createGenericTaskSkillContext({
       task: parsed.task,
-      exposedHarnessToolIds: actualExposedHarnessToolIds,
+      parentVisibleToolIds,
+      delegatedAuthorityToolIds,
+      capabilityResolution,
     });
     const localState: AgentNodeState = {
       ...state,
@@ -159,8 +172,12 @@ export const createGenericTaskSubAgentNode = (
       details: {
         delegatedGoal: parsed.task.goal,
         acceptanceCriteriaCount: parsed.task.acceptanceCriteria.length,
-        exposedHarnessToolIds: actualExposedHarnessToolIds,
-        recursiveDelegationExposed: actualExposedHarnessToolIds.includes(
+        parentVisibleToolIds: capabilityResolution.parentVisibleToolIds,
+        delegatedAuthorityToolIds: capabilityResolution.delegatedAuthorityToolIds,
+        childDiscoverableToolIds: capabilityResolution.discoverableToolIds,
+        childAllowedToolIds: capabilityResolution.allowedTools,
+        capabilityViewTrace: capabilityResolution.trace,
+        recursiveDelegationExposed: capabilityResolution.allowedTools.includes(
           GENERIC_TASK_DELEGATE_TOOL_ID,
         ),
       },

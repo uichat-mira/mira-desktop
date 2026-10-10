@@ -37,6 +37,9 @@ const filterExternalExpertExposure = <T extends Awaited<
     toolCandidates: matcherResult.toolCandidates.filter(
       (candidate) => candidate.toolId !== EXTERNAL_EXPERT_TOOL_ID,
     ),
+    eligibleToolIds: matcherResult.eligibleToolIds?.filter(
+      (toolId) => toolId !== EXTERNAL_EXPERT_TOOL_ID,
+    ),
     toolExposure: {
       ...matcherResult.toolExposure,
       exposedToolIds: matcherResult.toolExposure.exposedToolIds.filter(
@@ -130,6 +133,7 @@ const toAgentToolExposureState = (
     Awaited<ReturnType<typeof matchToolCandidatesByEmbedding>>["toolExposure"]["exposedDefinitions"][number]
   >,
   requestedToolGroups: AgentRequestedToolGroupHint[],
+  eligibleToolIds: string[],
 ) => ({
   exposedTools: exposedToolIds,
   toolMeta: exposedDefinitions.map((definition) => ({
@@ -142,6 +146,7 @@ const toAgentToolExposureState = (
     tags: definition.tags,
     capabilities: definition.capabilities,
   })),
+  eligibleTools: eligibleToolIds,
   ...(requestedToolGroups.length > 0 ? { requestedToolGroups } : {}),
 });
 
@@ -381,10 +386,13 @@ export const prepareContextNode = async (
     skillRuntime,
   );
 
+  const eligibleToolIds =
+    matcherResult.eligibleToolIds ?? matcherResult.toolExposure.exposedToolIds;
   const toolExposure = toAgentToolExposureState(
     [...matcherResult.toolExposure.exposedToolIds],
     [...matcherResult.toolExposure.exposedDefinitions],
     requestedToolGroupsWithAvailability,
+    [...eligibleToolIds],
   );
   const toolIntent = matcherResult;
 
@@ -456,6 +464,8 @@ export const prepareContextNode = async (
       autoAllowedTools,
       exposedToolCount: toolExposure.exposedTools.length,
       exposedToolIds: toolExposure.exposedTools,
+      eligibleToolCount: toolExposure.eligibleTools?.length ?? 0,
+      eligibleToolIds: toolExposure.eligibleTools ?? [],
       requestedToolGroups: requestedToolGroupsWithAvailability,
       activeSkillId: skillContext?.primary?.id ?? null,
       activeSkillVersion: skillContext?.primary?.version ?? null,

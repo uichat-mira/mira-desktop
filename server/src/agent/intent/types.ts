@@ -47,6 +47,11 @@ export interface ToolIntentResult {
   topCandidates: ToolIntentCandidate[];
   toolCandidates: HarnessToolCandidate[];
   toolExposure: HarnessToolExposure;
+  /**
+   * Authoritative pre-ranking eligibility envelope from the Harness turn
+   * resolution. Optional for legacy callers that only carry disclosure.
+   */
+  eligibleToolIds?: string[];
   exposureReasons?: string[];
   retrievalModel?: {
     provider?: string;

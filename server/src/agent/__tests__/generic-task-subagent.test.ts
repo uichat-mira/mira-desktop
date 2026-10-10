@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { afterEach, beforeEach, test } from "vitest";
+import {
+  clearHarnessRegistry,
+  registerTool,
+} from "@/harness/registry.js";
+import { readTool } from "@/mcp/tools/read.tool.js";
+import { writeTool } from "@/mcp/tools/write.tool.js";
 import {
   createGenericTaskSkillContext,
   GENERIC_TASK_DELEGATE_TOOL_ID,
   GENERIC_TASK_SUBAGENT_SKILL_ID,
   parseGenericTaskDelegationArgs,
+  resolveGenericChildCapabilityView,
   withGenericTaskDelegationTool,
 } from "../delegation/contract.js";
 import type { AgentNodeState } from "../node-runtime.js";
@@ -47,17 +54,20 @@ const createState = (
     completionCriteria: ["global task is complete"],
   },
   toolExposure: {
-    exposedTools: ["read_open", "terminal"],
+    // Parent disclosure is narrowed to "read"; the broader authority envelope
+    // still carries "write". The Child ceiling must follow the envelope.
+    exposedTools: ["read"],
+    eligibleTools: ["read", "write"],
     toolMeta: [
       {
-        toolId: "read_open",
-        title: "Read Open",
-        description: "Open a known workspace file.",
+        toolId: "read",
+        title: "Read",
+        description: "Read a known workspace file.",
       },
       {
-        toolId: "terminal",
-        title: "Terminal Session",
-        description: "Run a governed workspace command.",
+        toolId: "write",
+        title: "Write",
+        description: "Write a governed workspace file.",
       },
     ],
   },
@@ -118,15 +128,23 @@ const createObservation = (input: {
   createdAt: "2026-07-27T00:00:00.000Z",
 });
 
+beforeEach(() => {
+  registerTool(readTool);
+  registerTool(writeTool);
+});
+
+afterEach(() => {
+  clearHarnessRegistry();
+});
+
 test("planner-only delegation surface preserves dynamic Harness tools", () => {
   const base = createState().toolExposure!;
   const exposed = withGenericTaskDelegationTool(base);
 
-  assert.deepEqual(base.exposedTools, ["read_open", "terminal"]);
+  assert.deepEqual(base.exposedTools, ["read"]);
   assert.deepEqual(exposed.exposedTools, [
     GENERIC_TASK_DELEGATE_TOOL_ID,
-    "read_open",
-    "terminal",
+    "read",
   ]);
   assert.equal(
     exposed.toolMeta[0]?.toolId,
@@ -142,11 +160,12 @@ test("planner-only delegation surface preserves dynamic Harness tools", () => {
 
   const childContext = createGenericTaskSkillContext({
     task: parsed.task,
-    exposedHarnessToolIds: exposed.exposedTools,
+    parentVisibleToolIds: base.exposedTools,
+    delegatedAuthorityToolIds: base.eligibleTools ?? [],
   });
   assert.deepEqual(childContext.primary?.execution?.allowedTools, [
-    "read_open",
-    "terminal",
+    "read",
+    "write",
   ]);
   assert.equal(
     childContext.primary?.execution?.allowedTools.includes(
@@ -154,6 +173,70 @@ test("planner-only delegation surface preserves dynamic Harness tools", () => {
     ),
     false,
   );
+});
+
+test("delegate_task is never in the Generic Child allowlist even if it appears in the envelope", () => {
+  const resolution = resolveGenericChildCapabilityView({
+    parentVisibleToolIds: ["read", GENERIC_TASK_DELEGATE_TOOL_ID],
+    delegatedAuthorityToolIds: ["read", GENERIC_TASK_DELEGATE_TOOL_ID],
+  });
+
+  assert.equal(
+    resolution.discoverableToolIds.includes(GENERIC_TASK_DELEGATE_TOOL_ID),
+    false,
+  );
+  assert.equal(
+    resolution.allowedTools.includes(GENERIC_TASK_DELEGATE_TOOL_ID),
+    false,
+  );
+});
+
+test("regression: a Tool hidden from Parent disclosure stays reachable to the Child inside the delegated envelope", () => {
+  const resolution = resolveGenericChildCapabilityView({
+    parentVisibleToolIds: ["read"],
+    delegatedAuthorityToolIds: ["read", "write"],
+  });
+
+  // Old coupling would have capped the Child at the Parent visible snapshot.
+  assert.equal(resolution.parentVisibleToolIds.includes("write"), false);
+  assert.equal(resolution.delegatedAuthorityToolIds.includes("write"), true);
+  assert.equal(resolution.discoverableToolIds.includes("write"), true);
+  assert.equal(resolution.allowedTools.includes("write"), true);
+
+  // Parent visible set and Child eligible/discoverable set are independent.
+  assert.notDeepEqual(
+    resolution.parentVisibleToolIds,
+    resolution.discoverableToolIds,
+  );
+});
+
+test("a Tool outside the delegated authority envelope stays unavailable even when registered and ready", () => {
+  const resolution = resolveGenericChildCapabilityView({
+    parentVisibleToolIds: ["read"],
+    delegatedAuthorityToolIds: ["read"],
+  });
+
+  assert.equal(resolution.discoverableToolIds.includes("write"), false);
+  assert.equal(resolution.allowedTools.includes("write"), false);
+});
+
+test("a runtime-unavailable Tool is excluded even when it is inside the delegated envelope", () => {
+  clearHarnessRegistry();
+  registerTool(writeTool, {
+    resolveReadiness: () => ({
+      state: "unavailable",
+      reason: "Runtime prerequisite is missing.",
+      code: "test_runtime_unavailable",
+    }),
+  });
+
+  const resolution = resolveGenericChildCapabilityView({
+    parentVisibleToolIds: ["write"],
+    delegatedAuthorityToolIds: ["write"],
+  });
+
+  assert.equal(resolution.discoverableToolIds.includes("write"), false);
+  assert.equal(resolution.allowedTools.includes("write"), false);
 });
 
 test("delegate_task parser validates object shape without keyword routing", () => {
@@ -193,6 +276,34 @@ test("graph routes delegate_task to the generic worker", () => {
   );
 });
 
+test("legacy exposure without eligibleTools falls back to Parent visible Tools for Generic Child", async () => {
+  const runner: ForkedTaskRunner = async (state) => {
+    const frame = state.currentTaskFrame as typeof state.currentTaskFrame & {
+      skillContext?: ReturnType<typeof createGenericTaskSkillContext>;
+    };
+    assert.deepEqual(frame?.skillContext?.primary?.execution?.allowedTools, [
+      "read",
+    ]);
+    return {
+      pendingEvidenceObservation: createObservation({
+        status: "ok",
+        resultStatus: "completed",
+      }),
+    };
+  };
+
+  const legacyExposure = {
+    exposedTools: ["read"],
+    toolMeta: createState().toolExposure?.toolMeta ?? [],
+  };
+  const result = await createGenericTaskSubAgentNode(runner)(
+    createState({ toolExposure: legacyExposure }),
+  );
+
+  assert.equal(result.errorMessage, undefined);
+  assert.equal(result.pendingEvidenceObservation?.status, "ok");
+});
+
 test("generic worker returns completed task evidence to Main Planner", async () => {
   const runner: ForkedTaskRunner = async (state) => {
     const frame = state.currentTaskFrame as typeof state.currentTaskFrame & {
@@ -200,8 +311,8 @@ test("generic worker returns completed task evidence to Main Planner", async () 
     };
     assert.equal(frame?.skillContext?.primary?.id, GENERIC_TASK_SUBAGENT_SKILL_ID);
     assert.deepEqual(frame?.skillContext?.primary?.execution?.allowedTools, [
-      "read_open",
-      "terminal",
+      "read",
+      "write",
     ]);
     return {
       pendingEvidenceObservation: createObservation({

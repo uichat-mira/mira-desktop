@@ -138,6 +138,10 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
 
     expect(result.toolCandidates).toHaveLength(20);
     expect(result.toolExposure.exposedToolIds).toHaveLength(20);
+    // The pre-ranking authority+readiness envelope stays the full eligible set,
+    // independent of the ranked <=20 disclosure subset.
+    expect(result.eligibleToolIds).toHaveLength(21);
+    expect(result.eligibleToolIds).toContain("tail_target_tool");
     expect(rerankSpy.mock.calls[0]?.[0].candidates).toHaveLength(21);
     expect(result.toolCandidates[0]?.toolId).toBe("tail_target_tool");
     expect(result.toolCandidates[0]?.finalScore).toBe(0.99);
