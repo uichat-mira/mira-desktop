@@ -194,7 +194,10 @@ test("prepareContextNode keeps the initialized currentTaskFrame unchanged", asyn
 
 test("prepareContextNode initializes runtime toolExposure independently from toolIntent diagnostics", async () => {
   const readOpen = makeToolDefinition("read_open");
-  const webSearch = makeToolDefinition("web_search", "research");
+  // Use a synthetic ready Tool here. A real web_search Tool has runtime
+  // readiness of its own, which would make this diagnostic-independence test
+  // accidentally depend on provider configuration.
+  const diagnosticTool = makeToolDefinition("diagnostic_tool", "research");
   const matcherSpy = vi
     .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
     .mockResolvedValue({
@@ -207,7 +210,7 @@ test("prepareContextNode initializes runtime toolExposure independently from too
         reason: ["matched read_open"],
       },
       // Pre-ranking authority+readiness envelope is broader than disclosure.
-      eligibleToolIds: ["read_open", "web_search"],
+      eligibleToolIds: ["read_open", "diagnostic_tool"],
       exposureReasons: ["matched read_open"],
     });
 
@@ -227,15 +230,15 @@ test("prepareContextNode initializes runtime toolExposure independently from too
           capabilities: { sideEffect: "none", requiresApproval: false },
         },
       ],
-      eligibleTools: ["read_open", "web_search"],
+      eligibleTools: ["read_open", "diagnostic_tool"],
     });
     const conflictingState = createBaseState({
       ...patch,
       toolIntent: {
         ...patch.toolIntent!,
         toolExposure: {
-          exposedToolIds: ["web_search"],
-          exposedDefinitions: [webSearch],
+          exposedToolIds: ["diagnostic_tool"],
+          exposedDefinitions: [diagnosticTool],
           reason: ["diagnostic mismatch"],
         },
         exposureReasons: ["diagnostic mismatch"],
