@@ -110,6 +110,7 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[skill/README]]：Skill 当前定义与 SubAgent 执行边界；
 - [[skill/pi-skill-agent-execution]]：SubAgent 详细参考；
 - [[development/agent-observability]]：Agent / SubAgent 观测与诊断；
+- [[development/progressive-resolution-pi-reuse-research]]：#243 Progressive Resolution / Pi Tool & Skill 渐进披露复用调研（research，非 current contract）；
 - [[development/agent-core-benchmark-v0.1]]：Mira Agent Core Benchmark v0.1 设计合同、评分与记录语义；
 - [[development/agent-core-benchmark-v0.1-calibration]]：#220 Core v0.1 交叉校准、alternate-path / replay / Judge handoff 与 Timing gate；
 - [[development/agent-core-benchmark-testing-playbook]]：#222 Pilot / Formal 实跑后的 Benchmark Testing Playbook、经验集与下一轮最短启动 checklist；
