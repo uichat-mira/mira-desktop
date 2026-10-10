@@ -1,0 +1,28 @@
+name: Dispatch #305 Scoped Capability View
+
+on:
+  push:
+    branches:
+      - chore/issue-305-worker-dispatch
+    paths:
+      - .github/workflows/issue-305-worker-dispatch.yml
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  worker:
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@3e21560100eb3261a3ba76088060feb89b42e0a4
+    with:
+      issue_number: 305
+      base_branch: dev
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm check
+      provider: opencode-go
+      model: deepseek-v4.1-flash
+    secrets:
+      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
