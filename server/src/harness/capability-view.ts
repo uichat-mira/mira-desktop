@@ -53,18 +53,18 @@ export interface AgentCapabilityScope {
 }
 
 export interface CapabilityViewEntry {
-  capabilityId: string;
-  readiness: HarnessToolRuntimeReadiness;
-  eligible: boolean;
-  discoverable: boolean;
-  disclosure: CapabilityDisclosure;
+  readonly capabilityId: string;
+  readonly readiness: Readonly<HarnessToolRuntimeReadiness>;
+  readonly eligible: boolean;
+  readonly discoverable: boolean;
+  readonly disclosure: CapabilityDisclosure;
 }
 
 export interface AgentCapabilityView {
-  scopeId: string;
-  scopeKind: AgentCapabilityScopeKind;
-  maxDisclosure: CapabilityDisclosure;
-  capabilities: Map<string, CapabilityViewEntry>;
+  readonly scopeId: string;
+  readonly scopeKind: AgentCapabilityScopeKind;
+  readonly maxDisclosure: CapabilityDisclosure;
+  readonly capabilities: ReadonlyMap<string, Readonly<CapabilityViewEntry>>;
 }
 
 export interface CreateAgentCapabilityScopeInput {
@@ -144,6 +144,59 @@ const clampDisclosure = (
 ): CapabilityDisclosure =>
   DISCLOSURE_RANK[requested] <= DISCLOSURE_RANK[ceiling] ? requested : ceiling;
 
+
+const freezeCapabilityEntry = (
+  entry: CapabilityViewEntry,
+): Readonly<CapabilityViewEntry> =>
+  Object.freeze({
+    ...entry,
+    readiness: Object.freeze({ ...entry.readiness }),
+  });
+
+const toReadonlyCapabilityMap = (
+  source: ReadonlyMap<string, Readonly<CapabilityViewEntry>>,
+): ReadonlyMap<string, Readonly<CapabilityViewEntry>> => {
+  const snapshot = new Map(source);
+  let readonlyMap: ReadonlyMap<string, Readonly<CapabilityViewEntry>>;
+  readonlyMap = Object.freeze({
+    get size() {
+      return snapshot.size;
+    },
+    get: (key: string) => snapshot.get(key),
+    has: (key: string) => snapshot.has(key),
+    entries: () => snapshot.entries(),
+    keys: () => snapshot.keys(),
+    values: () => snapshot.values(),
+    forEach: (
+      callbackfn: (
+        value: Readonly<CapabilityViewEntry>,
+        key: string,
+        map: ReadonlyMap<string, Readonly<CapabilityViewEntry>>,
+      ) => void,
+      thisArg?: unknown,
+    ) => {
+      snapshot.forEach((value, key) => {
+        callbackfn.call(thisArg, value, key, readonlyMap);
+      });
+    },
+    [Symbol.iterator]: () => snapshot[Symbol.iterator](),
+  });
+  return readonlyMap;
+};
+
+const createCapabilityView = (input: {
+  scopeId: string;
+  scopeKind: AgentCapabilityScopeKind;
+  maxDisclosure: CapabilityDisclosure;
+  capabilities: ReadonlyMap<string, Readonly<CapabilityViewEntry>>;
+}): AgentCapabilityView =>
+  Object.freeze({
+    scopeId: input.scopeId,
+    scopeKind: input.scopeKind,
+    maxDisclosure: input.maxDisclosure,
+    capabilities: toReadonlyCapabilityMap(input.capabilities),
+  });
+
 export const projectAgentCapabilityView = (
   input: ProjectAgentCapabilityViewInput,
 ): AgentCapabilityView => {
@@ -178,21 +231,24 @@ export const projectAgentCapabilityView = (
       ? clampDisclosure(requestedDisclosure, ceiling)
       : "hidden";
 
-    capabilities.set(definition.id, {
-      capabilityId: definition.id,
-      readiness: { ...readiness },
-      eligible,
-      discoverable,
-      disclosure,
-    });
+    capabilities.set(
+      definition.id,
+      freezeCapabilityEntry({
+        capabilityId: definition.id,
+        readiness,
+        eligible,
+        discoverable,
+        disclosure,
+      }),
+    );
   }
 
-  return {
+  return createCapabilityView({
     scopeId: scope.scopeId,
     scopeKind: scope.kind,
     maxDisclosure: ceiling,
     capabilities,
-  };
+  });
 };
 
 export const getCapabilityViewEntry = (
@@ -228,11 +284,20 @@ export const withCapabilityDisclosure = (
   if (nextDisclosure === entry.disclosure) return view;
 
   const capabilities = new Map(view.capabilities);
-  capabilities.set(capabilityId, {
-    ...entry,
-    disclosure: nextDisclosure,
+  capabilities.set(
+    capabilityId,
+    freezeCapabilityEntry({
+      ...entry,
+      readiness: entry.readiness,
+      disclosure: nextDisclosure,
+    }),
+  );
+  return createCapabilityView({
+    scopeId: view.scopeId,
+    scopeKind: view.scopeKind,
+    maxDisclosure: view.maxDisclosure,
+    capabilities,
   });
-  return { ...view, capabilities };
 };
 
 export const describeAgentCapabilityView = (
