@@ -249,10 +249,11 @@ test("diagnostics closure explains workspace-local web_search hiding with blocke
     source: "agent_intent",
   });
 
-  assert.deepEqual(result.toolExposure.exposedToolIds, ["read", "web_search"]);
-  assert.equal(result.blockedCapabilityIds.includes("web_search"), false);
+  assert.deepEqual(result.toolExposure.exposedToolIds, ["read"]);
+  assert.equal(result.blockedCapabilityIds.includes("web_search"), true);
   assert.equal(result.toolCandidates.length > 0, true);
   assert.equal(result.toolCandidates.some((candidate) => candidate.toolId === "read"), true);
+  assert.equal(result.toolCandidates.some((candidate) => candidate.toolId === "web_search"), false);
 });
 
 test("diagnostics closure records planner and normalize reasons when the selected tool is not exposed", async () => {
