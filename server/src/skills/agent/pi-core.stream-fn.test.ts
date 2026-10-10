@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
     | { name: string; args: Record<string, unknown> }
     | undefined,
   promptToolResult: undefined as unknown,
+  promptRetryToolCall: undefined as
+    | { name: string; args: Record<string, unknown> }
+    | undefined,
+  promptRetryToolResult: undefined as unknown,
 }));
 
 vi.mock("@/providers/catalog.js", () => ({
@@ -92,6 +96,31 @@ vi.mock("@earendil-works/pi-agent-core", () => {
             ...(nextTurn.context.tools as Array<Record<string, any>>),
           ];
         }
+
+        if (mocks.promptRetryToolCall) {
+          const retryTool = this.state.tools.find(
+            (candidate) => candidate.name === mocks.promptRetryToolCall?.name,
+          );
+          if (!retryTool || typeof retryTool.execute !== "function") {
+            throw new Error(
+              `Mock retry Tool not found: ${mocks.promptRetryToolCall.name}`,
+            );
+          }
+          try {
+            mocks.promptRetryToolResult = await retryTool.execute(
+              "mock-tool-retry",
+              mocks.promptRetryToolCall.args,
+              undefined,
+            );
+          } catch (error) {
+            // Mirror Pi 1.0.2 executePreparedToolCall(): Tool throws become an
+            // error Tool result and the Agent loop continues.
+            mocks.promptRetryToolResult = {
+              isError: true,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        }
       }
       this.state.messages.push({
         role: "assistant",
@@ -127,6 +156,8 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
     mocks.agentState = undefined;
     mocks.promptToolCall = undefined;
     mocks.promptToolResult = undefined;
+    mocks.promptRetryToolCall = undefined;
+    mocks.promptRetryToolResult = undefined;
   });
 
   it("constructs the Pi Agent with the explicit OpenAI-completions streamFn", async () => {
@@ -277,6 +308,46 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
       undefined,
     );
     expect(executionCount).toBe(1);
+  });
+
+  it("does not report a failed governed Tool attempt as never executed after schema promotion", async () => {
+    mocks.completion = JSON.stringify({ status: "completed", summary: "recovered" });
+    mocks.promptToolCall = { name: "write", args: {} };
+    mocks.promptRetryToolCall = {
+      name: "write",
+      args: { path: "README.md" },
+    };
+
+    let executionCount = 0;
+    const writeBinding = {
+      id: "write",
+      label: "write",
+      description: "write tool",
+      inputSchema: {
+        type: "object",
+        required: ["path"],
+        properties: { path: { type: "string" } },
+        additionalProperties: false,
+      },
+      execute: async () => {
+        executionCount += 1;
+        throw new Error("simulated binding failure");
+      },
+    };
+
+    const result = await runPiSkillAgent({
+      execution: execution(),
+      tools: [writeBinding],
+      disclosedToolIds: [],
+    });
+
+    expect(executionCount).toBe(1);
+    expect(mocks.promptRetryToolResult).toEqual({
+      isError: true,
+      error: "simulated binding failure",
+    });
+    expect(result.status).toBe("completed");
+    expect(result.error).toBeUndefined();
   });
 
   it("keeps every allowed Tool schema-disclosed when the Skill does not opt into progressive disclosure", async () => {
