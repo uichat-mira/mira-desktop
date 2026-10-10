@@ -134,7 +134,8 @@ export const createGenericTaskSubAgentNode = (
     // authority+readiness envelope so a Tool omitted from the Parent's ranked
     // disclosure can still be reachable to the Child.
     const parentVisibleToolIds = state.toolExposure?.exposedTools ?? [];
-    const delegatedAuthorityToolIds = state.toolExposure?.eligibleTools ?? [];
+    const delegatedAuthorityToolIds =
+      state.toolExposure?.eligibleTools ?? parentVisibleToolIds;
     const capabilityResolution = resolveGenericChildCapabilityView({
       parentVisibleToolIds,
       delegatedAuthorityToolIds,
