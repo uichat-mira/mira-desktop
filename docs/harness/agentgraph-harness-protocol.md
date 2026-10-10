@@ -157,13 +157,15 @@ Pi Loop 没有全局 iteration cap；schema replan 与 recoverable failure 有�
 ```text
 eligible concrete tools
   -> <= 20：全部暴露
-  -> > 20：capability profile / embedding / rerank
+  -> > 20：deterministic exact / capability-domain structural preflight
+            （命中时 0 ranking model call）
+  -> 否则 capability profile / embedding / rerank
   -> concrete tool expansion
   -> 去重
   -> 前 20
 ```
 
-当前没有 `minScore` 淘汰和核心工具固定名额。Recall 与 rerank 只服务上下文压缩，不直接决定 invocation。
+当前没有 `minScore` 淘汰和核心工具固定名额。Recall 与 rerank 只服务上下文压缩，不直接决定 invocation。Deterministic preflight 同样只决定 disclosure 顺序，不授予执行权限：命中后仍走 Normalize / Policy / Approval / Harness。Lexical/BM25 与 cheap semantic Resolver 作为 Progressive Resolution 的 Tool Search fallback，只在 deterministic 证据真正歧义时使用（Resolution 级 model call 由 budget seam 限制）。
 
 `delegate_task` 由 Agent Runtime 额外加入 Planner surface：
 

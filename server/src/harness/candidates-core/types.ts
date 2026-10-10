@@ -1,5 +1,6 @@
 import type { SandboxProfile, ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessTurnSource } from "../shared/types.js";
+import type { CapabilityResolutionResult } from "./capability-resolution.js";
 
 export interface HarnessCapabilityMatch {
   capabilityId: string;
@@ -71,6 +72,12 @@ export interface ResolveHarnessToolCandidatesForTurnResult {
    */
   eligibleToolIds: string[];
   retrievalError?: string;
+  /**
+   * Deterministic-first resolution evidence. It records which cascade stage
+   * decided the turn and how many ranking/semantic model calls it spent, so
+   * callers can audit that Tool Search is not invoked unnecessarily.
+   */
+  resolution?: CapabilityResolutionResult;
   retrievalModel?: {
     provider?: string;
     model?: string;
