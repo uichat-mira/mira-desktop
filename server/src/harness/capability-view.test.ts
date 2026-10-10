@@ -237,6 +237,32 @@ describe("Agent Capability View", () => {
     );
   });
 
+  it("exposes immutable Capability View state", () => {
+    registerTool(readTool);
+
+    const view = project(
+      createMainAgentCapabilityScope({
+        scopeId: "main",
+        maxDisclosure: "metadata",
+      }),
+    );
+    const entry = getCapabilityViewEntry(view, "read");
+
+    expect(Object.isFrozen(view)).toBe(true);
+    expect(Object.isFrozen(entry)).toBe(true);
+    expect(Object.isFrozen(entry?.readiness)).toBe(true);
+    expect("set" in view.capabilities).toBe(false);
+    expect("delete" in view.capabilities).toBe(false);
+    expect("clear" in view.capabilities).toBe(false);
+
+    expect(Reflect.set(view, "maxDisclosure", "schema")).toBe(false);
+    expect(
+      Reflect.set(entry as object, "disclosure", "schema"),
+    ).toBe(false);
+    expect(view.maxDisclosure).toBe("metadata");
+    expect(getCapabilityViewEntry(view, "read")?.disclosure).toBe("metadata");
+  });
+
   it("keeps disclosure separate from Harness execution authority", () => {
     registerTool(webSearchTool, {
       resolveReadiness: () => ({
