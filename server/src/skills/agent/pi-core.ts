@@ -552,6 +552,13 @@ const toPiTool = (input: {
     // a provider projection can never send unchecked args into the binding.
     validateInvocationArgs(args, input.binding.inputSchema);
 
+    // Reaching the governed binding with canonically valid args is the execution
+    // attempt boundary. Pi converts binding throws into error Tool results and
+    // continues the Agent loop, so clearing the disclosure guard only after a
+    // successful return would later misreport a real failed execution as
+    // "never executed".
+    input.markSchemaExecutionAttempted?.();
+
     const combined = combineAbortSignals(input.parentSignal, signal);
     try {
       const { toolResult } = await executeBinding({
@@ -566,7 +573,6 @@ const toPiTool = (input: {
         recordToolCall: true,
         ledger: input.ledger,
       });
-      input.markSchemaExecutionAttempted?.();
       return toolResult;
     } finally {
       combined.cleanup();
