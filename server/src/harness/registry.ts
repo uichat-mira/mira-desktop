@@ -30,9 +30,18 @@ export const registerTool = (
   tool: ToolImplementation,
   options: RegisterHarnessToolOptions = {},
 ) => {
+  const toolId = tool.definition.id;
+  const replacingExistingTool = Boolean(getCoreToolImplementation(toolId));
+
   registerCoreTool(tool);
+
   if (options.resolveReadiness) {
-    registerToolRuntimeReadiness(tool.definition.id, options.resolveReadiness);
+    registerToolRuntimeReadiness(toolId, options.resolveReadiness);
+    return;
+  }
+
+  if (replacingExistingTool) {
+    unregisterToolRuntimeReadiness(toolId);
   }
 };
 
