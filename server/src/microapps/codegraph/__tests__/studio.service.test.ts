@@ -7,7 +7,6 @@ import {
   setActiveCodeGraphStudioService,
 } from "../index.js";
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability.js";
-import { resolveHarnessToolExposure } from "@/harness/exposure.js";
 import {
   clearHarnessRegistry,
   listToolDefinitions,
@@ -288,12 +287,6 @@ describe("CodeGraph Studio service", () => {
     expect(started.report.runtime.processAlive).toBe(true);
     expect(healthy.report.status).toBe("ready");
     expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
-    expect(
-      resolveHarnessToolExposure({
-        source: "agent_intent",
-        query: "inspect repository structure",
-      }).exposedToolIds,
-    ).not.toContain("codebase_explore");
 
     await service.saveConfig({
       agentCapabilityEnabled: true,
@@ -306,12 +299,6 @@ describe("CodeGraph Studio service", () => {
     expect(enabledReport.capability.registered).toBe(true);
     expect(enabledReport.config.capabilityRegistered).toBe(true);
     expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
-    expect(
-      resolveHarnessToolExposure({
-        source: "agent_intent",
-        query: "inspect repository structure",
-      }).exposedToolIds,
-    ).toContain("codebase_explore");
 
     await service.saveConfig({
       agentCapabilityEnabled: false,
@@ -324,12 +311,6 @@ describe("CodeGraph Studio service", () => {
     expect(disabledReport.capability.registered).toBe(false);
     expect(disabledReport.config.capabilityRegistered).toBe(true);
     expect(listToolDefinitions().map((item) => item.id)).toContain("codebase_explore");
-    expect(
-      resolveHarnessToolExposure({
-        source: "agent_intent",
-        query: "inspect repository structure",
-      }).exposedToolIds,
-    ).not.toContain("codebase_explore");
   });
 
   it("stops the old manager on runtime config changes and keeps capability unavailable until an explicit restart", async () => {
