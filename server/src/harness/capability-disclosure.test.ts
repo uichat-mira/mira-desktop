@@ -13,6 +13,7 @@ import {
 } from "./capability-view.js";
 import {
   describeCapabilityDisclosure,
+  discloseCapabilitySchemas,
   materializeCapabilitySchema,
   materializeKnownCapabilitySchema,
   projectCapabilityToolMetadata,
@@ -416,5 +417,78 @@ describe("progressive Tool metadata and schema disclosure", () => {
     expect(writeEntry?.schemaDisclosed).toBe(false);
     expect(trace.metadataDisclosedCount).toBe(2);
     expect(trace.schemaDisclosedCount).toBe(1);
+  });
+
+  it("promotes only the selected Tools in one controlled batch and leaves the rest metadata-only", () => {
+    registerTool(readTool);
+    registerTool(writeTool);
+
+    const view = project(createMainAgentCapabilityScope({ scopeId: "main" }));
+    const disclosure = discloseCapabilitySchemas({
+      view,
+      capabilityIds: ["read"],
+      definitions: listToolDefinitions(),
+    });
+
+    expect(disclosure.transitions).toEqual([
+      {
+        capabilityId: "read",
+        from: "metadata",
+        to: "schema",
+        reason: "promoted",
+        schemaMaterialized: true,
+      },
+    ]);
+    expect(disclosure.schemas.map((schema) => schema.capabilityId)).toEqual([
+      "read",
+    ]);
+    expect(disclosure.schemas[0]?.inputSchema).toBe(
+      readTool.definition.inputSchema,
+    );
+
+    const trace = describeCapabilityDisclosure(disclosure.view);
+    expect(trace.metadataDisclosedCount).toBe(2);
+    expect(trace.schemaDisclosedCount).toBe(1);
+
+    // The unselected Tool keeps compact metadata and no materialized schema, and
+    // its undisclosed schema does not remove eligibility.
+    expect(
+      materializeCapabilitySchema(
+        disclosure.view,
+        "write",
+        listToolDefinitions(),
+      ),
+    ).toBeUndefined();
+    expect(disclosure.view.capabilities.get("write")?.eligible).toBe(true);
+  });
+
+  it("batch promotion is clamped by readiness and the scope envelope instead of widening authority", () => {
+    registerTool(readTool);
+    registerTool(webSearchTool, { resolveReadiness: unavailableReadiness });
+
+    const view = project(
+      createMainAgentCapabilityScope({
+        scopeId: "main",
+        eligibleCapabilityIds: ["read"],
+        discoverableCapabilityIds: ["read"],
+      }),
+    );
+    const disclosure = discloseCapabilitySchemas({
+      view,
+      capabilityIds: ["read", "web_search"],
+      definitions: listToolDefinitions(),
+    });
+
+    const byId = Object.fromEntries(
+      disclosure.transitions.map((transition) => [
+        transition.capabilityId,
+        transition,
+      ]),
+    );
+    expect(byId.read?.reason).toBe("promoted");
+    expect(byId.web_search?.reason).toBe("blocked-unavailable");
+    expect(disclosure.schemas.map((schema) => schema.capabilityId)).toEqual([
+      "read",
+    ]);
   });
 });

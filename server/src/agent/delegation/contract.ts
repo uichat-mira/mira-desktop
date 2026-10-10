@@ -6,8 +6,10 @@ import {
 } from "@/harness/capability-view.js";
 import {
   describeCapabilityDisclosure,
+  discloseCapabilitySchemas,
   projectCapabilityToolMetadata,
   type CapabilityDisclosureTrace,
+  type CapabilitySchemaDisclosure,
   type CapabilityToolMetadata,
 } from "@/harness/capability-disclosure.js";
 import { listToolDefinitions } from "@/harness/registry.js";
@@ -197,6 +199,14 @@ export interface GenericChildCapabilityResolution {
   /** Child execution allowlist: discoverable set minus the delegation protocol. */
   allowedTools: string[];
   /**
+   * Exact-known / selected Tools whose full schema was materialized for the
+   * Child. This is the schema disclosure stage; it is a subset of the
+   * discoverable metadata stage and never widens authority.
+   */
+  schemaDisclosedToolIds: string[];
+  /** Materialized full schemas for the selected / exact-known Child Tools only. */
+  materializedSchemas: CapabilitySchemaDisclosure[];
+  /**
    * Compact Tool metadata projection (no full schemas) for the Child's
    * discoverable set. This is the metadata disclosure stage the Child starts
    * from; full schemas are materialized per exact known Tool at execution time.
@@ -216,9 +226,12 @@ export interface GenericChildCapabilityResolution {
  * globally registered and ready. The Parent visible set is retained as trace
  * context only.
  *
- * This is a visibility projection: it never grants authority, never registers a
- * Tool, and never makes an unavailable Tool ready. Harness Policy / Approval
- * still governs every Child invocation.
+ * The Child starts metadata-first: every discoverable Tool carries compact
+ * metadata but no full schema. Only the Parent's currently visible / exact-known
+ * Tools that are also discoverable to the Child are promoted to the schema
+ * stage. This is a visibility projection: it never grants authority, never
+ * registers a Tool, and never makes an unavailable Tool ready. Harness Policy /
+ * Approval still governs every Child invocation.
  */
 export const resolveGenericChildCapabilityView = (input: {
   parentVisibleToolIds?: readonly string[];
@@ -230,28 +243,80 @@ export const resolveGenericChildCapabilityView = (input: {
   ].filter(Boolean);
 
   const definitions = listToolDefinitions();
-  const view = projectAgentCapabilityView({
+  const metadataFirstView = projectAgentCapabilityView({
     scope: createGenericChildCapabilityScope({
       scopeId: GENERIC_TASK_SUBAGENT_SKILL_ID,
       eligibleCapabilityIds: delegatedAuthorityToolIds,
+      discoverableCapabilityIds: delegatedAuthorityToolIds,
     }),
     definitions,
   });
 
-  const discoverableToolIds = [...view.capabilities.values()]
+  const discoverableToolIds = [...metadataFirstView.capabilities.values()]
     .filter((entry) => entry.discoverable)
     .map((entry) => entry.capabilityId)
     .filter((toolId) => toolId !== GENERIC_TASK_DELEGATE_TOOL_ID);
+
+  const discoverableSet = new Set(discoverableToolIds);
+  const schemaDisclosure = discloseCapabilitySchemas({
+    view: metadataFirstView,
+    capabilityIds: parentVisibleToolIds.filter(
+      (toolId) =>
+        discoverableSet.has(toolId) &&
+        toolId !== GENERIC_TASK_DELEGATE_TOOL_ID,
+    ),
+    definitions,
+  });
 
   return {
     parentVisibleToolIds,
     delegatedAuthorityToolIds,
     discoverableToolIds,
     allowedTools: discoverableToolIds,
-    compactMetadata: projectCapabilityToolMetadata(view, definitions),
-    disclosureTrace: describeCapabilityDisclosure(view),
-    trace: describeAgentCapabilityView(view),
+    schemaDisclosedToolIds: schemaDisclosure.schemas.map(
+      (schema) => schema.capabilityId,
+    ),
+    materializedSchemas: [...schemaDisclosure.schemas],
+    compactMetadata: projectCapabilityToolMetadata(
+      schemaDisclosure.view,
+      definitions,
+    ),
+    disclosureTrace: describeCapabilityDisclosure(schemaDisclosure.view),
+    trace: describeAgentCapabilityView(schemaDisclosure.view),
   };
+};
+
+const CHILD_DISCLOSURE_CATALOG_LIMIT = 20;
+
+/**
+ * Render the Child's progressive capability disclosure into its planning
+ * context. The discoverable set is presented as compact metadata, and each
+ * entry is labelled with its disclosure stage so the Child planning path can
+ * tell metadata-only Tools apart from schema-disclosed Tools. This is model
+ * context only: the undisclosed schema is never an authority boundary.
+ */
+const formatGenericChildCapabilityDisclosure = (
+  resolution: GenericChildCapabilityResolution,
+): string => {
+  const schemaDisclosed = new Set(resolution.schemaDisclosedToolIds);
+  const catalog = resolution.compactMetadata
+    .slice(0, CHILD_DISCLOSURE_CATALOG_LIMIT)
+    .map((tool) => {
+      const stage = schemaDisclosed.has(tool.capabilityId)
+        ? "schema-disclosed"
+        : "metadata-only";
+      const domain = tool.domain ? ` domain=${tool.domain}` : "";
+      return `  - ${tool.capabilityId}${domain} [${stage}]: ${tool.description}`;
+    });
+
+  return [
+    "<capability-disclosure>",
+    "Discoverable capabilities are disclosed progressively: compact metadata first, full schema only for the exact known Tools that are schema-disclosed. An undisclosed schema is not an authority boundary; Harness readiness and Policy/Approval still govern every invocation.",
+    ...(catalog.length > 0
+      ? ["discoverable:", ...catalog]
+      : ["discoverable: none"]),
+    "</capability-disclosure>",
+  ].join("\n");
 };
 
 export const createGenericTaskSkillContext = (input: {
@@ -283,6 +348,7 @@ export const createGenericTaskSkillContext = (input: {
         "Plan locally, use only the exposed tools, inspect results, repair recoverable failures, and stop only at a structured terminal status.",
         "Do not broaden the goal, do not delegate to another agent, and do not claim completed unless the acceptance criteria are covered by evidence or artifacts.",
         "Return completed only for this task package; the Main Planner alone decides whether the user's global goal is finished.",
+        formatGenericChildCapabilityDisclosure(resolution),
         `<delegated-task>\n${taskPacket}\n</delegated-task>`,
       ].join("\n"),
       execution: {

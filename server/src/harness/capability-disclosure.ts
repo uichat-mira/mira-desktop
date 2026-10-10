@@ -75,6 +75,12 @@ export interface PromoteCapabilitySchemaResult {
   readonly schema?: CapabilitySchemaDisclosure;
 }
 
+export interface DiscloseCapabilitySchemasResult {
+  readonly view: AgentCapabilityView;
+  readonly transitions: readonly CapabilityDisclosureTransition[];
+  readonly schemas: readonly CapabilitySchemaDisclosure[];
+}
+
 export interface CapabilityDisclosureTraceEntry {
   readonly capabilityId: string;
   readonly readiness: HarnessToolRuntimeReadiness["state"];
@@ -278,6 +284,43 @@ export const promoteCapabilitySchema = (input: {
       inputSchema: definition.inputSchema,
     },
   };
+};
+
+/**
+ * Controlled batch promotion for the concrete Tools a turn actually selected.
+ *
+ * A production scope starts metadata-first: every discoverable Tool carries
+ * compact metadata but no full schema. This helper promotes exactly the
+ * selected / exact-known Tools to the schema stage in one step and returns the
+ * resulting view plus the durable, inspectable transitions. It never widens
+ * authority: promotion is clamped by readiness, discoverability and the scope
+ * ceiling inside `promoteCapabilitySchema`, and undisclosed schemas keep their
+ * eligibility.
+ */
+export const discloseCapabilitySchemas = (input: {
+  view: AgentCapabilityView;
+  capabilityIds: readonly string[];
+  definitions: readonly ToolDefinition[];
+}): DiscloseCapabilitySchemasResult => {
+  let view = input.view;
+  const transitions: CapabilityDisclosureTransition[] = [];
+  const schemas: CapabilitySchemaDisclosure[] = [];
+  const seen = new Set<string>();
+
+  for (const capabilityId of input.capabilityIds) {
+    if (seen.has(capabilityId)) continue;
+    seen.add(capabilityId);
+    const promoted = promoteCapabilitySchema({
+      view,
+      capabilityId,
+      definitions: input.definitions,
+    });
+    transitions.push(promoted.transition);
+    if (promoted.schema) schemas.push(promoted.schema);
+    view = promoted.view;
+  }
+
+  return { view, transitions, schemas };
 };
 
 /**

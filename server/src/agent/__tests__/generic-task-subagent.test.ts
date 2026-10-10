@@ -239,6 +239,74 @@ test("a runtime-unavailable Tool is excluded even when it is inside the delegate
   assert.equal(resolution.allowedTools.includes("write"), false);
 });
 
+test("Generic Child consumes metadata-first disclosure and materializes schema only for exact-known Tools", () => {
+  const resolution = resolveGenericChildCapabilityView({
+    parentVisibleToolIds: ["read"],
+    delegatedAuthorityToolIds: ["read", "write"],
+  });
+
+  // Two discoverable Tools share the compact metadata stage and no full schema.
+  assert.deepEqual(
+    resolution.compactMetadata.map((tool) => tool.capabilityId).sort(),
+    ["read", "write"],
+  );
+  assert.equal("inputSchema" in (resolution.compactMetadata[0] ?? {}), false);
+
+  // Only the Parent-visible / exact-known Tool reaches the schema stage.
+  assert.deepEqual(resolution.schemaDisclosedToolIds, ["read"]);
+  assert.deepEqual(
+    resolution.materializedSchemas.map((schema) => schema.capabilityId),
+    ["read"],
+  );
+  assert.equal(
+    resolution.materializedSchemas[0]?.inputSchema,
+    readTool.definition.inputSchema,
+  );
+  assert.equal(resolution.disclosureTrace.metadataDisclosedCount, 2);
+  assert.equal(resolution.disclosureTrace.schemaDisclosedCount, 1);
+
+  // The Child can still reach the full envelope; progressive disclosure is
+  // context only, not a reduction of the delegated authority.
+  assert.deepEqual(resolution.allowedTools, ["read", "write"]);
+
+  const context = createGenericTaskSkillContext({
+    task: { goal: "update the file", acceptanceCriteria: ["verified"] },
+    parentVisibleToolIds: ["read"],
+    delegatedAuthorityToolIds: ["read", "write"],
+    capabilityResolution: resolution,
+  });
+  const body = context.primary?.body ?? "";
+  assert.match(body, /<capability-disclosure>/);
+  assert.match(body, /read[^\n]*\[schema-disclosed\]/);
+  assert.match(body, /write[^\n]*\[metadata-only\]/);
+});
+
+test("Generic Child does not schema-disclose unavailable or out-of-envelope Tools", () => {
+  clearHarnessRegistry();
+  registerTool(readTool);
+  registerTool(writeTool, {
+    resolveReadiness: () => ({
+      state: "unavailable",
+      reason: "Runtime prerequisite is missing.",
+      code: "test_runtime_unavailable",
+    }),
+  });
+
+  const resolution = resolveGenericChildCapabilityView({
+    parentVisibleToolIds: ["read", "write"],
+    delegatedAuthorityToolIds: ["read", "write"],
+  });
+
+  assert.deepEqual(resolution.discoverableToolIds, ["read"]);
+  assert.deepEqual(resolution.schemaDisclosedToolIds, ["read"]);
+  assert.equal(
+    resolution.materializedSchemas.some(
+      (schema) => schema.capabilityId === "write",
+    ),
+    false,
+  );
+});
+
 test("delegate_task parser validates object shape without keyword routing", () => {
   assert.deepEqual(
     parseGenericTaskDelegationArgs({

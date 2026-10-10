@@ -8,6 +8,7 @@ import {
 } from "@/harness/capability-view";
 import {
   describeCapabilityDisclosure,
+  discloseCapabilitySchemas,
   projectCapabilityToolMetadata,
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
@@ -405,29 +406,37 @@ export const prepareContextNode = async (
   const toolIntent = matcherResult;
 
   // The Main Agent consumes the same Capability View disclosure semantics as a
-  // delegated Child. Its scope narrows the authority+readiness envelope to this
-  // turn's eligible set and marks the exposed tools as schema-disclosed because
-  // Harness materializes their full schemas for this Planner turn. Compact
-  // metadata (no schemas) stays available as the lighter disclosure stage.
-  const mainAgentCapabilityView = projectAgentCapabilityView({
+  // delegated Child, over its own scoped view. The authority+readiness envelope
+  // is discoverable compact metadata, and compact metadata deliberately carries
+  // no full schema. Only the concrete Tools this turn's capability resolution
+  // actually selected are promoted to the schema stage, so several Tools may
+  // stay discoverable while only the selected / exact-known Tool has a full
+  // schema materialized. Disclosure changes model context only: readiness still
+  // comes from the Harness and execution authority still lives in Policy.
+  const selectedCapabilityIds = [...matcherResult.toolExposure.exposedToolIds];
+  const metadataFirstCapabilityView = projectAgentCapabilityView({
     scope: createMainAgentCapabilityScope({
       scopeId: "main_agent",
       eligibleCapabilityIds: [...eligibleToolIds],
-      discoverableCapabilityIds: [...matcherResult.toolExposure.exposedToolIds],
+      discoverableCapabilityIds: [...eligibleToolIds],
     }),
     definitions: toolDefinitions,
-    requestedDisclosure: new Map(
-      matcherResult.toolExposure.exposedToolIds.map(
-        (toolId) => [toolId, "schema"] as const,
-      ),
-    ),
   });
+  const schemaDisclosure = discloseCapabilitySchemas({
+    view: metadataFirstCapabilityView,
+    capabilityIds: selectedCapabilityIds,
+    definitions: toolDefinitions,
+  });
+  const mainAgentCapabilityView = schemaDisclosure.view;
   const capabilityDisclosureTrace = describeCapabilityDisclosure(
     mainAgentCapabilityView,
   );
   const compactCapabilityMetadata = projectCapabilityToolMetadata(
     mainAgentCapabilityView,
     toolDefinitions,
+  );
+  const capabilitySchemaDisclosedIds = schemaDisclosure.schemas.map(
+    (schema) => schema.capabilityId,
   );
 
   // Skill matching/disclosure is a first-class observable event. Do not force
@@ -520,10 +529,12 @@ export const prepareContextNode = async (
       capabilityMetadataToolIds: compactCapabilityMetadata.map(
         (tool) => tool.capabilityId,
       ),
+      capabilitySchemaDisclosedIds,
       capabilityMetadataDisclosedCount:
         capabilityDisclosureTrace.metadataDisclosedCount,
       capabilitySchemaDisclosedCount:
         capabilityDisclosureTrace.schemaDisclosedCount,
+      capabilityDisclosureTransitions: schemaDisclosure.transitions,
       capabilityDisclosureTrace,
       currentTaskFrameWriter:
         "prepareContextNode attaches SkillContext and a bounded Skill runtime projection; Planner remains the sole writer of goal/subtask/completion inference",
