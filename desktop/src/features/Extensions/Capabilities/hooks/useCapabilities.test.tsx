@@ -289,6 +289,38 @@ describe("useCapabilities", () => {
     expect(result.current.canOpenManual).toBe(true);
   });
 
+  it("uses Server/Harness readiness for a registered native Tool and blocks execution", async () => {
+    getMcpRegisteredToolsMock.mockResolvedValueOnce([
+      {
+        ...readTool,
+        runtimeReadiness: {
+          state: "unavailable",
+          reason: "Web search is unavailable until a usable search provider is configured.",
+          code: "web_search_provider_unavailable",
+        },
+      },
+      writeTool,
+    ]);
+
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
+
+    await waitFor(() =>
+      expect(result.current.selectedCase?.id).toBe("core-read-success"),
+    );
+
+    expect(result.current.selectedTool?.id).toBe("read");
+    expect(result.current.readiness).toMatchObject({
+      state: "unavailable",
+      reason: "Web search is unavailable until a usable search provider is configured.",
+    });
+
+    await act(async () => {
+      await result.current.runSelectedCase();
+    });
+    expect(executeMcpInvocationStreamMock).not.toHaveBeenCalled();
+  });
+
   it("keeps a registered case visible as Unavailable when its native Tool is missing", async () => {
     getMcpRegisteredToolsMock.mockResolvedValueOnce([writeTool]);
 
