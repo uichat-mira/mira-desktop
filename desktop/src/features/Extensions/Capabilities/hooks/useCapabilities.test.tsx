@@ -295,7 +295,7 @@ describe("useCapabilities", () => {
         ...readTool,
         runtimeReadiness: {
           state: "unavailable",
-          reason: "Web search is unavailable until a usable search provider is configured.",
+          reason: "Required native runtime is unavailable.",
           code: "web_search_provider_unavailable",
         },
       },
@@ -312,7 +312,7 @@ describe("useCapabilities", () => {
     expect(result.current.selectedTool?.id).toBe("read");
     expect(result.current.readiness).toMatchObject({
       state: "unavailable",
-      reason: "Web search is unavailable until a usable search provider is configured.",
+      reason: "Required native runtime is unavailable.",
     });
 
     await act(async () => {
