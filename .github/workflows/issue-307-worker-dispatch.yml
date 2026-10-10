@@ -1,4 +1,4 @@
-name: Dispatch #307 Progressive Tool Disclosure
+name: Dispatch #307 Progressive Tool Disclosure Follow-up
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@3e21560100eb3261a3ba76088060feb89b42e0a4
     with:
       issue_number: 307
-      base_branch: dev
+      base_branch: agent/issue-307-run-38065655760
       verification_command: |
         corepack enable
         pnpm install --frozen-lockfile
