@@ -215,9 +215,13 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
       disclosedToolIds: [],
     });
 
-    expect(result.status).toBe("completed");
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain(
+      "subAgent completed before executing promoted Tool(s): write",
+    );
     // The first exact-known call only promotes metadata -> schema. It must not
-    // execute the governed binding with arguments produced from an empty schema.
+    // execute the governed binding with arguments produced from an empty schema,
+    // and the runtime must reject a completion that skips the required retry.
     expect(executionCount).toBe(0);
     expect(mocks.promptToolResult).toMatchObject({
       details: {
