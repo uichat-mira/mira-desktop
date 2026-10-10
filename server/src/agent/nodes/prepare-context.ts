@@ -465,11 +465,27 @@ export const prepareContextNode = async (
     capabilityDefinitions,
   );
 
+  // Matcher exposure can be stale relative to Harness readiness. Keep compact
+  // metadata in the Capability View, but only currently eligible Tools may stay
+  // in the Planner-callable ToolExposure. Schema disclosure is not the filter:
+  // a metadata-stage Tool remains exposed when it is otherwise eligible.
+  const currentEligibleToolIds = [...mainAgentCapabilityView.capabilities.values()]
+    .filter((entry) => entry.eligible)
+    .map((entry) => entry.capabilityId);
+  const currentEligibleToolIdSet = new Set(currentEligibleToolIds);
+  const callableToolIds = matcherResult.toolExposure.exposedToolIds.filter(
+    (toolId) => currentEligibleToolIdSet.has(toolId),
+  );
+  const callableToolIdSet = new Set(callableToolIds);
+  const callableDefinitions = matcherResult.toolExposure.exposedDefinitions.filter(
+    (definition) => callableToolIdSet.has(definition.id),
+  );
+
   const toolExposure = toAgentToolExposureState(
-    [...matcherResult.toolExposure.exposedToolIds],
-    [...matcherResult.toolExposure.exposedDefinitions],
+    callableToolIds,
+    callableDefinitions,
     requestedToolGroupsWithAvailability,
-    [...eligibleToolIds],
+    currentEligibleToolIds,
     schemaDisclosedToolIds,
   );
   const toolIntent = matcherResult;
