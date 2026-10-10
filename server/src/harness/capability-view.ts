@@ -63,6 +63,7 @@ export interface CapabilityViewEntry {
 export interface AgentCapabilityView {
   scopeId: string;
   scopeKind: AgentCapabilityScopeKind;
+  maxDisclosure: CapabilityDisclosure;
   capabilities: Map<string, CapabilityViewEntry>;
 }
 
@@ -189,6 +190,7 @@ export const projectAgentCapabilityView = (
   return {
     scopeId: scope.scopeId,
     scopeKind: scope.kind,
+    maxDisclosure: ceiling,
     capabilities,
   };
 };
@@ -220,7 +222,9 @@ export const withCapabilityDisclosure = (
   const entry = view.capabilities.get(capabilityId);
   if (!entry) return view;
 
-  const nextDisclosure = entry.discoverable ? disclosure : "hidden";
+  const nextDisclosure = entry.discoverable
+    ? clampDisclosure(disclosure, view.maxDisclosure)
+    : "hidden";
   if (nextDisclosure === entry.disclosure) return view;
 
   const capabilities = new Map(view.capabilities);
