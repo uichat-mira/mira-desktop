@@ -496,6 +496,7 @@ const toPiTool = (input: {
    */
   schemaDisclosed: boolean;
   promoteSchema?: () => boolean;
+  markSchemaExecutionAttempted?: () => void;
   parentSignal?: AbortSignal;
 }): AgentTool<any> => ({
   name: input.binding.id,
@@ -565,6 +566,7 @@ const toPiTool = (input: {
         recordToolCall: true,
         ledger: input.ledger,
       });
+      input.markSchemaExecutionAttempted?.();
       return toolResult;
     } finally {
       combined.cleanup();
@@ -782,12 +784,14 @@ export const runPiSkillAgent = async (input: {
   const disclosedToolIds = input.disclosedToolIds
     ? new Set(input.disclosedToolIds)
     : undefined;
+  const pendingSchemaExecutions = new Set<string>();
   const stateReportingTool = createStateReportingTool({ ledger });
   let agent: Agent;
 
   const promoteToolSchema = (toolId: string) => {
     if (!disclosedToolIds || disclosedToolIds.has(toolId)) return false;
     disclosedToolIds.add(toolId);
+    pendingSchemaExecutions.add(toolId);
 
     // Disclosure is execution context, not authority. Persist the newly exact-
     // known Tool into the local SkillContext so an approval checkpoint/resume
@@ -818,6 +822,13 @@ export const runPiSkillAgent = async (input: {
         schemaDisclosed,
         ...(disclosedToolIds && !schemaDisclosed
           ? { promoteSchema: () => promoteToolSchema(binding.id) }
+          : {}),
+        ...(disclosedToolIds && schemaDisclosed
+          ? {
+              markSchemaExecutionAttempted: () => {
+                pendingSchemaExecutions.delete(binding.id);
+              },
+            }
           : {}),
         parentSignal: input.execution.signal,
       });
@@ -1090,6 +1101,33 @@ export const runPiSkillAgent = async (input: {
 
   const status = completion.status as SkillAgentExecutionResult["status"];
   const summary = asNonEmptyString(completion.summary);
+
+  if (status === "completed" && pendingSchemaExecutions.size > 0) {
+    const pendingTools = [...pendingSchemaExecutions].sort();
+    await ledger.updateWorkingState({
+      phase: "failed",
+      currentJudgement:
+        "Tool schema 已披露，但对应的 governed Tool 调用尚未真正执行。",
+      currentAction: "拒绝过早完成 subAgent",
+      nextAction: "使用已披露的完整 schema 重试 Tool 调用",
+      blockingReason: `Pending schema-disclosed Tool execution: ${pendingTools.join(", ")}`,
+    });
+    await ledger.emitTrace(
+      "subagent.failed",
+      "subAgent 在 schema promotion 后过早完成",
+      { pendingSchemaExecutions: pendingTools },
+    );
+    return failResult({
+      skillId: primary.id,
+      error: `subAgent completed before executing promoted Tool(s): ${pendingTools.join(", ")}`,
+      recoverable: true,
+      evidence,
+      artifacts,
+      toolCalls,
+      ledger,
+    });
+  }
+
   const completionRequirements =
     status === "needs_input"
       ? normalizeCompletionRequirements(completion.requirements)
