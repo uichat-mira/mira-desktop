@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   executeMcpInvocationStream,
   getExternalMcpServers,
@@ -39,6 +40,7 @@ const emptyRunState: CapabilityRunState = {
 };
 
 export function useCapabilities() {
+  const { t } = useTranslation();
   const [internalTools, setInternalTools] = useState<HarnessToolDefinition[]>([]);
   const [externalServers, setExternalServers] = useState<ExternalMcpServerRecord[]>([]);
   const [manualToolIds, setManualToolIds] = useState<Set<string>>(new Set());
@@ -164,8 +166,9 @@ export function useCapabilities() {
         caseDefinition: selectedCase,
         tool: selectedTool,
         workspaceRoot: workspaceSelection?.rootPath ?? null,
+        translate: t,
       }),
-    [selectedCase, selectedTool, workspaceSelection?.rootPath],
+    [selectedCase, selectedTool, t, workspaceSelection?.rootPath],
   );
 
   const displayInvocation = runState.resolutionInvocation ?? runState.invocation;
@@ -366,6 +369,7 @@ export function useCapabilities() {
       caseDefinition: nextCase ?? null,
       tool: nextTool,
       workspaceRoot: workspaceSelection?.rootPath ?? null,
+      translate: t,
     });
 
     if (

@@ -9,6 +9,7 @@ import {
   Play,
   RefreshCw,
   ShieldCheck,
+  Settings2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,8 +30,11 @@ import CapabilitiesSidebar, {
   type CapabilityGroupFilter,
 } from "./components/CapabilitiesSidebar";
 import { useCapabilities } from "./hooks/useCapabilities";
+import WebSearchConfigPanel from "@/features/Settings/components/WebSearchConfigPanel";
+import { useWebSearchConfig } from "@/features/Settings/hooks/useWebSearchConfig";
 import {
   resolveCapabilityReadiness,
+  resolveToolReadiness,
   stringifyCapabilityValue,
 } from "./utils";
 
@@ -46,7 +50,10 @@ export default function CapabilitiesPage() {
   const [catalogFilter, setCatalogFilter] = useState<CapabilityGroupFilter>("all");
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [detailTool, setDetailTool] = useState<CapabilityTool | null>(null);
-  const [detailTab, setDetailTab] = useState<"input" | "output" | "capabilities">("input");
+  const [detailTab, setDetailTab] = useState<
+    "input" | "output" | "capabilities" | "config"
+  >("input");
+  const webSearchConfig = useWebSearchConfig(detailTool?.id === "web_search");
   const [detailCase, setDetailCase] = useState<CapabilityAcceptanceCase | null>(null);
   const [resultConsoleOpen, setResultConsoleOpen] = useState(Boolean(invocation));
   const toolGroups = useMemo(
@@ -74,7 +81,8 @@ export default function CapabilitiesPage() {
   );
 
   const getToolReadiness = (tool: CapabilityTool) => {
-    if (tool.runtimeReadiness?.state) return tool.runtimeReadiness.state;
+    const runtimeReadiness = resolveToolReadiness(tool);
+    if (runtimeReadiness !== "ready") return runtimeReadiness;
     if (tool.capabilities?.workspaceBound && !capabilities.workspaceSelection?.rootPath) {
       return "unavailable" as const;
     }
@@ -259,6 +267,7 @@ export default function CapabilitiesPage() {
                     caseDefinition,
                     tool: selectedTool,
                     workspaceRoot: capabilities.workspaceSelection?.rootPath ?? null,
+                    translate: t,
                   });
                   const runningThisCase =
                     (capabilities.isPreparingCase || capabilities.runState.isRunning) &&
@@ -529,20 +538,45 @@ export default function CapabilitiesPage() {
                   label: t("settings.development.capabilities.detailTabs.capabilities"),
                   icon: <ShieldCheck className="h-4 w-4" />,
                 },
+                ...(detailTool.id === "web_search"
+                  ? [{
+                      value: "config" as const,
+                      label: t("settings.development.capabilities.detailTabs.config"),
+                      icon: <Settings2 className="h-4 w-4" />,
+                    }]
+                  : []),
               ]}
               value={detailTab}
               onChange={setDetailTab}
             />
 
-            <CodeBlock className="min-h-0 flex-1 !overflow-auto whitespace-pre-wrap break-words">
-              {stringifyCapabilityValue(
-                detailTab === "input"
-                  ? detailTool.inputSchema
-                  : detailTab === "output"
-                    ? detailTool.outputSchema
-                    : detailTool.capabilities,
-              )}
-            </CodeBlock>
+            {detailTab === "config" && detailTool.id === "web_search" ? (
+              <WebSearchConfigPanel
+                config={webSearchConfig.config}
+                isLoading={webSearchConfig.isLoading}
+                isSaving={webSearchConfig.isSaving}
+                loadError={webSearchConfig.loadError}
+                onReload={webSearchConfig.reload}
+                onChange={(update) => webSearchConfig.setConfig(update)}
+                onSave={async () => {
+                  const saved = await webSearchConfig.save();
+                  if (saved) {
+                    await capabilities.refresh();
+                  }
+                  return saved;
+                }}
+              />
+            ) : (
+              <CodeBlock className="min-h-0 flex-1 !overflow-auto whitespace-pre-wrap break-words">
+                {stringifyCapabilityValue(
+                  detailTab === "input"
+                    ? detailTool.inputSchema
+                    : detailTab === "output"
+                      ? detailTool.outputSchema
+                      : detailTool.capabilities,
+                )}
+              </CodeBlock>
+            )}
           </div>
         ) : null}
       </ModalShell>
