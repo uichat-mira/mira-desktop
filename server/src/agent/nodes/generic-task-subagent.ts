@@ -176,6 +176,11 @@ export const createGenericTaskSubAgentNode = (
         delegatedAuthorityToolIds: capabilityResolution.delegatedAuthorityToolIds,
         childDiscoverableToolIds: capabilityResolution.discoverableToolIds,
         childAllowedToolIds: capabilityResolution.allowedTools,
+        childCompactMetadataToolIds: capabilityResolution.compactMetadata.map(
+          (tool) => tool.capabilityId,
+        ),
+        childCompactMetadata: capabilityResolution.compactMetadata,
+        capabilityDisclosureTrace: capabilityResolution.disclosureTrace,
         capabilityViewTrace: capabilityResolution.trace,
         recursiveDelegationExposed: capabilityResolution.allowedTools.includes(
           GENERIC_TASK_DELEGATE_TOOL_ID,

@@ -2,6 +2,14 @@
  * 上下文准备节点：收集线程消息、可用工具、策略允许的自动工具列表和按需 Skill 语义。
  */
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability";
+import {
+  createMainAgentCapabilityScope,
+  projectAgentCapabilityView,
+} from "@/harness/capability-view";
+import {
+  describeCapabilityDisclosure,
+  projectCapabilityToolMetadata,
+} from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
@@ -396,6 +404,32 @@ export const prepareContextNode = async (
   );
   const toolIntent = matcherResult;
 
+  // The Main Agent consumes the same Capability View disclosure semantics as a
+  // delegated Child. Its scope narrows the authority+readiness envelope to this
+  // turn's eligible set and marks the exposed tools as schema-disclosed because
+  // Harness materializes their full schemas for this Planner turn. Compact
+  // metadata (no schemas) stays available as the lighter disclosure stage.
+  const mainAgentCapabilityView = projectAgentCapabilityView({
+    scope: createMainAgentCapabilityScope({
+      scopeId: "main_agent",
+      eligibleCapabilityIds: [...eligibleToolIds],
+      discoverableCapabilityIds: [...matcherResult.toolExposure.exposedToolIds],
+    }),
+    definitions: toolDefinitions,
+    requestedDisclosure: new Map(
+      matcherResult.toolExposure.exposedToolIds.map(
+        (toolId) => [toolId, "schema"] as const,
+      ),
+    ),
+  });
+  const capabilityDisclosureTrace = describeCapabilityDisclosure(
+    mainAgentCapabilityView,
+  );
+  const compactCapabilityMetadata = projectCapabilityToolMetadata(
+    mainAgentCapabilityView,
+    toolDefinitions,
+  );
+
   // Skill matching/disclosure is a first-class observable event. Do not force
   // operators to infer Skill activation from model behavior or buried fields.
   await emitStepNode(emit, {
@@ -483,6 +517,14 @@ export const prepareContextNode = async (
       wenshuRegisteredCapabilityIds: wenshuCapabilityState.registeredCapabilityIds,
       codebaseExploreExposed: toolExposure.exposedTools.includes("codebase_explore"),
       externalExpertAvailable,
+      capabilityMetadataToolIds: compactCapabilityMetadata.map(
+        (tool) => tool.capabilityId,
+      ),
+      capabilityMetadataDisclosedCount:
+        capabilityDisclosureTrace.metadataDisclosedCount,
+      capabilitySchemaDisclosedCount:
+        capabilityDisclosureTrace.schemaDisclosedCount,
+      capabilityDisclosureTrace,
       currentTaskFrameWriter:
         "prepareContextNode attaches SkillContext and a bounded Skill runtime projection; Planner remains the sole writer of goal/subtask/completion inference",
     },

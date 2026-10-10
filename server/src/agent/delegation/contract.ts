@@ -4,6 +4,12 @@ import {
   projectAgentCapabilityView,
   type AgentCapabilityViewTrace,
 } from "@/harness/capability-view.js";
+import {
+  describeCapabilityDisclosure,
+  projectCapabilityToolMetadata,
+  type CapabilityDisclosureTrace,
+  type CapabilityToolMetadata,
+} from "@/harness/capability-disclosure.js";
 import { listToolDefinitions } from "@/harness/registry.js";
 import type { SkillContext } from "@/skills/context/types.js";
 import type {
@@ -190,6 +196,14 @@ export interface GenericChildCapabilityResolution {
   discoverableToolIds: string[];
   /** Child execution allowlist: discoverable set minus the delegation protocol. */
   allowedTools: string[];
+  /**
+   * Compact Tool metadata projection (no full schemas) for the Child's
+   * discoverable set. This is the metadata disclosure stage the Child starts
+   * from; full schemas are materialized per exact known Tool at execution time.
+   */
+  compactMetadata: CapabilityToolMetadata[];
+  /** Per-capability disclosure trace distinguishing metadata from schema. */
+  disclosureTrace: CapabilityDisclosureTrace;
   trace: AgentCapabilityViewTrace;
 }
 
@@ -215,12 +229,13 @@ export const resolveGenericChildCapabilityView = (input: {
     ...new Set(input.delegatedAuthorityToolIds),
   ].filter(Boolean);
 
+  const definitions = listToolDefinitions();
   const view = projectAgentCapabilityView({
     scope: createGenericChildCapabilityScope({
       scopeId: GENERIC_TASK_SUBAGENT_SKILL_ID,
       eligibleCapabilityIds: delegatedAuthorityToolIds,
     }),
-    definitions: listToolDefinitions(),
+    definitions,
   });
 
   const discoverableToolIds = [...view.capabilities.values()]
@@ -233,6 +248,8 @@ export const resolveGenericChildCapabilityView = (input: {
     delegatedAuthorityToolIds,
     discoverableToolIds,
     allowedTools: discoverableToolIds,
+    compactMetadata: projectCapabilityToolMetadata(view, definitions),
+    disclosureTrace: describeCapabilityDisclosure(view),
     trace: describeAgentCapabilityView(view),
   };
 };
