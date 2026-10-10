@@ -51,10 +51,11 @@ export const resolveHarnessToolCandidatesForTurn = async (
     sandboxProfiles: input.sandboxProfiles,
   });
 
-  // Registered public tools are available to Planner. Harness does not infer
-  // task phases, domains, browser intent, sandbox suitability, terminal need,
-  // or semantic relevance to hide them. Ranking is only used when the public
-  // tool set exceeds the 20-tool context budget.
+  // Runtime readiness has already removed unavailable capabilities here.
+  // Harness still does not infer task phases, domains, browser intent, sandbox
+  // suitability, terminal need, or semantic relevance to hide ready tools.
+  // Ranking is only used when the eligible public set exceeds the 20-tool
+  // context budget.
   const visibleDefinitions = exposureDecision.exposedDefinitions;
   const initialToolExposure: HarnessToolExposure = {
     exposedToolIds: visibleDefinitions.map((definition) => definition.id),
@@ -216,7 +217,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
     .filter((definition): definition is NonNullable<typeof definition> => Boolean(definition));
 
   const rankingReason =
-    "Public tool set exceeds 20; Harness ranks the available tools for this turn and exposes the top 20. No additional semantic or runtime policy filtering is applied here.";
+    "Eligible public tool set exceeds 20; Harness ranks the runtime-ready tools for this turn and exposes the top 20. Ranking adds no semantic policy filter.";
   const toolExposure: HarnessToolExposure = {
     exposedToolIds: exposedDefinitions.map((definition) => definition.id),
     exposedDefinitions,
