@@ -249,6 +249,39 @@ test("generic child materializes a full schema only for the Parent's exact-known
   assert.match(childContext.primary?.body ?? "", /- write:/);
 });
 
+test("generic child keeps discoverable Tool metadata on one prompt line", () => {
+  const multilineTool = {
+    definition: {
+      ...readTool.definition,
+      id: "multiline_read",
+      title: "Multiline Read",
+      description: "Read a file.\nSecond line should stay inside the same bullet.",
+    },
+    execute: readTool.execute,
+  };
+  registerTool(multilineTool);
+
+  const resolution = resolveGenericChildCapabilityView({
+    parentVisibleToolIds: [],
+    delegatedAuthorityToolIds: ["multiline_read"],
+  });
+  const childContext = createGenericTaskSkillContext({
+    task: { goal: "inspect one file", acceptanceCriteria: ["file inspected"] },
+    parentVisibleToolIds: [],
+    delegatedAuthorityToolIds: ["multiline_read"],
+    capabilityResolution: resolution,
+  });
+
+  assert.match(
+    childContext.primary?.body ?? "",
+    /- multiline_read: Read a file\. Second line should stay inside the same bullet\./,
+  );
+  assert.doesNotMatch(
+    childContext.primary?.body ?? "",
+    /- multiline_read: Read a file\.\nSecond line/,
+  );
+});
+
 test("generic child may start with only metadata when Parent has no exact-known Tool", () => {
   const resolution = resolveGenericChildCapabilityView({
     parentVisibleToolIds: [],
