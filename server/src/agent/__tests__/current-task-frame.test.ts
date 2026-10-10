@@ -202,6 +202,8 @@ test("prepareContextNode initializes runtime toolExposure independently from too
         exposedDefinitions: [readOpen],
         reason: ["matched read_open"],
       },
+      // Pre-ranking authority+readiness envelope is broader than disclosure.
+      eligibleToolIds: ["read_open", "web_search"],
       exposureReasons: ["matched read_open"],
     });
 
@@ -221,6 +223,7 @@ test("prepareContextNode initializes runtime toolExposure independently from too
           capabilities: { sideEffect: "none", requiresApproval: false },
         },
       ],
+      eligibleTools: ["read_open", "web_search"],
     });
     const conflictingState = createBaseState({
       ...patch,

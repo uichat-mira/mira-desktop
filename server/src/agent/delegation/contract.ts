@@ -1,3 +1,10 @@
+import {
+  createGenericChildCapabilityScope,
+  describeAgentCapabilityView,
+  projectAgentCapabilityView,
+  type AgentCapabilityViewTrace,
+} from "@/harness/capability-view.js";
+import { listToolDefinitions } from "@/harness/registry.js";
 import type { SkillContext } from "@/skills/context/types.js";
 import type {
   AgentToolCallRequest,
@@ -174,13 +181,76 @@ export const createGenericTaskResumeExposure = (input: {
   };
 };
 
+export interface GenericChildCapabilityResolution {
+  /** Parent's current disclosed/visible Tool IDs. Context only, not a ceiling. */
+  parentVisibleToolIds: string[];
+  /** Parent authority+readiness envelope the Child ceiling is derived from. */
+  delegatedAuthorityToolIds: string[];
+  /** Child task-local discoverable set derived from the scoped Capability View. */
+  discoverableToolIds: string[];
+  /** Child execution allowlist: discoverable set minus the delegation protocol. */
+  allowedTools: string[];
+  trace: AgentCapabilityViewTrace;
+}
+
+/**
+ * Build the Generic Child scoped Capability View from the Parent authority +
+ * readiness envelope instead of the Parent's current visible/disclosed Tool
+ * snapshot. A Tool the Parent's ranked disclosure omitted can still be
+ * discoverable to the Child when it is inside the delegated envelope and
+ * runtime-ready; a Tool outside the envelope stays unavailable even when it is
+ * globally registered and ready. The Parent visible set is retained as trace
+ * context only.
+ *
+ * This is a visibility projection: it never grants authority, never registers a
+ * Tool, and never makes an unavailable Tool ready. Harness Policy / Approval
+ * still governs every Child invocation.
+ */
+export const resolveGenericChildCapabilityView = (input: {
+  parentVisibleToolIds?: readonly string[];
+  delegatedAuthorityToolIds: readonly string[];
+}): GenericChildCapabilityResolution => {
+  const parentVisibleToolIds = [...(input.parentVisibleToolIds ?? [])];
+  const delegatedAuthorityToolIds = [
+    ...new Set(input.delegatedAuthorityToolIds),
+  ].filter(Boolean);
+
+  const view = projectAgentCapabilityView({
+    scope: createGenericChildCapabilityScope({
+      scopeId: GENERIC_TASK_SUBAGENT_SKILL_ID,
+      eligibleCapabilityIds: delegatedAuthorityToolIds,
+    }),
+    definitions: listToolDefinitions(),
+  });
+
+  const discoverableToolIds = [...view.capabilities.values()]
+    .filter((entry) => entry.discoverable)
+    .map((entry) => entry.capabilityId)
+    .filter((toolId) => toolId !== GENERIC_TASK_DELEGATE_TOOL_ID);
+
+  return {
+    parentVisibleToolIds,
+    delegatedAuthorityToolIds,
+    discoverableToolIds,
+    allowedTools: discoverableToolIds,
+    trace: describeAgentCapabilityView(view),
+  };
+};
+
 export const createGenericTaskSkillContext = (input: {
   task: GenericTaskSpec;
-  exposedHarnessToolIds: string[];
+  parentVisibleToolIds?: readonly string[];
+  delegatedAuthorityToolIds: readonly string[];
+  /** Optional precomputed resolution so callers can reuse it for trace. */
+  capabilityResolution?: GenericChildCapabilityResolution;
 }): SkillContext => {
-  const allowedTools = [...new Set(input.exposedHarnessToolIds)]
-    .filter(Boolean)
-    .filter((toolId) => toolId !== GENERIC_TASK_DELEGATE_TOOL_ID);
+  const resolution =
+    input.capabilityResolution ??
+    resolveGenericChildCapabilityView({
+      parentVisibleToolIds: input.parentVisibleToolIds,
+      delegatedAuthorityToolIds: input.delegatedAuthorityToolIds,
+    });
+  const allowedTools = resolution.allowedTools;
   const taskPacket = JSON.stringify(input.task, null, 2);
 
   return {

@@ -57,8 +57,12 @@ export const resolveHarnessToolCandidatesForTurn = async (
   // Ranking is only used when the eligible public set exceeds the 20-tool
   // context budget.
   const visibleDefinitions = exposureDecision.exposedDefinitions;
+  // The pre-ranking eligible surface is the authority+readiness envelope. It is
+  // captured before disclosure narrowing so a delegated scope can never be
+  // capped by the ranked <=20 Planner disclosure.
+  const eligibleToolIds = visibleDefinitions.map((definition) => definition.id);
   const initialToolExposure: HarnessToolExposure = {
-    exposedToolIds: visibleDefinitions.map((definition) => definition.id),
+    exposedToolIds: eligibleToolIds,
     exposedDefinitions: visibleDefinitions,
     reason: exposureDecision.reason,
     blockedCapabilityIds: exposureDecision.blockedCapabilityIds,
@@ -76,6 +80,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
       query: input.query,
       source,
       toolCandidates,
+      eligibleToolIds,
       toolExposure: {
         ...initialToolExposure,
         reason: [...initialToolExposure.reason, exposureReason],
@@ -94,6 +99,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
       query: input.query,
       source,
       toolCandidates,
+      eligibleToolIds,
       toolExposure: {
         exposedToolIds: selectedDefinitions.map((definition) => definition.id),
         exposedDefinitions: selectedDefinitions,
@@ -230,6 +236,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
     query: input.query,
     source,
     toolCandidates,
+    eligibleToolIds,
     toolExposure,
     ...(embeddingResult
       ? {
