@@ -388,6 +388,15 @@ export function useToolsWorkbench(
       return;
     }
 
+    if (
+      selectedTool.id === "web_search" &&
+      (webSearchConfigState.isLoading ||
+        webSearchConfigState.isSaving ||
+        Boolean(webSearchConfigState.loadError))
+    ) {
+      return;
+    }
+
     let parsedArgs: Record<string, unknown> = {};
     try {
       parsedArgs = JSON.parse(argsDraft) as Record<string, unknown>;
@@ -495,7 +504,7 @@ export function useToolsWorkbench(
     events,
     filteredTools,
     groupedTools,
-    isLoading,
+    isLoading: isLoading || webSearchConfigState.isLoading,
     isRunning,
     isSelectingWorkspace,
     isWorkspaceLoading,

@@ -12,6 +12,8 @@ type ToolsPackagePanelProps = {
   terminalSummary: TerminalResultSummary | null;
   runStatus: "idle" | "completed" | "failed" | "cancelled" | "awaiting_approval";
   isRunning: boolean;
+  isConfigLoading?: boolean;
+  isExecuteBlocked?: boolean;
   pendingApproval: boolean;
   activeCase: { id: string; fixture?: string } | null;
   tracePanel: ReactNode;
@@ -58,6 +60,8 @@ export default function ToolsPackagePanel({
   terminalSummary,
   runStatus,
   isRunning,
+  isConfigLoading = false,
+  isExecuteBlocked = false,
   pendingApproval,
   activeCase,
   tracePanel,
@@ -84,7 +88,7 @@ export default function ToolsPackagePanel({
               variant="secondary"
               size="sm"
               onClick={onOpenArgsModal}
-              disabled={!selectedTool}
+              disabled={!selectedTool || isConfigLoading}
             >
               <Settings2 className="h-4 w-4" />
               {labels.config}
@@ -93,7 +97,7 @@ export default function ToolsPackagePanel({
               variant="primary"
               size="sm"
               onClick={onRun}
-              disabled={isRunning || !selectedTool}
+              disabled={isRunning || !selectedTool || isExecuteBlocked}
             >
               {isRunning ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               {labels.execute}

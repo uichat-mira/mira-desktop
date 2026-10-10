@@ -558,7 +558,13 @@ export default function CapabilitiesPage() {
                 loadError={webSearchConfig.loadError}
                 onReload={webSearchConfig.reload}
                 onChange={(update) => webSearchConfig.setConfig(update)}
-                onSave={webSearchConfig.save}
+                onSave={async () => {
+                  const saved = await webSearchConfig.save();
+                  if (saved) {
+                    await capabilities.refresh();
+                  }
+                  return saved;
+                }}
               />
             ) : (
               <CodeBlock className="min-h-0 flex-1 !overflow-auto whitespace-pre-wrap break-words">

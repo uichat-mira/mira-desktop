@@ -175,6 +175,7 @@ vi.mock("@/features/Settings/hooks/useWebSearchConfig", () => ({
 describe("CapabilitiesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    webSearchConfigState.save.mockResolvedValue(true);
     capabilities.cases = [
       {
         id: "core-approval-boundary",
@@ -550,6 +551,7 @@ describe("CapabilitiesPage", () => {
       }),
     );
     expect(webSearchConfigState.save).toHaveBeenCalledOnce();
+    await waitFor(() => expect(capabilities.refresh).toHaveBeenCalledOnce());
   });
 
   it("shows persistent Terminal controls on the sidebar Capability surface", async () => {

@@ -91,6 +91,14 @@ export default function ToolsSettings() {
             terminalSummary={workbench.terminalSummary}
             runStatus={workbench.runStatus}
             isRunning={workbench.isRunning}
+            isConfigLoading={
+              workbench.selectedTool?.id === "web_search" && workbench.webSearchConfigLoading
+            }
+            isExecuteBlocked={
+              workbench.selectedTool?.id === "web_search" &&
+              (workbench.webSearchConfigLoading || workbench.webSearchConfigSaving ||
+                Boolean(workbench.webSearchConfigLoadError))
+            }
             pendingApproval={Boolean(workbench.pendingApproval)}
             activeCase={workbench.activeCase}
             tracePanel={
