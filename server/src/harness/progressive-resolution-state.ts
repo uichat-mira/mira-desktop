@@ -1,6 +1,7 @@
 import type { ToolDefinition } from "../mcp/core/definitions.js";
 import type { CapabilityDisclosure } from "./capability-view.js";
 import type { CapabilityResolutionPath } from "./candidates-core/capability-resolution.js";
+import type { HarnessCapabilityProfile } from "./profiles/types.js";
 import {
   resolveToolRuntimeReadiness,
   type HarnessToolRuntimeReadiness,
@@ -68,6 +69,12 @@ export interface ProgressiveResolutionBudgetUsage {
 
 export interface ProgressiveResolutionState {
   readonly budget: ProgressiveResolutionBudgetUsage;
+  /**
+   * Capability disclosure keyed by canonical Tool id. The resolver may report a
+   * grouped capability-profile id, but callers expand it to its supporting Tool
+   * ids before recording, so reconciliation and Planner schema disclosure stay
+   * aligned with the per-Tool registry/readiness authority model.
+   */
   readonly disclosure: Readonly<Record<string, CapabilityDisclosure>>;
   readonly trace: readonly ProgressiveResolutionTraceEvent[];
   readonly exhausted: boolean;
@@ -237,6 +244,30 @@ export const resolveAndDiscloseCapability = (
   return { state: next, applied: true };
 };
 
+/**
+ * Maps a Progressive Resolution capability key back to the canonical Tool ids
+ * that own its registry, authority and readiness.
+ *
+ * Progressive Resolution may resolve a grouped capability profile (for example
+ * `workspace_lookup`, whose `supportingToolIds` are `glob`/`grep`/`list`/`read`)
+ * while the authoritative registry, eligibility envelope and readiness gate are
+ * all defined per concrete Tool id. Reusing the existing capability-profile
+ * Profile -> supportingToolIds mapping keeps persisted disclosure aligned with
+ * the Tool identity used by reconciliation, schema disclosure and Planner
+ * exposure, instead of silently dropping a grouped snapshot on resume. A key
+ * that is already a canonical Tool id (including one-to-one fallback profiles)
+ * maps to itself.
+ */
+export const createCapabilityToolIdResolver = (
+  profiles: readonly HarnessCapabilityProfile[],
+): ((capabilityId: string) => readonly string[]) => {
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  return (capabilityId: string) => {
+    const profile = profileById.get(capabilityId);
+    return profile ? profile.supportingToolIds : [capabilityId];
+  };
+};
+
 export interface ReconcileProgressiveResolutionInput {
   state: ProgressiveResolutionState;
   /** Current authoritative registry definitions. */
@@ -247,17 +278,25 @@ export interface ReconcileProgressiveResolutionInput {
    */
   eligibleCapabilityIds?: readonly string[];
   readiness?: (capabilityId: string) => HarnessToolRuntimeReadiness;
+  /**
+   * Maps a persisted capability key to its canonical Tool ids. Defaults to
+   * treating the key itself as a Tool id. Pass `createCapabilityToolIdResolver`
+   * when disclosure may be keyed by a grouped capability profile.
+   */
+  resolveToolIds?: (capabilityId: string) => readonly string[];
 }
 
 /**
  * Reconcile persisted visibility with the current authoritative registry and
  * readiness.
  *
- * A capability is dropped from persisted disclosure when it was unregistered
- * (revocation), fell outside the current eligibility envelope (authority
- * revocation), or is currently runtime-unavailable (readiness loss). This runs
- * on every restore so a stale snapshot can never keep surfacing a capability
- * that the live runtime no longer permits.
+ * A capability is dropped from persisted disclosure when every canonical Tool
+ * it maps to was unregistered (revocation), fell outside the current
+ * eligibility envelope (authority revocation), or is currently
+ * runtime-unavailable (readiness loss). This runs on every restore so a stale
+ * snapshot can never keep surfacing a capability that the live runtime no
+ * longer permits, while a still-authoritative grouped capability keeps its
+ * legitimate disclosure.
  *
  * The budget usage is deliberately preserved: reconciliation is not a fresh
  * resolution pass and must not hand a resumed run a new budget.
@@ -272,12 +311,33 @@ export const reconcileProgressiveResolutionState = (
   const readiness =
     input.readiness ??
     ((capabilityId: string) => resolveToolRuntimeReadiness(capabilityId));
+  const resolveToolIds =
+    input.resolveToolIds ?? ((capabilityId: string) => [capabilityId]);
 
   const disclosure: Record<string, CapabilityDisclosure> = {};
   for (const [capabilityId, level] of Object.entries(input.state.disclosure)) {
-    if (!definitions.has(capabilityId)) continue;
-    if (eligible && !eligible.has(capabilityId)) continue;
-    if (readiness(capabilityId).state === "unavailable") continue;
+    const toolIds = resolveToolIds(capabilityId);
+    if (toolIds.length === 0) continue;
+
+    const registeredToolIds = toolIds.filter((toolId) => definitions.has(toolId));
+    if (registeredToolIds.length === 0) continue;
+
+    const authorizedToolIds = eligible
+      ? registeredToolIds.filter((toolId) => eligible.has(toolId))
+      : registeredToolIds;
+    if (authorizedToolIds.length === 0) continue;
+
+    // Readiness loss wins over stale persisted visibility. The capability is
+    // dropped only when none of its canonical Tools is currently ready; a
+    // partially degraded group keeps the disclosure that is still authoritative.
+    if (
+      authorizedToolIds.every(
+        (toolId) => readiness(toolId).state === "unavailable",
+      )
+    ) {
+      continue;
+    }
+
     disclosure[capabilityId] = level;
   }
 

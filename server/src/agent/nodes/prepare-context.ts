@@ -14,8 +14,11 @@ import {
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
+import { resolveHarnessCapabilityProfiles } from "@/harness/profiles";
 import {
+  createCapabilityToolIdResolver,
   createProgressiveResolutionState,
+  readCapabilityDisclosure,
   recordProgressiveResolutionSearch,
   recordProgressiveResolutionSelection,
   reconcileProgressiveResolutionState,
@@ -489,6 +492,10 @@ export const prepareContextNode = async (
     toolDefinitions,
     matcherResult.toolExposure.exposedDefinitions,
   );
+  const capabilityProfiles = resolveHarnessCapabilityProfiles(capabilityDefinitions);
+  const resolveCapabilityToolIds =
+    createCapabilityToolIdResolver(capabilityProfiles);
+
   const initialMainAgentCapabilityView = projectAgentCapabilityView({
     scope: createMainAgentCapabilityScope({
       scopeId: "main_agent",
@@ -497,37 +504,14 @@ export const prepareContextNode = async (
     }),
     definitions: capabilityDefinitions,
   });
-
   const capabilityDisclosureTransitions: CapabilityDisclosureTransition[] = [];
   let mainAgentCapabilityView = initialMainAgentCapabilityView;
-  for (const toolId of matcherResult.toolExposure.exposedToolIds) {
-    const promoted = promoteCapabilitySchema({
-      view: mainAgentCapabilityView,
-      capabilityId: toolId,
-      definitions: capabilityDefinitions,
-    });
-    mainAgentCapabilityView = promoted.view;
-    capabilityDisclosureTransitions.push(promoted.transition);
-  }
-
-  const schemaDisclosedToolIds = new Set(
-    [...mainAgentCapabilityView.capabilities.values()]
-      .filter((entry) => entry.discoverable && entry.disclosure === "schema")
-      .map((entry) => entry.capabilityId),
-  );
-  const capabilityDisclosureTrace = describeCapabilityDisclosure(
-    mainAgentCapabilityView,
-  );
-  const compactCapabilityMetadata = projectCapabilityToolMetadata(
-    mainAgentCapabilityView,
-    capabilityDefinitions,
-  );
 
   // Matcher exposure can be stale relative to Harness readiness. Keep compact
   // metadata in the Capability View, but only currently eligible Tools may stay
   // in the Planner-callable ToolExposure. Schema disclosure is not the filter:
   // a metadata-stage Tool remains exposed when it is otherwise eligible.
-  const currentEligibleToolIds = [...mainAgentCapabilityView.capabilities.values()]
+  const currentEligibleToolIds = [...initialMainAgentCapabilityView.capabilities.values()]
     .filter((entry) => entry.eligible)
     .map((entry) => entry.capabilityId);
   const currentEligibleToolIdSet = new Set(currentEligibleToolIds);
@@ -550,13 +534,18 @@ export const prepareContextNode = async (
     state: state.progressiveResolution ?? createProgressiveResolutionState(),
     definitions: capabilityDefinitions,
     eligibleCapabilityIds: currentEligibleToolIds,
+    // Disclosure is recorded under canonical Tool ids, but reconcile also
+    // resolves a grouped capability-profile key through the authoritative
+    // Profile -> supportingToolIds mapping so a resumed snapshot is never
+    // cleared merely because its key is a profile rather than a Tool id.
+    resolveToolIds: resolveCapabilityToolIds,
   });
+  const resolutionPath = matcherResult.resolution?.path;
   if (matcherResult.resolution) {
-    const resolutionPath = matcherResult.resolution.path;
     progressiveResolution = recordProgressiveResolutionSearch(
       progressiveResolution,
       {
-        path: resolutionPath,
+        path: matcherResult.resolution.path,
         modelCalls: matcherResult.resolution.trace.modelCalls,
         detail: matcherResult.resolution.trace.reason,
       },
@@ -566,20 +555,56 @@ export const prepareContextNode = async (
         progressiveResolution,
         {
           capabilityId: candidate.capabilityId,
-          path: resolutionPath,
+          path: matcherResult.resolution.path,
           detail: candidate.reason,
         },
       );
-      // Resolving a candidate expands its capability detail to the full schema
-      // stage, which is the only step that consumes the resolution budget.
-      progressiveResolution = resolveAndDiscloseCapability(progressiveResolution, {
-        capabilityId: candidate.capabilityId,
-        target: "schema",
-        path: resolutionPath,
-        detail: candidate.reason,
-      }).state;
     }
   }
+
+  // Resolution budget gate. The Progressive Resolution state is the single
+  // source of truth for which newly expanded capability schemas reach the
+  // Planner: each concretely disclosed Tool schema spends exactly one step,
+  // already-disclosed Tools are idempotent and free (so ordinary continuation
+  // and approval/resume never re-charge), and a Tool refused after exhaustion
+  // stays compact-metadata only with a transparent unresolved gap. The
+  // Capability View still clamps every promotion to the authoritative
+  // readiness/eligibility/discoverability envelope, so the budget never grants
+  // authority and exhaustion never marks the task complete.
+  const schemaDisclosedToolIds = new Set<string>();
+  for (const toolId of callableToolIds) {
+    // An already-disclosed Tool is free and idempotent: continuation and
+    // approval/resume must not re-spend budget or append duplicate trace.
+    if (readCapabilityDisclosure(progressiveResolution, toolId) !== "schema") {
+      const disclosure = resolveAndDiscloseCapability(progressiveResolution, {
+        capabilityId: toolId,
+        target: "schema",
+        ...(resolutionPath ? { path: resolutionPath } : {}),
+        detail: "Planner tool exposure schema disclosure",
+      });
+      progressiveResolution = disclosure.state;
+      if (!disclosure.applied) continue;
+    }
+
+    const promoted = promoteCapabilitySchema({
+      view: mainAgentCapabilityView,
+      capabilityId: toolId,
+      definitions: capabilityDefinitions,
+    });
+    mainAgentCapabilityView = promoted.view;
+    capabilityDisclosureTransitions.push(promoted.transition);
+    if (promoted.transition.schemaMaterialized) {
+      schemaDisclosedToolIds.add(toolId);
+    }
+  }
+
+  const capabilityDisclosureTrace = describeCapabilityDisclosure(
+    mainAgentCapabilityView,
+  );
+  const compactCapabilityMetadata = projectCapabilityToolMetadata(
+    mainAgentCapabilityView,
+    capabilityDefinitions,
+  );
 
   const toolExposure = toAgentToolExposureState(
     callableToolIds,
