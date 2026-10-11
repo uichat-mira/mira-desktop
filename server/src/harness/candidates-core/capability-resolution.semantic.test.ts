@@ -63,6 +63,17 @@ describe("task-model capability resolver parsing", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("rejects explanatory prose even when it mentions only one candidate id", async () => {
+    taskModel.collectTaskModelText.mockResolvedValue(
+      "NONE; news_research is not appropriate",
+    );
+    const resolver = createTaskModelCapabilityResolver(capabilities);
+
+    await expect(
+      resolver({ query: "show news", candidates }),
+    ).resolves.toBeUndefined();
+  });
+
   it("matches the short sibling only when that exact id is the sole candidate token", async () => {
     taskModel.collectTaskModelText.mockResolvedValue("news");
     const resolver = createTaskModelCapabilityResolver(capabilities);
