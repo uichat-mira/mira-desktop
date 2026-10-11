@@ -157,19 +157,22 @@ Pi Loop 没有全局 iteration cap；schema replan 与 recoverable failure 有�
 ```text
 eligible concrete tools
   -> <= 20：全部暴露
-  -> > 20：deterministic exact / capability-domain structural preflight
-            （命中时 0 ranking model call）
-  -> 否则 capability profile / embedding / rerank
-  -> concrete tool expansion
+  -> > 20：Progressive Resolution over compact Capability View
+            exact canonical
+              -> capability/domain structural
+              -> lexical/BM25
+              -> only genuine ambiguity: cheap semantic Resolver
+  -> 按 cascade candidate 顺序展开 concrete tools
   -> 去重
+  -> 未占满的槽位按原 eligible 顺序 deterministic fill
   -> 前 20
 ```
 
-当前没有 `minScore` 淘汰和核心工具固定名额。Recall 与 rerank 只服务上下文压缩，不直接决定 invocation。Deterministic preflight 同样只决定 disclosure 顺序，不授予执行权限：命中后仍走 Normalize / Policy / Approval / Harness。Lexical/BM25 与 cheap semantic Resolver 作为 Progressive Resolution 的 Tool Search fallback，只在 deterministic 证据真正歧义时使用（Resolution 级 model call 由 budget seam 限制）。
+当前没有 `minScore` 淘汰和核心工具固定名额。对于 >20 的 eligible surface，Planner 的 20-slot disclosure 不再由本地 embedding/rerank top-20 驱动：Progressive Resolution 先按 exact / structural / lexical 证据排序，只有 genuine ambiguity 才允许一次 bounded cheap semantic Resolver；resolved candidates 保持 cascade relevance 顺序，剩余槽位再按原 eligible 顺序 deterministic fill。该排序只压缩上下文并决定 disclosure 顺序，不授予执行权限，命中后仍走 Normalize / Policy / Approval / Harness。旧 embedding/rerank runtime/packaging 的清理由 #245 单独治理，本卡不删除其共享基础设施。
 
 `delegate_task` 由 Agent Runtime 额外加入 Planner surface：
 
-- 不来自 Harness ranking；
+- 不来自 Harness capability resolution；
 - 不对应外部 invocation；
 - 不进入 Main Agent 普通 Normalize / Policy / ToolNode；
 - 只启动受控 Child execution；
@@ -183,7 +186,7 @@ Parent authority + readiness envelope
   -> Child task-local visible / disclosed set
 ```
 
-因此 Parent 的 ranked disclosure 漏掉的 runtime-ready Tool，只要在授权 envelope 内，仍可对 Child discoverable；envelope 之外（含未注册、未授权、runtime-unavailable）的 Tool 仍不可用；`delegate_task` 不进入 Child 面，V1 不引入递归委派。
+因此 Parent 的 turn disclosure 漏掉的 runtime-ready Tool，只要在授权 envelope 内，仍可对 Child discoverable；envelope 之外（含未注册、未授权、runtime-unavailable）的 Tool 仍不可用；`delegate_task` 不进入 Child 面，V1 不引入递归委派。
 
 ## 6. Concrete Tool 不变量
 
