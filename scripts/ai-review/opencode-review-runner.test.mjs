@@ -79,8 +79,8 @@ const cleanReview = {
 const routineRoute = Object.freeze({
   role: "routine",
   enabled: true,
-  provider: "opencode-go",
-  model: "step-5-preview-free",
+  provider: "opencode",
+  model: "mimo-v2.6-flash-free",
   variant: "none",
   credentialEnv: "OPENCODE_GO_API_KEY",
 });
@@ -214,8 +214,8 @@ test("rejects whitespace-only review fields before Control Room submission", () 
 test("builds the #47 external result envelope from the selected OpenCode route", () => {
   const submission = buildExternalSubmission(reviewPackage(), routineRoute, cleanReview, 123.9);
   assert.equal(submission.execution.engine, "opencode");
-  assert.equal(submission.execution.provider, "opencode-go");
-  assert.equal(submission.execution.model, "step-5-preview-free");
+  assert.equal(submission.execution.provider, "opencode");
+  assert.equal(submission.execution.model, "mimo-v2.6-flash-free");
   assert.equal(submission.execution.role, "routine");
   assert.equal(submission.execution.latencyMs, 123);
   assert.equal(submission.identity.headSha, HEAD_SHA);
@@ -233,7 +233,7 @@ test("external result metadata follows an alternate selected route without Contr
     25,
   );
 
-  assert.equal(submission.execution.provider, "opencode-go");
+  assert.equal(submission.execution.provider, "opencode");
   assert.equal(submission.execution.model, "deepseek-v4-flash");
   assert.equal(submission.execution.role, "routine");
 });
@@ -288,16 +288,16 @@ test("runs OpenCode with a single provider/model and a read-only tool surface", 
   );
 
   assert.deepEqual(review, cleanReview);
-  assert.equal(capturedOptions.config.model, "opencode-go/step-5-preview-free");
-  assert.deepEqual(capturedOptions.config.enabled_providers, ["opencode-go"]);
+  assert.equal(capturedOptions.config.model, "opencode/mimo-v2.6-flash-free");
+  assert.deepEqual(capturedOptions.config.enabled_providers, ["opencode"]);
   assert.equal(capturedOptions.config.permission.edit, "deny");
   assert.equal(capturedOptions.config.permission.bash, "deny");
   assert.equal(capturedOptions.config.permission.webfetch, "deny");
   assert.equal(capturedOptions.config.permission.external_directory, "deny");
-  assert.equal(capturedOptions.config.tools.read, false);
+  assert.equal(capturedOptions.config.tools.read, true);
   assert.equal(capturedOptions.config.tools.websearch, false);
-  assert.equal(capturedPrompt.body.model.providerID, "opencode-go");
-  assert.equal(capturedPrompt.body.model.modelID, "step-5-preview-free");
+  assert.equal(capturedPrompt.body.model.providerID, "opencode");
+  assert.equal(capturedPrompt.body.model.modelID, "mimo-v2.6-flash-free");
   assert.deepEqual(capturedPrompt.body.format.schema, MIRA_REVIEW_SCHEMA);
   assert.equal(capturedPrompt.body.format.retryCount, 0);
   assert.equal(closed, true);
@@ -510,7 +510,7 @@ test("workflow routes execution through OpenCode and the external result handoff
   assert.doesNotMatch(workflow, /\/api\/v1\/ai-review\/publish/);
   assert.match(workflow, /AI_REVIEW_EXTERNAL_RESULT_TOKEN/);
   assert.match(workflow, /AI_PROVIDER_OPENCODE_GO_KEY/);
-  assert.doesNotMatch(workflow, /minimax-m3|space-bunny-free|step-5-preview-free|deepseek-v4\.1-flash|deepseek-v4-(?:flash|pro)/);
+  assert.doesNotMatch(workflow, /minimax-m3|space-bunny-free|step-5-preview-free|mimo-v2\.6-flash-free|deepseek-v4\.1-flash|deepseek-v4-(?:flash|pro)/);
   assert.match(workflow, /opencode-ai@1\.18\.34/);
   assert.match(workflow, /@opencode-ai\/sdk@1\.18\.34/);
   assert.match(workflow, /import\.meta\.resolve\('@opencode-ai\/sdk'\)/);
