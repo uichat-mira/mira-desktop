@@ -460,6 +460,9 @@ describe("resolveHarnessCapabilityDiagnostics", () => {
     expect(result.registeredBlockedExternalCapabilityIds).toContain(
       blockedTool.definition.id,
     );
+    expect(result.resolution).toBeDefined();
+    expect(result.resolution?.trace.query).toBe("search product documentation");
+    expect(result.resolution?.trace.modelCalls).toBeLessThanOrEqual(1);
     expect(JSON.stringify(result)).not.toMatch(
       /bearerToken|customHeaders|envJson|top-secret-token/i,
     );

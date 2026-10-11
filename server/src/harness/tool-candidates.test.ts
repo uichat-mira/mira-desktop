@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as embedding from "@/services/internal-capabilities/local-embedding.js";
-import * as rerank from "@/services/internal-capabilities/local-rerank.js";
 import { clearHarnessRegistry, registerTool } from "./registry.js";
 import { resolveHarnessToolCandidatesForTurn } from "./tool-candidates.js";
 import { readTool } from "../mcp/tools/read.tool.js";
@@ -60,10 +58,6 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
         registerTool(createEligibleTool(`eligible_tool_${index}`));
       }
 
-      const embeddingSpy = vi
-        .spyOn(embedding, "executeLocalEmbedding")
-        .mockRejectedValue(new Error("ranking must not run"));
-
       const result = await resolveHarnessToolCandidatesForTurn({
         query: "anything",
         source: "agent_intent",
@@ -72,7 +66,6 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
         minScore: 0.99,
       });
 
-      expect(embeddingSpy).not.toHaveBeenCalled();
       expect(result.toolExposure.exposedToolIds).toHaveLength(count);
       expect(result.toolCandidates).toHaveLength(count);
     },
@@ -97,143 +90,95 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     expect(result.toolCandidates).toHaveLength(3);
   });
 
-  it("ranks only when the public tool set exceeds 20 and exposes exactly the top 20", async () => {
+  it("uses deterministic lexical resolution above 20 and keeps the full eligibility envelope", async () => {
     for (let index = 0; index < 20; index += 1) {
-      registerTool(createEligibleTool(`noise_tool_${index}`));
+      registerTool(createEligibleTool("noise_tool_" + index));
     }
-    registerTool(createEligibleTool("tail_target_tool"));
-
-    vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
-      embeddingModel: "test-embedding",
-      embeddingModelConfigId: "test-embedding-config",
-      embeddings: [
-        [1, 0],
-        ...Array.from({ length: 20 }, () => [1, 0]),
-        [0, 1],
-      ],
-    });
-    const rerankSpy = vi
-      .spyOn(rerank, "executeLocalRerank")
-      .mockImplementation(async ({ candidates }) => ({
-        rerankedCandidates: candidates
-          .map((candidate) => ({
-            id: candidate.id,
-            text: candidate.text,
-            score: candidate.id === "tail_target_tool" ? 1 : 0.1,
-            probability: candidate.id === "tail_target_tool" ? 0.99 : 0.1,
-            rank: candidate.id === "tail_target_tool" ? 1 : 2,
-          }))
-          .sort((left, right) => right.probability - left.probability),
-        rerankModel: "test-rerank",
-        rerankModelConfigId: "test-rerank-config",
-      }));
+    const target = createEligibleTool("tail_target_tool");
+    target.definition.description = "Handles the zephyrix ingestion pipeline";
+    registerTool(target);
+    const semanticResolver = vi.fn(async () => "noise_tool_0");
 
     const result = await resolveHarnessToolCandidatesForTurn({
-      query: "target",
+      query: "zephyrix",
       source: "agent_intent",
       topK: 1,
       maxTools: 1,
-      minScore: 0.99,
+      minScore: 0.9999,
+      semanticResolver,
     });
 
+    expect(semanticResolver).not.toHaveBeenCalled();
     expect(result.toolCandidates).toHaveLength(20);
     expect(result.toolExposure.exposedToolIds).toHaveLength(20);
-    // The pre-ranking authority+readiness envelope stays the full eligible set,
-    // independent of the ranked <=20 disclosure subset.
     expect(result.eligibleToolIds).toHaveLength(21);
     expect(result.eligibleToolIds).toContain("tail_target_tool");
-    expect(rerankSpy.mock.calls[0]?.[0].candidates).toHaveLength(21);
     expect(result.toolCandidates[0]?.toolId).toBe("tail_target_tool");
-    expect(result.toolCandidates[0]?.finalScore).toBe(0.99);
     expect(result.toolExposure.exposedToolIds).toContain("tail_target_tool");
-    expect(result.toolExposure.reason).toContain(
-      "Eligible public tool set exceeds 20; Harness ranks the runtime-ready tools for this turn and exposes the top 20. Ranking adds no semantic policy filter.",
-    );
+    expect(result.resolution?.path).toBe("lexical");
+    expect(result.resolution?.trace.modelCalls).toBe(0);
   });
 
-  it("uses embedding score only to break equal rerank scores", async () => {
-    for (let index = 0; index < 20; index += 1) {
-      registerTool(createEligibleTool(`tie_noise_tool_${index}`));
+  it("uses one semantic call for a genuinely ambiguous large catalog", async () => {
+    for (let index = 0; index < 19; index += 1) {
+      registerTool(createEligibleTool("semantic_noise_tool_" + index));
     }
-    registerTool(createEligibleTool("embedding_tiebreak_tool"));
-
-    vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
-      embeddingModel: "test-embedding",
-      embeddingModelConfigId: "test-embedding-config",
-      embeddings: [
-        [1, 0],
-        ...Array.from({ length: 20 }, () => [0, 1]),
-        [1, 0],
-      ],
-    });
-    vi.spyOn(rerank, "executeLocalRerank").mockImplementation(async ({ candidates }) => ({
-      rerankedCandidates: candidates.map((candidate, index) => ({
-        id: candidate.id,
-        text: candidate.text,
-        score: 0,
-        probability: 0.5,
-        rank: index + 1,
-      })),
-      rerankModel: "test-rerank",
-      rerankModelConfigId: "test-rerank-config",
-    }));
+    const alpha = createEligibleTool("alpha_tool");
+    alpha.definition.description = "zephyrix ambiguous route handler";
+    const beta = createEligibleTool("beta_tool");
+    beta.definition.description = "zephyrix ambiguous route handler";
+    registerTool(alpha);
+    registerTool(beta);
+    const semanticResolver = vi.fn(async () => "beta_tool");
 
     const result = await resolveHarnessToolCandidatesForTurn({
-      query: "embedding tiebreak",
+      query: "zephyrix ambiguous route",
       source: "agent_intent",
+      semanticResolver,
     });
 
-    expect(result.toolCandidates[0]?.toolId).toBe("embedding_tiebreak_tool");
-    expect(result.toolCandidates[0]?.rerankScore).toBe(0.5);
-    expect(result.toolCandidates[0]?.embeddingScore).toBe(1);
+    expect(semanticResolver).toHaveBeenCalledTimes(1);
+    expect(result.resolution?.path).toBe("semantic");
+    expect(result.resolution?.trace.modelCalls).toBe(1);
+    expect(result.toolCandidates[0]?.toolId).toBe("beta_tool");
   });
 
   it.each([21, 50])(
-    "falls back to exactly 20 deterministic tools when ranking is unavailable: %s",
+    "falls back to exactly 20 deterministic tools on a transparent no-match: %s",
     async (count) => {
       for (let index = 0; index < count; index += 1) {
-        registerTool(createEligibleTool(`large_set_tool_${index}`));
+        registerTool(createEligibleTool("large_set_tool_" + index));
       }
-
-      vi.spyOn(embedding, "executeLocalEmbedding").mockRejectedValue(
-        new Error("embedding unavailable"),
-      );
+      const semanticResolver = vi.fn(async () => "large_set_tool_0");
 
       const result = await resolveHarnessToolCandidatesForTurn({
-        query: "anything",
+        query: "zzzzqqqq",
         source: "agent_intent",
+        semanticResolver,
       });
 
+      expect(semanticResolver).not.toHaveBeenCalled();
       expect(result.toolExposure.exposedToolIds).toHaveLength(20);
       expect(result.toolCandidates).toHaveLength(20);
-      expect(result.retrievalError).toBe("embedding unavailable");
+      expect(result.resolution?.path).toBe("none");
+      expect(result.resolution?.trace.modelCalls).toBe(0);
       expect(result.toolExposure.exposedToolIds).toEqual(
-        Array.from({ length: 20 }, (_, index) => `large_set_tool_${index}`),
+        Array.from({ length: 20 }, (_, index) => "large_set_tool_" + index),
       );
     },
   );
 
-  it("does not use score thresholds as an additional blocking rule above 20 tools", async () => {
+  it("does not use caller score thresholds as an authority filter above 20 tools", async () => {
     const count = 21;
     for (let index = 0; index < count; index += 1) {
-      registerTool(createEligibleTool(`low_score_tool_${index}`));
+      registerTool(createEligibleTool("low_score_tool_" + index));
     }
 
-    vi.spyOn(embedding, "executeLocalEmbedding").mockResolvedValue({
-      embeddingModel: "test-embedding",
-      embeddingModelConfigId: "test-embedding-config",
-      embeddings: Array.from({ length: count + 1 }, () => [1, 0]),
-    });
-    vi.spyOn(rerank, "executeLocalRerank").mockResolvedValue({
-      rerankedCandidates: [],
-      rerankModel: "test-rerank",
-      rerankModelConfigId: "test-rerank-config",
-    });
-
     const result = await resolveHarnessToolCandidatesForTurn({
-      query: "no strong semantic match",
+      query: "zzzzqqqq",
       source: "agent_intent",
       minScore: 0.9999,
+      semanticResolver: vi.fn(async () => undefined),
     });
 
     expect(result.toolExposure.exposedToolIds).toHaveLength(20);

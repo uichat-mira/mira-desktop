@@ -1,5 +1,3 @@
-import { executeLocalEmbedding } from "@/services/internal-capabilities/local-embedding.js";
-import { toCapabilityIntentDocuments } from "@/agent/intent/capability-documents.js";
 import { resolveHarnessToolExposure } from "../exposure-core/index.js";
 import { resolveHarnessCapabilityProfiles } from "../profiles/index.js";
 import { resolveWorkspaceEditFacadeForModel } from "../edit-facade.js";
@@ -8,10 +6,11 @@ import {
   exposeAllHarnessToolCandidates,
 } from "./expand-tool-candidates.js";
 import {
-  TOOL_EXPOSURE_RECALL_THRESHOLD,
-  cosineSimilarity,
-} from "./scoring.js";
-import { rerankHarnessCapabilityMatches } from "./rerank.js";
+  buildCapabilityResolutionDocuments,
+  type CapabilityResolutionResult,
+} from "./capability-resolution.js";
+import { resolveProgressiveCapabilitySearch } from "./capability-resolution.semantic.js";
+import { TOOL_EXPOSURE_RECALL_THRESHOLD } from "./scoring.js";
 import type {
   HarnessToolCandidate,
   HarnessToolExposure,
@@ -89,7 +88,12 @@ export const resolveHarnessToolCandidatesForTurn = async (
   }
 
   const profiles = resolveHarnessCapabilityProfiles(visibleDefinitions);
-  const fallbackTop20 = (reason: string, retrievalError?: string) => {
+  const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
+
+  const fallbackTop20 = (
+    reason: string,
+    resolution?: CapabilityResolutionResult,
+  ) => {
     const selectedDefinitions = visibleDefinitions.slice(0, MAX_PLANNER_TOOLS);
     const toolCandidates = exposeAllHarnessToolCandidates({
       definitions: selectedDefinitions,
@@ -107,146 +111,131 @@ export const resolveHarnessToolCandidatesForTurn = async (
         blockedCapabilityIds: initialToolExposure.blockedCapabilityIds,
         blockedCapabilityReasons: initialToolExposure.blockedCapabilityReasons,
       },
-      ...(retrievalError ? { retrievalError } : {}),
+      ...(resolution ? { resolution } : {}),
+      ...(resolution?.trace.semanticError
+        ? { retrievalError: resolution.trace.semanticError }
+        : {}),
     } satisfies ResolveHarnessToolCandidatesForTurnResult;
   };
 
   if (!input.query.trim() || profiles.length === 0) {
     return fallbackTop20(
-      "Tool set exceeds 20; ranking input is unavailable, so Harness exposes a deterministic first 20 without applying any additional policy filter.",
+      "Tool set exceeds 20; progressive resolution input is unavailable, so Harness exposes a deterministic first 20 without applying any additional policy filter.",
     );
   }
 
-  const documents = toCapabilityIntentDocuments(profiles);
-  const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
+  const resolution = await resolveProgressiveCapabilitySearch({
+    query: input.query,
+    capabilities: buildCapabilityResolutionDocuments(profiles),
+    ...(input.knownCapabilityId
+      ? { knownCapabilityId: input.knownCapabilityId }
+      : {}),
+    ...(input.semanticResolver
+      ? { semanticResolver: input.semanticResolver }
+      : {}),
+    ...(input.resolutionBudget ? { budget: input.resolutionBudget } : {}),
+  });
 
-  let embeddingResult:
-    | Awaited<ReturnType<typeof executeLocalEmbedding>>
-    | undefined;
-  let queryEmbedding: number[] | undefined;
-  let documentEmbeddings: number[][] = [];
-  let retrievalError: string | undefined;
+  const toMatches = (value: CapabilityResolutionResult) =>
+    value.candidates
+      .map((candidate) => {
+        const profile = profileMap.get(candidate.capabilityId);
+        if (!profile) return null;
+        return {
+          capabilityId: profile.id,
+          title: profile.title,
+          score: candidate.score,
+          embeddingScore: 0,
+          ruleScore: 0,
+          rerankScore: 0,
+          finalScore: candidate.score,
+          reason: candidate.reason,
+          candidateToolIds: profile.supportingToolIds,
+          ...(profile.preferredToolId
+            ? { preferredToolId: profile.preferredToolId }
+            : {}),
+        } satisfies ResolvedHarnessCapabilityMatch;
+      })
+      .filter(
+        (match): match is NonNullable<typeof match> => match !== null,
+      );
 
-  try {
-    embeddingResult = await executeLocalEmbedding({
-      texts: [input.query, ...documents.map((document) => document.text)],
+  const finalizeMatches = (matches: ResolvedHarnessCapabilityMatch[]) => {
+    const rankedToolCandidates = dedupeCandidates(
+      expandHarnessToolCandidates({
+        matches,
+        definitions: visibleDefinitions,
+      }),
+    );
+
+    const rankedIds = new Set(
+      rankedToolCandidates.map((candidate) => candidate.toolId),
+    );
+    const fillCandidates = exposeAllHarnessToolCandidates({
+      definitions: visibleDefinitions.filter(
+        (definition) => !rankedIds.has(definition.id),
+      ),
+      reason:
+        "Unresolved public tool retained as deterministic overflow fallback.",
     });
-    [queryEmbedding, ...documentEmbeddings] = embeddingResult.embeddings ?? [];
-  } catch (error) {
-    retrievalError = error instanceof Error ? error.message : String(error);
-  }
+    const toolCandidates = [
+      ...rankedToolCandidates,
+      ...fillCandidates,
+    ].slice(0, MAX_PLANNER_TOOLS);
 
-  if (retrievalError) {
-    return fallbackTop20(
-      "Tool set exceeds 20 and ranking failed; Harness exposes a deterministic first 20 rather than blocking tools by policy.",
-      retrievalError,
+    const definitionMap = new Map(
+      visibleDefinitions.map((definition) => [definition.id, definition]),
     );
-  }
+    const exposedDefinitions = toolCandidates
+      .map((candidate) => definitionMap.get(candidate.toolId))
+      .filter(
+        (definition): definition is NonNullable<typeof definition> =>
+          Boolean(definition),
+      );
 
-  let matches: ResolvedHarnessCapabilityMatch[] = documents
-    .map((document, index) => {
-      const profile = profileMap.get(document.capabilityId);
-      if (!profile) {
-        return null;
-      }
+    return { toolCandidates, exposedDefinitions };
+  };
 
-      const documentEmbedding = documentEmbeddings[index];
-      const embeddingScore =
-        queryEmbedding && documentEmbedding
-          ? cosineSimilarity(queryEmbedding, documentEmbedding)
-          : 0;
+  if (
+    resolution.selectedCapabilityId &&
+    (resolution.path === "exact" ||
+      resolution.path === "structural" ||
+      resolution.path === "lexical" ||
+      resolution.path === "semantic")
+  ) {
+    const matches = toMatches(resolution);
+    if (matches.length > 0) {
+      const { toolCandidates, exposedDefinitions } = finalizeMatches(matches);
+      const resolutionReason =
+        "Progressive capability resolution selected " +
+        resolution.selectedCapabilityId +
+        " via " +
+        resolution.path +
+        "; modelCalls=" +
+        resolution.trace.modelCalls +
+        ". Search changes disclosure order only and grants no authority.";
 
       return {
-        capabilityId: profile.id,
-        title: profile.title,
-        score: embeddingScore,
-        embeddingScore,
-        ruleScore: 0,
-        rerankScore: 0,
-        finalScore: embeddingScore,
-        candidateToolIds: profile.supportingToolIds,
-        ...(profile.preferredToolId ? { preferredToolId: profile.preferredToolId } : {}),
-      } satisfies ResolvedHarnessCapabilityMatch;
-    })
-    .filter((match): match is NonNullable<typeof match> => match !== null)
-    .sort((left, right) => right.finalScore - left.finalScore);
-
-  let rerankModel:
-    | {
-        model?: string;
-        modelConfigId?: string;
-      }
-    | undefined;
-
-  if (matches.length > 0) {
-    try {
-      const reranked = await rerankHarnessCapabilityMatches({
         query: input.query,
-        matches,
-      });
-      matches = reranked.matches;
-      rerankModel = reranked.rerankModel;
-    } catch {
-      // Embedding order remains a valid ranking fallback.
+        source,
+        toolCandidates,
+        eligibleToolIds,
+        toolExposure: {
+          exposedToolIds: exposedDefinitions.map((definition) => definition.id),
+          exposedDefinitions,
+          reason: [...exposureDecision.reason, resolutionReason],
+          blockedCapabilityIds: exposureDecision.blockedCapabilityIds,
+          blockedCapabilityReasons: exposureDecision.blockedCapabilityReasons,
+        },
+        resolution,
+      };
     }
   }
 
-  const rankedToolCandidates = dedupeCandidates(
-    expandHarnessToolCandidates({
-      matches,
-      definitions: visibleDefinitions,
-    }).sort(
-      (left, right) =>
-        right.rerankScore - left.rerankScore ||
-        right.embeddingScore - left.embeddingScore,
-    ),
+  return fallbackTop20(
+    "Tool set exceeds 20; progressive resolution stopped at " +
+      resolution.path +
+      " without a selected capability, so Harness exposes a deterministic first 20 while preserving the resolution trace.",
+    resolution,
   );
-
-  // Every public definition has a fallback capability profile, but fill any
-  // unexpected gap deterministically so overflow exposure is always exactly
-  // the best available 20 rather than silently shrinking Planner's tool set.
-  const rankedIds = new Set(rankedToolCandidates.map((candidate) => candidate.toolId));
-  const fillCandidates = exposeAllHarnessToolCandidates({
-    definitions: visibleDefinitions.filter((definition) => !rankedIds.has(definition.id)),
-    reason: "Unranked public tool retained as deterministic overflow fallback.",
-  });
-  const toolCandidates = [...rankedToolCandidates, ...fillCandidates].slice(
-    0,
-    MAX_PLANNER_TOOLS,
-  );
-
-  const definitionMap = new Map(
-    visibleDefinitions.map((definition) => [definition.id, definition]),
-  );
-  const exposedDefinitions = toolCandidates
-    .map((candidate) => definitionMap.get(candidate.toolId))
-    .filter((definition): definition is NonNullable<typeof definition> => Boolean(definition));
-
-  const rankingReason =
-    "Eligible public tool set exceeds 20; Harness ranks the runtime-ready tools for this turn and exposes the top 20. Ranking adds no semantic policy filter.";
-  const toolExposure: HarnessToolExposure = {
-    exposedToolIds: exposedDefinitions.map((definition) => definition.id),
-    exposedDefinitions,
-    reason: [...exposureDecision.reason, rankingReason],
-    blockedCapabilityIds: exposureDecision.blockedCapabilityIds,
-    blockedCapabilityReasons: exposureDecision.blockedCapabilityReasons,
-  };
-
-  return {
-    query: input.query,
-    source,
-    toolCandidates,
-    eligibleToolIds,
-    toolExposure,
-    ...(embeddingResult
-      ? {
-          retrievalModel: {
-            provider: "local",
-            model: embeddingResult.embeddingModel,
-            modelConfigId: embeddingResult.embeddingModelConfigId,
-          },
-        }
-      : {}),
-    ...(rerankModel ? { rerankModel } : {}),
-  };
 };
