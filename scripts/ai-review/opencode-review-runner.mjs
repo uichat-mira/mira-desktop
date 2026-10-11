@@ -356,7 +356,7 @@ export async function executeOpenCodeReview(
         external_directory: "deny",
       },
       tools: {
-        read: false,
+        read: true,
         glob: false,
         grep: false,
         bash: false,
