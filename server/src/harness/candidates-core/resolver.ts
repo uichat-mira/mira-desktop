@@ -112,6 +112,9 @@ export const resolveHarnessToolCandidatesForTurn = async (
         blockedCapabilityReasons: initialToolExposure.blockedCapabilityReasons,
       },
       ...(resolution ? { resolution } : {}),
+      ...(resolution?.trace.semanticError
+        ? { retrievalError: resolution.trace.semanticError }
+        : {}),
     } satisfies ResolveHarnessToolCandidatesForTurnResult;
   };
 
