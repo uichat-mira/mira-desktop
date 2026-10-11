@@ -52,6 +52,9 @@ export const matchToolCandidatesByEmbedding = async (input: {
     toolExposure: candidateResolution.toolExposure,
     eligibleToolIds: candidateResolution.eligibleToolIds ?? [],
     exposureReasons: candidateResolution.toolExposure.reason,
+    ...(candidateResolution.resolution
+      ? { resolution: candidateResolution.resolution }
+      : {}),
     ...(candidateResolution.retrievalModel
       ? { retrievalModel: candidateResolution.retrievalModel }
       : {}),

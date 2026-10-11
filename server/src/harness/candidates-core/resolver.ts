@@ -8,6 +8,11 @@ import {
   exposeAllHarnessToolCandidates,
 } from "./expand-tool-candidates.js";
 import {
+  buildCapabilityResolutionDocuments,
+  resolveCapabilityCascade,
+  type CapabilityResolutionResult,
+} from "./capability-resolution.js";
+import {
   TOOL_EXPOSURE_RECALL_THRESHOLD,
   cosineSimilarity,
 } from "./scoring.js";
@@ -89,12 +94,25 @@ export const resolveHarnessToolCandidatesForTurn = async (
   }
 
   const profiles = resolveHarnessCapabilityProfiles(visibleDefinitions);
+  const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
   const fallbackTop20 = (reason: string, retrievalError?: string) => {
     const selectedDefinitions = visibleDefinitions.slice(0, MAX_PLANNER_TOOLS);
     const toolCandidates = exposeAllHarnessToolCandidates({
       definitions: selectedDefinitions,
       reason,
     });
+    const fallbackResolution: CapabilityResolutionResult = retrievalError
+      ? {
+          ...deterministicResolution,
+          path: "semantic",
+          trace: {
+            ...deterministicResolution.trace,
+            path: "semantic",
+            modelCalls: 1,
+            semanticAttempted: true,
+          },
+        }
+      : deterministicResolution;
     return {
       query: input.query,
       source,
@@ -107,8 +125,59 @@ export const resolveHarnessToolCandidatesForTurn = async (
         blockedCapabilityIds: initialToolExposure.blockedCapabilityIds,
         blockedCapabilityReasons: initialToolExposure.blockedCapabilityReasons,
       },
+      resolution: fallbackResolution,
       ...(retrievalError ? { retrievalError } : {}),
     } satisfies ResolveHarnessToolCandidatesForTurnResult;
+  };
+
+  // Deterministic-first preflight over the compact capability set. Exact and
+  // clear capability/domain structural cases are resolved here without any
+  // ranking model call. Lexical/semantic Tool Search stays a Progressive
+  // Resolution fallback and is handled by the embedding/rerank path below.
+  const deterministicResolution = await resolveCapabilityCascade({
+    query: input.query,
+    capabilities: buildCapabilityResolutionDocuments(profiles),
+  });
+
+  // Shared tail that expands resolved capabilities into concrete candidates and
+  // fills any deterministic overflow so exposure is always exactly the best 20.
+  const finalizeMatches = (matches: ResolvedHarnessCapabilityMatch[]) => {
+    const rankedToolCandidates = dedupeCandidates(
+      expandHarnessToolCandidates({
+        matches,
+        definitions: visibleDefinitions,
+      }).sort(
+        (left, right) =>
+          right.rerankScore - left.rerankScore ||
+          right.embeddingScore - left.embeddingScore,
+      ),
+    );
+
+    const rankedIds = new Set(
+      rankedToolCandidates.map((candidate) => candidate.toolId),
+    );
+    const fillCandidates = exposeAllHarnessToolCandidates({
+      definitions: visibleDefinitions.filter(
+        (definition) => !rankedIds.has(definition.id),
+      ),
+      reason: "Unranked public tool retained as deterministic overflow fallback.",
+    });
+    const toolCandidates = [
+      ...rankedToolCandidates,
+      ...fillCandidates,
+    ].slice(0, MAX_PLANNER_TOOLS);
+
+    const definitionMap = new Map(
+      visibleDefinitions.map((definition) => [definition.id, definition]),
+    );
+    const exposedDefinitions = toolCandidates
+      .map((candidate) => definitionMap.get(candidate.toolId))
+      .filter(
+        (definition): definition is NonNullable<typeof definition> =>
+          Boolean(definition),
+      );
+
+    return { toolCandidates, exposedDefinitions };
   };
 
   if (!input.query.trim() || profiles.length === 0) {
@@ -117,8 +186,53 @@ export const resolveHarnessToolCandidatesForTurn = async (
     );
   }
 
+  if (
+    (deterministicResolution.path === "exact" ||
+      deterministicResolution.path === "structural") &&
+    deterministicResolution.candidates.length > 0
+  ) {
+    const matches = deterministicResolution.candidates
+      .map((candidate) => {
+        const profile = profileMap.get(candidate.capabilityId);
+        if (!profile) return null;
+        return {
+          capabilityId: profile.id,
+          title: profile.title,
+          score: candidate.score,
+          embeddingScore: 0,
+          ruleScore: 0,
+          rerankScore: 0,
+          finalScore: candidate.score,
+          candidateToolIds: profile.supportingToolIds,
+          ...(profile.preferredToolId
+            ? { preferredToolId: profile.preferredToolId }
+            : {}),
+        } satisfies ResolvedHarnessCapabilityMatch;
+      })
+      .filter(
+        (match): match is NonNullable<typeof match> => match !== null,
+      );
+
+    const { toolCandidates, exposedDefinitions } = finalizeMatches(matches);
+    const resolutionReason = `Capability resolution: deterministic ${deterministicResolution.path} match resolved without ranking, so no Tool Search model call was spent.`;
+
+    return {
+      query: input.query,
+      source,
+      toolCandidates,
+      eligibleToolIds,
+      toolExposure: {
+        exposedToolIds: exposedDefinitions.map((definition) => definition.id),
+        exposedDefinitions,
+        reason: [...exposureDecision.reason, resolutionReason],
+        blockedCapabilityIds: exposureDecision.blockedCapabilityIds,
+        blockedCapabilityReasons: exposureDecision.blockedCapabilityReasons,
+      },
+      resolution: deterministicResolution,
+    };
+  }
+
   const documents = toCapabilityIntentDocuments(profiles);
-  const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
 
   let embeddingResult:
     | Awaited<ReturnType<typeof executeLocalEmbedding>>
@@ -191,36 +305,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
     }
   }
 
-  const rankedToolCandidates = dedupeCandidates(
-    expandHarnessToolCandidates({
-      matches,
-      definitions: visibleDefinitions,
-    }).sort(
-      (left, right) =>
-        right.rerankScore - left.rerankScore ||
-        right.embeddingScore - left.embeddingScore,
-    ),
-  );
-
-  // Every public definition has a fallback capability profile, but fill any
-  // unexpected gap deterministically so overflow exposure is always exactly
-  // the best available 20 rather than silently shrinking Planner's tool set.
-  const rankedIds = new Set(rankedToolCandidates.map((candidate) => candidate.toolId));
-  const fillCandidates = exposeAllHarnessToolCandidates({
-    definitions: visibleDefinitions.filter((definition) => !rankedIds.has(definition.id)),
-    reason: "Unranked public tool retained as deterministic overflow fallback.",
-  });
-  const toolCandidates = [...rankedToolCandidates, ...fillCandidates].slice(
-    0,
-    MAX_PLANNER_TOOLS,
-  );
-
-  const definitionMap = new Map(
-    visibleDefinitions.map((definition) => [definition.id, definition]),
-  );
-  const exposedDefinitions = toolCandidates
-    .map((candidate) => definitionMap.get(candidate.toolId))
-    .filter((definition): definition is NonNullable<typeof definition> => Boolean(definition));
+  const { toolCandidates, exposedDefinitions } = finalizeMatches(matches);
 
   const rankingReason =
     "Eligible public tool set exceeds 20; Harness ranks the runtime-ready tools for this turn and exposes the top 20. Ranking adds no semantic policy filter.";
@@ -232,12 +317,31 @@ export const resolveHarnessToolCandidatesForTurn = async (
     blockedCapabilityReasons: exposureDecision.blockedCapabilityReasons,
   };
 
+  const semanticTopMatch = matches[0];
+  const semanticResolution: CapabilityResolutionResult = {
+    ...deterministicResolution,
+    path: "semantic",
+    selectedCapabilityId: semanticTopMatch?.capabilityId ?? null,
+    trace: {
+      ...deterministicResolution.trace,
+      path: "semantic",
+      modelCalls: retrievalError ? 1 : 2,
+      semanticAttempted: true,
+      ambiguous: true,
+      selectedCapabilityId: semanticTopMatch?.capabilityId ?? null,
+      selectedDomain: semanticTopMatch
+        ? (profileMap.get(semanticTopMatch.capabilityId)?.domain ?? null)
+        : null,
+    },
+  };
+
   return {
     query: input.query,
     source,
     toolCandidates,
     eligibleToolIds,
     toolExposure,
+    resolution: semanticResolution,
     ...(embeddingResult
       ? {
           retrievalModel: {
