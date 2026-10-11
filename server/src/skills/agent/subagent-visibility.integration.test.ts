@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SkillLoader } from "../context/loader.js";
 import { SkillMatcher } from "../context/matcher.js";
@@ -11,6 +11,16 @@ import { prepareSubAgent } from "./subagent-runtime.js";
 
 const DCF_URI = "skill://xlsx/reference/DCF_SKILL.md";
 const COMPS_URI = "skill://xlsx/reference/COMPS_SKILL.md";
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+// Repository AGENTS.md requires test temporary artifacts to live under the
+// repo-root `.test-artifact/` directory rather than the OS temp directory.
+const ARTIFACT_ROOT = path.resolve(
+  testDir,
+  "../../../..",
+  ".test-artifact",
+  "skill-visibility",
+);
 
 const tempDirs: string[] = [];
 
@@ -57,7 +67,8 @@ const createSkill = async (input: {
 };
 
 const createProvider = async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "mira-skill-visibility-"));
+  await fs.mkdir(ARTIFACT_ROOT, { recursive: true });
+  const root = await fs.mkdtemp(path.join(ARTIFACT_ROOT, "case-"));
   tempDirs.push(root);
   const xlsx = await createSkill({
     root,
@@ -199,5 +210,108 @@ describe("Skill and Resource progressive visibility integration", () => {
     expect(schema.properties.uri.description).toContain(DCF_URI);
     expect(schema.properties.uri.description).toContain(COMPS_URI);
     expect(schema.properties.uri.description).not.toContain("docx");
+  });
+});
+
+const findResource = (
+  context: Awaited<ReturnType<SkillContextProvider["prepare"]>>,
+  uri: string,
+) =>
+  context?.skillVisibility?.skills
+    .find((entry) => entry.skillId === "xlsx")
+    ?.resources.find((resource) => resource.uri === uri);
+
+describe("Skill Child runtime visibility wiring", () => {
+  it("runs the Child on its own scoped snapshot and promotes only the Child scope on a real Resource read", async () => {
+    const { provider, root } = await createProvider();
+    const mainContext = await selectXlsx(provider);
+    const loadResourceSpy = vi
+      .spyOn(SkillContextProvider.prototype, "loadResource")
+      .mockResolvedValue({
+        uri: COMPS_URI,
+        skillId: "xlsx",
+        name: "COMPS_SKILL.md",
+        kind: "reference",
+        content: "# Comps\nComps rules",
+      });
+
+    try {
+      const prepared = prepareSubAgent({
+        goal: "做一个 DCF Excel 模型",
+        skillContext: mainContext,
+        exposedHarnessToolIds: [],
+        workspaceRoot: root,
+      });
+
+      // The live Child execution owns a distinct scoped snapshot, not the Main
+      // Agent view that was passed in.
+      expect(prepared.execution.skillContext).not.toBe(mainContext);
+      expect(prepared.execution.skillContext.skillVisibility?.scopeKind).toBe(
+        "skill_child",
+      );
+      expect(mainContext.skillVisibility?.scopeKind).toBe("main_agent");
+
+      const childResource = findResource(
+        prepared.execution.skillContext,
+        COMPS_URI,
+      );
+      const mainResource = findResource(mainContext, COMPS_URI);
+      // The sibling Resource starts metadata-only in both scopes.
+      expect(childResource?.disclosure).toBe("metadata");
+      expect(mainResource?.disclosure).toBe("metadata");
+
+      const resourceTool = prepared.tools.find(
+        (tool) => tool.id === "skill_read_resource",
+      );
+      expect(resourceTool).toBeDefined();
+      const executed = await resourceTool!.execute({ uri: COMPS_URI });
+      expect(executed.result).toMatchObject({ status: "loaded", uri: COMPS_URI });
+      expect(loadResourceSpy).toHaveBeenCalledTimes(1);
+
+      // A genuine read promotes the same running Child scope to content, while
+      // the Main snapshot stays untouched.
+      expect(
+        findResource(prepared.execution.skillContext, COMPS_URI)?.disclosure,
+      ).toBe("content");
+      expect(findResource(mainContext, COMPS_URI)?.disclosure).toBe("metadata");
+    } finally {
+      loadResourceSpy.mockRestore();
+    }
+  });
+
+  it("keeps blocked Resource reads at the metadata stage", async () => {
+    const { provider, root } = await createProvider();
+    const mainContext = await selectXlsx(provider);
+    const loadResourceSpy = vi
+      .spyOn(SkillContextProvider.prototype, "loadResource")
+      .mockRejectedValue(new Error("resource unavailable"));
+
+    try {
+      const prepared = prepareSubAgent({
+        goal: "做一个 DCF Excel 模型",
+        skillContext: mainContext,
+        exposedHarnessToolIds: [],
+        workspaceRoot: root,
+      });
+      const resourceTool = prepared.tools.find(
+        (tool) => tool.id === "skill_read_resource",
+      );
+      expect(resourceTool).toBeDefined();
+
+      const notFound = await resourceTool!.execute({
+        uri: "skill://xlsx/reference/MISSING.md",
+      });
+      expect(notFound.result).toMatchObject({ status: "not_found" });
+
+      const unavailable = await resourceTool!.execute({ uri: COMPS_URI });
+      expect(unavailable.result).toMatchObject({ status: "unavailable" });
+
+      // Neither an unresolved nor a read-blocked Resource may claim content.
+      expect(
+        findResource(prepared.execution.skillContext, COMPS_URI)?.disclosure,
+      ).toBe("metadata");
+    } finally {
+      loadResourceSpy.mockRestore();
+    }
   });
 });
