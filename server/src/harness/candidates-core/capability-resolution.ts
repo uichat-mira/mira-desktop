@@ -596,11 +596,13 @@ export const resolveCapabilityCascade = async (
 
   const maxSemanticCalls =
     input.budget?.maxSemanticCalls ?? DEFAULT_MAX_SEMANTIC_CALLS;
-  const semanticAttempted = Boolean(input.semanticResolver);
+  const semanticAttempted = Boolean(
+    input.semanticResolver && maxSemanticCalls > 0,
+  );
   if (
+    semanticAttempted &&
     input.semanticResolver &&
-    shortlist.length > 0 &&
-    maxSemanticCalls > 0
+    shortlist.length > 0
   ) {
     const semanticId = await input.semanticResolver({ query, candidates: shortlist });
     if (semanticId && shortlist.some((candidate) => candidate.capabilityId === semanticId)) {
