@@ -3,8 +3,8 @@
   "roles": {
     "routine": {
       "enabled": true,
-      "provider": "opencode-go",
-      "model": "minimax-m3",
+      "provider": "opencode",
+      "model": "mimo-v2.6-flash-free",
       "variant": "none",
       "credentialEnv": "OPENCODE_GO_API_KEY"
     },

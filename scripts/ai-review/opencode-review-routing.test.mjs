@@ -18,8 +18,8 @@ function baseConfig() {
     roles: {
       routine: {
         enabled: true,
-        provider: "opencode-go",
-        model: "minimax-m3",
+        provider: "opencode",
+        model: "mimo-v2.6-flash-free",
         variant: "none",
         credentialEnv: "OPENCODE_GO_API_KEY",
       },
@@ -48,8 +48,8 @@ test("loads the trusted versioned Desktop routing configuration", async () => {
   assert.deepEqual(config.roles.routine, {
     role: "routine",
     enabled: true,
-    provider: "opencode-go",
-    model: "minimax-m3",
+    provider: "opencode",
+    model: "mimo-v2.6-flash-free",
     variant: "none",
     credentialEnv: "OPENCODE_GO_API_KEY",
   });
@@ -62,7 +62,7 @@ test("loads the trusted versioned Desktop routing configuration", async () => {
 test("resolves only enabled routes and fails explicitly for disabled roles", () => {
   const config = parseReviewRoutingConfig(baseConfig());
 
-  assert.equal(reviewRouteModelRef(resolveReviewRoute(config, "routine")), "opencode-go/minimax-m3");
+  assert.equal(reviewRouteModelRef(resolveReviewRoute(config, "routine")), "opencode/mimo-v2.6-flash-free");
   assert.throws(() => resolveReviewRoute(config, "fallback"), /review_route_fallback_disabled/);
   assert.throws(() => resolveReviewRoute(config, "escalation"), /review_route_escalation_disabled/);
 });
@@ -104,10 +104,10 @@ test("requires the credential named by the selected route without logging or sto
 
 test("a supported alternate model is a routing configuration change, not a Control Room adapter change", () => {
   const alternate = baseConfig();
-  alternate.roles.routine.model = "deepseek-v4-flash";
+  alternate.roles.routine.model = "mimo-v2.5-free";
 
   const route = resolveReviewRoute(parseReviewRoutingConfig(alternate), "routine");
-  assert.equal(reviewRouteModelRef(route), "opencode-go/deepseek-v4-flash");
+  assert.equal(reviewRouteModelRef(route), "opencode/mimo-v2.5-free");
   assert.equal(route.credentialEnv, "OPENCODE_GO_API_KEY");
 });
 
