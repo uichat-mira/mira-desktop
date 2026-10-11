@@ -155,7 +155,7 @@ export const resolveHarnessCapabilityDiagnostics = async (
     exposureReasons: candidateResolution.retrievalError
       ? [
           ...candidateResolution.toolExposure.reason,
-          `Local embedding capability is unavailable for intent recall: ${candidateResolution.retrievalError}`,
+          `Capability resolution fallback diagnostic: ${candidateResolution.retrievalError}`,
         ]
       : candidateResolution.toolExposure.reason,
     blockedCapabilityIds: candidateResolution.toolExposure.blockedCapabilityIds,
