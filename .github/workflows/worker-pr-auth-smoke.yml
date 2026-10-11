@@ -1,0 +1,44 @@
+name: Worker Draft PR Permission Smoke
+
+on:
+  push:
+    branches:
+      - feat/worker-pr-auth-smoke-20261012
+    paths:
+      - .github/workflows/worker-pr-auth-smoke.yml
+
+jobs:
+  permission-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Create verify and close disposable Draft PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "uichat-mira/mira-desktop"
+          test "$GITHUB_REF_NAME" = "feat/worker-pr-auth-smoke-20261012"
+
+          pr_url="$(gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --base dev \
+            --head "$GITHUB_REF_NAME" \
+            --title "test(worker): verify Actions Draft PR permission (disposable)" \
+            --body "Disposable GitHub Actions permission smoke. Never merge; the smoke will close this Draft PR.")"
+
+          echo "Created: $pr_url" | tee -a "$GITHUB_STEP_SUMMARY"
+          gh pr view "$pr_url" --repo "$GITHUB_REPOSITORY" --json isDraft,baseRefName,headRefName,state \
+            --jq 'select(.isDraft == true and .baseRefName == "dev" and .headRefName == "feat/worker-pr-auth-smoke-20261012" and .state == "OPEN") | .headRefName' \
+            | grep -Fx "$GITHUB_REF_NAME"
+
+          gh pr close "$pr_url" --repo "$GITHUB_REPOSITORY" --comment "Permission smoke passed: Draft PR was created and verified by GitHub Actions; closing without merge."
+          echo "Verified and closed: $pr_url" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$GITHUB_REF_NAME"
+          echo "Removed disposable smoke branch." | tee -a "$GITHUB_STEP_SUMMARY"
