@@ -140,8 +140,56 @@ describe("#309 Main Planner summary -> Skill Child activation", () => {
       .toBe("Do the financial model");
     expect(delegated.toolExposure).toBe(toolExposure);
     expect(patch.pendingEvidenceObservation).toBeDefined();
+    expect(patch.nextAction?.type).toBe("answer");
+    expect(patch.finalizationPacket?.completionProof[0]?.evidenceRefs).toEqual(["observation:0"]);
     expect((state.currentTaskFrame as {skillContext?: {primary?: unknown}})?.skillContext?.primary)
       .toBeUndefined();
+  });
+
+  it("preserves Child needs_input instead of giving Main Planner ownership", async () => {
+    vi.mocked(prepareSkillContext).mockResolvedValue({
+      primary: { id: "xlsx", name: "Spreadsheet", version: "1", body: "# instructions" },
+      instruction: "instructions",
+      resources: [],
+      disclosedResources: [],
+    } as Awaited<ReturnType<typeof prepareSkillContext>>);
+    vi.mocked(forkedSkillAgentNode).mockResolvedValue({
+      pendingEvidenceObservation: {
+        status: "partial",
+        summary: {
+          data: {
+            kind: "generic_structured",
+            preview: {
+              status: "needs_input",
+              requirements: [{
+                kind: "user_input",
+                description: "Please supply the budget currency",
+                requiredFor: "budget",
+              }],
+            },
+          },
+        },
+      },
+    } as unknown as Awaited<ReturnType<typeof forkedSkillAgentNode>>);
+    const result = await activateSkillNode(makeState());
+    expect(result.nextAction).toMatchObject({
+      type: "ask_user",
+      question: "Please supply the budget currency",
+    });
+  });
+
+  it("keeps Parent recovery Tool exposure within the selected Skill profile", async () => {
+    vi.mocked(prepareSkillContext).mockResolvedValue({
+      primary: { id: "xlsx", name: "Spreadsheet", version: "1", body: "# instructions" },
+      instruction: "instructions",
+      resources: [],
+      disclosedResources: [],
+    } as Awaited<ReturnType<typeof prepareSkillContext>>);
+    vi.mocked(forkedSkillAgentNode).mockResolvedValue({
+      pendingEvidenceObservation: { status: "failed", summary: { data: { preview: { status: "failed" } } } },
+    } as unknown as Awaited<ReturnType<typeof forkedSkillAgentNode>>);
+    const result = await activateSkillNode(makeState());
+    expect(result.toolExposure?.exposedTools).not.toContain("terminal");
   });
 
   it("rejects an out-of-scope model-selected Skill without loading or invoking it", async () => {

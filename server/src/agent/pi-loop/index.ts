@@ -417,6 +417,12 @@ const createPiAgentLoopRunner = (steps: PiAgentLoopSemantics) => {
               }
               if (state.pendingApproval) return pauseRunForApproval(state, emit);
               if (state.errorMessage) return finishRunWithError(state, emit);
+              if (
+                state.nextAction?.type === "ask_user" ||
+                (state.nextAction?.type === "answer" && state.finalizationPacket)
+              ) {
+                return finishRunWithAnswer(state, emit);
+              }
               continue;
             }
 
