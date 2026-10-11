@@ -86,7 +86,10 @@ describe("progressive capability resolution in turn resolution", () => {
     expect(result.resolution?.path).toBe("lexical");
     expect(result.resolution?.trace.modelCalls).toBe(0);
     expect(result.toolCandidates[0]?.toolId).toBe("late_lexical_target");
-    expect(result.toolExposure.exposedToolIds).toContain("late_lexical_target");
+    expect(result.toolExposure.exposedToolIds).toEqual([
+      "late_lexical_target",
+      ...Array.from({ length: 19 }, (_, index) => "noise_tool_" + index),
+    ]);
   });
 
   it("invokes exactly one semantic resolver call only when deterministic evidence is ambiguous", async () => {
