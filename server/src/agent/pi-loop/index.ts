@@ -10,6 +10,7 @@ import {
   policyNode,
   prepareContextNode,
   retrieveNode,
+  activateSkillNode,
   toolNode,
 } from "../nodes/index";
 import { GENERIC_TASK_DELEGATE_TOOL_ID } from "../delegation/contract.js";
@@ -399,6 +400,25 @@ const createPiAgentLoopRunner = (steps: PiAgentLoopSemantics) => {
             case "answer":
             case "ask_user":
               return finishRunWithAnswer(state, emit);
+
+            case "activate_skill": {
+              await runStep({
+                traceNodeName: "activateSkill",
+                handler: activateSkillNode,
+                state,
+                emit,
+              });
+              if (
+                state.pendingEvidenceObservation ||
+                state.pendingToolExecution ||
+                state.pendingRetrievalEvidence
+              ) {
+                await commitPendingEvidence(state, emit);
+              }
+              if (state.pendingApproval) return pauseRunForApproval(state, emit);
+              if (state.errorMessage) return finishRunWithError(state, emit);
+              continue;
+            }
 
             case "retrieve":
               await runStep({

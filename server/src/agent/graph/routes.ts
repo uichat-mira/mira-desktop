@@ -44,6 +44,8 @@ export const routeAfterNextAction = (state: AgentGraphStateType) => {
       return "generate";
     case "retrieve":
       return "retrieve";
+    case "activate_skill":
+      return "activateSkill";
     case "ask_user":
       return "generate";
     case "use_tool":
