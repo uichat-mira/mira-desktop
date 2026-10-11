@@ -1099,6 +1099,26 @@ export const runPiSkillAgent = async (input: {
   }
 
   const finalText = extractAssistantText(agent.state.messages as unknown[]);
+  // One-off trusted #309 provider probe. Do not emit any model prompts or
+  // assistant content: only protocol stopReason and sanitized error metadata.
+  if (process.env.MIRA_LIVE_SKILL_CHILD === "1") {
+    const assistant = [...agent.state.messages]
+      .reverse()
+      .find((message) => message.role === "assistant") as
+      | { stopReason?: string; errorMessage?: string }
+      | undefined;
+    const sanitizedError = typeof assistant?.errorMessage === "string"
+      ? assistant.errorMessage
+          .replaceAll(apiKey, "[REDACTED]")
+          .slice(0, 400)
+      : null;
+    console.log(JSON.stringify({
+      phase: "pi_child_protocol_diagnostics",
+      stopReason: assistant?.stopReason ?? null,
+      errorMessage: sanitizedError,
+      receivedAssistantText: Boolean(finalText),
+    }));
+  }
   const completion = parseCompletionEnvelope(finalText);
   if (!completion) {
     await ledger.updateWorkingState({
