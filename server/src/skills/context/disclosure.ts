@@ -834,3 +834,67 @@ export const describeSkillVisibility = (
     ),
   };
 };
+
+/**
+ * Serializable projection of a Skill visibility view.
+ *
+ * The in-memory view keeps its skills/resources in read-only Map-like objects so
+ * disclosure can be promoted immutably. Persisted Agent state (`skillContextSnapshot`)
+ * is structured-cloned and JSON-serialized, which cannot carry those function
+ * bearing maps. This snapshot keeps exactly the same disclosure stages in plain
+ * data, so a persisted Skill Child context round-trips without losing its scoped
+ * visibility and without carrying any execution authority fields.
+ */
+export interface SkillVisibilitySnapshotResource {
+  readonly uri: string;
+  readonly skillId: string;
+  readonly name: string;
+  readonly kind: SkillResourceKind;
+  readonly description?: string;
+  readonly discoverable: boolean;
+  readonly disclosure: ResourceDisclosure;
+}
+
+export interface SkillVisibilitySnapshotSkill {
+  readonly skillId: string;
+  readonly name: string;
+  readonly description: string;
+  readonly version: string;
+  readonly discoverable: boolean;
+  readonly disclosure: SkillDisclosure;
+  readonly resources: readonly SkillVisibilitySnapshotResource[];
+}
+
+export interface SkillVisibilitySnapshot {
+  readonly scopeId: string;
+  readonly scopeKind: SkillVisibilityScopeKind;
+  readonly maxSkillDisclosure: SkillDisclosure;
+  readonly maxResourceDisclosure: ResourceDisclosure;
+  readonly skills: readonly SkillVisibilitySnapshotSkill[];
+}
+
+export const toSkillVisibilitySnapshot = (
+  view: SkillVisibilityView,
+): SkillVisibilitySnapshot => ({
+  scopeId: view.scopeId,
+  scopeKind: view.scopeKind,
+  maxSkillDisclosure: view.maxSkillDisclosure,
+  maxResourceDisclosure: view.maxResourceDisclosure,
+  skills: [...view.skills.values()].map((entry) => ({
+    skillId: entry.skillId,
+    name: entry.name,
+    description: entry.description,
+    version: entry.version,
+    discoverable: entry.discoverable,
+    disclosure: entry.disclosure,
+    resources: [...entry.resources.values()].map((resource) => ({
+      uri: resource.uri,
+      skillId: resource.skillId,
+      name: resource.name,
+      kind: resource.kind,
+      ...(resource.description ? { description: resource.description } : {}),
+      discoverable: resource.discoverable,
+      disclosure: resource.disclosure,
+    })),
+  })),
+});

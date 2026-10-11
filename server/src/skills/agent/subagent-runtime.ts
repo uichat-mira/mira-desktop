@@ -7,6 +7,12 @@ import {
   resolveWorkspaceWritePath,
   runWithWorkspaceRootOverride,
 } from "@/mcp/workspace.js";
+import {
+  createSkillChildSkillVisibilityScope,
+  projectSkillVisibilityView,
+  resourceDisclosureKey,
+  toSkillVisibilitySnapshot,
+} from "@/skills/context/disclosure.js";
 import { loadSkillResource } from "@/skills/context/provider.js";
 import type {
   SkillContext,
@@ -457,8 +463,48 @@ export const prepareSubAgent = (input: PrepareSubAgentInput) => {
     onRuntimeEvent: input.onRuntimeEvent,
   };
 
-  const availableResourceUris = input.skillContext.resources
-    .filter((resource) => resource.skillId === skillId)
+  // The Skill Child owns an independent scoped visibility state. It re-projects
+  // the active Skill under a `skill_child` scope instead of sharing the Main
+  // Agent view: only the active Skill is discoverable, its body is already the
+  // selected stage, Resource URI/metadata stays visible, and only Resources the
+  // run already disclosed carry content. Visibility never adds Harness tools;
+  // the declared profile/runtime bindings below remain the authority envelope,
+  // so a wider visibility stage can never widen execution authority.
+  const childSnapshotSkill = input.skillContext.skillVisibility?.skills.find(
+    (entry) => entry.skillId === skillId,
+  );
+  const childVisibilityView = projectSkillVisibilityView({
+    scope: createSkillChildSkillVisibilityScope({
+      scopeId: `skill_child:${skillId}`,
+      discoverableSkillIds: [skillId],
+    }),
+    skills: [
+      {
+        id: skillId,
+        name: primary.name,
+        description: childSnapshotSkill?.description ?? "",
+        version: primary.version,
+        resources: input.skillContext.resources.filter(
+          (resource) => resource.skillId === skillId,
+        ),
+      },
+    ],
+    requestedSkillDisclosure: new Map([[skillId, "body" as const]]),
+    requestedResourceDisclosure: new Map(
+      input.skillContext.disclosedResources.map((resource) => [
+        resourceDisclosureKey(skillId, resource.uri),
+        "content" as const,
+      ]),
+    ),
+  });
+  const skillVisibility = toSkillVisibilitySnapshot(childVisibilityView);
+
+  const availableResourceUris = [
+    ...(childVisibilityView.skills.get(skillId)?.resources.values() ?? []),
+  ]
+    .filter(
+      (resource) => resource.discoverable && resource.disclosure !== "hidden",
+    )
     .map((resource) => resource.uri);
   const tools: SubAgentToolBinding[] = availableResourceUris.length > 0
     ? [
@@ -518,6 +564,7 @@ export const prepareSubAgent = (input: PrepareSubAgentInput) => {
     missingCapabilities,
     availableCapabilityCount,
     declaredCapabilityCount,
+    skillVisibility,
   };
 };
 

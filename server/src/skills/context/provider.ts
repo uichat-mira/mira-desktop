@@ -1,4 +1,11 @@
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol.js";
+import {
+  createMainAgentSkillVisibilityScope,
+  promoteResourceContent,
+  promoteSkillBody,
+  projectSkillVisibilityView,
+  toSkillVisibilitySnapshot,
+} from "./disclosure.js";
 import { SkillLoader } from "./loader.js";
 import { SkillMatcher } from "./matcher.js";
 import { getDefaultSkillRegistry, type SkillRegistry } from "./scanner.js";
@@ -252,7 +259,13 @@ export class SkillContextProvider {
     const manifest = this.registry.get(match.primary.skillId);
     if (!manifest) return undefined;
 
-    const content = await this.loader.loadContent(manifest);
+    // Progressive Skill/Resource visibility for the Main Agent scope.
+    //
+    // Discovery surfaces every available Skill by name/description only. The
+    // selected Skill is then enriched with its Resource URI/metadata, its body
+    // is promoted, and only the Resources this run actually selects have their
+    // content read. Reading a body/content here changes what this Agent scope
+    // sees; it never registers a Tool or widens execution authority.
     const resources = await this.loader.listResources(manifest);
     const disclosedResourceUris = selectDisclosedResourceUris({
       query: disclosureQuery,
@@ -266,6 +279,27 @@ export class SkillContextProvider {
       disclosedResourceUris,
     };
 
+    let visibilityView = projectSkillVisibilityView({
+      scope: createMainAgentSkillVisibilityScope({ scopeId: "main_agent" }),
+      skills: manifests.map((candidate) =>
+        candidate.id === manifest.id ? { ...candidate, resources } : candidate,
+      ),
+    });
+
+    // The Skill body is read only now that this run has selected the Skill and
+    // its execution needs the content. Discovery of every other Skill stays at
+    // the summary stage.
+    const content = await this.loader.loadContent(manifest);
+    const promotedBody = promoteSkillBody({
+      view: visibilityView,
+      skillId: manifest.id,
+      contents: [content],
+    });
+    visibilityView = promotedBody.view;
+
+    // Resource content is materialized selectively through the loader, exactly
+    // as before; the disclosure view only records which Resource reached the
+    // content stage. Sibling Resources stay URI/metadata-only.
     const disclosedResources: SkillContext["disclosedResources"] = [];
     let remainingResourceBudget = MAX_DISCLOSED_RESOURCE_CHARS;
     for (const uri of plan.disclosedResourceUris) {
@@ -275,6 +309,12 @@ export class SkillContextProvider {
       const loaded = await this.loader.loadResource({ manifest, resource });
       const contentWithinBudget = trimToBudget(loaded.content, remainingResourceBudget);
       remainingResourceBudget -= contentWithinBudget.length;
+      visibilityView = promoteResourceContent({
+        view: visibilityView,
+        skillId: manifest.id,
+        uri,
+        resources: [{ ...loaded, content: contentWithinBudget }],
+      }).view;
       disclosedResources.push({ uri, content: contentWithinBudget });
     }
 
@@ -285,7 +325,10 @@ export class SkillContextProvider {
         id: manifest.id,
         version: manifest.version,
         name: manifest.name,
-        body: mergeSkillBodyWithContinuation(content.body, continuationContext),
+        body: mergeSkillBodyWithContinuation(
+          promotedBody.body?.body ?? content.body,
+          continuationContext,
+        ),
         origin: manifest.origin ?? "external",
         execution: {
           ...execution,
@@ -295,6 +338,7 @@ export class SkillContextProvider {
       },
       resources: plan.availableResources,
       disclosedResources,
+      skillVisibility: toSkillVisibilitySnapshot(visibilityView),
       match: {
         source: match.primary.source,
         reason: match.primary.reason,

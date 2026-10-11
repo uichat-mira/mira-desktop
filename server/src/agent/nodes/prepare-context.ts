@@ -294,6 +294,49 @@ const withSkillRuntimeContext = (
   } as SkillAwareTaskFrame;
 };
 
+const summarizeSkillVisibility = (skillContext: SkillContext | undefined) => {
+  const snapshot = skillContext?.skillVisibility;
+  if (!snapshot) {
+    return {
+      scopeId: null,
+      scopeKind: null,
+      summaryDisclosedSkillIds: [] as string[],
+      bodyDisclosedSkillIds: [] as string[],
+      resourceMetadataUris: [] as string[],
+      resourceContentUris: [] as string[],
+    };
+  }
+
+  const summaryDisclosedSkillIds: string[] = [];
+  const bodyDisclosedSkillIds: string[] = [];
+  const resourceMetadataUris: string[] = [];
+  const resourceContentUris: string[] = [];
+  for (const skill of snapshot.skills) {
+    if (skill.discoverable && skill.disclosure !== "hidden") {
+      summaryDisclosedSkillIds.push(skill.skillId);
+    }
+    if (skill.discoverable && skill.disclosure === "body") {
+      bodyDisclosedSkillIds.push(skill.skillId);
+    }
+    for (const resource of skill.resources) {
+      if (!resource.discoverable || resource.disclosure === "hidden") continue;
+      resourceMetadataUris.push(resource.uri);
+      if (resource.disclosure === "content") {
+        resourceContentUris.push(resource.uri);
+      }
+    }
+  }
+
+  return {
+    scopeId: snapshot.scopeId,
+    scopeKind: snapshot.scopeKind,
+    summaryDisclosedSkillIds,
+    bodyDisclosedSkillIds,
+    resourceMetadataUris,
+    resourceContentUris,
+  };
+};
+
 const toSkillTraceDetails = (skillContext: SkillContext | undefined) => {
   if (!skillContext?.primary) {
     return {
@@ -307,9 +350,13 @@ const toSkillTraceDetails = (skillContext: SkillContext | undefined) => {
         disclosedResourceCount: 0,
         disclosedResourceUris: [],
       },
+      skillVisibility: summarizeSkillVisibility(skillContext),
       toolExposureMutation: false,
     };
   }
+
+  const visibility = summarizeSkillVisibility(skillContext);
+  const hasScopedVisibility = skillContext.skillVisibility !== undefined;
 
   return {
     status: "matched",
@@ -327,12 +374,16 @@ const toSkillTraceDetails = (skillContext: SkillContext | undefined) => {
         }
       : null,
     disclosure: {
-      skillBodyLoaded: true,
+      // Legacy contexts without scoped visibility fall back to body presence.
+      skillBodyLoaded: hasScopedVisibility
+        ? visibility.bodyDisclosedSkillIds.includes(skillContext.primary.id)
+        : Boolean(skillContext.primary.body),
       availableResourceCount: skillContext.resources.length,
       availableResourceUris: skillContext.resources.map((resource) => resource.uri),
       disclosedResourceCount: skillContext.disclosedResources.length,
       disclosedResourceUris: skillContext.disclosedResources.map((resource) => resource.uri),
     },
+    skillVisibility: visibility,
     toolExposureMutation: false,
   };
 };
@@ -545,6 +596,8 @@ export const prepareContextNode = async (
     });
   }
 
+  const skillVisibilitySummary = summarizeSkillVisibility(skillContext);
+
   await emitStepNode(emit, {
     runId: state.runId,
     nodeId: "agent-prepare-context",
@@ -572,6 +625,14 @@ export const prepareContextNode = async (
       skillMatchSource: skillContext?.match?.source ?? null,
       skillResourceCount: skillContext?.resources.length ?? 0,
       disclosedSkillResourceCount: skillContext?.disclosedResources.length ?? 0,
+      skillVisibilityScopeKind: skillContext?.skillVisibility?.scopeKind ?? null,
+      skillSummaryDisclosedCount:
+        skillVisibilitySummary.summaryDisclosedSkillIds.length,
+      skillBodyDisclosedCount: skillVisibilitySummary.bodyDisclosedSkillIds.length,
+      skillResourceMetadataDisclosedCount:
+        skillVisibilitySummary.resourceMetadataUris.length,
+      skillResourceContentDisclosedCount:
+        skillVisibilitySummary.resourceContentUris.length,
       skillToolExposureMutation: false,
       wenshuRuntimePackAvailable: wenshuCapabilityState.runtimePackAvailable,
       wenshuRegisteredCapabilityIds: wenshuCapabilityState.registeredCapabilityIds,

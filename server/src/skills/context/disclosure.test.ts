@@ -14,6 +14,7 @@ import {
   promoteResourceContent,
   promoteSkillBody,
   resourceDisclosureKey,
+  toSkillVisibilitySnapshot,
   withResourceDisclosure,
   withSkillDisclosure,
 } from "./disclosure.js";
@@ -415,6 +416,38 @@ describe("progressive Skill and Resource visibility", () => {
     expect(
       getResourceVisibilityEntry(view, "xlsx", DCF_URI)?.disclosure,
     ).toBe("metadata");
+  });
+
+  it("serializes the scoped view into a plain, authority-free snapshot", () => {
+    const view = project(createMainAgentSkillVisibilityScope({ scopeId: "main" }));
+    const body = promoteSkillBody({ view, skillId: "xlsx", contents });
+    const withContent = promoteResourceContent({
+      view: body.view,
+      skillId: "xlsx",
+      uri: DCF_URI,
+      resources: loadedResources,
+    });
+
+    const snapshot = toSkillVisibilitySnapshot(withContent.view);
+    expect(snapshot.scopeKind).toBe("main_agent");
+    const xlsx = snapshot.skills.find((entry) => entry.skillId === "xlsx")!;
+    expect(xlsx.disclosure).toBe("body");
+    expect(
+      xlsx.resources.find((resource) => resource.uri === DCF_URI)?.disclosure,
+    ).toBe("content");
+    expect(
+      xlsx.resources.find((resource) => resource.uri === COMPS_URI)?.disclosure,
+    ).toBe("metadata");
+    expect(
+      snapshot.skills.find((entry) => entry.skillId === "docx")?.disclosure,
+    ).toBe("summary");
+
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain("allowedTools");
+    expect(serialized).not.toContain("runtimeBindings");
+    expect(serialized).not.toContain("workspaceBound");
+    // The snapshot must survive the JSON round-trip persisted Agent state uses.
+    expect(JSON.parse(serialized)).toEqual(snapshot);
   });
 
   it("exposes immutable Skill visibility state", () => {
