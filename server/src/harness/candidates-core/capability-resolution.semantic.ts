@@ -17,7 +17,13 @@ import {
  * to a bounded shortlist, so this is one low-token classification call and
  * never the recursive multi-call resolution the #243 POC used.
  */
-export const createTaskModelCapabilityResolver = (): SemanticCapabilityResolver => {
+export const createTaskModelCapabilityResolver = (
+  capabilities: readonly CapabilityResolutionDocument[] = [],
+): SemanticCapabilityResolver => {
+  const capabilityById = new Map(
+    capabilities.map((capability) => [capability.capabilityId, capability]),
+  );
+
   return async ({ query, candidates }) => {
     if (candidates.length === 0) return undefined;
 
@@ -26,9 +32,24 @@ export const createTaskModelCapabilityResolver = (): SemanticCapabilityResolver 
       "Reply with only the chosen capability id, or NONE when none applies.",
       `Request: ${query}`,
       "Candidates:",
-      ...candidates.map(
-        (candidate) => `- ${candidate.capabilityId}: ${candidate.reason}`,
-      ),
+      ...candidates.map((candidate) => {
+        const capability = capabilityById.get(candidate.capabilityId);
+        const compactDescription = capability?.description
+          ? Array.from(capability.description).slice(0, 180).join("")
+          : "";
+        return [
+          "- id=" + candidate.capabilityId,
+          capability?.title ? "title=" + capability.title : "",
+          capability?.domain ? "domain=" + capability.domain : "",
+          capability?.tags.length
+            ? "tags=" + capability.tags.join(",")
+            : "",
+          compactDescription ? "description=" + compactDescription : "",
+          "evidence=" + candidate.reason,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+      }),
     ].join("\n");
 
     let output: string;
@@ -77,5 +98,6 @@ export const resolveProgressiveCapabilitySearch = (
 ): Promise<CapabilityResolutionResult> =>
   resolveCapabilityCascade({
     ...input,
-    semanticResolver: input.semanticResolver ?? createTaskModelCapabilityResolver(),
+    semanticResolver:
+      input.semanticResolver ?? createTaskModelCapabilityResolver(input.capabilities),
   });
