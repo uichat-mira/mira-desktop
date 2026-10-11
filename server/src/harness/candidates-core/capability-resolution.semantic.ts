@@ -64,21 +64,30 @@ export const createTaskModelCapabilityResolver = (
         event: "semantic-resolver-failed",
         error: error instanceof Error ? error.message : String(error),
       });
-      return undefined;
+      throw error;
     }
 
     const normalized = output.trim().toLowerCase();
     if (!normalized || normalized === "none") return undefined;
 
-    const direct = candidates.find(
-      (candidate) => candidate.capabilityId.toLowerCase() === normalized,
+    const candidateById = new Map(
+      candidates.map((candidate) => [
+        candidate.capabilityId.toLowerCase(),
+        candidate.capabilityId,
+      ]),
     );
-    if (direct) return direct.capabilityId;
+    const exact = candidateById.get(normalized);
+    if (exact) return exact;
 
-    const contained = candidates.find((candidate) =>
-      normalized.includes(candidate.capabilityId.toLowerCase()),
-    );
-    return contained?.capabilityId;
+    const tokens = normalized.match(/[a-z0-9_.:-]+/g) ?? [];
+    const matchedIds = [
+      ...new Set(
+        tokens
+          .map((token) => candidateById.get(token))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ];
+    return matchedIds.length === 1 ? matchedIds[0] : undefined;
   };
 };
 
