@@ -11,6 +11,7 @@ import { prepareSubAgent } from "./subagent-runtime.js";
 
 const DCF_URI = "skill://xlsx/reference/DCF_SKILL.md";
 const COMPS_URI = "skill://xlsx/reference/COMPS_SKILL.md";
+const SCRIPT_URI = "skill://xlsx/scripts/run_model.py";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 // Repository AGENTS.md requires test temporary artifacts to live under the
@@ -79,6 +80,7 @@ const createProvider = async () => {
     resources: [
       { relativePath: "reference/DCF_SKILL.md", content: "# DCF\nDCF rules" },
       { relativePath: "reference/COMPS_SKILL.md", content: "# Comps\nComps rules" },
+      { relativePath: "scripts/run_model.py", content: "print('run')\n" },
     ],
   });
   const docx = await createSkill({
@@ -265,7 +267,12 @@ describe("Skill Child runtime visibility wiring", () => {
       );
       expect(resourceTool).toBeDefined();
       const executed = await resourceTool!.execute({ uri: COMPS_URI });
-      expect(executed.result).toMatchObject({ status: "loaded", uri: COMPS_URI });
+      // A reference read delivers the Resource content into the model response.
+      expect(executed.result).toMatchObject({
+        status: "loaded",
+        uri: COMPS_URI,
+        content: "# Comps\nComps rules",
+      });
       expect(loadResourceSpy).toHaveBeenCalledTimes(1);
 
       // A genuine read promotes the same running Child scope to content, while
@@ -274,6 +281,72 @@ describe("Skill Child runtime visibility wiring", () => {
         findResource(prepared.execution.skillContext, COMPS_URI)?.disclosure,
       ).toBe("content");
       expect(findResource(mainContext, COMPS_URI)?.disclosure).toBe("metadata");
+
+      // The returned Child snapshot is a live view of the same state the Child
+      // execution consumes, not a frozen initial snapshot: a consumer reading
+      // `prepared.skillVisibility` sees the post-read content stage too.
+      const returnedChildResource = prepared.skillVisibility.skills
+        .find((entry) => entry.skillId === "xlsx")
+        ?.resources.find((resource) => resource.uri === COMPS_URI);
+      expect(returnedChildResource?.disclosure).toBe("content");
+    } finally {
+      loadResourceSpy.mockRestore();
+    }
+  });
+
+  it("materializes a script Resource without claiming content disclosure", async () => {
+    const { provider, root } = await createProvider();
+    const mainContext = await selectXlsx(provider);
+    const loadedScript = {
+      uri: SCRIPT_URI,
+      skillId: "xlsx",
+      name: "run_model.py",
+      kind: "script" as const,
+      content: "print('run')\n",
+    };
+    const loadResourceSpy = vi
+      .spyOn(SkillContextProvider.prototype, "loadResource")
+      .mockResolvedValue(loadedScript);
+
+    try {
+      const prepared = prepareSubAgent({
+        goal: "做一个 DCF Excel 模型",
+        skillContext: mainContext,
+        exposedHarnessToolIds: [],
+        workspaceRoot: root,
+      });
+      const childScript = findResource(
+        prepared.execution.skillContext,
+        SCRIPT_URI,
+      );
+      expect(childScript?.disclosure).toBe("metadata");
+
+      const resourceTool = prepared.tools.find(
+        (tool) => tool.id === "skill_read_resource",
+      );
+      expect(resourceTool).toBeDefined();
+      const executed = await resourceTool!.execute({ uri: SCRIPT_URI });
+
+      // Script materialization is a distinct outcome: it writes the bundled
+      // script into governed workspace staging and returns its path plus byte
+      // count. The model never received the source text, so the result carries
+      // no `content` and the Resource stays at the metadata stage.
+      expect(executed.result).toMatchObject({
+        status: "materialized",
+        uri: SCRIPT_URI,
+        kind: "script",
+        bytes: Buffer.byteLength(loadedScript.content, "utf8"),
+      });
+      expect(executed.result).not.toHaveProperty("content");
+      expect(loadResourceSpy).toHaveBeenCalledTimes(1);
+      expect(
+        findResource(prepared.execution.skillContext, SCRIPT_URI)?.disclosure,
+      ).toBe("metadata");
+      expect(
+        prepared.skillVisibility.skills
+          .find((entry) => entry.skillId === "xlsx")
+          ?.resources.find((resource) => resource.uri === SCRIPT_URI)?.disclosure,
+      ).toBe("metadata");
     } finally {
       loadResourceSpy.mockRestore();
     }

@@ -192,10 +192,15 @@ const createSkillResourceTool = (input: {
   availableUris: string[];
   workspaceRoot?: string;
   /**
-   * Called only after a Resource was genuinely read. It lets the running Child
-   * scope reflect the `metadata -> content` disclosure stage. A blocked,
-   * unavailable or unresolved read never reaches this callback, so it can never
-   * claim content the Child did not actually receive.
+   * Called only after the tool actually delivered the Resource content into the
+   * model response, so the running Child scope can reflect the
+   * `metadata -> content` disclosure stage.
+   *
+   * Script resources are a distinct outcome: they are materialized into the
+   * governed workspace and return a workspace path plus byte count, not their
+   * source text. Materialization therefore must not be reported here as content
+   * disclosure. A blocked, unavailable or unresolved read never reaches this
+   * callback either, so it can never claim content the Child did not receive.
    */
   onResourceDisclosed?: (resource: LoadedSkillResource) => void;
 }): SubAgentToolBinding => ({
@@ -257,7 +262,9 @@ const createSkillResourceTool = (input: {
           workspaceRoot: input.workspaceRoot,
           signal,
         });
-        input.onResourceDisclosed?.(loaded);
+        // Script materialization writes the script into the workspace and hands
+        // back only its path: the Child never received the source text, so this
+        // stays a metadata-stage Resource and must not promote content.
         return {
           result: {
             status: "materialized",
@@ -501,9 +508,10 @@ export const prepareSubAgent = (input: PrepareSubAgentInput) => {
   // every declared authority field stay identical to the Main context, so the
   // Child scope can never widen the Harness/Policy/Approval ceiling, and the
   // Main context object is never mutated by the Child.
+  let childVisibilitySnapshot = toSkillVisibilitySnapshot(childVisibilityView);
   const childSkillContext: SkillContext = {
     ...input.skillContext,
-    skillVisibility: toSkillVisibilitySnapshot(childVisibilityView),
+    skillVisibility: childVisibilitySnapshot,
   };
   const execution: SubAgentExecutionInput = {
     goal: input.goal,
@@ -531,9 +539,10 @@ export const prepareSubAgent = (input: PrepareSubAgentInput) => {
           skillId,
           availableUris: availableResourceUris,
           workspaceRoot,
-          // A genuine Resource read promotes only this running Child scope from
-          // the metadata stage to the content stage. The Main snapshot and the
-          // Resource URI ownership/path-safety checks are untouched.
+          // A content-delivering Resource read promotes only this running Child
+          // scope from the metadata stage to the content stage. Script
+          // materialization does not call this callback. The Main snapshot and
+          // the Resource URI ownership/path-safety checks are untouched.
           onResourceDisclosed: (resource) => {
             childVisibilityView = promoteResourceContent({
               view: childVisibilityView,
@@ -541,9 +550,8 @@ export const prepareSubAgent = (input: PrepareSubAgentInput) => {
               uri: resource.uri,
               resources: [resource],
             }).view;
-            childSkillContext.skillVisibility = toSkillVisibilitySnapshot(
-              childVisibilityView,
-            );
+            childVisibilitySnapshot = toSkillVisibilitySnapshot(childVisibilityView);
+            childSkillContext.skillVisibility = childVisibilitySnapshot;
           },
         }),
       ]
@@ -597,7 +605,14 @@ export const prepareSubAgent = (input: PrepareSubAgentInput) => {
     missingCapabilities,
     availableCapabilityCount,
     declaredCapabilityCount,
-    skillVisibility: toSkillVisibilitySnapshot(childVisibilityView),
+    // Single source of truth for the Child's scoped visibility: a live getter
+    // over the same snapshot the Child execution consumes
+    // (`execution.skillContext.skillVisibility`). A detached initial snapshot
+    // would go stale as soon as a Resource read promotes the scope, so callers
+    // must never read a frozen copy.
+    get skillVisibility() {
+      return childVisibilitySnapshot;
+    },
   };
 };
 

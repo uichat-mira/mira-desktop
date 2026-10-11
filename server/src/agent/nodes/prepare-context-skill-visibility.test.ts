@@ -88,7 +88,6 @@ const createState = (): AgentNodeState => ({
     constraints: [],
     riskLevel: "low",
   },
-  plan: { id: "plan-1", goalId: "goal-1", version: 1, steps: [] },
   messages: [{ role: "user", content: "$xlsx make a DCF model" }],
 });
 
