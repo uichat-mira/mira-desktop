@@ -224,7 +224,7 @@ test("builds the #47 external result envelope from the selected OpenCode route",
 test("external result metadata follows an alternate selected route without Control Room changes", () => {
   const alternateRoute = {
     ...routineRoute,
-    model: "deepseek-v4-flash",
+    model: "mimo-v2.5-free",
   };
   const submission = buildExternalSubmission(
     reviewPackage(),
@@ -234,7 +234,7 @@ test("external result metadata follows an alternate selected route without Contr
   );
 
   assert.equal(submission.execution.provider, "opencode");
-  assert.equal(submission.execution.model, "deepseek-v4-flash");
+  assert.equal(submission.execution.model, "mimo-v2.5-free");
   assert.equal(submission.execution.role, "routine");
 });
 
@@ -384,8 +384,8 @@ test("maps a missing selected-route credential to an explicit fail-closed result
     state: "REVIEW_UNAVAILABLE",
     reason: "review_route_credential_unavailable",
   });
-  assert.equal(result.submission.execution.provider, "opencode-go");
-  assert.equal(result.submission.execution.model, "step-5-preview-free");
+  assert.equal(result.submission.execution.provider, "opencode");
+  assert.equal(result.submission.execution.model, "mimo-v2.6-flash-free");
   assert.equal(result.submission.execution.review, null);
 });
 
