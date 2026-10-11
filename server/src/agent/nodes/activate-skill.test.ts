@@ -6,7 +6,9 @@ import type { AgentNodeState } from "../node-runtime.js";
 import { parseNextActionPlannerOutput } from "../planner/text-json-codec.js";
 import { buildPlannerObservationContext } from "../node-runtime.js";
 import { buildNextActionPlannerMessages } from "../planner/prompt.js";
-import { routeAfterNextAction } from "../graph/routes.js";
+import { routeAfterNextAction, routeAfterEvidence } from "../graph/routes.js";
+import { generateNode } from "./generate.js";
+import { evaluateNode } from "./evaluate.js";
 
 
 vi.mock("@/skills/context/index.js", () => ({
@@ -171,11 +173,28 @@ describe("#309 Main Planner summary -> Skill Child activation", () => {
         },
       },
     } as unknown as Awaited<ReturnType<typeof forkedSkillAgentNode>>);
-    const result = await activateSkillNode(makeState());
+    const state = makeState();
+    const result = await activateSkillNode(state);
     expect(result.nextAction).toMatchObject({
       type: "ask_user",
       question: "Please supply the budget currency",
     });
+
+    // AI Review P1 check: use the *real* Generate/Evaluate nodes, not a fake
+    // answer generator. ask_user must reach the user's waiting_user terminal
+    // boundary without another Planner decision or finalization packet.
+    const handoffState = {
+      ...state,
+      ...result,
+      pendingEvidenceObservation: undefined,
+    } as AgentNodeState;
+    expect(routeAfterEvidence(handoffState as Parameters<typeof routeAfterEvidence>[0]))
+      .toBe("generate");
+    const generated = await generateNode(handoffState);
+    expect(generated.answer).toBe("Please supply the budget currency");
+    expect(result.finalizationPacket).toBeUndefined();
+    const evaluated = await evaluateNode({ ...handoffState, ...generated });
+    expect(evaluated.terminalReason).toBe("waiting_user");
   });
 
   it("keeps Parent recovery Tool exposure within the selected Skill profile", async () => {
