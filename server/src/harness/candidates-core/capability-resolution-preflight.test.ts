@@ -122,6 +122,45 @@ describe("progressive capability resolution in turn resolution", () => {
     expect(result.toolCandidates[0]?.toolId).toBe("beta_tool");
   });
 
+  it("surfaces one bounded semantic runtime failure without fabricating a selection", async () => {
+    for (let index = 0; index < 19; index += 1) {
+      registerTool(
+        createEligibleTool("noise_tool_" + index, {
+          description: "generic unrelated capability",
+        }),
+      );
+    }
+    registerTool(
+      createEligibleTool("alpha_tool", {
+        description: "zephyrix ambiguous route handler",
+      }),
+    );
+    registerTool(
+      createEligibleTool("beta_tool", {
+        description: "zephyrix ambiguous route handler",
+      }),
+    );
+    const semanticResolver = vi.fn(async () => {
+      throw new Error("semantic resolver unavailable");
+    });
+
+    const result = await resolveHarnessToolCandidatesForTurn({
+      query: "zephyrix ambiguous route",
+      source: "agent_intent",
+      semanticResolver,
+    });
+
+    expect(semanticResolver).toHaveBeenCalledTimes(1);
+    expect(result.resolution?.path).toBe("ambiguous");
+    expect(result.resolution?.trace.modelCalls).toBe(1);
+    expect(result.resolution?.trace.semanticAttempted).toBe(true);
+    expect(result.resolution?.trace.semanticError).toBe(
+      "semantic resolver unavailable",
+    );
+    expect(result.retrievalError).toBe("semantic resolver unavailable");
+    expect(result.toolExposure.exposedToolIds).toHaveLength(20);
+  });
+
   it("keeps no-match transparent and spends no semantic call", async () => {
     for (let index = 0; index < 21; index += 1) {
       registerTool(
