@@ -19,7 +19,7 @@ function baseConfig() {
       routine: {
         enabled: true,
         provider: "opencode-go",
-        model: "minimax-m3",
+        model: "deepseek-v4.1-flash",
         variant: "none",
         credentialEnv: "OPENCODE_GO_API_KEY",
       },
@@ -49,7 +49,7 @@ test("loads the trusted versioned Desktop routing configuration", async () => {
     role: "routine",
     enabled: true,
     provider: "opencode-go",
-    model: "minimax-m3",
+    model: "deepseek-v4.1-flash",
     variant: "none",
     credentialEnv: "OPENCODE_GO_API_KEY",
   });
@@ -62,7 +62,7 @@ test("loads the trusted versioned Desktop routing configuration", async () => {
 test("resolves only enabled routes and fails explicitly for disabled roles", () => {
   const config = parseReviewRoutingConfig(baseConfig());
 
-  assert.equal(reviewRouteModelRef(resolveReviewRoute(config, "routine")), "opencode-go/minimax-m3");
+  assert.equal(reviewRouteModelRef(resolveReviewRoute(config, "routine")), "opencode-go/deepseek-v4.1-flash");
   assert.throws(() => resolveReviewRoute(config, "fallback"), /review_route_fallback_disabled/);
   assert.throws(() => resolveReviewRoute(config, "escalation"), /review_route_escalation_disabled/);
 });
