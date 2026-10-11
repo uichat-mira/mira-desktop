@@ -1,7 +1,7 @@
 ---
 status: current
 owner: agent-runtime
-last_verified: 2026-07-30
+last_verified: 2026-10-11
 layer: wiki
 module: Agent
 feature: AgentGraphProtocol
