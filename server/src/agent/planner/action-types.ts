@@ -7,6 +7,7 @@ export const ALLOWED_ACTION_TYPES = [
   "answer",
   "retrieve",
   "use_tool",
+  "activate_skill",
   "ask_user",
   "error",
 ] as const;

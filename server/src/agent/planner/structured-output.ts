@@ -6,7 +6,7 @@ export type PlannerStructuredPlanPatch = {
 };
 
 export type PlannerStructuredDecisionEnvelope = {
-  type: "answer" | "retrieve" | "use_tool" | "ask_user" | "error";
+  type: "answer" | "retrieve" | "use_tool" | "activate_skill" | "ask_user" | "error";
   reason: string;
   query: string | null;
   toolId: string | null;
@@ -126,10 +126,11 @@ export const buildPlannerStructuredOutputJsonSchema = (
   properties: {
     type: {
       type: "string",
-      enum: ["answer", "retrieve", "use_tool", "ask_user", "error"],
+      enum: ["answer", "retrieve", "use_tool", "activate_skill", "ask_user", "error"],
     },
     reason: { type: "string" },
     query: nullableSchema({ type: "string" }),
+    skillId: nullableSchema({ type: "string" }),
     toolId:
       toolExposure.exposedTools.length > 0
         ? {
@@ -192,6 +193,7 @@ export const buildPlannerStructuredOutputJsonSchema = (
     "reason",
     "query",
     "toolId",
+    "skillId",
     "args",
     "question",
     "completionProof",
@@ -249,6 +251,9 @@ export const normalizePlannerStructuredDecision = (
   }
   if (envelope.toolId !== null) {
     decision.toolId = envelope.toolId;
+  }
+  if (typeof envelope.skillId === "string" && envelope.skillId.trim()) {
+    decision.skillId = envelope.skillId.trim();
   }
   if (envelope.args !== null) {
     const toolSchema = toolExposure?.toolMeta.find(

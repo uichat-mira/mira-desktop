@@ -443,6 +443,12 @@ export type AgentNextAction =
       reason: string;
     }
   | {
+      /** Disclose one already-discoverable Skill's body through the governed Skill runtime. */
+      type: "activate_skill";
+      skillId: string;
+      reason: string;
+    }
+  | {
       type: "use_tool";
       toolId: string;
       args: Record<string, unknown>;
