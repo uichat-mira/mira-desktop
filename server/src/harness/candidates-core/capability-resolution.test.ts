@@ -272,6 +272,7 @@ describe("deterministic-first capability resolution cascade", () => {
 
     expect(result.path).toBe("ambiguous");
     expect(result.trace.modelCalls).toBe(0);
+    expect(result.trace.semanticAttempted).toBe(false);
     expect(semanticResolver).not.toHaveBeenCalled();
   });
 });
