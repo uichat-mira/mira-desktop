@@ -44,14 +44,35 @@ const asNonEmptyString = (value: unknown) =>
 type PiModel = NonNullable<NonNullable<AgentOptions["initialState"]>["model"]>;
 type BindingExecution = Awaited<ReturnType<SkillAgentToolBinding["execute"]>>;
 
-// Pi 1.0 requires an explicit streamFn. Mira deliberately shapes its Pi model as
-// `api: "openai-completions"` (see resolvePiModel), so it pairs that model with
-// Pi's official OpenAI-completions stream function instead of Pi's provider
-// catalog. AgentOptions.streamFn is typed against the generic `Model<Api>`, while
-// the exported implementation accepts the narrower `Model<"openai-completions">`
-// it is meant to serve; this cast only bridges that generic slot and does not
-// change the runtime pairing.
-const piStreamFn = streamOpenAICompletions as unknown as AgentOptions["streamFn"];
+// Pi's OpenAI-completions transport does not infer OpenCode Go's required
+// x-opencode-session header from Agent.sessionId. Supply a stable ID to *each*
+// request in one Skill Child run without changing other provider transports.
+// The stream-function cast only bridges Pi's generic API slot to the dedicated
+// OpenAI-completions implementation; the runtime remains Pi's official SDK.
+const openAiCompletionsStream =
+  streamOpenAICompletions as unknown as NonNullable<AgentOptions["streamFn"]>;
+
+export const createSkillAgentStreamFn = (
+  sessionId: string,
+): NonNullable<AgentOptions["streamFn"]> =>
+  (model, context, options) => {
+    // Only the official OpenCode Go origin receives these affinity headers.
+    // Never copy Go routing headers to arbitrary OpenAI-compatible endpoints.
+    const isOpenCodeGo =
+      typeof model.baseUrl === "string" &&
+      /^https:\/\/opencode\.ai\/zen\/go\/v1(?:\/|$)/i.test(model.baseUrl);
+
+    return openAiCompletionsStream(model, context, isOpenCodeGo
+      ? {
+          ...options,
+          headers: {
+            ...options?.headers,
+            "x-opencode-session": sessionId,
+            "User-Agent": "mira-pi-skill-agent/1",
+          },
+        }
+      : options);
+  };
 
 const isArkPlanProvider = (providerTemplateCode: string) =>
   providerTemplateCode === "volcengine-code-plan" ||
@@ -1002,6 +1023,7 @@ export const runPiSkillAgent = async (input: {
     });
   }
 
+  const sessionId = `mira-subagent:${primary.id}:${ledger.runId}`;
   const agent = new Agent({
     initialState: {
       systemPrompt: buildSystemPrompt(input.execution),
@@ -1022,8 +1044,8 @@ export const runPiSkillAgent = async (input: {
         },
       };
     },
-    sessionId: `mira-subagent:${primary.id}:${ledger.runId}`,
-    streamFn: piStreamFn,
+    sessionId,
+    streamFn: createSkillAgentStreamFn(sessionId),
   });
 
   try {
