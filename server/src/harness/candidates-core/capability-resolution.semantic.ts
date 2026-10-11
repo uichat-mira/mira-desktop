@@ -68,7 +68,12 @@ export const createTaskModelCapabilityResolver = (
     }
 
     const normalized = output.trim().toLowerCase();
-    if (!normalized || normalized === "none") return undefined;
+    if (!normalized) return undefined;
+
+    const unwrapped = normalized
+      .replace(/^\`+|\`+$/g, "")
+      .trim();
+    if (unwrapped === "none") return undefined;
 
     const candidateById = new Map(
       candidates.map((candidate) => [
@@ -76,18 +81,7 @@ export const createTaskModelCapabilityResolver = (
         candidate.capabilityId,
       ]),
     );
-    const exact = candidateById.get(normalized);
-    if (exact) return exact;
-
-    const tokens = normalized.match(/[a-z0-9_.:-]+/g) ?? [];
-    const matchedIds = [
-      ...new Set(
-        tokens
-          .map((token) => candidateById.get(token))
-          .filter((value): value is string => Boolean(value)),
-      ),
-    ];
-    return matchedIds.length === 1 ? matchedIds[0] : undefined;
+    return candidateById.get(unwrapped);
   };
 };
 
