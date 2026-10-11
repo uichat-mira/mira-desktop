@@ -1,6 +1,10 @@
 import type { SandboxProfile, ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessTurnSource } from "../shared/types.js";
-import type { CapabilityResolutionResult } from "./capability-resolution.js";
+import type {
+  CapabilityResolutionBudget,
+  CapabilityResolutionResult,
+  SemanticCapabilityResolver,
+} from "./capability-resolution.js";
 
 export interface HarnessCapabilityMatch {
   capabilityId: string;
@@ -56,6 +60,12 @@ export interface ResolveHarnessToolCandidatesForTurnInput {
   allowExternal?: boolean;
   allowedExternalToolIds?: string[];
   sandboxProfiles?: Partial<Record<SandboxProfile, boolean>>;
+  /** Optional exact capability/tool identity supplied by an upstream resolver. */
+  knownCapabilityId?: string;
+  /** Test/controlled seam; production defaults to the bounded task-model resolver. */
+  semanticResolver?: SemanticCapabilityResolver;
+  /** Budget seam consumed by the final #301 budget card. */
+  resolutionBudget?: CapabilityResolutionBudget;
 }
 
 export interface ResolveHarnessToolCandidatesForTurnResult {
