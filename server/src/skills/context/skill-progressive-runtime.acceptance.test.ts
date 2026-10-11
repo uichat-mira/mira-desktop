@@ -8,7 +8,7 @@ import type { SkillManifest } from "./types.js";
 /**
  * #309 acceptance gate: exercise the production SkillContextProvider, not the
  * isolated disclosure projection. These intentionally fail until the live
- * Main Agent startup/disclosure seam implements summary-first/body-later.
+ * Main Agent startup/disclosure seam implements summary discoverability.\n * Known, confidently matched Skills may still use the direct-body fast path.
  *
  * A passing disclosure.ts unit test is not sufficient: the model must be able
  * to discover a Skill before its SKILL.md has been read.
@@ -74,7 +74,7 @@ describe("#309 production Skill progressive disclosure acceptance", () => {
     expect(loader.loadContent).not.toHaveBeenCalled();
   });
 
-  it("does not eagerly disclose a matched Skill body at initial catalog preparation", async () => {
+  it("preserves the direct selected-Skill fast path without loading unrelated Skill bodies", async () => {
     const { provider, loader } = createProvider();
     const query = "做一个 DCF Excel 模型";
     const context = await provider.prepare({
@@ -82,10 +82,18 @@ describe("#309 production Skill progressive disclosure acceptance", () => {
       messages: [{ role: "user", content: query }],
     });
 
+    // A confidently matched Skill may be promoted directly: #309 must not
+    // penalize the established deterministic fast path for known tasks.
+    expect(context?.primary?.id).toBe("xlsx");
     expect(context?.skillVisibility?.skills.find(
       (entry) => entry.skillId === "xlsx",
+    )?.disclosure).toBe("body");
+    expect(context?.skillVisibility?.skills.find(
+      (entry) => entry.skillId === "docx",
     )?.disclosure).toBe("summary");
-    expect(context?.primary?.body).toBeUndefined();
-    expect(loader.loadContent).not.toHaveBeenCalled();
+    expect(loader.loadContent).toHaveBeenCalledTimes(1);
+    expect(loader.loadContent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "xlsx" }),
+    );
   });
 });
