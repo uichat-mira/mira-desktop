@@ -180,6 +180,12 @@ const runStep = async (input: {
   }
 };
 
+// Read the *updated* action after the Skill activation runtime step. Within
+// switch ("activate_skill"), TypeScript still remembers the old discriminant.
+const hasActivatedSkillHandoff = (state: AgentGraphStateType): boolean =>
+  state.nextAction?.type === "ask_user" ||
+  (state.nextAction?.type === "answer" && Boolean(state.finalizationPacket));
+
 const createPiAgentLoopRunner = (steps: PiAgentLoopSemantics) => {
   const finishRunWithError = async (
     state: AgentGraphStateType,
@@ -417,10 +423,7 @@ const createPiAgentLoopRunner = (steps: PiAgentLoopSemantics) => {
               }
               if (state.pendingApproval) return pauseRunForApproval(state, emit);
               if (state.errorMessage) return finishRunWithError(state, emit);
-              if (
-                state.nextAction?.type === "ask_user" ||
-                (state.nextAction?.type === "answer" && state.finalizationPacket)
-              ) {
+              if (hasActivatedSkillHandoff(state)) {
                 return finishRunWithAnswer(state, emit);
               }
               continue;
