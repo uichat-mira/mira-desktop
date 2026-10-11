@@ -1,0 +1,32 @@
+name: "#309 One-call OpenCode Go Skill Discovery Smoke"
+on:
+  push:
+    branches:
+      - chore/issue-309-live-smoke
+    paths:
+      - .github/workflows/issue-309-live-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  live-skill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+    steps:
+      - name: Checkout the exact #309 code under acceptance
+        uses: actions/checkout@v4
+        with:
+          ref: 7e8291aab0b09915facd05177a2b029b8f5e678c
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install immutable dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run ONE real-model Main Planner Skill summary selection
+        run: pnpm --filter @ui-chat-mira/server exec tsx --tsconfig tsconfig.test.json scripts/smoke-skill-progressive-live.ts
