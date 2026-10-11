@@ -8,7 +8,8 @@ import type { SkillManifest } from "./types.js";
 /**
  * #309 acceptance gate: exercise the production SkillContextProvider, not the
  * isolated disclosure projection. These intentionally fail until the live
- * Main Agent startup/disclosure seam implements summary discoverability.\n * Known, confidently matched Skills may still use the direct-body fast path.
+ * Main Agent startup/disclosure seam implements summary discoverability.
+ * Known, confidently matched Skills may still use the direct-body fast path.
  *
  * A passing disclosure.ts unit test is not sufficient: the model must be able
  * to discover a Skill before its SKILL.md has been read.

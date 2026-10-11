@@ -254,7 +254,21 @@ export class SkillContextProvider {
       }
     }
 
-    if (!match.primary) return undefined;
+    // Summary-only discovery is available even without a deterministic match.
+    // Keep SKILL.md and Resource bodies unread until explicitly selected.
+    if (!match.primary) {
+      if (manifests.length === 0) return undefined;
+      const view = projectSkillVisibilityView({
+        scope: createMainAgentSkillVisibilityScope({ scopeId: "main_agent" }),
+        skills: manifests,
+      });
+      return {
+        instruction: SKILL_CONTEXT_INSTRUCTION,
+        resources: [],
+        disclosedResources: [],
+        skillVisibility: toSkillVisibilitySnapshot(view),
+      };
+    }
 
     const manifest = this.registry.get(match.primary.skillId);
     if (!manifest) return undefined;
