@@ -4,6 +4,10 @@ import { forkedSkillAgentNode } from "./forked-skill-agent.js";
 import { activateSkillNode } from "./activate-skill.js";
 import type { AgentNodeState } from "../node-runtime.js";
 import { parseNextActionPlannerOutput } from "../planner/text-json-codec.js";
+import { buildPlannerObservationContext } from "../node-runtime.js";
+import { buildNextActionPlannerMessages } from "../planner/prompt.js";
+import { routeAfterNextAction } from "../graph/routes.js";
+
 
 vi.mock("@/skills/context/index.js", () => ({
   prepareSkillContext: vi.fn(),
@@ -55,6 +59,37 @@ beforeEach(() => {
 });
 
 describe("#309 Main Planner summary -> Skill Child activation", () => {
+  it("puts Skill summaries, not bodies, into the actual Main Planner model prompt", () => {
+    const state = makeState();
+    const observationContext = buildPlannerObservationContext({
+      currentTaskFrame: state.currentTaskFrame,
+      observations: [],
+      evidence: { observations: [], retrievals: [], toolExecutions: [] },
+    } as unknown as Parameters<typeof buildPlannerObservationContext>[0]);
+    const messages = buildNextActionPlannerMessages({
+      question: "Build a valuation model",
+      messages: state.messages,
+      toolExposure,
+      observationContext,
+      iteration: 0,
+      maxIterations: 0,
+    });
+    const payload = JSON.parse(String(messages[1]?.content ?? "{}"));
+    expect(payload.skillCatalog).toEqual([{
+      skillId: "xlsx",
+      name: "Spreadsheet models",
+      description: "Financial models and workbooks",
+      disclosure: "summary",
+    }]);
+    expect(payload.skillCatalog[0]).not.toHaveProperty("body");
+    expect(String(messages[0]?.content)).toContain("activate_skill");
+  });
+
+  it("routes Skill activation to its internal node, not Tool normalization", () => {
+    expect(routeAfterNextAction(makeState() as Parameters<typeof routeAfterNextAction>[0]))
+      .toBe("activateSkill");
+  });
+
   it("parses model selection as a Skill activation, not an arbitrary Tool call", () => {
     expect(parseNextActionPlannerOutput(
       '{"type":"activate_skill","skillId":"xlsx","reason":"need spreadsheet"}',
