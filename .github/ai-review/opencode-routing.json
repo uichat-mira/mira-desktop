@@ -4,7 +4,7 @@
     "routine": {
       "enabled": true,
       "provider": "opencode-go",
-      "model": "deepseek-v4.1-flash",
+      "model": "space-bunny-free",
       "variant": "none",
       "credentialEnv": "OPENCODE_GO_API_KEY"
     },
