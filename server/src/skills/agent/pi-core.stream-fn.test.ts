@@ -167,7 +167,36 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
     const result = await runPiSkillAgent({ execution: execution(), tools: [] });
 
     expect(result.status).toBe("completed");
-    expect(mocks.agentOptions?.streamFn).toBe(streamOpenAICompletions);
+    // Pi receives the production transport wrapper, which passes through
+    // unchanged for non-OpenCode providers and adds Go session affinity only
+    // for the official OpenCode Go endpoint.
+    expect(mocks.agentOptions?.streamFn).toEqual(expect.any(Function));
+    expect(mocks.agentOptions?.streamFn).not.toBe(streamOpenAICompletions);
+  });
+
+  it("sets stable OpenCode Go affinity headers without granting them to unrelated providers", async () => {
+    const { createSkillAgentStreamFn } = await import("./pi-core.js");
+    const fn = createSkillAgentStreamFn("mira-subagent:skill:run-309");
+    const model = { baseUrl: "https://opencode.ai/zen/go/v1" } as Parameters<typeof fn>[0];
+    const context = { messages: [], tools: [] } as unknown as Parameters<typeof fn>[1];
+    const options = { headers: { "X-Custom": "original" } } as Parameters<typeof fn>[2];
+    vi.mocked(streamOpenAICompletions).mockClear();
+    fn(model, context, options);
+    fn(model, context, options);
+    expect(vi.mocked(streamOpenAICompletions)).toHaveBeenCalledTimes(2);
+    for (const call of vi.mocked(streamOpenAICompletions).mock.calls) {
+      expect(call[0]).toBe(model);
+      expect(call[1]).toBe(context);
+      expect(call[2]?.headers).toEqual({
+        "X-Custom": "original",
+        "x-opencode-session": "mira-subagent:skill:run-309",
+        "User-Agent": "mira-pi-skill-agent/1",
+      });
+    }
+    vi.mocked(streamOpenAICompletions).mockClear();
+    const unrelated = { baseUrl: "https://example.com/v1" } as Parameters<typeof fn>[0];
+    fn(unrelated, context, options);
+    expect(vi.mocked(streamOpenAICompletions)).toHaveBeenCalledWith(unrelated, context, options);
   });
 
   it("keeps Mira provider resolution as the model owner and never migrates to the Pi catalog", async () => {
