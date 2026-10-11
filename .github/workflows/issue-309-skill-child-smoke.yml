@@ -1,0 +1,33 @@
+name: "#309 One-call OpenCode Go Skill Child Live Smoke"
+on:
+  push:
+    branches:
+      - chore/issue-309-live-smoke
+    paths:
+      - .github/workflows/issue-309-skill-child-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  live-child:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+      MIRA_LIVE_SKILL_CHILD: "1"
+    steps:
+      - name: Checkout exact #309 candidate with real Child runtime smoke
+        uses: actions/checkout@v4
+        with:
+          ref: 26353bd800bcec46873530a369c202df326fc621
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install immutable dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Execute governed Skill Child with real OpenCode Go
+        run: pnpm --filter @ui-chat-mira/server exec vitest run src/skills/agent/skill-child-live.smoke.test.ts
