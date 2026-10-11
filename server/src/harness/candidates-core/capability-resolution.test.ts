@@ -138,6 +138,38 @@ describe("deterministic-first capability resolution cascade", () => {
     expect(result.confident).toBe(true);
   });
 
+  it("resolves indirect submit-for-review intent lexically without a model call", async () => {
+    const capabilities = [
+      ...Array.from({ length: 8 }, (_, index) =>
+        doc({
+          capabilityId: "noise_" + index,
+          description: "generic workspace utility",
+          tags: ["workspace"],
+        }),
+      ),
+      doc({
+        capabilityId: "github_pull_request_review",
+        domain: "external_mcp",
+        description:
+          "Submit approve comment or request-changes review for a pull request",
+        tags: ["github", "pull-request"],
+      }),
+    ];
+    const semanticResolver = vi.fn(async () => "noise_0");
+
+    const result = await resolveCapabilityCascade({
+      query: "submit for review",
+      capabilities,
+      semanticResolver,
+    });
+
+    expect(result.path).toBe("lexical");
+    expect(result.selectedCapabilityId).toBe("github_pull_request_review");
+    expect(result.trace.modelCalls).toBe(0);
+    expect(result.trace.semanticAttempted).toBe(false);
+    expect(semanticResolver).not.toHaveBeenCalled();
+  });
+
   it("invokes the semantic Resolver only for genuine ambiguity", async () => {
     const capabilities = [
       doc({
