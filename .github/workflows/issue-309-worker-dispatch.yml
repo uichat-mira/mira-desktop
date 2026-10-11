@@ -1,4 +1,4 @@
-name: Dispatch #309 Child Runtime Disclosure Closeout
+name: Dispatch #309 Code Review Closeout
 
 on:
   push:
