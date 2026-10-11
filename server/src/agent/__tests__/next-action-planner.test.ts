@@ -2063,7 +2063,7 @@ test("nextActionPlannerNode writes invalid planner output diagnostics into trace
     );
     assert.deepEqual(
       (doneEvent?.details as Record<string, unknown>)?.allowedActionTypes,
-      ["answer", "retrieve", "use_tool", "ask_user", "error"],
+      ["answer", "retrieve", "use_tool", "activate_skill", "ask_user", "error"],
     );
   } finally {
     streamSpy.mockRestore();

@@ -95,6 +95,27 @@ const summarizeToolSchemas = (toolExposure: AgentToolExposureState) =>
     };
   });
 
+/** Only brief model-visible Skill summaries; no body or execution authority. */
+const summarizeDiscoverableSkills = (context: PlannerObservationContext) => {
+  const frame = context.currentTaskFrame as
+    | { skillContext?: { skillVisibility?: { skills?: Array<{
+        skillId: string;
+        name: string;
+        description: string;
+        discoverable: boolean;
+        disclosure: string;
+      }> } } }
+    | undefined;
+  return (frame?.skillContext?.skillVisibility?.skills ?? [])
+    .filter((entry) => entry.discoverable && entry.disclosure !== "hidden")
+    .map((entry) => ({
+      skillId: entry.skillId,
+      name: entry.name,
+      description: entry.description,
+      disclosure: entry.disclosure,
+    }));
+};
+
 const getRemainingRecoveryAttempts = (observationContext: PlannerObservationContext) =>
   getRemainingPlannerRecoveryAttempts(observationContext.recovery);
 
@@ -208,7 +229,8 @@ const buildSchemaReplanMessages = (input: {
     content: [
       "你正在做一次 bounded replan。",
       "只允许返回一个合法的 nextAction JSON。",
-      "允许动作只有 answer / retrieve / use_tool / ask_user / error。",
+      "允许动作只有 answer / retrieve / use_tool / activate_skill / ask_user / error。",
+      "skillCatalog 是当前 scope 已发现的 Skill 摘要，只有任务确实需要其中某个 summary Skill 时才用 activate_skill，并提供精确 skillId。该动作仅披露 Skill 正文，不授予 Tool 权限。",
       "不要输出 Markdown，不要输出代码块，不要输出解释。",
       "当前 workspace 已绑定。",
       "如果问题明显在问本地 workspace 或本地文件，不要使用 web_search 代替本地证据路径。",
@@ -239,6 +261,7 @@ const buildSchemaReplanMessages = (input: {
           input.observationContext,
         ),
         allowedTools: summarizeToolSchemas(input.toolExposure),
+        skillCatalog: summarizeDiscoverableSkills(input.observationContext),
         toolSelectionHints: input.toolExposure.requestedToolGroups ?? [],
         observationContext: input.observationContext,
         instruction:
@@ -292,13 +315,15 @@ export const buildNextActionPlannerMessages = (input: {
         "如果有限历史存在多个可能目标或无法唯一确定要继续的任务，才使用 ask_user 澄清；不要自行猜测或继承不明确的任务。",
         "当你从有限历史继承任务语义时，planPatch.addItems 的 text 必须写出完整的语义目标和必要完成条件，不能只记录本轮的授权或方式说明；敏感值只需表述为已由用户提供，不要复制到计划文本；若工具和参数已经齐备，应在同一决策中直接选择 use_tool。",
         "你必须只输出 JSON，不要输出解释性自然语言，不要输出 Markdown，不要输出代码块。",
-        "允许输出的 JSON 只有五种：",
+        "允许输出的 JSON 只有六种：",
         '{"type":"answer","reason":"...","completionProof":[{"criterion":"...","evidenceRefs":["tool:0"]}],"unresolvedGaps":[]}',
         '{"type":"retrieve","query":"...","reason":"..."}',
+        '{"type":"activate_skill","skillId":"skillCatalog 中的精确 ID","reason":"..."}',
         '{"type":"use_tool","toolId":"...","args":{},"reason":"..."}',
         '{"type":"ask_user","question":"...","reason":"..."}',
         '{"type":"error","reason":"..."}',
         "如果你选择 use_tool，toolId 必须来自当前暴露的真实工具列表，args 必须是 JSON object。",
+        "只有当 skillCatalog 有 disclosure=summary 且任务实际需要 Skill 正文时，才选择 activate_skill。不要为了普通问答额外激活 Skill；它并不扩大 Tool authority。",
         "toolSelectionHints 表示用户通过 @ 明确选择的工具包偏好；任务需要工具时优先考虑其中 exposedToolIds，但是否调用以及调用哪个工具仍由你判断。",
         "工具包偏好不改变 exposedTools，不绕过权限和审批。状态为 unavailable 或 unknown 时，不得声称已经应用或调用该工具包。",
         "不要输出 capabilityId，不要发明未暴露工具，不要输出额外字段。",
@@ -364,6 +389,7 @@ export const buildNextActionPlannerMessages = (input: {
             latestObservationRecoverable:
               input.observationContext.latestObservation?.recoverable ?? false,
           },
+          skillCatalog: summarizeDiscoverableSkills(input.observationContext),
           toolExposure: {
             exposedTools: input.toolExposure.exposedTools,
             toolMeta: summarizeToolSchemas(input.toolExposure),

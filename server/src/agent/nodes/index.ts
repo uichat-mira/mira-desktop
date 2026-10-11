@@ -21,6 +21,7 @@ export {
   errorNode as finishWithError,
 } from "./error";
 export { retrieveNode } from "./retrieve";
+export { activateSkillNode } from "./activate-skill";
 export { generateNode as baseGenerateNode } from "./generate";
 export {
   harnessAwareGenerateNode as generateNode,

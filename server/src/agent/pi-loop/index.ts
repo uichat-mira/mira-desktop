@@ -10,6 +10,7 @@ import {
   policyNode,
   prepareContextNode,
   retrieveNode,
+  activateSkillNode,
   toolNode,
 } from "../nodes/index";
 import { GENERIC_TASK_DELEGATE_TOOL_ID } from "../delegation/contract.js";
@@ -178,6 +179,12 @@ const runStep = async (input: {
     );
   }
 };
+
+// Read the *updated* action after the Skill activation runtime step. Within
+// switch ("activate_skill"), TypeScript still remembers the old discriminant.
+const hasActivatedSkillHandoff = (state: AgentGraphStateType): boolean =>
+  state.nextAction?.type === "ask_user" ||
+  (state.nextAction?.type === "answer" && Boolean(state.finalizationPacket));
 
 const createPiAgentLoopRunner = (steps: PiAgentLoopSemantics) => {
   const finishRunWithError = async (
@@ -399,6 +406,28 @@ const createPiAgentLoopRunner = (steps: PiAgentLoopSemantics) => {
             case "answer":
             case "ask_user":
               return finishRunWithAnswer(state, emit);
+
+            case "activate_skill": {
+              await runStep({
+                traceNodeName: "activateSkill",
+                handler: activateSkillNode,
+                state,
+                emit,
+              });
+              if (
+                state.pendingEvidenceObservation ||
+                state.pendingToolExecution ||
+                state.pendingRetrievalEvidence
+              ) {
+                await commitPendingEvidence(state, emit);
+              }
+              if (state.pendingApproval) return pauseRunForApproval(state, emit);
+              if (state.errorMessage) return finishRunWithError(state, emit);
+              if (hasActivatedSkillHandoff(state)) {
+                return finishRunWithAnswer(state, emit);
+              }
+              continue;
+            }
 
             case "retrieve":
               await runStep({

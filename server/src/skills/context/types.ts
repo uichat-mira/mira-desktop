@@ -1,3 +1,5 @@
+import type { SkillVisibilitySnapshot } from "./disclosure.js";
+
 export type SkillExecutionContextMode = "inline" | "fork";
 export type SkillPackageOrigin = "built-in" | "user" | "external";
 
@@ -106,6 +108,14 @@ export type SkillContext = {
    * disclosure and every allowed Tool is schema-disclosed.
    */
   disclosedTools?: string[];
+  /**
+   * Serializable scoped visibility state for this Agent scope. It records which
+   * Skills/Resources were discoverable and which reached the body/content stage.
+   * It carries disclosure only: execution profile, `allowedTools`, runtime
+   * bindings, Policy and Approval stay outside it, so it can never widen
+   * authority.
+   */
+  skillVisibility?: SkillVisibilitySnapshot;
   match?: {
     source: SkillMatchSource;
     reason: string;
