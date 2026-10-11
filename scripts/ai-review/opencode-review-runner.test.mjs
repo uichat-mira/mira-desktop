@@ -510,7 +510,7 @@ test("workflow routes execution through OpenCode and the external result handoff
   assert.doesNotMatch(workflow, /\/api\/v1\/ai-review\/publish/);
   assert.match(workflow, /AI_REVIEW_EXTERNAL_RESULT_TOKEN/);
   assert.match(workflow, /AI_PROVIDER_OPENCODE_GO_KEY/);
-  assert.doesNotMatch(workflow, /space-bunny-free|deepseek-v4-(?:flash|pro)/);
+  assert.doesNotMatch(workflow, /minimax-m3|space-bunny-free|deepseek-v4\.1-flash|deepseek-v4-(?:flash|pro)/);
   assert.match(workflow, /opencode-ai@1\.18\.34/);
   assert.match(workflow, /@opencode-ai\/sdk@1\.18\.34/);
   assert.match(workflow, /import\.meta\.resolve\('@opencode-ai\/sdk'\)/);
