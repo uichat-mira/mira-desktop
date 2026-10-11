@@ -14,6 +14,13 @@ import {
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
+import {
+  createProgressiveResolutionState,
+  recordProgressiveResolutionSearch,
+  recordProgressiveResolutionSelection,
+  reconcileProgressiveResolutionState,
+  resolveAndDiscloseCapability,
+} from "@/harness/progressive-resolution-state";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
 import { withWorkbenchMetadata } from "@/mcp/workbench-metadata.js";
 import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
@@ -532,6 +539,48 @@ export const prepareContextNode = async (
     (definition) => callableToolIdSet.has(definition.id),
   );
 
+  // Durable Progressive Resolution state. It is restored from an approval
+  // checkpoint and reconciled against the current authoritative registry,
+  // readiness, and eligibility envelope before any of it is reused, so a
+  // revocation or readiness loss always wins over stale persisted visibility.
+  // Only newly expanded capability detail consumes the resolution budget;
+  // Planner turns, tool execution, retrieval and approval/resume do not.
+  // Failure/no-progress recovery keeps its own separate Planner budget.
+  let progressiveResolution = reconcileProgressiveResolutionState({
+    state: state.progressiveResolution ?? createProgressiveResolutionState(),
+    definitions: capabilityDefinitions,
+    eligibleCapabilityIds: currentEligibleToolIds,
+  });
+  if (matcherResult.resolution) {
+    const resolutionPath = matcherResult.resolution.path;
+    progressiveResolution = recordProgressiveResolutionSearch(
+      progressiveResolution,
+      {
+        path: resolutionPath,
+        modelCalls: matcherResult.resolution.trace.modelCalls,
+        detail: matcherResult.resolution.trace.reason,
+      },
+    );
+    for (const candidate of matcherResult.resolution.candidates) {
+      progressiveResolution = recordProgressiveResolutionSelection(
+        progressiveResolution,
+        {
+          capabilityId: candidate.capabilityId,
+          path: resolutionPath,
+          detail: candidate.reason,
+        },
+      );
+      // Resolving a candidate expands its capability detail to the full schema
+      // stage, which is the only step that consumes the resolution budget.
+      progressiveResolution = resolveAndDiscloseCapability(progressiveResolution, {
+        capabilityId: candidate.capabilityId,
+        target: "schema",
+        path: resolutionPath,
+        detail: candidate.reason,
+      }).state;
+    }
+  }
+
   const toolExposure = toAgentToolExposureState(
     callableToolIds,
     callableDefinitions,
@@ -652,6 +701,14 @@ export const prepareContextNode = async (
       capabilityDisclosureTrace,
       capabilityDisclosureTransitions,
       schemaMaterializedToolIds: [...schemaDisclosedToolIds],
+      progressiveResolutionBudget: progressiveResolution.budget,
+      progressiveResolutionExhausted: progressiveResolution.exhausted,
+      progressiveResolutionUnresolvedCapabilityGap:
+        progressiveResolution.unresolvedCapabilityGap ?? null,
+      progressiveResolutionDisclosedToolIds: Object.keys(
+        progressiveResolution.disclosure,
+      ),
+      progressiveResolutionTrace: progressiveResolution.trace,
       currentTaskFrameWriter:
         "prepareContextNode attaches SkillContext and a bounded Skill runtime projection; Planner remains the sole writer of goal/subtask/completion inference",
     },
@@ -661,5 +718,6 @@ export const prepareContextNode = async (
     toolIntent,
     toolExposure,
     currentTaskFrame,
+    progressiveResolution,
   };
 };

@@ -39,6 +39,7 @@ export const mapGraphStateToOutput = (
     lastToolExecution: state.lastToolExecution,
     currentTaskFrame: state.currentTaskFrame,
     finalizationPacket: state.finalizationPacket,
+    progressiveResolution: state.progressiveResolution,
     blockedReason: state.blockedReason,
     terminalReason:
       state.terminalReason ??

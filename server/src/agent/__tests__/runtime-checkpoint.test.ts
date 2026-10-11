@@ -5,6 +5,10 @@ import {
   getAgentRuntimeCheckpoint,
   persistAgentRuntimeCheckpoint,
 } from "../runtime-checkpoint";
+import {
+  createProgressiveResolutionState,
+  resolveAndDiscloseCapability,
+} from "@/harness/progressive-resolution-state";
 import { createAgentGoal } from "../nodes/goal-plan";
 import type {
   AgentGraphInput,
@@ -150,6 +154,44 @@ test("runtime checkpoint survives persistence and restores planner state", () =>
     true,
   );
   assert.equal(restoredInput.pendingToolCall?.toolId, "edit");
+});
+
+test("progressive resolution state survives an approval checkpoint and resume", () => {
+  const progressiveResolution = resolveAndDiscloseCapability(
+    createProgressiveResolutionState(),
+    { capabilityId: "read", target: "schema" },
+  ).state;
+
+  const waitingOutput = {
+    ...output,
+    progressiveResolution,
+  } satisfies AgentGraphOutput;
+
+  const persistedRuntimeInput = persistAgentRuntimeCheckpoint(
+    runtimeInput,
+    waitingOutput,
+  );
+  const checkpoint = getAgentRuntimeCheckpoint(persistedRuntimeInput);
+  const restoredInput = applyAgentRuntimeCheckpoint(graphInput, checkpoint);
+
+  expect(checkpoint?.progressiveResolution?.disclosure).toEqual({
+    read: "schema",
+  });
+  expect(checkpoint?.progressiveResolution?.budget).toEqual({
+    limit: 8,
+    consumed: 1,
+  });
+  expect(restoredInput.progressiveResolution?.disclosure).toEqual({
+    read: "schema",
+  });
+  expect(restoredInput.progressiveResolution?.budget.consumed).toBe(1);
+
+  // Resuming the same capability does not re-spend budget; it is idempotent.
+  const resumed = resolveAndDiscloseCapability(
+    restoredInput.progressiveResolution!,
+    { capabilityId: "read", target: "schema" },
+  ).state;
+  expect(resumed.budget.consumed).toBe(1);
 });
 
 test("runtime checkpoint is cleared after the run leaves approval state", () => {

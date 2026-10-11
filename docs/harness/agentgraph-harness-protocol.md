@@ -232,7 +232,9 @@ SubAgent approval 的 frozen call 还保存：
 
 命令、参数、cwd、env、timeout 或目标资源变化后必须重新判断。
 
-等待审批时持久化 task frame、observations、Evidence、retrievals、last execution、iteration、frozen call，以及适用的 SubAgent transcript checkpoint。
+等待审批时持久化 task frame、observations、Evidence、retrievals、last execution、iteration、frozen call、Progressive Resolution 的 budget / disclosure / trace 状态，以及适用的 SubAgent transcript checkpoint。
+
+恢复时按当前权威 Registry 与 readiness 重新对账渐进式披露状态：撤销或 readiness 丢失覆盖 checkpoint 里的陈旧可见性；resolution budget 只在扩展新的 capability detail 时消耗，approval/resume 不重复消耗，且与失败/no-progress recovery budget 分离。
 
 恢复入口先校验 exact invocation，再执行 Policy 或恢复同一 Child。旧批准不能变成可复用权限。
 
