@@ -85,6 +85,7 @@ export interface CapabilityResolutionTrace {
   readonly selectedDomain: string | null;
   readonly wrongDomainRecovered: boolean;
   readonly reason: string;
+  readonly semanticError?: string;
 }
 
 export interface CapabilityResolutionResult {
@@ -445,6 +446,7 @@ const buildResult = (input: {
   selectedDomain: string | null;
   wrongDomainRecovered: boolean;
   reason: string;
+  semanticError?: string;
 }): CapabilityResolutionResult => ({
   path: input.path,
   selectedCapabilityId: input.selectedCapabilityId,
@@ -461,6 +463,7 @@ const buildResult = (input: {
     selectedDomain: input.selectedDomain,
     wrongDomainRecovered: input.wrongDomainRecovered,
     reason: input.reason,
+    ...(input.semanticError ? { semanticError: input.semanticError } : {}),
   },
 });
 
@@ -604,31 +607,61 @@ export const resolveCapabilityCascade = async (
     input.semanticResolver &&
     shortlist.length > 0
   ) {
-    const semanticId = await input.semanticResolver({ query, candidates: shortlist });
-    if (semanticId && shortlist.some((candidate) => candidate.capabilityId === semanticId)) {
-      const document = findDocument(input.capabilities, semanticId);
-      const selectedDomain = document?.domain ?? null;
-      const wrongDomainRecovered = Boolean(
-        domainHint && selectedDomain && domainHint !== selectedDomain,
-      );
-      const selected = shortlist.find(
-        (candidate) => candidate.capabilityId === semanticId,
-      )!;
-      return buildResult({
-        path: "semantic",
+    try {
+      const semanticId = await input.semanticResolver({
         query,
-        selectedCapabilityId: semanticId,
-        candidates: [selected, ...shortlist.filter((c) => c.capabilityId !== semanticId)],
+        candidates: shortlist,
+      });
+      if (
+        semanticId &&
+        shortlist.some((candidate) => candidate.capabilityId === semanticId)
+      ) {
+        const document = findDocument(input.capabilities, semanticId);
+        const selectedDomain = document?.domain ?? null;
+        const wrongDomainRecovered = Boolean(
+          domainHint && selectedDomain && domainHint !== selectedDomain,
+        );
+        const selected = shortlist.find(
+          (candidate) => candidate.capabilityId === semanticId,
+        )!;
+        return buildResult({
+          path: "semantic",
+          query,
+          selectedCapabilityId: semanticId,
+          candidates: [
+            selected,
+            ...shortlist.filter((c) => c.capabilityId !== semanticId),
+          ],
+          deterministicCandidates: shortlist,
+          modelCalls: 1,
+          semanticAttempted: true,
+          ambiguous: true,
+          domainHint,
+          selectedDomain,
+          wrongDomainRecovered,
+          reason: wrongDomainRecovered
+            ? `Semantic Resolver recovered an ambiguous request across domains (${domainHint} -> ${selectedDomain}); bounded to one call.`
+            : "Semantic Resolver resolved genuine deterministic ambiguity in one bounded call.",
+        });
+      }
+    } catch (error) {
+      const semanticError =
+        error instanceof Error ? error.message : String(error);
+      return buildResult({
+        path: "ambiguous",
+        query,
+        selectedCapabilityId: null,
+        candidates: shortlist,
         deterministicCandidates: shortlist,
         modelCalls: 1,
         semanticAttempted: true,
         ambiguous: true,
         domainHint,
-        selectedDomain,
-        wrongDomainRecovered,
-        reason: wrongDomainRecovered
-          ? `Semantic Resolver recovered an ambiguous request across domains (${domainHint} -> ${selectedDomain}); bounded to one call.`
-          : "Semantic Resolver resolved genuine deterministic ambiguity in one bounded call.",
+        selectedDomain: null,
+        wrongDomainRecovered: false,
+        reason:
+          "Deterministic evidence remained ambiguous and the semantic Resolver failed; Harness will continue with transparent deterministic fallback.",
+        semanticError,
       });
     }
   }
