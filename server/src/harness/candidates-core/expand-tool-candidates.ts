@@ -14,12 +14,14 @@ export const expandHarnessToolCandidates = (input: {
 
   for (const match of input.matches) {
     const profile = profileMap.get(match.capabilityId);
-    const reason = toReason({
-      title: match.title,
-      embeddingScore: match.embeddingScore,
-      rerankScore: match.rerankScore,
-      finalScore: match.finalScore,
-    });
+    const reason =
+      match.reason ??
+      toReason({
+        title: match.title,
+        embeddingScore: match.embeddingScore,
+        rerankScore: match.rerankScore,
+        finalScore: match.finalScore,
+      });
 
     for (const toolId of match.candidateToolIds) {
       const definition = definitionMap.get(toolId);

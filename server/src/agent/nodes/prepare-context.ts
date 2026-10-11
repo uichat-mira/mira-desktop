@@ -577,6 +577,10 @@ export const prepareContextNode = async (
       wenshuRegisteredCapabilityIds: wenshuCapabilityState.registeredCapabilityIds,
       codebaseExploreExposed: toolExposure.exposedTools.includes("codebase_explore"),
       externalExpertAvailable,
+      capabilityResolutionPath: matcherResult.resolution?.path ?? null,
+      capabilityResolutionModelCalls:
+        matcherResult.resolution?.trace.modelCalls ?? 0,
+      capabilityResolutionTrace: matcherResult.resolution?.trace ?? null,
       capabilityMetadataToolIds: compactCapabilityMetadata.map(
         (tool) => tool.capabilityId,
       ),

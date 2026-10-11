@@ -2,6 +2,7 @@ import type { SandboxProfile } from "../../mcp/core/definitions.js";
 import { resolveHarnessActionProfiles } from "../action-profiles.js";
 import { resolveHarnessCapabilityProfiles } from "../profiles/index.js";
 import { resolveHarnessToolCandidatesForTurn } from "../candidates-core/index.js";
+import type { CapabilityResolutionResult } from "../candidates-core/index.js";
 import { resolveHarnessToolExposure } from "../exposure-core/index.js";
 import type { ToolIntentCandidate } from "@/agent/intent/types.js";
 import type { HarnessTurnSource } from "../shared/types.js";
@@ -60,6 +61,7 @@ export interface HarnessCapabilityDiagnosticsResult {
     actionProfileTitle?: string;
     actionProfileDescription?: string;
   }>;
+  resolution?: CapabilityResolutionResult;
   retrievalModel?: {
     provider?: string;
     model?: string;
@@ -155,7 +157,7 @@ export const resolveHarnessCapabilityDiagnostics = async (
     exposureReasons: candidateResolution.retrievalError
       ? [
           ...candidateResolution.toolExposure.reason,
-          `Local embedding capability is unavailable for intent recall: ${candidateResolution.retrievalError}`,
+          `Capability resolution fallback diagnostic: ${candidateResolution.retrievalError}`,
         ]
       : candidateResolution.toolExposure.reason,
     blockedCapabilityIds: candidateResolution.toolExposure.blockedCapabilityIds,
@@ -205,6 +207,9 @@ export const resolveHarnessCapabilityDiagnostics = async (
           }
         : {}),
     })),
+    ...(candidateResolution.resolution
+      ? { resolution: candidateResolution.resolution }
+      : {}),
     ...(candidateResolution.retrievalModel
       ? { retrievalModel: candidateResolution.retrievalModel }
       : {}),
