@@ -104,7 +104,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
       source: "agent_intent",
       topK: 1,
       maxTools: 1,
-      minScore: 0.99,
+      minScore: 0.9999,
       semanticResolver,
     });
 
