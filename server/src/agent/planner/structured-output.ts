@@ -10,6 +10,7 @@ export type PlannerStructuredDecisionEnvelope = {
   reason: string;
   query: string | null;
   toolId: string | null;
+  skillId: string | null;
   args: Record<string, unknown> | null;
   question: string | null;
   completionProof: Array<{
