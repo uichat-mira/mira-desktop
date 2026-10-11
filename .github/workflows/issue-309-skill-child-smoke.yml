@@ -20,7 +20,7 @@ jobs:
       - name: Checkout exact #309 candidate with real Child runtime smoke
         uses: actions/checkout@v4
         with:
-          ref: 26353bd800bcec46873530a369c202df326fc621
+          ref: 501ea69a575f9ba06c7864389f0c938d460d0e2d
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
