@@ -8,14 +8,13 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: write
-  issues: read
-  pull-requests: write
-
 jobs:
   worker:
-    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@3e21560100eb3261a3ba76088060feb89b42e0a4
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: write
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@621bc797562ee2ba92e77e215deb68833113231e
     with:
       issue_number: ${{ fromJSON(inputs.issue_number) }}
       base_branch: dev
