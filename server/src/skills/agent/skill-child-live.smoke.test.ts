@@ -59,6 +59,12 @@ live("#309 real OpenCode Go Skill Child runtime smoke", () => {
       status: result.status,
       summary: result.summary?.slice(0, 240) ?? null,
       missingEvidence: result.missingEvidence ?? [],
+      error: result.error ?? null,
+      traceEvents: result.trace?.events?.slice(-5).map(event => ({
+        type: event.type,
+        title: event.title,
+        details: event.details ?? null,
+      })) ?? [],
       toolCalls: result.trace?.toolCalls ?? [],
       childScope: prepared.skillVisibility.scopeKind,
       authorizedToolCount: prepared.profile.allowedHarnessToolIds.length,
