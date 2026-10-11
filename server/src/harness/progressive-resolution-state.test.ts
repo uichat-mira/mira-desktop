@@ -14,6 +14,7 @@ import {
   reconcileProgressiveResolutionState,
   remainingProgressiveResolutionBudget,
   resolveAndDiscloseCapability,
+  revealCapabilityDetail,
   type ProgressiveResolutionState,
 } from "./progressive-resolution-state.js";
 import { readTool } from "../mcp/tools/read.tool.js";
@@ -168,5 +169,40 @@ describe("progressive resolution durable state", () => {
 
     expect(readCapabilityDisclosure(reconciled, "read")).toBe("schema");
     expect(readCapabilityDisclosure(reconciled, "web_search")).toBe("hidden");
+  });
+
+  it("records base-surface disclosure durably without spending the budget", () => {
+    let state = createProgressiveResolutionState();
+
+    state = revealCapabilityDetail(state, {
+      capabilityId: "glob",
+      target: "schema",
+      detail: "base surface",
+    });
+    state = revealCapabilityDetail(state, {
+      capabilityId: "grep",
+      target: "schema",
+      detail: "base surface",
+    });
+
+    // The base surface is not progressive expansion, so the budget is untouched
+    // even though two schemas are now durably disclosed.
+    expect(state.budget).toEqual({ limit: 8, consumed: 0 });
+    expect(readCapabilityDisclosure(state, "glob")).toBe("schema");
+    expect(readCapabilityDisclosure(state, "grep")).toBe("schema");
+    expect(state.trace.map((event) => event.stage)).toEqual([
+      "resolved",
+      "disclosed_schema",
+      "resolved",
+      "disclosed_schema",
+    ]);
+
+    // Recording again is idempotent and still free.
+    const idempotent = revealCapabilityDetail(state, {
+      capabilityId: "glob",
+      target: "schema",
+      detail: "base surface",
+    });
+    expect(idempotent.budget.consumed).toBe(0);
   });
 });

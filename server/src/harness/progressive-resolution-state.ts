@@ -172,6 +172,31 @@ export const readCapabilityDisclosure = (
   capabilityId: string,
 ): CapabilityDisclosure => state.disclosure[capabilityId] ?? "hidden";
 
+const recordCapabilityDisclosure = (
+  state: ProgressiveResolutionState,
+  input: {
+    capabilityId: string;
+    target: Exclude<CapabilityDisclosure, "hidden">;
+    path?: CapabilityResolutionPath;
+    detail?: string;
+  },
+): ProgressiveResolutionState => {
+  let next = appendTrace(state, {
+    stage: "resolved",
+    capabilityId: input.capabilityId,
+    ...(input.path ? { path: input.path } : {}),
+    ...(input.detail ? { detail: input.detail } : {}),
+  });
+  next = appendTrace(next, {
+    stage:
+      input.target === "schema" ? "disclosed_schema" : "disclosed_metadata",
+    capabilityId: input.capabilityId,
+    ...(input.path ? { path: input.path } : {}),
+    ...(input.detail ? { detail: input.detail } : {}),
+  });
+  return next;
+};
+
 /**
  * Expands one capability's disclosure to `target` if the budget permits.
  *
@@ -193,13 +218,7 @@ export const resolveAndDiscloseCapability = (
 ): ExpandCapabilityDetailResult => {
   const current = readCapabilityDisclosure(state, input.capabilityId);
   if (DISCLOSURE_RANK[input.target] <= DISCLOSURE_RANK[current]) {
-    const recorded = appendTrace(state, {
-      stage: "resolved",
-      capabilityId: input.capabilityId,
-      ...(input.path ? { path: input.path } : {}),
-      ...(input.detail ? { detail: input.detail } : {}),
-    });
-    return { state: recorded, applied: true };
+    return { state: recordCapabilityDisclosure(state, input), applied: true };
   }
 
   if (remainingProgressiveResolutionBudget(state) <= 0) {
@@ -227,21 +246,48 @@ export const resolveAndDiscloseCapability = (
     },
   };
 
-  let next = appendTrace(expanded, {
-    stage: "resolved",
-    capabilityId: input.capabilityId,
-    ...(input.path ? { path: input.path } : {}),
-    ...(input.detail ? { detail: input.detail } : {}),
-  });
-  next = appendTrace(next, {
-    stage:
-      input.target === "schema" ? "disclosed_schema" : "disclosed_metadata",
-    capabilityId: input.capabilityId,
-    ...(input.path ? { path: input.path } : {}),
-    ...(input.detail ? { detail: input.detail } : {}),
-  });
+  return { state: recordCapabilityDisclosure(expanded, input), applied: true };
+};
 
-  return { state: next, applied: true };
+/**
+ * Records a capability-detail disclosure that is not a Progressive Resolution
+ * step.
+ *
+ * The Harness base surface (an eligible set that already fits the Planner
+ * disclosure limit) is the turn's complete selected exposure, so materializing
+ * its schema expands model context but does not resolve any *additional*
+ * capability through progressive narrowing. It must be recorded durably so
+ * continuation, resume and reconciliation treat it like any other disclosed
+ * detail, but it must not spend the Progressive Resolution budget, which is
+ * reserved for genuinely progressive capability expansion.
+ *
+ * Like `resolveAndDiscloseCapability`, recording an already-disclosed level is
+ * idempotent and free.
+ */
+export const revealCapabilityDetail = (
+  state: ProgressiveResolutionState,
+  input: {
+    capabilityId: string;
+    target: Exclude<CapabilityDisclosure, "hidden">;
+    path?: CapabilityResolutionPath;
+    detail?: string;
+  },
+): ProgressiveResolutionState => {
+  const current = readCapabilityDisclosure(state, input.capabilityId);
+  if (DISCLOSURE_RANK[input.target] <= DISCLOSURE_RANK[current]) {
+    return recordCapabilityDisclosure(state, input);
+  }
+
+  return recordCapabilityDisclosure(
+    {
+      ...state,
+      disclosure: {
+        ...state.disclosure,
+        [input.capabilityId]: input.target,
+      },
+    },
+    input,
+  );
 };
 
 /**
