@@ -4,7 +4,7 @@
     "routine": {
       "enabled": true,
       "provider": "opencode-go",
-      "model": "minimax-m3",
+      "model": "deepseek-v4.1-flash",
       "variant": "none",
       "credentialEnv": "OPENCODE_GO_API_KEY"
     },
