@@ -131,6 +131,7 @@ describe("deterministic-first capability resolution cascade", () => {
     const result = lexicalSearchCapabilities({
       query: "latest news headline",
       capabilities,
+      minScore: 0.5,
     });
 
     expect(result.candidates[0]?.capabilityId).toBe("news_research");
