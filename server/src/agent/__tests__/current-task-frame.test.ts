@@ -413,7 +413,7 @@ test("prepareContextNode does not let schema disclosure bypass runtime readiness
   }
 });
 
-test("prepareContextNode injects an explicit tool package as a Planner preference without filtering exposed tools", async () => {
+test("prepareContextNode injects an explicit tool package as a Planner preference without changing resolution-driven exposure", async () => {
   const readOpen = makeToolDefinition("read_open");
   const webSearch = makeToolDefinition("web_search", "web_search");
   const registrySpy = vi
@@ -431,8 +431,9 @@ test("prepareContextNode injects an explicit tool package as a Planner preferenc
         reason: ["matched tools"],
       },
       exposureReasons: ["matched tools"],
-      // Both capabilities are this turn's selection; requesting the package does
-      // not narrow disclosure beyond the resolution.
+      // The resolver selected read_open and kept web as a ranked candidate. Only
+      // the selected capability is disclosed; requesting a tool package is a
+      // preference and does not materialize the candidate or change exposure.
       resolution: makeSelectionResolution("read_open", ["read_open", "web"]),
     }));
   const events: Array<{
@@ -460,7 +461,7 @@ test("prepareContextNode injects an explicit tool package as a Planner preferenc
       /用户明确选择了以下工具包作为本轮工具偏好/,
     );
     assert.match(matcherSpy.mock.calls[0]?.[0].query ?? "", /网络搜索/);
-    assert.deepEqual(patch.toolExposure?.exposedTools, ["read_open", "web_search"]);
+    assert.deepEqual(patch.toolExposure?.exposedTools, ["read_open"]);
     assert.deepEqual(patch.toolExposure?.requestedToolGroups, [
       {
         groupId: "web_search",
@@ -488,10 +489,7 @@ test("prepareContextNode injects an explicit tool package as a Planner preferenc
       toolSelectionHints: Array<{ groupId: string; status: string }>;
       toolExposure: { exposedTools: string[] };
     };
-    assert.deepEqual(plannerPayload.toolExposure.exposedTools, [
-      "read_open",
-      "web_search",
-    ]);
+    assert.deepEqual(plannerPayload.toolExposure.exposedTools, ["read_open"]);
     assert.deepEqual(plannerPayload.toolSelectionHints, [
       {
         groupId: "web_search",

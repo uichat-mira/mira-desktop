@@ -232,6 +232,53 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
     });
   });
 
+  it("does not disclose new schema when the resolver reports ambiguity without a selection", async () => {
+    const definitions = [...workspaceLookupTools(), ...workspaceEditTools()];
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    mockMatcher({
+      exposed: definitions,
+      eligibleToolIds: definitions.map((definition) => definition.id),
+      // Genuine ambiguity whose bounded semantic fallback returned no usable
+      // capability: candidates stay trace/metadata, nothing is selected.
+      resolution: {
+        path: "ambiguous",
+        selectedCapabilityId: null,
+        candidates: [
+          { capabilityId: "workspace_lookup", score: 0.6, reason: "ambiguous" },
+          { capabilityId: "workspace_edit", score: 0.5, reason: "ambiguous" },
+        ],
+        trace: {
+          query: "inspect the workspace files",
+          path: "ambiguous",
+          modelCalls: 1,
+          semanticAttempted: true,
+          ambiguous: true,
+          deterministicCandidates: [],
+          selectedCapabilityId: null,
+          domainHint: null,
+          selectedDomain: null,
+          wrongDomainRecovered: false,
+          reason: "semantic returned no usable capability",
+        },
+      },
+    });
+
+    const patch = await prepareContextNode(createState());
+
+    assert.deepEqual(patch.toolExposure?.exposedTools, []);
+    assert.deepEqual(schemaExposedToolIds(patch), []);
+    assert.deepEqual(patch.progressiveResolution?.budget, {
+      limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+      consumed: 0,
+    });
+    assert.equal(
+      (patch.progressiveResolution?.trace ?? []).some(
+        (event) => event.stage === "selected",
+      ),
+      false,
+    );
+  });
+
   it("spends one step per newly disclosed Tool when the resolver selects a capability", async () => {
     const definitions = [...workspaceLookupTools(), ...workspaceEditTools()];
     vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
@@ -258,6 +305,59 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
       consumed: 4,
     });
     assert.equal(patch.progressiveResolution?.exhausted, false);
+  });
+
+  it("discloses only the selected capability when ranked candidates are also returned", async () => {
+    const definitions = [
+      ...workspaceLookupTools(),
+      makeToolDefinition("web_search", "web_search"),
+      makeToolDefinition("web_fetch", "web_search"),
+      ...workspaceEditTools(),
+    ];
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    mockMatcher({
+      exposed: definitions,
+      eligibleToolIds: definitions.map((definition) => definition.id),
+      // A deterministic structural result names one selection but keeps the
+      // ranked candidate list. Candidates are trace/metadata only and must not
+      // be materialized or charged as if they were selected.
+      resolution: makeResolution({
+        selectedCapabilityId: "workspace_edit",
+        candidates: ["workspace_edit", "web", "workspace_lookup"],
+      }),
+    });
+
+    const patch = await prepareContextNode(createState());
+
+    assert.deepEqual(patch.toolExposure?.exposedTools, [
+      "write",
+      "edit",
+      "delete",
+      "move",
+      "apply_patch",
+    ]);
+    assert.deepEqual(schemaExposedToolIds(patch), [
+      "write",
+      "edit",
+      "delete",
+      "move",
+      "apply_patch",
+    ]);
+    // Budget is charged for the selected capability's Tools only; the ranked
+    // web / workspace_lookup candidates are neither disclosed nor charged.
+    assert.deepEqual(patch.progressiveResolution?.budget, {
+      limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+      consumed: 5,
+    });
+    assert.equal(patch.progressiveResolution?.disclosure.glob, undefined);
+    assert.equal(patch.progressiveResolution?.disclosure.web_search, undefined);
+    const selectedEvents = (patch.progressiveResolution?.trace ?? []).filter(
+      (event) => event.stage === "selected",
+    );
+    assert.deepEqual(
+      selectedEvents.map((event) => event.capabilityId),
+      ["workspace_edit"],
+    );
   });
 
   it("promotes a second capability on a later turn within the budget without re-charging prior disclosure", async () => {
