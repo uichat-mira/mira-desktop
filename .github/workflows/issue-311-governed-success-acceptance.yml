@@ -33,7 +33,7 @@ jobs:
         run: pnpm --filter @ui-chat-mira/server test -- src/agent/progressive-acceptance/governed-execution.acceptance.test.ts --maxWorkers=1 --fileParallelism=false
       - name: Acceptance regression (resolver and Planner disclosure)
         run: pnpm --filter @ui-chat-mira/server test -- src/agent/progressive-acceptance/cases.test.ts src/agent/nodes/prepare-context-progressive-resolution.test.ts --maxWorkers=1 --fileParallelism=false
-      - name: Live Main Planner Skill selection
+      - name: Live Main Planner Skill selection with action-id evidence
         env:
           AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
         run: pnpm --filter @ui-chat-mira/server exec tsx scripts/smoke-skill-progressive-live.ts
