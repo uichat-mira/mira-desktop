@@ -72,6 +72,7 @@ jobs:
           NODE
           sdk_entry="$(node "$runtime_dir/resolve-sdk.mjs")"
           echo "OPENCODE_SDK_ENTRY=$sdk_entry" >> "$GITHUB_ENV"
+          echo "$runtime_dir/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Apply maintainer-authorized recovery route
         shell: bash
