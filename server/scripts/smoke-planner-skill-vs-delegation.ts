@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
-import CONFIG from "../src/config/index.js";
 import { createAgentGoal } from "../src/agent/nodes/goal-plan.js";
 import { buildPlannerObservationContext } from "../src/agent/node-runtime.js";
 import { buildNextActionPlannerMessages } from "../src/agent/planner/prompt.js";
@@ -40,10 +39,6 @@ if (!Number.isInteger(runs) || runs < 1 || runs > 5) {
   throw new Error(
     "Usage: pnpm exec tsx scripts/smoke-planner-skill-vs-delegation.ts [1-5]",
   );
-}
-
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = `file:${path.resolve(process.cwd(), CONFIG.DATABASE_DIR, CONFIG.DATABASE_NAME)}`;
 }
 
 const runtimeDefinitions = [
@@ -294,6 +289,12 @@ for (const smokeCase of cases) {
   }
 }
 
+// Never treat a transport failure or a rejected/invalid model action as an accepted smoke.
+const providerFailureCount = results.filter((item) => typeof item.error === "string").length;
+const unexpectedDecisionCount = results.filter(
+  (item) => typeof item.error !== "string" && item.permittedMatch !== true,
+).length;
+
 const summary = cases.map((smokeCase) => {
   const caseResults = results.filter((item) => item.caseId === smokeCase.id);
   const permitted = caseResults.filter((item) => item.permittedMatch).length;
@@ -317,6 +318,8 @@ const output = {
   model: metadata.model,
   modelConfigId: metadata.modelConfigId,
   runsPerCase: runs,
+  providerFailureCount,
+  unexpectedDecisionCount,
   probeScope:
     "Production Planner prompt + task-plan contract + text parser + exposure validator; real OpenCode Go response without model-output mock. No DB-backed provider proxy, no full nextActionPlannerNode or Agent graph invocation; first validated action only, NOT end-to-end task outcome/success rate.",
   skillCatalogMode:
@@ -343,3 +346,9 @@ const outputPath = path.resolve(
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`, "utf8");
 console.log(JSON.stringify(output, null, 2));
+
+if (providerFailureCount > 0 || unexpectedDecisionCount > 0) {
+  throw new Error(
+    `#339 live Planner probe failed: providerFailures=${providerFailureCount}, unexpectedDecisions=${unexpectedDecisionCount}, attempts=${results.length}. See saved safe summary.`,
+  );
+}
