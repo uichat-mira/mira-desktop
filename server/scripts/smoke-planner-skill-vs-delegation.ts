@@ -11,7 +11,7 @@ import {
 import type { AgentNodeState } from "../src/agent/node-runtime.js";
 import type { AgentNextAction } from "../src/agent/types.js";
 import { readTool } from "../src/mcp/tools/read.tool.js";
-import { editFileTool } from "../src/mcp/tools/edit-file.tool.js";
+import { editTool } from "../src/mcp/tools/edit.tool.js";
 import { terminalTool } from "../src/mcp/tools/terminal-session.tool.js";
 import { codebaseExploreTool } from "../src/mcp/managed-codegraph/codebase-explore.tool.js";
 
@@ -41,7 +41,7 @@ if (!process.env.DATABASE_URL) {
 
 const runtimeDefinitions = [
   readTool.definition,
-  editFileTool.definition,
+  editTool.definition,
   terminalTool.definition,
   codebaseExploreTool.definition,
 ];
