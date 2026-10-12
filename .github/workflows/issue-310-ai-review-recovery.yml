@@ -1,0 +1,152 @@
+name: Recover #310 Mira AI Review
+
+on:
+  push:
+    branches:
+      - feat/worker-310-fifth-dispatch
+    paths:
+      - .github/workflows/issue-310-ai-review-recovery.yml
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AI_REVIEW_GATEWAY_TOKEN: ${{ secrets.AI_REVIEW_GATEWAY_TOKEN }}
+      AI_REVIEW_EXTERNAL_RESULT_TOKEN: ${{ secrets.AI_REVIEW_EXTERNAL_RESULT_TOKEN }}
+      AI_REVIEW_PACKAGE_URL: https://uichat-mira-control-room.dangjingtao.workers.dev/api/v1/ai-review/package
+      AI_REVIEW_RESULT_URL: https://uichat-mira-control-room.dangjingtao.workers.dev/api/v1/ai-review/result
+      OPENCODE_GO_API_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+    steps:
+      - name: Checkout exact trusted PR base review control
+        uses: actions/checkout@v4
+        with:
+          ref: c0264f9f08afcffd53fdcd94026d7e9cda19e6d8
+          path: trusted-review-control
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Fetch and validate exact PR 330 review package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${AI_REVIEW_GATEWAY_TOKEN:-}"
+          review_dir="$RUNNER_TEMP/mira-ai-review"
+          mkdir -p "$review_dir"
+          printf '%s' '{"repository":"uichat-mira/mira-desktop","pullRequest":330}' > "$review_dir/request.json"
+          status="$(curl --silent --show-error --max-time 60 -X POST             -H "Authorization: Bearer ${AI_REVIEW_GATEWAY_TOKEN}"             -H 'Accept: application/json'             -H 'Content-Type: application/json'             --data @"$review_dir/request.json"             --output "$review_dir/package.json"             --write-out '%{http_code}'             "${AI_REVIEW_PACKAGE_URL}")"
+          test "$status" = "200"
+          MIRA_REVIEW_PACKAGE_PATH="$review_dir/package.json" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { pathToFileURL } from 'node:url';
+          const pkg = JSON.parse(fs.readFileSync(process.env.MIRA_REVIEW_PACKAGE_PATH, 'utf8'));
+          const runnerUrl = pathToFileURL(process.cwd() + '/trusted-review-control/scripts/ai-review/opencode-review-runner.mjs').href;
+          const { reviewPackageIdentity } = await import(runnerUrl);
+          const identity = reviewPackageIdentity(pkg);
+          const expected = {
+            repository: 'uichat-mira/mira-desktop',
+            pullRequest: 330,
+            baseSha: 'c0264f9f08afcffd53fdcd94026d7e9cda19e6d8',
+            headSha: '83e4813848f9e86aed855506dbf3f18cdb398eec',
+            reviewMode: 'CODE_REVIEW',
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (identity[key] !== value) throw new Error(`review package identity mismatch: ${key}`);
+          }
+          console.log(`Trusted recovery package: PR #${identity.pullRequest}, base=${identity.baseSha}, head=${identity.headSha}`);
+          NODE
+
+      - name: Install isolated OpenCode runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_dir="$RUNNER_TEMP/mira-opencode-runtime"
+          mkdir -p "$runtime_dir"
+          npm install --prefix "$runtime_dir" --no-audit --no-fund --package-lock=false opencode-ai@1.18.34 @opencode-ai/sdk@1.18.34
+          cat > "$runtime_dir/resolve-sdk.mjs" <<'NODE'
+          import { fileURLToPath } from 'node:url';
+          process.stdout.write(fileURLToPath(import.meta.resolve('@opencode-ai/sdk')));
+          NODE
+          sdk_entry="$(node "$runtime_dir/resolve-sdk.mjs")"
+          echo "OPENCODE_SDK_ENTRY=$sdk_entry" >> "$GITHUB_ENV"
+
+      - name: Apply maintainer-authorized recovery route
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > trusted-review-control/.github/ai-review/opencode-routing.json <<'JSON'
+          {
+            "version": "mira-desktop-opencode-routing/v1",
+            "roles": {
+              "routine": {
+                "enabled": true,
+                "provider": "opencode-go",
+                "model": "deepseek-v4.1-flash",
+                "variant": "none",
+                "credentialEnv": "OPENCODE_GO_API_KEY"
+              },
+              "fallback": {
+                "enabled": false,
+                "provider": "opencode-go",
+                "model": "deepseek-v4-flash",
+                "variant": "none",
+                "credentialEnv": "OPENCODE_GO_API_KEY"
+              },
+              "escalation": {
+                "enabled": false,
+                "provider": "opencode-go",
+                "model": "deepseek-v4-pro",
+                "variant": "none",
+                "credentialEnv": "OPENCODE_GO_API_KEY"
+              }
+            }
+          }
+          JSON
+
+      - name: Execute isolated recovery review
+        id: review
+        shell: bash
+        run: |
+          set -euo pipefail
+          review_dir="$RUNNER_TEMP/mira-ai-review"
+          workspace="$review_dir/workspace"
+          home_dir="$review_dir/home"
+          config_dir="$review_dir/opencode-config"
+          repository_base="$workspace/repository-base"
+          mkdir -p "$workspace" "$home_dir" "$config_dir" "$repository_base"
+          cp -a "$GITHUB_WORKSPACE/trusted-review-control/." "$repository_base/"
+          rm -rf "$repository_base/.git"
+          chmod -R a-w "$repository_base"
+          cd "$workspace"
+          HOME="$home_dir"           XDG_CONFIG_HOME="$home_dir/.config"           XDG_DATA_HOME="$home_dir/.local/share"           XDG_CACHE_HOME="$home_dir/.cache"           OPENCODE_CONFIG_DIR="$config_dir"           MIRA_REVIEW_PACKAGE_PATH="$review_dir/package.json"           MIRA_REVIEW_OUTPUT_PATH="$review_dir/runner-output.json"           node "$GITHUB_WORKSPACE/trusted-review-control/scripts/ai-review/opencode-review-runner.mjs"
+          RUNNER_OUTPUT="$review_dir/runner-output.json" node <<'NODE'
+          const fs = require('node:fs');
+          const output = JSON.parse(fs.readFileSync(process.env.RUNNER_OUTPUT, 'utf8'));
+          console.log(`Mira recovery runner: ${output.runner?.state ?? 'UNKNOWN'}`);
+          if (output.runner?.reason) console.log(`Mira recovery reason: ${output.runner.reason}`);
+          if (output.runner?.state !== 'COMPLETED') process.exit(2);
+          NODE
+
+      - name: Submit recovery result to Mira Control Room
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${AI_REVIEW_EXTERNAL_RESULT_TOKEN:-}"
+          review_dir="$RUNNER_TEMP/mira-ai-review"
+          RUNNER_OUTPUT="$review_dir/runner-output.json" SUBMISSION_PATH="$review_dir/submission.json" node <<'NODE'
+          const fs = require('node:fs');
+          const output = JSON.parse(fs.readFileSync(process.env.RUNNER_OUTPUT, 'utf8'));
+          if (!output.submission) throw new Error('missing submission');
+          fs.writeFileSync(process.env.SUBMISSION_PATH, JSON.stringify(output.submission), { mode: 0o600 });
+          NODE
+          status="$(curl --silent --show-error --max-time 60 -X POST             -H "Authorization: Bearer ${AI_REVIEW_EXTERNAL_RESULT_TOKEN}"             -H 'Accept: application/json'             -H 'Content-Type: application/json'             --data @"$review_dir/submission.json"             --output "$review_dir/result.json"             --write-out '%{http_code}'             "${AI_REVIEW_RESULT_URL}")"
+          HTTP_STATUS="$status" RESULT_PATH="$review_dir/result.json" node <<'NODE'
+          const fs = require('node:fs');
+          const status = Number(process.env.HTTP_STATUS);
+          const body = JSON.parse(fs.readFileSync(process.env.RESULT_PATH, 'utf8'));
+          console.log(`Recovery handoff HTTP=${status}, execution=${body.execution?.state ?? 'UNKNOWN'}, freshness=${body.freshness?.state ?? 'UNKNOWN'}, publication=${body.publication?.state ?? 'UNKNOWN'}, verdict=${body.execution?.review?.verdict ?? 'UNKNOWN'}, provider=${body.execution?.provider?.engine ?? 'unknown'}/${body.execution?.provider?.model ?? 'unknown'}`);
+          if (status !== 200 || body.execution?.state !== 'COMPLETED' || body.freshness?.state !== 'CURRENT' || !['CREATED','UPDATED'].includes(body.publication?.state)) process.exit(3);
+          NODE
