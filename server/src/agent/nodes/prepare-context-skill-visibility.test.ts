@@ -110,6 +110,26 @@ describe("prepareContextNode scoped Skill visibility", () => {
           reason: ["matched read_open"],
         },
         exposureReasons: ["matched read_open"],
+        resolution: {
+          path: "structural",
+          selectedCapabilityId: "read_open",
+          candidates: [
+            { capabilityId: "read_open", score: 1, reason: "read_open matched" },
+          ],
+          trace: {
+            query: "$xlsx make a DCF model",
+            path: "structural",
+            modelCalls: 0,
+            semanticAttempted: false,
+            ambiguous: false,
+            deterministicCandidates: [],
+            selectedCapabilityId: "read_open",
+            domainHint: null,
+            selectedDomain: null,
+            wrongDomainRecovered: false,
+            reason: "structural test resolution",
+          },
+        },
       });
     const events: Array<{ nodeId: string; phase: string; details?: Record<string, unknown> }> =
       [];
