@@ -1,0 +1,44 @@
+name: "#339 Third Pass Real Model First Action Verification"
+
+on:
+  push:
+    branches:
+      - feat/339-third-pass-independent-live
+    paths:
+      - .github/workflows/issue-339-third-pass-independent-live.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      DATABASE_URL: file:${{ github.workspace }}/.test-artifact/issue339-third-pass.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: mkdir -p .test-artifact
+      - name: Install server deps
+        run: pnpm install --frozen-lockfile --filter @ui-chat-mira/server...
+      - name: Independently exercise five real-model Planner choices
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: |
+          if [ -z "$AI_PROVIDER_OPENCODE_GO_KEY" ]; then echo "::error::OpenCode Go secret unavailable"; exit 1; fi
+          pnpm --filter @ui-chat-mira/server exec tsx scripts/smoke-planner-skill-vs-delegation.ts 1
+      - name: Upload safe first-action evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue339-third-pass-real-model-cases
+          path: .test-artifact/planner-skill-vs-delegation-real-smoke.json
+          if-no-files-found: ignore
