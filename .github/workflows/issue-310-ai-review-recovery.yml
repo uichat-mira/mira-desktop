@@ -84,8 +84,8 @@ jobs:
             "roles": {
               "routine": {
                 "enabled": true,
-                "provider": "opencode",
-                "model": "mimo-v2.6-flash-free",
+                "provider": "opencode-go",
+                "model": "mimo-v2.6-flash",
                 "variant": "none",
                 "credentialEnv": "OPENCODE_GO_API_KEY"
               },
@@ -139,13 +139,13 @@ jobs:
           const route = {
             role: 'routine',
             enabled: true,
-            provider: 'opencode',
-            model: 'mimo-v2.6-flash-free',
+            provider: 'opencode-go',
+            model: 'mimo-v2.6-flash',
             variant: 'none',
             credentialEnv: 'OPENCODE_GO_API_KEY',
           };
           process.env.OPENCODE_AUTH_CONTENT = JSON.stringify({
-            'opencode': { type: 'api', key: process.env.OPENCODE_GO_API_KEY },
+            'opencode-go': { type: 'api', key: process.env.OPENCODE_GO_API_KEY },
           });
           const startedAt = Date.now();
 
