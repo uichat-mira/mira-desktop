@@ -1,4 +1,4 @@
-name: "#339 Independent Planner Contract Verification"
+name: "#339 Independent Planner Contract Verification Recheck"
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
         run: pnpm install --frozen-lockfile --filter @ui-chat-mira/server...
       - name: Run NEW #339 regressions (not included in Worker verification)
         run: pnpm --filter @ui-chat-mira/server test -- src/agent/__tests__/planner-skill-vs-delegation.test.ts --maxWorkers=1 --fileParallelism=false
-      - name: Real-model 5-case first-action probe (report as exploratory only)
+      - name: Recheck live five-case Planner probe after import repair
         if: always()
         env:
           AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
