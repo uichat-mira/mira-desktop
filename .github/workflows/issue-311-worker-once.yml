@@ -1,0 +1,28 @@
+name: "#311 One-off Acceptance Test Runner Worker"
+
+on:
+  push:
+    branches:
+      - feat/311-acceptance-worker
+    paths:
+      - .github/workflows/issue-311-worker-once.yml
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  execute-311-test-only:
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@621bc797562ee2ba92e77e215deb68833113231e
+    with:
+      issue_number: 311
+      base_branch: dev
+      provider: opencode-go
+      model: deepseek-v4.1-flash
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm check
+    secrets:
+      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
