@@ -18,6 +18,8 @@ import { buildPlannerObservationContext } from "../src/agent/node-runtime.js";
 import { buildNextActionPlannerMessages } from "../src/agent/planner/prompt.js";
 import { parseNextActionPlannerOutput } from "../src/agent/planner/text-json-codec.js";
 import { prepareSubAgent } from "../src/skills/agent/subagent-runtime.js";
+import { withGenericTaskDelegationTool } from "../src/agent/delegation/contract.js";
+import { withPlannerTaskPlanContract } from "../src/agent/planner/task-plan.js";
 
 const key = process.env.AI_PROVIDER_OPENCODE_GO_KEY?.trim();
 if (!key) throw Error("OpenCode Go credential unavailable.");
@@ -71,14 +73,21 @@ const runner = async () => {
     observations: [],
     evidence: { observations: [], retrievals: [], toolExecutions: [] },
   } as unknown as Parameters<typeof buildPlannerObservationContext>[0]);
-  const messages = buildNextActionPlannerMessages({
+  const productionShape = process.env.MIRA_DIAG_PRODUCTION_PLANNER_SHAPE === "1";
+  const toolExposure = productionShape
+    ? withGenericTaskDelegationTool({ exposedTools: [], toolMeta: [] })
+    : { exposedTools: [], toolMeta: [] };
+  const plannerMessages = buildNextActionPlannerMessages({
     question: query,
     messages: [message],
     observationContext: observations,
-    toolExposure: { exposedTools: [], toolMeta: [] },
+    toolExposure,
     iteration: 0,
     maxIterations: 0,
   });
+  const messages = productionShape
+    ? withPlannerTaskPlanContract(plannerMessages)
+    : plannerMessages;
   const modelPayload = JSON.parse(messages[1]?.content ?? "{}");
   if (!Array.isArray(modelPayload.skillCatalog) || modelPayload.skillCatalog.length !== 2) {
     throw Error("The live production Planner message does not expose two Skill summaries.");
@@ -121,7 +130,9 @@ const runner = async () => {
     selectedAction: action?.type ?? "invalid",
     selectedSkillId: action?.type === "activate_skill" ? action.skillId : null,
     selectedToolId: action?.type === "use_tool" ? action.toolId : null,
-    toolSchemasExposedAtDecision: 0,
+    toolSchemasExposedAtDecision: toolExposure.exposedTools.length,
+    allowedToolIds: toolExposure.exposedTools,
+    plannerShape: productionShape ? "production_like_delegate_plus_task_plan" : "original_smoke",
     decisionReason: action?.reason?.slice(0, 180) ?? null,
   }));
 
