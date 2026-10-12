@@ -16,6 +16,7 @@
     "smoke:pi-skill-agent": "tsx scripts/smoke-pi-skill-agent.ts",
     "smoke:subagent-skill": "tsx scripts/smoke-subagent-skill.ts",
     "smoke:planner-delegation": "node --env-file-if-exists=../.env ./node_modules/tsx/dist/cli.mjs scripts/smoke-planner-delegation-selection.ts 5",
+    "smoke:planner-skill-vs-delegation": "node --env-file-if-exists=../.env ./node_modules/tsx/dist/cli.mjs scripts/smoke-planner-skill-vs-delegation.ts 3",
     "bench:sandbox:direct": "tsx src/harness/sandbox/bench/runner.ts",
     "bench:context:read": "tsx src/harness/context/bench/runner.ts"
   },
