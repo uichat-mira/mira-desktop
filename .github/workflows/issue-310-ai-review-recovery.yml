@@ -85,7 +85,7 @@ jobs:
               "routine": {
                 "enabled": true,
                 "provider": "opencode-go",
-                "model": "deepseek-v4.1-flash",
+                "model": "gpt-5.6-luna",
                 "variant": "none",
                 "credentialEnv": "OPENCODE_GO_API_KEY"
               },
@@ -140,7 +140,7 @@ jobs:
             role: 'routine',
             enabled: true,
             provider: 'opencode-go',
-            model: 'deepseek-v4.1-flash',
+            model: 'gpt-5.6-luna',
             variant: 'none',
             credentialEnv: 'OPENCODE_GO_API_KEY',
           };
