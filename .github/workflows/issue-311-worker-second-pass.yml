@@ -1,0 +1,30 @@
+name: "#311 Second-Pass Acceptance Evidence Fix"
+
+on:
+  push:
+    branches:
+      - feat/311-acceptance-worker-2
+    paths:
+      - .github/workflows/issue-311-worker-second-pass.yml
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  worker:
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@621bc797562ee2ba92e77e215deb68833113231e
+    with:
+      issue_number: 311
+      base_branch: feat/worker-311-38207537883-1
+      provider: opencode-go
+      model: deepseek-v4.1-flash
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @ui-chat-mira/server test -- src/agent/progressive-acceptance/cases.test.ts --maxWorkers=1 --fileParallelism=false
+        pnpm --filter @ui-chat-mira/server bench:progressive:acceptance
+        pnpm check
+    secrets:
+      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
