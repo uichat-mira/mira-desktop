@@ -172,6 +172,31 @@ export const readCapabilityDisclosure = (
   capabilityId: string,
 ): CapabilityDisclosure => state.disclosure[capabilityId] ?? "hidden";
 
+const recordCapabilityDisclosure = (
+  state: ProgressiveResolutionState,
+  input: {
+    capabilityId: string;
+    target: Exclude<CapabilityDisclosure, "hidden">;
+    path?: CapabilityResolutionPath;
+    detail?: string;
+  },
+): ProgressiveResolutionState => {
+  let next = appendTrace(state, {
+    stage: "resolved",
+    capabilityId: input.capabilityId,
+    ...(input.path ? { path: input.path } : {}),
+    ...(input.detail ? { detail: input.detail } : {}),
+  });
+  next = appendTrace(next, {
+    stage:
+      input.target === "schema" ? "disclosed_schema" : "disclosed_metadata",
+    capabilityId: input.capabilityId,
+    ...(input.path ? { path: input.path } : {}),
+    ...(input.detail ? { detail: input.detail } : {}),
+  });
+  return next;
+};
+
 /**
  * Expands one capability's disclosure to `target` if the budget permits.
  *
@@ -193,13 +218,7 @@ export const resolveAndDiscloseCapability = (
 ): ExpandCapabilityDetailResult => {
   const current = readCapabilityDisclosure(state, input.capabilityId);
   if (DISCLOSURE_RANK[input.target] <= DISCLOSURE_RANK[current]) {
-    const recorded = appendTrace(state, {
-      stage: "resolved",
-      capabilityId: input.capabilityId,
-      ...(input.path ? { path: input.path } : {}),
-      ...(input.detail ? { detail: input.detail } : {}),
-    });
-    return { state: recorded, applied: true };
+    return { state: recordCapabilityDisclosure(state, input), applied: true };
   }
 
   if (remainingProgressiveResolutionBudget(state) <= 0) {
@@ -227,21 +246,7 @@ export const resolveAndDiscloseCapability = (
     },
   };
 
-  let next = appendTrace(expanded, {
-    stage: "resolved",
-    capabilityId: input.capabilityId,
-    ...(input.path ? { path: input.path } : {}),
-    ...(input.detail ? { detail: input.detail } : {}),
-  });
-  next = appendTrace(next, {
-    stage:
-      input.target === "schema" ? "disclosed_schema" : "disclosed_metadata",
-    capabilityId: input.capabilityId,
-    ...(input.path ? { path: input.path } : {}),
-    ...(input.detail ? { detail: input.detail } : {}),
-  });
-
-  return { state: next, applied: true };
+  return { state: recordCapabilityDisclosure(expanded, input), applied: true };
 };
 
 /**
