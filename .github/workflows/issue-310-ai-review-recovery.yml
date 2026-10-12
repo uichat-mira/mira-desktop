@@ -85,7 +85,7 @@ jobs:
               "routine": {
                 "enabled": true,
                 "provider": "opencode-go",
-                "model": "mimo-v2.6-flash",
+                "model": "deepseek-v4.1-flash",
                 "variant": "none",
                 "credentialEnv": "OPENCODE_GO_API_KEY"
               },
@@ -140,7 +140,7 @@ jobs:
             role: 'routine',
             enabled: true,
             provider: 'opencode-go',
-            model: 'mimo-v2.6-flash',
+            model: 'deepseek-v4.1-flash',
             variant: 'none',
             credentialEnv: 'OPENCODE_GO_API_KEY',
           };
