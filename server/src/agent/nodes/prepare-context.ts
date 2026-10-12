@@ -14,6 +14,16 @@ import {
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
+import { resolveHarnessCapabilityProfiles } from "@/harness/profiles";
+import {
+  createCapabilityToolIdResolver,
+  createProgressiveResolutionState,
+  readCapabilityDisclosure,
+  recordProgressiveResolutionSearch,
+  recordProgressiveResolutionSelection,
+  reconcileProgressiveResolutionState,
+  resolveAndDiscloseCapability,
+} from "@/harness/progressive-resolution-state";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
 import { withWorkbenchMetadata } from "@/mcp/workbench-metadata.js";
 import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
@@ -482,6 +492,10 @@ export const prepareContextNode = async (
     toolDefinitions,
     matcherResult.toolExposure.exposedDefinitions,
   );
+  const capabilityProfiles = resolveHarnessCapabilityProfiles(capabilityDefinitions);
+  const resolveCapabilityToolIds =
+    createCapabilityToolIdResolver(capabilityProfiles);
+
   const initialMainAgentCapabilityView = projectAgentCapabilityView({
     scope: createMainAgentCapabilityScope({
       scopeId: "main_agent",
@@ -490,10 +504,142 @@ export const prepareContextNode = async (
     }),
     definitions: capabilityDefinitions,
   });
-
   const capabilityDisclosureTransitions: CapabilityDisclosureTransition[] = [];
   let mainAgentCapabilityView = initialMainAgentCapabilityView;
-  for (const toolId of matcherResult.toolExposure.exposedToolIds) {
+
+  // Matcher exposure can be stale relative to Harness readiness. The Capability
+  // View keeps compact metadata for the whole envelope, but only currently
+  // eligible Tools may become Planner-callable. Schema disclosure is the
+  // Planner-callable filter: a metadata-stage Tool stays discoverable but is
+  // never exposed to the Planner without a usable input schema.
+  const currentEligibleToolIds = [...initialMainAgentCapabilityView.capabilities.values()]
+    .filter((entry) => entry.eligible)
+    .map((entry) => entry.capabilityId);
+  const currentEligibleToolIdSet = new Set(currentEligibleToolIds);
+
+  // Durable Progressive Resolution state. It is restored from an approval
+  // checkpoint and reconciled against the current authoritative registry,
+  // readiness, and eligibility envelope before any of it is reused, so a
+  // revocation or readiness loss always wins over stale persisted visibility.
+  // Only newly expanded capability detail consumes the resolution budget;
+  // Planner turns, tool execution, retrieval and approval/resume do not.
+  // Failure/no-progress recovery keeps its own separate Planner budget.
+  let progressiveResolution = reconcileProgressiveResolutionState({
+    state: state.progressiveResolution ?? createProgressiveResolutionState(),
+    definitions: capabilityDefinitions,
+    eligibleCapabilityIds: currentEligibleToolIds,
+    // Disclosure is recorded under canonical Tool ids, but reconcile also
+    // resolves a grouped capability-profile key through the authoritative
+    // Profile -> supportingToolIds mapping so a resumed snapshot is never
+    // cleared merely because its key is a profile rather than a Tool id.
+    resolveToolIds: resolveCapabilityToolIds,
+  });
+  const resolutionPath = matcherResult.resolution?.path;
+  if (matcherResult.resolution) {
+    progressiveResolution = recordProgressiveResolutionSearch(
+      progressiveResolution,
+      {
+        path: matcherResult.resolution.path,
+        modelCalls: matcherResult.resolution.trace.modelCalls,
+        detail: matcherResult.resolution.trace.reason,
+      },
+    );
+    // Only the capability the resolver actually selected is a selection event.
+    // Ranked candidates below the selection are trace/metadata/diagnostics only
+    // and must never be recorded as "selected" or treated as disclosure.
+    const resolutionSelectedCapabilityId =
+      matcherResult.resolution.selectedCapabilityId;
+    const selectedCandidate = resolutionSelectedCapabilityId
+      ? matcherResult.resolution.candidates.find(
+          (candidate) =>
+            candidate.capabilityId === resolutionSelectedCapabilityId,
+        )
+      : undefined;
+    if (resolutionSelectedCapabilityId) {
+      progressiveResolution = recordProgressiveResolutionSelection(
+        progressiveResolution,
+        {
+          capabilityId: resolutionSelectedCapabilityId,
+          path: matcherResult.resolution.path,
+          ...(selectedCandidate?.reason
+            ? { detail: selectedCandidate.reason }
+            : {}),
+        },
+      );
+    }
+  }
+
+  // Resolution budget gate. The Progressive Resolution state is the single
+  // source of truth for which capability schemas reach the Planner. The whole
+  // eligible surface stays discoverable as compact metadata in the Capability
+  // View, but schema disclosure is on demand:
+  //
+  // - the deterministic-first resolver selects the capability this turn needs;
+  //   exactly that capability's supporting Tools are promoted and each newly
+  //   disclosed Tool spends one budget step. This holds whether the eligible
+  //   surface is larger or smaller than the Planner disclosure limit: a small
+  //   catalog is cheap to *discover*, not automatically *selected*, so a <=20
+  //   surface never eager-materializes every schema for free;
+  // - Tools already disclosed are idempotent and free, so ordinary continuation
+  //   and approval/resume never re-charge;
+  // - when nothing is confidently selected the turn expands no new schema. That
+  //   is bounded and transparent: already-disclosed detail stays usable and the
+  //   budget never marks the task complete.
+  //
+  // A Tool refused after exhaustion stays compact-metadata only with a
+  // transparent unresolved gap. The Capability View still clamps every promotion
+  // to the authoritative readiness/eligibility/discoverability envelope, so the
+  // budget never grants authority and exhaustion never marks the task complete.
+  //
+  // Planner-callable exposure (`toolExposure.exposedTools`) is restricted to the
+  // schema-disclosed Tools. A Tool that only reached the metadata stage stays
+  // discoverable in the Capability View but is never exposed to the Planner with
+  // an empty parameter schema, which would otherwise be an unusable dead path.
+  const schemaTargetToolIds: string[] = [];
+  const seenSchemaTargets = new Set<string>();
+  const addSchemaTarget = (candidateToolId: string) => {
+    if (!currentEligibleToolIdSet.has(candidateToolId)) return;
+    if (seenSchemaTargets.has(candidateToolId)) return;
+    seenSchemaTargets.add(candidateToolId);
+    schemaTargetToolIds.push(candidateToolId);
+  };
+
+  // Already schema-disclosed Tools stay callable across ordinary continuation
+  // and approval/resume and never re-charge the budget.
+  for (const [toolId, level] of Object.entries(progressiveResolution.disclosure)) {
+    if (level === "schema") addSchemaTarget(toolId);
+  }
+
+  // Only the capability this turn actually selected drives new schema
+  // disclosure. Ranked candidates below the selection are retained for trace /
+  // metadata / diagnostics only and must never be materialized or charged: the
+  // resolver reports grouped capability ids (for example `workspace_lookup`),
+  // so the selected capability is expanded to its canonical supporting Tool ids
+  // through the same Profile -> supportingToolIds mapping used for
+  // reconciliation. A turn without a confident selection discloses nothing new
+  // instead of eagerly materializing the whole catalog.
+  const selectedCapabilityId = matcherResult.resolution?.selectedCapabilityId;
+  const resolutionSelectedToolIds = selectedCapabilityId
+    ? resolveCapabilityToolIds(selectedCapabilityId)
+    : [];
+  for (const toolId of resolutionSelectedToolIds) addSchemaTarget(toolId);
+
+  const schemaDisclosedToolIds = new Set<string>();
+  for (const toolId of schemaTargetToolIds) {
+    const alreadyDisclosed =
+      readCapabilityDisclosure(progressiveResolution, toolId) === "schema";
+
+    if (!alreadyDisclosed) {
+      const disclosure = resolveAndDiscloseCapability(progressiveResolution, {
+        capabilityId: toolId,
+        target: "schema",
+        ...(resolutionPath ? { path: resolutionPath } : {}),
+        detail: "Progressive capability resolution schema disclosure",
+      });
+      progressiveResolution = disclosure.state;
+      if (!disclosure.applied) continue;
+    }
+
     const promoted = promoteCapabilitySchema({
       view: mainAgentCapabilityView,
       capabilityId: toolId,
@@ -501,13 +647,10 @@ export const prepareContextNode = async (
     });
     mainAgentCapabilityView = promoted.view;
     capabilityDisclosureTransitions.push(promoted.transition);
+    if (!promoted.transition.schemaMaterialized) continue;
+    schemaDisclosedToolIds.add(toolId);
   }
 
-  const schemaDisclosedToolIds = new Set(
-    [...mainAgentCapabilityView.capabilities.values()]
-      .filter((entry) => entry.discoverable && entry.disclosure === "schema")
-      .map((entry) => entry.capabilityId),
-  );
   const capabilityDisclosureTrace = describeCapabilityDisclosure(
     mainAgentCapabilityView,
   );
@@ -516,25 +659,18 @@ export const prepareContextNode = async (
     capabilityDefinitions,
   );
 
-  // Matcher exposure can be stale relative to Harness readiness. Keep compact
-  // metadata in the Capability View, but only currently eligible Tools may stay
-  // in the Planner-callable ToolExposure. Schema disclosure is not the filter:
-  // a metadata-stage Tool remains exposed when it is otherwise eligible.
-  const currentEligibleToolIds = [...mainAgentCapabilityView.capabilities.values()]
-    .filter((entry) => entry.eligible)
-    .map((entry) => entry.capabilityId);
-  const currentEligibleToolIdSet = new Set(currentEligibleToolIds);
-  const callableToolIds = matcherResult.toolExposure.exposedToolIds.filter(
-    (toolId) => currentEligibleToolIdSet.has(toolId),
+  const capabilityDefinitionsById = new Map(
+    capabilityDefinitions.map((definition) => [definition.id, definition]),
   );
-  const callableToolIdSet = new Set(callableToolIds);
-  const callableDefinitions = matcherResult.toolExposure.exposedDefinitions.filter(
-    (definition) => callableToolIdSet.has(definition.id),
+  const schemaDisclosedDefinitions = [...schemaDisclosedToolIds].flatMap(
+    (toolId) => {
+      const definition = capabilityDefinitionsById.get(toolId);
+      return definition ? [definition] : [];
+    },
   );
-
   const toolExposure = toAgentToolExposureState(
-    callableToolIds,
-    callableDefinitions,
+    [...schemaDisclosedToolIds],
+    schemaDisclosedDefinitions,
     requestedToolGroupsWithAvailability,
     currentEligibleToolIds,
     schemaDisclosedToolIds,
@@ -652,6 +788,14 @@ export const prepareContextNode = async (
       capabilityDisclosureTrace,
       capabilityDisclosureTransitions,
       schemaMaterializedToolIds: [...schemaDisclosedToolIds],
+      progressiveResolutionBudget: progressiveResolution.budget,
+      progressiveResolutionExhausted: progressiveResolution.exhausted,
+      progressiveResolutionUnresolvedCapabilityGap:
+        progressiveResolution.unresolvedCapabilityGap ?? null,
+      progressiveResolutionDisclosedToolIds: Object.keys(
+        progressiveResolution.disclosure,
+      ),
+      progressiveResolutionTrace: progressiveResolution.trace,
       currentTaskFrameWriter:
         "prepareContextNode attaches SkillContext and a bounded Skill runtime projection; Planner remains the sole writer of goal/subtask/completion inference",
     },
@@ -661,5 +805,6 @@ export const prepareContextNode = async (
     toolIntent,
     toolExposure,
     currentTaskFrame,
+    progressiveResolution,
   };
 };

@@ -31,8 +31,12 @@ built-in registry + dynamic capability registration
   -> public-surface classification
   -> explicit availability gates
   -> Tool Exposure
-       <= 20：全部暴露
-       > 20：embedding / rerank 后暴露前 20
+       Harness authority+readiness envelope 全部进入 compact metadata catalog
+       <= 20：catalog 足够小，无需 Tool Search；仍按 exact / structural / lexical 做确定性 selection（genuine ambiguity 才一次 semantic）
+       > 20：Progressive Resolution 按 exact / structural / lexical（genuine ambiguity 才一次 semantic）排序
+  -> 仅被选中 capability 的 Tool 披露 full schema 进入 Planner exposure
+       每披露一个新 schema 消耗 1 步 Progressive Resolution budget（默认 8）
+       metadata-only Tool 保持 discoverable，不作为 callable Planner Tool
   -> Main Planner 或受控 Child 选择 concrete tool
   -> Normalize 冻结 pendingToolCall
   -> Policy / Approval

@@ -156,19 +156,17 @@ Pi Loop 没有全局 iteration cap；schema replan 与 recoverable failure 有�
 
 ```text
 eligible concrete tools
-  -> <= 20：全部暴露
-  -> > 20：Progressive Resolution over compact Capability View
-            exact canonical
-              -> capability/domain structural
-              -> lexical/BM25
-              -> only genuine ambiguity: cheap semantic Resolver
-  -> 按 cascade candidate 顺序展开 concrete tools
-  -> 去重
-  -> 未占满的槽位按原 eligible 顺序 deterministic fill
-  -> 前 20
+  -> compact metadata catalog（全部 eligible/ready，仅 metadata，不占 budget）
+  -> deterministic current-turn selection
+       exact canonical
+         -> capability/domain structural
+         -> lexical/BM25
+         -> （genuine ambiguity only）bounded cheap semantic Resolver（最多 1 次）
+  -> 仅被选中 capability 的 concrete Tools 进入 full schema / Planner exposure
+  -> 每披露一个新的 Tool schema 消耗 1 步 Progressive Resolution budget（默认 8）
 ```
 
-当前没有 `minScore` 淘汰和核心工具固定名额。对于 >20 的 eligible surface，Planner 的 20-slot disclosure 不再由本地 embedding/rerank top-20 驱动：Progressive Resolution 先按 exact / structural / lexical 证据排序，只有 genuine ambiguity 才允许一次 bounded cheap semantic Resolver；resolved candidates 保持 cascade relevance 顺序，剩余槽位再按原 eligible 顺序 deterministic fill。该排序只压缩上下文并决定 disclosure 顺序，不授予执行权限，命中后仍走 Normalize / Policy / Approval / Harness。旧 embedding/rerank runtime/packaging 的清理由 #245 单独治理，本卡不删除其共享基础设施。
+`<=20` 只表示 compact metadata catalog 足够小（无需 lexical/semantic Tool Search），不表示全部 full schema 自动进入 Planner exposure：`<=20` 仍走 exact canonical / structural / lexical 的确定性 selection seam，clear case 不发起 semantic 模型调用，只有 genuine ambiguity 才复用同一 bounded cheap semantic Resolver 且最多 1 次；只有本轮真正被选中的 capability 的 Tool schema 才 materialize 并计入 budget，未被选中的 ranked candidates 只保留给 trace/metadata/diagnostics，未被选中的 Tool 保持 discoverable compact metadata，不被 structured output 当作可调用 Tool，也不带空参数 schema。`>20` 的 Planner disclosure 由同一 Progressive Resolution cascade 按 exact / structural / lexical 证据排序，只有 genuine ambiguity 才允许一次 bounded cheap semantic Resolver；resolved candidates 保持 cascade relevance 顺序，剩余槽位再按原 eligible 顺序 deterministic fill。selection 只压缩上下文并决定 disclosure 顺序与 budget 消耗，不授予执行权限，命中后仍走 Normalize / Policy / Approval / Harness。已披露 schema 在 ordinary continuation / approval / resume 不重复计费；budget 耗尽透明，不表示任务完成也与失败/no-progress recovery budget 分离。旧 embedding/rerank runtime/packaging 的清理由 #245 单独治理，本卡不删除其共享基础设施。
 
 `delegate_task` 由 Agent Runtime 额外加入 Planner surface：
 
@@ -232,7 +230,9 @@ SubAgent approval 的 frozen call 还保存：
 
 命令、参数、cwd、env、timeout 或目标资源变化后必须重新判断。
 
-等待审批时持久化 task frame、observations、Evidence、retrievals、last execution、iteration、frozen call，以及适用的 SubAgent transcript checkpoint。
+等待审批时持久化 task frame、observations、Evidence、retrievals、last execution、iteration、frozen call、Progressive Resolution 的 budget / disclosure / trace 状态，以及适用的 SubAgent transcript checkpoint。
+
+恢复时按当前权威 Registry 与 readiness 重新对账渐进式披露状态：撤销或 readiness 丢失覆盖 checkpoint 里的陈旧可见性；resolution budget 只在扩展新的 capability detail 时消耗，approval/resume 不重复消耗，且与失败/no-progress recovery budget 分离。
 
 恢复入口先校验 exact invocation，再执行 Policy 或恢复同一 Child。旧批准不能变成可复用权限。
 

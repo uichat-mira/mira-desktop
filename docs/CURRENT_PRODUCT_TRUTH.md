@@ -201,7 +201,7 @@ UIChat Mira 是一个 **本地优先、桌面优先、多 Provider 的个人 AI 
 - Search 区分公共互联网 `web_search` 与本地 News Hub `news_search`；
 - `terminal` 是完整 host shell / PTY runtime，不是强隔离 sandbox；
 - Managed Browser、Attached Browser、Mail、GitHub、问策和 External MCP 可以按真实 availability 进入工具面；
-- <=20 个公共工具全部暴露，>20 才做 ranking 并暴露前 20；
+- Harness authority+readiness envelope 在 <=20 时全部作为 compact metadata catalog discoverable（无需 Tool Search），Planner 只对 Progressive Resolution 选中的 capability 的 Tool 披露 full schema，并受默认 8 步 disclosure budget 约束；<=20 与 >20 都运行 exact/structural/lexical 的确定性 selection，只有 genuine ambiguity 才复用一次 bounded cheap semantic Resolver，候选列表只保留给 trace/metadata，metadata-only Tool 不作为 callable Planner Tool；
 - Mira 以 MCP Host 为主，external MCP 必须 connected、discovered、显式 Agent Access、approval 后执行；
 - `delegate_task` 属于 Agent Runtime，不是普通 Harness Tool；
 - Skill-private Runtime 不暴露给 Main Planner，也不能凭声明获得可用性。

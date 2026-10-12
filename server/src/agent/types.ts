@@ -2,6 +2,7 @@ import type { AssistantExecutionNodeEvent } from "@/services/chat-stream-events"
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
 import type { RetrievedChunk } from "@/services/rag-nodes";
 import type { ContextBudgetAudit } from "@/services/context-budget/index";
+import type { ProgressiveResolutionState } from "@/harness/progressive-resolution-state";
 import type { SandboxOutputEncoding } from "@/harness/sandbox/contract";
 import type { ToolInvocationFailureCode, ToolDefinition, ToolEvidence } from "@/mcp/core/definitions";
 import type { ConversationArtifactReference } from "@/services/conversation-artifact.service";
@@ -712,6 +713,12 @@ export interface AgentGraphInput {
   pendingToolCall?: AgentToolCallRequest;
   currentTaskFrame?: CurrentTaskFrame;
   finalizationPacket?: AgentFinalizationPacket;
+  /**
+   * Durable Progressive Resolution state restored from an approval checkpoint.
+   * It carries capability disclosure visibility, resolution budget usage, and
+   * the compact resolution/disclosure trace across a resume.
+   */
+  progressiveResolution?: ProgressiveResolutionState;
   maxIterations?: number;
   onExecutionNode?: (
     event: AssistantExecutionNodeEvent,
@@ -739,6 +746,8 @@ export interface AgentGraphOutput {
   lastToolExecution?: AgentToolExecutionResult;
   currentTaskFrame?: CurrentTaskFrame;
   finalizationPacket?: AgentFinalizationPacket;
+  /** Durable Progressive Resolution state persisted for an approval resume. */
+  progressiveResolution?: ProgressiveResolutionState;
   blockedReason?: string;
   terminalReason?: string;
   errorMessage?: string;

@@ -140,6 +140,8 @@ public eligible tools > 20
 - 没有 Browser-only、Terminal-needed 或 task-phase 暴露规则；
 - Main Planner 不二次改写 Harness ranking。
 
+`<=20 全部暴露` 是指 Harness 的 authority+readiness envelope 全部进入 compact metadata catalog/发现面；Planner 可调用的 full schema 仍由 Progressive Resolution 的当前轮 selection 决定（见 `agentgraph-harness-protocol.md` §5），只有新披露的 schema 才消耗默认 8 步 disclosure budget。
+
 Recall / rerank 只服务上下文预算，不是授权或执行决定。
 
 ## 5. Tool Group 不改变 Exposure

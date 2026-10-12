@@ -90,6 +90,28 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     expect(result.toolCandidates).toHaveLength(3);
   });
 
+  it("runs a deterministic current-turn selection even when the surface is at most 20 tools", async () => {
+    for (const id of ["glob", "grep", "list", "read"]) {
+      registerTool(createEligibleTool(id));
+    }
+    for (let index = 0; index < 16; index += 1) {
+      registerTool(createEligibleTool("noise_tool_" + index));
+    }
+
+    const result = await resolveHarnessToolCandidatesForTurn({
+      query: "search the workspace files for a pattern",
+      source: "agent_intent",
+    });
+
+    // The <=20 surface stays a compact metadata catalog (all eligible Tools
+    // remain discoverable), but the deterministic seam still names the
+    // capability this turn needs without Tool Search or a model call.
+    expect(result.toolExposure.exposedToolIds).toHaveLength(20);
+    expect(result.resolution?.selectedCapabilityId).toBe("workspace_lookup");
+    expect(result.resolution?.path).toBe("structural");
+    expect(result.resolution?.trace.modelCalls).toBe(0);
+  });
+
   it("uses deterministic lexical resolution above 20 and keeps the full eligibility envelope", async () => {
     for (let index = 0; index < 20; index += 1) {
       registerTool(createEligibleTool("noise_tool_" + index));
