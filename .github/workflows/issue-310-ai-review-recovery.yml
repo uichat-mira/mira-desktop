@@ -217,9 +217,9 @@ jobs:
               external_directory: 'deny',
             },
             tools: {
-              read: true,
-              glob: true,
-              grep: true,
+              read: false,
+              glob: false,
+              grep: false,
               bash: false,
               edit: false,
               write: false,
@@ -254,7 +254,15 @@ jobs:
               return instance.client.session.prompt({ path: { id: session.id }, body });
             };
 
-            const first = await runPrompt(runner.buildReviewPrompt(pkg), true);
+            const recoveryPrompt = [
+              runner.buildReviewPrompt(pkg),
+              '',
+              'RECOVERY EXECUTION BOUNDARY:',
+              'Repository-base tools are disabled for this recovery run to keep the review bounded.',
+              'Review only the trusted ReviewPackage supplied above. Do not request read/glob/grep.',
+              'When the package does not establish a material fact, report a validation gap instead of inventing a defect or assuming evidence.',
+            ].join('\n');
+            const first = await runPrompt(recoveryPrompt, true);
             const firstPayload = first?.data ?? first;
             console.log('Mira recovery first response shape: ' + JSON.stringify(summarizeShape(firstPayload)));
             let review = firstPayload?.info?.structured ?? firstPayload?.info?.structured_output;
@@ -275,7 +283,7 @@ jobs:
 
             if (!review) {
               const compatibilityPrompt = [
-                runner.buildReviewPrompt(pkg),
+                recoveryPrompt,
                 '',
                 'COMPATIBILITY RECOVERY:',
                 'The provider did not populate the SDK structured-output field.',
