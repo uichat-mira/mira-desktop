@@ -1,4 +1,4 @@
-name: "#339 Third Pass Real Model First Action Verification"
+name: "#339 Third Pass Model Decision Repeatability Check"
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
           AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
         run: |
           if [ -z "$AI_PROVIDER_OPENCODE_GO_KEY" ]; then echo "::error::OpenCode Go secret unavailable"; exit 1; fi
-          pnpm --filter @ui-chat-mira/server exec tsx scripts/smoke-planner-skill-vs-delegation.ts 1
+          pnpm --filter @ui-chat-mira/server exec tsx scripts/smoke-planner-skill-vs-delegation.ts 3
       - name: Upload safe first-action evidence
         if: always()
         uses: actions/upload-artifact@v4
