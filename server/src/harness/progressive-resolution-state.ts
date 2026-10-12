@@ -250,47 +250,6 @@ export const resolveAndDiscloseCapability = (
 };
 
 /**
- * Records a capability-detail disclosure that is not a Progressive Resolution
- * step.
- *
- * The Harness base surface (an eligible set that already fits the Planner
- * disclosure limit) is the turn's complete selected exposure, so materializing
- * its schema expands model context but does not resolve any *additional*
- * capability through progressive narrowing. It must be recorded durably so
- * continuation, resume and reconciliation treat it like any other disclosed
- * detail, but it must not spend the Progressive Resolution budget, which is
- * reserved for genuinely progressive capability expansion.
- *
- * Like `resolveAndDiscloseCapability`, recording an already-disclosed level is
- * idempotent and free.
- */
-export const revealCapabilityDetail = (
-  state: ProgressiveResolutionState,
-  input: {
-    capabilityId: string;
-    target: Exclude<CapabilityDisclosure, "hidden">;
-    path?: CapabilityResolutionPath;
-    detail?: string;
-  },
-): ProgressiveResolutionState => {
-  const current = readCapabilityDisclosure(state, input.capabilityId);
-  if (DISCLOSURE_RANK[input.target] <= DISCLOSURE_RANK[current]) {
-    return recordCapabilityDisclosure(state, input);
-  }
-
-  return recordCapabilityDisclosure(
-    {
-      ...state,
-      disclosure: {
-        ...state.disclosure,
-        [input.capabilityId]: input.target,
-      },
-    },
-    input,
-  );
-};
-
-/**
  * Maps a Progressive Resolution capability key back to the canonical Tool ids
  * that own its registry, authority and readiness.
  *

@@ -135,55 +135,38 @@ const schemaExposedToolIds = (state: Partial<AgentNodeState>): string[] =>
     .filter((tool) => Boolean(tool.inputSchema))
     .map((tool) => tool.toolId);
 
+const workspaceLookupTools = () => [
+  makeToolDefinition("glob"),
+  makeToolDefinition("grep"),
+  makeToolDefinition("list"),
+  makeToolDefinition("read"),
+];
+
+const workspaceEditTools = () => [
+  makeToolDefinition("write", "edit"),
+  makeToolDefinition("edit", "edit"),
+  makeToolDefinition("delete", "edit"),
+  makeToolDefinition("move", "edit"),
+  makeToolDefinition("apply_patch", "edit"),
+];
+
 describe("prepareContextNode Progressive Resolution budget gate", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     clearHarnessRegistry();
   });
 
-  it("materializes the whole base surface schema without spending the budget when the resolver does not run", async () => {
-    const definitions = Array.from({ length: 20 }, (_, index) =>
+  it("treats a <=20 catalog as metadata only and materializes exactly the selected capability", async () => {
+    const selected = workspaceLookupTools();
+    const filler = Array.from({ length: 16 }, (_, index) =>
       makeToolDefinition(`tool_${index + 1}`),
     );
+    const definitions = [...selected, ...filler];
     const toolIds = definitions.map((definition) => definition.id);
     vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
-    mockMatcher({ exposed: definitions });
-
-    const patch = await prepareContextNode(createState());
-
-    // All 20 exposed Tools are the turn's selection, so every one carries a
-    // usable schema and none is a dead metadata-only Planner entry.
-    assert.deepEqual(patch.toolExposure?.exposedTools, toolIds);
-    assert.deepEqual(schemaExposedToolIds(patch), toolIds);
-    assert.equal(
-      (patch.toolExposure?.toolMeta ?? []).every((tool) => Boolean(tool.inputSchema)),
-      true,
-    );
-
-    // The base surface is not progressive expansion and must not consume the
-    // resolution budget.
-    assert.deepEqual(patch.progressiveResolution?.budget, {
-      limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
-      consumed: 0,
-    });
-    assert.equal(patch.progressiveResolution?.exhausted, false);
-  });
-
-  it("discloses only the resolved capability's Tools and spends one step each when the resolver runs", async () => {
-    const resolvedTools = [
-      makeToolDefinition("glob"),
-      makeToolDefinition("grep"),
-      makeToolDefinition("list"),
-      makeToolDefinition("read"),
-    ];
-    const filler = Array.from({ length: 18 }, (_, index) =>
-      makeToolDefinition(`tool_${index + 1}`),
-    );
-    const definitions = [...resolvedTools, ...filler];
-    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
     mockMatcher({
-      exposed: definitions.slice(0, 20),
-      eligibleToolIds: definitions.map((definition) => definition.id),
+      exposed: definitions,
+      eligibleToolIds: toolIds,
       resolution: makeResolution({
         selectedCapabilityId: "workspace_lookup",
         candidates: ["workspace_lookup"],
@@ -192,8 +175,8 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
 
     const patch = await prepareContextNode(createState());
 
-    // Only the resolved capability's supporting Tools reach the Planner, each
-    // with a real schema; unrelated registry Tools stay compact metadata only.
+    // A 20-Tool catalog is cheap to discover, not automatically selected: only
+    // the selected capability's Tools reach the Planner with a real schema.
     assert.deepEqual(patch.toolExposure?.exposedTools, [
       "glob",
       "grep",
@@ -206,7 +189,21 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
       "list",
       "read",
     ]);
-    assert.equal(patch.toolExposure?.exposedTools?.includes("tool_1"), false);
+    for (const fillerDefinition of filler) {
+      assert.equal(
+        patch.toolExposure?.exposedTools?.includes(fillerDefinition.id),
+        false,
+      );
+      assert.equal(
+        (patch.toolExposure?.toolMeta ?? []).some(
+          (tool) => tool.toolId === fillerDefinition.id,
+        ),
+        false,
+      );
+    }
+
+    // New schema detail spends one budget step per Tool; the catalog itself does
+    // not spend the resolution budget.
     assert.deepEqual(patch.progressiveResolution?.budget, {
       limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
       consumed: 4,
@@ -214,12 +211,158 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
     assert.equal(patch.progressiveResolution?.exhausted, false);
   });
 
+  it("does not eager-materialize the surface when no capability is selected", async () => {
+    const definitions = Array.from({ length: 20 }, (_, index) =>
+      makeToolDefinition(`tool_${index + 1}`),
+    );
+    const toolIds = definitions.map((definition) => definition.id);
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    // The resolver short-circuits without a confident selection (empty query or
+    // no matching capability). The surface stays metadata only instead of being
+    // materialized for free.
+    mockMatcher({ exposed: definitions, eligibleToolIds: toolIds });
+
+    const patch = await prepareContextNode(createState());
+
+    assert.deepEqual(patch.toolExposure?.exposedTools, []);
+    assert.deepEqual(schemaExposedToolIds(patch), []);
+    assert.deepEqual(patch.progressiveResolution?.budget, {
+      limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+      consumed: 0,
+    });
+  });
+
+  it("does not disclose new schema when the resolver reports ambiguity without a selection", async () => {
+    const definitions = [...workspaceLookupTools(), ...workspaceEditTools()];
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    mockMatcher({
+      exposed: definitions,
+      eligibleToolIds: definitions.map((definition) => definition.id),
+      // Genuine ambiguity whose bounded semantic fallback returned no usable
+      // capability: candidates stay trace/metadata, nothing is selected.
+      resolution: {
+        path: "ambiguous",
+        selectedCapabilityId: null,
+        candidates: [
+          { capabilityId: "workspace_lookup", score: 0.6, reason: "ambiguous" },
+          { capabilityId: "workspace_edit", score: 0.5, reason: "ambiguous" },
+        ],
+        trace: {
+          query: "inspect the workspace files",
+          path: "ambiguous",
+          modelCalls: 1,
+          semanticAttempted: true,
+          ambiguous: true,
+          deterministicCandidates: [],
+          selectedCapabilityId: null,
+          domainHint: null,
+          selectedDomain: null,
+          wrongDomainRecovered: false,
+          reason: "semantic returned no usable capability",
+        },
+      },
+    });
+
+    const patch = await prepareContextNode(createState());
+
+    assert.deepEqual(patch.toolExposure?.exposedTools, []);
+    assert.deepEqual(schemaExposedToolIds(patch), []);
+    assert.deepEqual(patch.progressiveResolution?.budget, {
+      limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+      consumed: 0,
+    });
+    assert.equal(
+      (patch.progressiveResolution?.trace ?? []).some(
+        (event) => event.stage === "selected",
+      ),
+      false,
+    );
+  });
+
+  it("spends one step per newly disclosed Tool when the resolver selects a capability", async () => {
+    const definitions = [...workspaceLookupTools(), ...workspaceEditTools()];
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    mockMatcher({
+      exposed: definitions,
+      eligibleToolIds: definitions.map((definition) => definition.id),
+      resolution: makeResolution({
+        selectedCapabilityId: "workspace_lookup",
+        candidates: ["workspace_lookup"],
+      }),
+    });
+
+    const patch = await prepareContextNode(createState());
+
+    assert.deepEqual(patch.toolExposure?.exposedTools, [
+      "glob",
+      "grep",
+      "list",
+      "read",
+    ]);
+    assert.equal(patch.toolExposure?.exposedTools?.includes("write"), false);
+    assert.deepEqual(patch.progressiveResolution?.budget, {
+      limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+      consumed: 4,
+    });
+    assert.equal(patch.progressiveResolution?.exhausted, false);
+  });
+
+  it("discloses only the selected capability when ranked candidates are also returned", async () => {
+    const definitions = [
+      ...workspaceLookupTools(),
+      makeToolDefinition("web_search", "web_search"),
+      makeToolDefinition("web_fetch", "web_search"),
+      ...workspaceEditTools(),
+    ];
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    mockMatcher({
+      exposed: definitions,
+      eligibleToolIds: definitions.map((definition) => definition.id),
+      // A deterministic structural result names one selection but keeps the
+      // ranked candidate list. Candidates are trace/metadata only and must not
+      // be materialized or charged as if they were selected.
+      resolution: makeResolution({
+        selectedCapabilityId: "workspace_edit",
+        candidates: ["workspace_edit", "web", "workspace_lookup"],
+      }),
+    });
+
+    const patch = await prepareContextNode(createState());
+
+    assert.deepEqual(patch.toolExposure?.exposedTools, [
+      "write",
+      "edit",
+      "delete",
+      "move",
+      "apply_patch",
+    ]);
+    assert.deepEqual(schemaExposedToolIds(patch), [
+      "write",
+      "edit",
+      "delete",
+      "move",
+      "apply_patch",
+    ]);
+    // Budget is charged for the selected capability's Tools only; the ranked
+    // web / workspace_lookup candidates are neither disclosed nor charged.
+    assert.deepEqual(patch.progressiveResolution?.budget, {
+      limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+      consumed: 5,
+    });
+    assert.equal(patch.progressiveResolution?.disclosure.glob, undefined);
+    assert.equal(patch.progressiveResolution?.disclosure.web_search, undefined);
+    const selectedEvents = (patch.progressiveResolution?.trace ?? []).filter(
+      (event) => event.stage === "selected",
+    );
+    assert.deepEqual(
+      selectedEvents.map((event) => event.capabilityId),
+      ["workspace_edit"],
+    );
+  });
+
   it("promotes a second capability on a later turn within the budget without re-charging prior disclosure", async () => {
     const definitions = [
-      makeToolDefinition("glob"),
-      makeToolDefinition("grep"),
-      makeToolDefinition("list"),
-      makeToolDefinition("read"),
+      ...workspaceLookupTools(),
       makeToolDefinition("web_search", "web_search"),
       makeToolDefinition("web_fetch", "web_search"),
       ...Array.from({ length: 16 }, (_, index) =>
@@ -277,10 +420,7 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
 
   it("does not re-charge the budget on ordinary continuation", async () => {
     const definitions = [
-      makeToolDefinition("glob"),
-      makeToolDefinition("grep"),
-      makeToolDefinition("list"),
-      makeToolDefinition("read"),
+      ...workspaceLookupTools(),
       ...Array.from({ length: 16 }, (_, index) =>
         makeToolDefinition(`tool_${index + 1}`),
       ),
@@ -310,64 +450,73 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
   });
 
   it("exhausts bounded and transparently while keeping already-disclosed detail", async () => {
-    const definitions = [
-      makeToolDefinition("glob"),
-      makeToolDefinition("grep"),
-      makeToolDefinition("list"),
-      makeToolDefinition("read"),
-      makeToolDefinition("write", "edit"),
-      makeToolDefinition("edit", "edit"),
-      makeToolDefinition("delete", "edit"),
-      makeToolDefinition("move", "edit"),
-      makeToolDefinition("apply_patch", "edit"),
-    ];
-    const toolIds = definitions.map((definition) => definition.id);
+    const definitions = [...workspaceLookupTools(), ...workspaceEditTools()];
     vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
-    mockMatcher({
+    const matcherSpy = mockMatcher({
       exposed: definitions,
-      eligibleToolIds: toolIds,
+      eligibleToolIds: definitions.map((definition) => definition.id),
       resolution: makeResolution({
         selectedCapabilityId: "workspace_lookup",
-        candidates: ["workspace_lookup", "workspace_edit"],
+        candidates: ["workspace_lookup"],
       }),
     });
 
-    const patch = await prepareContextNode(createState());
+    const first = await prepareContextNode(createState());
+    assert.equal(first.progressiveResolution?.budget.consumed, 4);
+
+    matcherSpy.mockResolvedValue(
+      buildMatcherResult({
+        exposed: definitions,
+        eligibleToolIds: definitions.map((definition) => definition.id),
+        resolution: makeResolution({
+          selectedCapabilityId: "workspace_edit",
+          candidates: ["workspace_edit"],
+        }),
+      }),
+    );
+    const second = await prepareContextNode(
+      createState({ progressiveResolution: first.progressiveResolution }),
+    );
 
     const budget = DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET;
-    assert.deepEqual(patch.progressiveResolution?.budget, {
+    assert.deepEqual(second.progressiveResolution?.budget, {
       limit: budget,
       consumed: budget,
     });
-    assert.equal(patch.progressiveResolution?.exhausted, true);
+    assert.equal(second.progressiveResolution?.exhausted, true);
     assert.match(
-      patch.progressiveResolution?.unresolvedCapabilityGap ?? "",
+      second.progressiveResolution?.unresolvedCapabilityGap ?? "",
       /budget/,
     );
     assert.match(
-      patch.progressiveResolution?.unresolvedCapabilityGap ?? "",
+      second.progressiveResolution?.unresolvedCapabilityGap ?? "",
       /apply_patch/,
     );
 
     // The refused Tool stays undisclosed and is not exposed with an empty schema.
     assert.equal(
-      readCapabilityDisclosure(patch.progressiveResolution!, "apply_patch"),
+      readCapabilityDisclosure(second.progressiveResolution!, "apply_patch"),
       "hidden",
     );
-    assert.equal(patch.toolExposure?.exposedTools?.includes("apply_patch"), false);
-    assert.equal(patch.toolExposure?.exposedTools?.length, budget);
+    assert.equal(
+      second.toolExposure?.exposedTools?.includes("apply_patch"),
+      false,
+    );
+    assert.equal(second.toolExposure?.exposedTools?.length, budget);
+    for (const toolId of second.toolExposure?.exposedTools ?? []) {
+      assert.ok(
+        second.toolExposure?.toolMeta.find((tool) => tool.toolId === toolId)
+          ?.inputSchema,
+        `missing schema for ${toolId}`,
+      );
+    }
 
     // Exhaustion is a bounded disclosure state, not task completion.
-    assert.equal("status" in patch, false);
+    assert.equal("status" in second, false);
   });
 
   it("survives resume and yields to registry revocation and readiness loss", async () => {
-    const baseTools = [
-      makeToolDefinition("glob"),
-      makeToolDefinition("grep"),
-      makeToolDefinition("list"),
-      makeToolDefinition("read"),
-    ];
+    const baseTools = workspaceLookupTools();
     const filler = Array.from({ length: 16 }, (_, index) =>
       makeToolDefinition(`tool_${index + 1}`),
     );
@@ -448,12 +597,7 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
   });
 
   it("keeps the production Planner link callable with legal schema args and no empty-schema dead path", async () => {
-    const resolvedTools = [
-      makeToolDefinition("glob"),
-      makeToolDefinition("grep"),
-      makeToolDefinition("list"),
-      makeToolDefinition("read"),
-    ];
+    const resolvedTools = workspaceLookupTools();
     const definitions = [
       ...resolvedTools,
       ...Array.from({ length: 18 }, (_, index) =>

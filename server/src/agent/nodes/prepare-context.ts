@@ -23,7 +23,6 @@ import {
   recordProgressiveResolutionSelection,
   reconcileProgressiveResolutionState,
   resolveAndDiscloseCapability,
-  revealCapabilityDetail,
 } from "@/harness/progressive-resolution-state";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
 import { withWorkbenchMetadata } from "@/mcp/workbench-metadata.js";
@@ -517,9 +516,6 @@ export const prepareContextNode = async (
     .filter((entry) => entry.eligible)
     .map((entry) => entry.capabilityId);
   const currentEligibleToolIdSet = new Set(currentEligibleToolIds);
-  const callableToolIds = matcherResult.toolExposure.exposedToolIds.filter(
-    (toolId) => currentEligibleToolIdSet.has(toolId),
-  );
 
   // Durable Progressive Resolution state. It is restored from an approval
   // checkpoint and reconciled against the current authoritative registry,
@@ -548,32 +544,47 @@ export const prepareContextNode = async (
         detail: matcherResult.resolution.trace.reason,
       },
     );
-    for (const candidate of matcherResult.resolution.candidates) {
+    // Only the capability the resolver actually selected is a selection event.
+    // Ranked candidates below the selection are trace/metadata/diagnostics only
+    // and must never be recorded as "selected" or treated as disclosure.
+    const resolutionSelectedCapabilityId =
+      matcherResult.resolution.selectedCapabilityId;
+    const selectedCandidate = resolutionSelectedCapabilityId
+      ? matcherResult.resolution.candidates.find(
+          (candidate) =>
+            candidate.capabilityId === resolutionSelectedCapabilityId,
+        )
+      : undefined;
+    if (resolutionSelectedCapabilityId) {
       progressiveResolution = recordProgressiveResolutionSelection(
         progressiveResolution,
         {
-          capabilityId: candidate.capabilityId,
+          capabilityId: resolutionSelectedCapabilityId,
           path: matcherResult.resolution.path,
-          detail: candidate.reason,
+          ...(selectedCandidate?.reason
+            ? { detail: selectedCandidate.reason }
+            : {}),
         },
       );
     }
   }
 
   // Resolution budget gate. The Progressive Resolution state is the single
-  // source of truth for which capability schemas reach the Planner. Only the
-  // capability detail this turn actually resolves or requests is expanded:
+  // source of truth for which capability schemas reach the Planner. The whole
+  // eligible surface stays discoverable as compact metadata in the Capability
+  // View, but schema disclosure is on demand:
   //
-  // - when the eligible surface exceeds the Planner disclosure limit, the
-  //   deterministic resolver selected the capability, so exactly its supporting
-  //   Tools are promoted and each newly disclosed Tool spends one budget step;
-  // - when the surface already fits the disclosure limit the resolver does not
-  //   run, so the whole exposed surface is the turn's selection and its schemas
-  //   are materialized directly without spending the Progressive Resolution
-  //   budget (that budget governs additional progressive expansion, not the
-  //   Harness base surface);
+  // - the deterministic-first resolver selects the capability this turn needs;
+  //   exactly that capability's supporting Tools are promoted and each newly
+  //   disclosed Tool spends one budget step. This holds whether the eligible
+  //   surface is larger or smaller than the Planner disclosure limit: a small
+  //   catalog is cheap to *discover*, not automatically *selected*, so a <=20
+  //   surface never eager-materializes every schema for free;
   // - Tools already disclosed are idempotent and free, so ordinary continuation
-  //   and approval/resume never re-charge.
+  //   and approval/resume never re-charge;
+  // - when nothing is confidently selected the turn expands no new schema. That
+  //   is bounded and transparent: already-disclosed detail stays usable and the
+  //   budget never marks the task complete.
   //
   // A Tool refused after exhaustion stays compact-metadata only with a
   // transparent unresolved gap. The Capability View still clamps every promotion
@@ -599,28 +610,26 @@ export const prepareContextNode = async (
     if (level === "schema") addSchemaTarget(toolId);
   }
 
-  // Only the resolved/selected capability detail drives new schema disclosure.
-  // The resolver selects a capability only when the eligible surface exceeds the
-  // Planner disclosure limit. When it does not run, or runs without selecting
-  // one, the Harness-exposed base surface is the turn's selection and does not
-  // spend the Progressive Resolution budget.
-  const resolutionSelectedToolIds = matcherResult.resolution?.selectedCapabilityId
-    ? matcherResult.resolution.candidates.flatMap((candidate) =>
-        resolveCapabilityToolIds(candidate.capabilityId),
-      )
+  // Only the capability this turn actually selected drives new schema
+  // disclosure. Ranked candidates below the selection are retained for trace /
+  // metadata / diagnostics only and must never be materialized or charged: the
+  // resolver reports grouped capability ids (for example `workspace_lookup`),
+  // so the selected capability is expanded to its canonical supporting Tool ids
+  // through the same Profile -> supportingToolIds mapping used for
+  // reconciliation. A turn without a confident selection discloses nothing new
+  // instead of eagerly materializing the whole catalog.
+  const selectedCapabilityId = matcherResult.resolution?.selectedCapabilityId;
+  const resolutionSelectedToolIds = selectedCapabilityId
+    ? resolveCapabilityToolIds(selectedCapabilityId)
     : [];
-  const usesProgressiveSelection = resolutionSelectedToolIds.length > 0;
-  const requestedSchemaToolIds = usesProgressiveSelection
-    ? resolutionSelectedToolIds
-    : callableToolIds;
-  for (const toolId of requestedSchemaToolIds) addSchemaTarget(toolId);
+  for (const toolId of resolutionSelectedToolIds) addSchemaTarget(toolId);
 
   const schemaDisclosedToolIds = new Set<string>();
   for (const toolId of schemaTargetToolIds) {
     const alreadyDisclosed =
       readCapabilityDisclosure(progressiveResolution, toolId) === "schema";
 
-    if (!alreadyDisclosed && usesProgressiveSelection) {
+    if (!alreadyDisclosed) {
       const disclosure = resolveAndDiscloseCapability(progressiveResolution, {
         capabilityId: toolId,
         target: "schema",
@@ -640,15 +649,6 @@ export const prepareContextNode = async (
     capabilityDisclosureTransitions.push(promoted.transition);
     if (!promoted.transition.schemaMaterialized) continue;
     schemaDisclosedToolIds.add(toolId);
-
-    if (!alreadyDisclosed && !usesProgressiveSelection) {
-      progressiveResolution = revealCapabilityDetail(progressiveResolution, {
-        capabilityId: toolId,
-        target: "schema",
-        ...(resolutionPath ? { path: resolutionPath } : {}),
-        detail: "Harness base surface schema disclosure",
-      });
-    }
   }
 
   const capabilityDisclosureTrace = describeCapabilityDisclosure(

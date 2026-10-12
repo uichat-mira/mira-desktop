@@ -75,6 +75,32 @@ export const resolveHarnessToolCandidatesForTurn = async (
       definitions: visibleDefinitions,
       reason: exposureReason,
     });
+    // A small catalog stays fully discoverable as compact metadata, but that
+    // does not mean every Tool schema is this turn's selection. A deterministic
+    // current-turn selection seam still runs so schema disclosure stays on
+    // demand: exact canonical -> structural -> lexical over the same capability
+    // profiles the >20 path uses. Those stages are deterministic and spend no
+    // model call, so a clear case stays free. Only genuine ambiguity reuses the
+    // existing bounded cheap semantic Resolver, at most once, to pick which
+    // capability this turn should disclose. The resolver still only decides
+    // disclosure order; it never grants authority.
+    const selectionProfiles = resolveHarnessCapabilityProfiles(visibleDefinitions);
+    const resolution =
+      input.query.trim() && selectionProfiles.length > 0
+        ? await resolveProgressiveCapabilitySearch({
+            query: input.query,
+            capabilities: buildCapabilityResolutionDocuments(selectionProfiles),
+            ...(input.knownCapabilityId
+              ? { knownCapabilityId: input.knownCapabilityId }
+              : {}),
+            ...(input.semanticResolver
+              ? { semanticResolver: input.semanticResolver }
+              : {}),
+            ...(input.resolutionBudget
+              ? { budget: input.resolutionBudget }
+              : {}),
+          })
+        : undefined;
     return {
       query: input.query,
       source,
@@ -84,6 +110,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
         ...initialToolExposure,
         reason: [...initialToolExposure.reason, exposureReason],
       },
+      ...(resolution ? { resolution } : {}),
     };
   }
 
