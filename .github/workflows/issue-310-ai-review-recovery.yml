@@ -148,8 +148,121 @@ jobs:
             'opencode': { type: 'api', key: process.env.OPENCODE_GO_API_KEY },
           });
           const startedAt = Date.now();
+
+          const collectTextParts = (node, out = []) => {
+            if (!node) return out;
+            if (Array.isArray(node)) {
+              for (const item of node) collectTextParts(item, out);
+              return out;
+            }
+            if (typeof node !== 'object') return out;
+            if (node.type === 'text' && typeof node.text === 'string') out.push(node.text);
+            for (const key of ['parts', 'content', 'message', 'messages']) {
+              if (node[key]) collectTextParts(node[key], out);
+            }
+            return out;
+          };
+
+          const parseReviewText = (value) => {
+            const raw = String(value ?? '').trim();
+            const unfenced = raw
+              .replace(/^\`\`\`(?:json)?\s*/i, '')
+              .replace(/\s*\`\`\`$/i, '');
+            const first = unfenced.indexOf('{');
+            const last = unfenced.lastIndexOf('}');
+            if (first < 0 || last <= first) throw new Error('compat_text_json_missing');
+            return runner.assertMiraReviewContract(JSON.parse(unfenced.slice(first, last + 1)));
+          };
+
+          const config = {
+            model: runner.reviewRouteModelRef ? runner.reviewRouteModelRef(route) : route.provider + '/' + route.model,
+            enabled_providers: [route.provider],
+            share: 'disabled',
+            autoupdate: false,
+            snapshot: false,
+            instructions: [],
+            mcp: {},
+            formatter: false,
+            lsp: false,
+            permission: {
+              edit: 'deny',
+              bash: 'deny',
+              webfetch: 'deny',
+              doom_loop: 'deny',
+              external_directory: 'deny',
+            },
+            tools: {
+              read: true,
+              glob: true,
+              grep: true,
+              bash: false,
+              edit: false,
+              write: false,
+              patch: false,
+              apply_patch: false,
+              webfetch: false,
+              websearch: false,
+              task: false,
+              skill: false,
+            },
+          };
+
+          let instance;
           try {
-            const review = await runner.executeOpenCodeReview(sdk.createOpencode, pkg, route);
+            instance = await sdk.createOpencode({ hostname: '127.0.0.1', timeout: 15000, config });
+            const runPrompt = async (text, structured) => {
+              const created = await instance.client.session.create({ body: { title: 'Mira Organization AI Review recovery' } });
+              const session = created?.data ?? created;
+              if (!session?.id) throw new Error('compat_session_create_failed');
+              const body = {
+                model: { providerID: route.provider, modelID: route.model },
+                variant: route.variant,
+                parts: [{ type: 'text', text }],
+              };
+              if (structured) {
+                body.format = {
+                  type: 'json_schema',
+                  schema: runner.MIRA_REVIEW_SCHEMA,
+                  retryCount: 0,
+                };
+              }
+              return instance.client.session.prompt({ path: { id: session.id }, body });
+            };
+
+            const first = await runPrompt(runner.buildReviewPrompt(pkg), true);
+            const firstPayload = first?.data ?? first;
+            let review = firstPayload?.info?.structured ?? firstPayload?.info?.structured_output;
+
+            if (review) {
+              review = runner.assertMiraReviewContract(review);
+            } else {
+              const text = collectTextParts(firstPayload).join('\n').trim();
+              if (text) {
+                try {
+                  review = parseReviewText(text);
+                  console.log('Mira recovery compatibility: parsed JSON text from structured attempt');
+                } catch {
+                  review = undefined;
+                }
+              }
+            }
+
+            if (!review) {
+              const compatibilityPrompt = [
+                runner.buildReviewPrompt(pkg),
+                '',
+                'COMPATIBILITY RECOVERY:',
+                'The provider did not populate the SDK structured-output field.',
+                'Return exactly one raw JSON object matching the Mira review contract.',
+                'No markdown fence, no prose before or after the JSON object.',
+              ].join('\n');
+              const second = await runPrompt(compatibilityPrompt, false);
+              const secondPayload = second?.data ?? second;
+              const text = collectTextParts(secondPayload).join('\n').trim();
+              review = parseReviewText(text);
+              console.log('Mira recovery compatibility: validated JSON text fallback');
+            }
+
             const output = {
               runner: { state: 'COMPLETED' },
               submission: runner.buildExternalSubmission(pkg, route, review, Date.now() - startedAt),
@@ -161,8 +274,16 @@ jobs:
             const name = error instanceof Error ? error.name : 'UnknownError';
             const message = error instanceof Error ? error.message : String(error);
             console.error('Mira recovery raw error: ' + name + ': ' + message);
-            process.exit(2);
+            process.exitCode = 2;
+          } finally {
+            try {
+              await instance?.client?.instance?.dispose?.();
+            } catch {}
+            try {
+              instance?.server?.close?.();
+            } catch {}
           }
+          if (process.exitCode) process.exit(process.exitCode);
           NODE
 
       - name: Submit recovery result to Mira Control Room
