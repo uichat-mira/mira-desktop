@@ -10,12 +10,13 @@ const statusIcon = (status: AcceptanceCaseResult["status"]): string =>
 
 const renderCase = (result: AcceptanceCaseResult): string => {
   const lines = [
-    `### ${statusIcon(result.status)} \`${result.caseId}\` (${result.surface} / ${result.category})`,
+    `### ${statusIcon(result.status)} \`${result.caseId}\` (${result.surface} / ${result.category}) [evidence: \`${result.evidenceLevel}\`]`,
     "",
     `- query: \`${result.query}\``,
     `- gold: \`${JSON.stringify(result.gold)}\``,
     `- observed: \`${JSON.stringify(result.observed)}\``,
-    `- metrics: modelCalls=${String(result.metrics.modelCalls)} semanticAttempted=${String(result.metrics.semanticAttempted)} searchUsed=${String(result.metrics.searchUsed)} authorityViolations=${result.metrics.authorityViolations} tokens=${String(result.metrics.tokens)} latencyMs=${String(result.metrics.latencyMs)}`,
+    `- metrics: modelCalls=${String(result.metrics.modelCalls)} semanticAttempted=${String(result.metrics.semanticAttempted)} searchUsed=${String(result.metrics.searchUsed)} authorityViolations=${result.metrics.authorityViolations} tokens=${String(result.metrics.tokens)} latencyMs=${String(result.metrics.latencyMs)} resolverLatencyMs=${String(result.metrics.resolverLatencyMs)}`,
+    "- evidence boundaries: candidate ranking != resolved capability != schema-disclosed Tool != Planner-callable Tool != invoked Tool.",
   ];
   for (const assertion of result.assertions) {
     lines.push(
@@ -39,12 +40,15 @@ export const formatAcceptanceMarkdown = (
     `- mode: \`${report.mode}\``,
     `- generatedAt: \`${report.generatedAt}\``,
     `- evidenceLevel: ${report.evidenceLevel}`,
+    `- evidenceScope: resolution=${report.evidenceScope.resolutionObserved} plannerProjection=${report.evidenceScope.plannerProjectionObserved} governedExecution=${report.evidenceScope.governedExecutionObserved} modelCallUsage=${report.evidenceScope.modelCallUsageObserved}`,
     `- corpus: \`${report.corpus.fixtureSource}\` — ${report.corpus.note}`,
     `- summary: total=${report.summary.total} passed=${report.summary.passed} failed=${report.summary.failed} skipped=${report.summary.skipped}`,
     "",
     "## Comparison discipline",
     "",
     `- #243 reference: ${report.comparison.reference.goldReachability} gold reachability, ${report.comparison.reference.modelCalls} model calls / ${report.comparison.reference.tokens} tokens across ${report.comparison.reference.caseCount} cases (${report.comparison.reference.corpus}).`,
+    `- #243 source: ${report.comparison.reference.source}`,
+    `- #243 gold ids: ${report.comparison.reference.caseIds.join(", ")}`,
     `- direct parity: **${report.comparison.directParity}**`,
     `- reason: ${report.comparison.reason}`,
     "",

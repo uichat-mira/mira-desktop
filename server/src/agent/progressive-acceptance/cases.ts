@@ -14,7 +14,6 @@ import {
 } from "@/harness/candidates-core/capability-resolution.js";
 import { resolveHarnessToolCandidatesForTurn } from "@/harness/candidates-core/resolver.js";
 import { clearHarnessRegistry } from "@/harness/registry.js";
-import type { ResolveHarnessToolCandidatesForTurnResult } from "@/harness/candidates-core/types.js";
 import {
   GENERIC_TASK_DELEGATE_TOOL_ID,
   createGenericTaskSkillContext,
@@ -92,7 +91,7 @@ export const resolutionCaseSpecs: readonly ResolutionCaseSpec[] = [
     gold: {
       path: "structural",
       selectedCapabilityId: "workspace_lookup",
-      selectedToolId: "grep",
+      requiredToolId: "grep",
     },
     expectedSemanticResolverCalls: 0,
   },
@@ -110,7 +109,7 @@ export const resolutionCaseSpecs: readonly ResolutionCaseSpec[] = [
     gold: {
       path: "exact",
       selectedCapabilityId: "web",
-      selectedToolId: "web_search",
+      requiredToolId: "web_search",
     },
     expectedSemanticResolverCalls: 0,
   },
@@ -126,7 +125,7 @@ export const resolutionCaseSpecs: readonly ResolutionCaseSpec[] = [
     gold: {
       path: "structural",
       selectedCapabilityId: "terminal_execution",
-      selectedToolId: "terminal",
+      requiredToolId: "terminal",
     },
     expectedSemanticResolverCalls: 0,
   },
@@ -146,7 +145,7 @@ export const resolutionCaseSpecs: readonly ResolutionCaseSpec[] = [
     gold: {
       path: "lexical",
       selectedCapabilityId: "late_lexical_target",
-      selectedToolId: "late_lexical_target",
+      requiredToolId: "late_lexical_target",
     },
     expectedSemanticResolverCalls: 0,
   },
@@ -166,7 +165,7 @@ export const resolutionCaseSpecs: readonly ResolutionCaseSpec[] = [
     gold: {
       path: "lexical",
       selectedCapabilityId: "chronicle_search",
-      selectedToolId: "chronicle_search",
+      requiredToolId: "chronicle_search",
     },
     expectedSemanticResolverCalls: 0,
   },
@@ -223,20 +222,29 @@ const createCountingResolver = (
   return counting;
 };
 
-const SELECTED_TOOL_LOOKUP = (result: ResolveHarnessToolCandidatesForTurnResult): string | null =>
-  result.toolCandidates[0]?.toolId ?? null;
-
 export const buildResolutionCaseResult = async (
   spec: ResolutionCaseSpec,
   resolver: SemanticCapabilityResolver | undefined,
-  options: { live: boolean; tokens?: number | null; latencyMs?: number | null },
+  options: {
+    live: boolean;
+    tokens?: number | null;
+    latencyMs?: number | null;
+    resolverLatencyMs?: number | null;
+  },
 ): Promise<AcceptanceCaseResult> => {
   clearHarnessRegistry();
   installAcceptanceTools(spec.tools);
-  const counting = createCountingResolver(undefined);
+  const startedAt = Date.now();
+  let resolverMs = 0;
+  let resolverCalls = 0;
   const countingResolver: SemanticCapabilityResolver = async (input) => {
-    counting.calls += 1;
-    return resolver ? resolver(input) : undefined;
+    resolverCalls += 1;
+    const callStartedAt = Date.now();
+    try {
+      return resolver ? await resolver(input) : undefined;
+    } finally {
+      resolverMs += Date.now() - callStartedAt;
+    }
   };
 
   const result = await resolveHarnessToolCandidatesForTurn({
@@ -247,72 +255,95 @@ export const buildResolutionCaseResult = async (
       : {}),
     semanticResolver: countingResolver,
   });
+  const latencyMs = options.latencyMs ?? Date.now() - startedAt;
+  const resolverLatencyMs =
+    options.resolverLatencyMs ?? (resolverCalls > 0 ? resolverMs : null);
 
   const resolution = result.resolution;
-  const selectedCapabilityId = resolution?.selectedCapabilityId ?? null;
+  const resolvedCapabilityId = resolution?.selectedCapabilityId ?? null;
   const path = resolution?.path ?? "none";
   const modelCalls = resolution?.trace.modelCalls ?? 0;
   const searchUsed = path === "lexical" || path === "semantic";
-  const observedSelectedToolId = SELECTED_TOOL_LOOKUP(result);
+
+  // A ranking is not a selection. Keep the ranked candidates separate from the
+  // capability the cascade actually resolved and from any Planner exposure.
+  const candidateToolRanking = result.toolCandidates.map(
+    (candidate) => candidate.toolId,
+  );
+  const eligibleToolIds = result.eligibleToolIds;
+  const plannerCallableToolIds = result.toolExposure.exposedToolIds;
 
   const selectionMatches =
     spec.gold.selectedCapabilityId !== undefined
-      ? selectedCapabilityId === spec.gold.selectedCapabilityId
+      ? resolvedCapabilityId === spec.gold.selectedCapabilityId
       : spec.gold.selectedCapabilityIdIn !== undefined
-        ? spec.gold.selectedCapabilityIdIn.includes(selectedCapabilityId ?? "")
-        : selectedCapabilityId === null;
+        ? spec.gold.selectedCapabilityIdIn.includes(resolvedCapabilityId ?? "")
+        : resolvedCapabilityId === null;
 
   const assertions: AcceptanceAssertion[] = [
     ok(
-      "gold_path",
+      "gold_resolution_path",
       path === spec.gold.path,
       `expected=${spec.gold.path} observed=${path}`,
     ),
     ok(
-      "gold_selected_capability",
+      "gold_resolved_capability",
       selectionMatches,
-      `expected=${JSON.stringify(spec.gold.selectedCapabilityId ?? spec.gold.selectedCapabilityIdIn)} observed=${selectedCapabilityId}`,
+      `expected=${JSON.stringify(spec.gold.selectedCapabilityId ?? spec.gold.selectedCapabilityIdIn)} observed=${resolvedCapabilityId}`,
     ),
     ok(
       "bounded_semantic_calls",
-      counting.calls === spec.expectedSemanticResolverCalls &&
+      resolverCalls === spec.expectedSemanticResolverCalls &&
         modelCalls === spec.expectedSemanticResolverCalls,
-      `expected=${spec.expectedSemanticResolverCalls} resolverCalls=${counting.calls} traceModelCalls=${modelCalls}`,
+      `expected=${spec.expectedSemanticResolverCalls} resolverCalls=${resolverCalls} traceModelCalls=${modelCalls}`,
     ),
   ];
 
-  if (spec.gold.selectedToolId) {
-    const toolId = spec.gold.selectedToolId;
+  if (spec.gold.requiredToolId) {
+    const toolId = spec.gold.requiredToolId;
     assertions.push(
       ok(
-        "gold_selected_tool_reachable",
-        result.eligibleToolIds.includes(toolId) &&
-          result.toolExposure.exposedToolIds.includes(toolId),
-        `tool=${toolId} eligible=${result.eligibleToolIds.includes(toolId)} exposed=${result.toolExposure.exposedToolIds.includes(toolId)}`,
+        "gold_tool_in_authority_envelope",
+        eligibleToolIds.includes(toolId),
+        `tool=${toolId} eligible=${eligibleToolIds.includes(toolId)}`,
+      ),
+      ok(
+        "gold_tool_in_candidate_ranking",
+        candidateToolRanking.includes(toolId),
+        `tool=${toolId} rankingIndex=${candidateToolRanking.indexOf(toolId)} topCandidate=${candidateToolRanking[0] ?? "none"}`,
       ),
     );
   }
 
-  const requiredToolId = spec.gold.selectedToolId;
-  const authorityViolations =
-    requiredToolId &&
-    selectedCapabilityId !== null &&
-    !result.eligibleToolIds.includes(requiredToolId)
-      ? 1
-      : 0;
+  // Authority invariant derived from observed data, not a constant: Planner
+  // exposure can never exceed the runtime-ready authority envelope.
+  const exposureOutsideEnvelope = plannerCallableToolIds.filter(
+    (toolId) => !eligibleToolIds.includes(toolId),
+  );
+  assertions.push(
+    ok(
+      "planner_exposure_within_authority_envelope",
+      exposureOutsideEnvelope.length === 0,
+      `outside=${exposureOutsideEnvelope.join(",") || "none"}`,
+    ),
+  );
+  const authorityViolations = exposureOutsideEnvelope.length;
 
   return {
     caseId: spec.caseId,
     surface: spec.surface,
     category: spec.category,
+    evidenceLevel: "resolved-capability",
     query: spec.query,
     gold: { ...spec.gold },
     observed: {
-      path,
-      selectedCapabilityId,
-      selectedToolId: observedSelectedToolId,
-      eligibleToolIds: result.eligibleToolIds,
-      exposedToolIds: result.toolExposure.exposedToolIds,
+      resolutionPath: path,
+      resolvedCapabilityId,
+      candidateToolRanking,
+      schemaDisclosedToolIds: [],
+      plannerCallableToolIds,
+      invokedToolId: null,
+      eligibleToolIds,
       semanticAttempted: resolution?.trace.semanticAttempted ?? false,
     },
     metrics: {
@@ -321,13 +352,18 @@ export const buildResolutionCaseResult = async (
       searchUsed,
       authorityViolations,
       tokens: options.tokens ?? null,
-      latencyMs: options.latencyMs ?? null,
+      latencyMs,
+      resolverLatencyMs,
     },
     assertions: withAuthorityViolations(assertions, authorityViolations),
     status: statusOf(withAuthorityViolations(assertions, authorityViolations)),
-    diagnostics: options.live
-      ? ["live resolver route: production semantic Resolver used for genuine ambiguity"]
-      : ["deterministic route: injected resolver; no provider call"],
+    diagnostics: [
+      options.live
+        ? "live resolver route: production semantic Resolver used for genuine ambiguity"
+        : "deterministic route: injected resolver; no provider call",
+      "schemaDisclosedToolIds is empty at this resolution layer: concrete schema disclosure is only observable through prepareContextNode (see projection cases).",
+      "invokedToolId=null: no governed Tool invocation was observed (NOT_VERIFIED).",
+    ],
   };
 };
 
@@ -351,12 +387,14 @@ const buildResult = (input: {
   observed: Record<string, unknown>;
   assertions: AcceptanceAssertion[];
   authorityViolations: number;
+  evidenceLevel?: AcceptanceCaseResult["evidenceLevel"];
   diagnostics?: readonly string[];
   modelCalls?: number | null;
   semanticAttempted?: boolean | null;
   searchUsed?: boolean | null;
   tokens?: number | null;
   latencyMs?: number | null;
+  resolverLatencyMs?: number | null;
 }): AcceptanceCaseResult => {
   const assertions = withAuthorityViolations(
     input.assertions,
@@ -366,6 +404,7 @@ const buildResult = (input: {
     caseId: input.caseId,
     surface: input.surface,
     category: input.category,
+    evidenceLevel: input.evidenceLevel ?? "resolved-capability",
     query: input.query,
     gold: input.gold,
     observed: input.observed,
@@ -376,6 +415,7 @@ const buildResult = (input: {
       authorityViolations: input.authorityViolations,
       tokens: input.tokens ?? null,
       latencyMs: input.latencyMs ?? null,
+      resolverLatencyMs: input.resolverLatencyMs ?? null,
     },
     assertions,
     status: statusOf(assertions),
@@ -447,9 +487,11 @@ export const runGenericChildCase = (): AcceptanceCaseResult => {
       discoverableToolIds: resolution.discoverableToolIds,
       allowedTools: resolution.allowedTools,
       disclosedToolIds: resolution.disclosedToolIds,
+      invokedToolId: null,
     },
     assertions,
     authorityViolations: 0,
+    evidenceLevel: "disclosure-state",
   });
 };
 
@@ -497,9 +539,11 @@ export const runUnauthorizedCapabilityCase = (): AcceptanceCaseResult => {
       discoverableToolIds: resolution.discoverableToolIds,
       allowedTools: resolution.allowedTools,
       disclosedToolIds: resolution.disclosedToolIds,
+      invokedToolId: null,
     },
     assertions,
     authorityViolations: leaked.length,
+    evidenceLevel: "disclosure-state",
   });
 };
 
@@ -553,11 +597,14 @@ export const runUnavailableToolCase = async (): Promise<AcceptanceCaseResult> =>
     gold: { forbiddenToolId: "terminal", forbiddenCapabilityId: "terminal_execution" },
     observed: {
       eligibleToolIds: result.eligibleToolIds,
-      exposedToolIds: result.toolExposure.exposedToolIds,
-      selectedCapabilityId: selected,
+      plannerCallableToolIds: result.toolExposure.exposedToolIds,
+      resolvedCapabilityId: selected,
+      candidateToolRanking: result.toolCandidates.map((candidate) => candidate.toolId),
+      invokedToolId: null,
     },
     assertions,
     authorityViolations: terminalEligible || terminalExposed ? 1 : 0,
+    evidenceLevel: "disclosure-state",
     modelCalls: 0,
     semanticAttempted: false,
     searchUsed: false,
@@ -637,6 +684,7 @@ export const runResolutionBudgetCase = (): AcceptanceCaseResult => {
     },
     assertions,
     authorityViolations: 0,
+    evidenceLevel: "disclosure-state",
   });
 };
 
@@ -690,6 +738,7 @@ export const runApprovalResumeCase = (): AcceptanceCaseResult => {
     },
     assertions,
     authorityViolations: 0,
+    evidenceLevel: "disclosure-state",
   });
 };
 
@@ -755,6 +804,7 @@ export const runReadinessRevocationCase = (): AcceptanceCaseResult => {
     },
     assertions,
     authorityViolations: 0,
+    evidenceLevel: "disclosure-state",
   });
 };
 
@@ -825,14 +875,19 @@ export const runWrongDomainRecoveryCase = async (): Promise<AcceptanceCaseResult
       selectedCapabilityId: "mail_reading",
     },
     observed: {
-      path: result.path,
-      selectedCapabilityId: result.selectedCapabilityId,
+      resolutionPath: result.path,
+      resolvedCapabilityId: result.selectedCapabilityId,
+      candidateToolRanking: result.candidates.map((candidate) => candidate.capabilityId),
+      schemaDisclosedToolIds: [],
+      plannerCallableToolIds: [],
+      invokedToolId: null,
       domainHint: result.trace.domainHint,
       selectedDomain: result.trace.selectedDomain,
       wrongDomainRecovered: result.trace.wrongDomainRecovered,
     },
     assertions,
     authorityViolations: 0,
+    evidenceLevel: "resolved-capability",
     modelCalls: result.trace.modelCalls,
     semanticAttempted: result.trace.semanticAttempted,
     searchUsed: true,
@@ -902,9 +957,11 @@ export const runSkillChildScopeCase = (): AcceptanceCaseResult => {
       childDiscoverable: [...childView.skills.values()]
         .filter((entry) => entry.discoverable)
         .map((entry) => entry.skillId),
+      invokedToolId: null,
     },
     assertions,
     authorityViolations: 0,
+    evidenceLevel: "skill-provider",
   });
 };
 
@@ -1010,9 +1067,11 @@ export const runSkillSummaryBodyCase = async (): Promise<AcceptanceCaseResult> =
       xlsxDisclosure: xlsx?.disclosure ?? null,
       docxDisclosure: docx?.disclosure ?? null,
       loadContentCalls: state.loadContentCalls,
+      invokedToolId: null,
     },
     assertions,
     authorityViolations: 0,
+    evidenceLevel: "skill-provider",
     diagnostics: ["production SkillContextProvider / registry / matcher path"],
   });
 };
@@ -1098,9 +1157,11 @@ export const runResourceMetadataContentCase = (): AcceptanceCaseResult => {
       promotedFrom: promoted.transition.from,
       promotedTo: promoted.transition.to,
       contentMaterialized: promoted.transition.contentMaterialized,
+      invokedToolId: null,
     },
     assertions,
     authorityViolations: 0,
+    evidenceLevel: "skill-provider",
   });
 };
 
@@ -1142,16 +1203,28 @@ export const runProgressiveAcceptanceMatrix = async (): Promise<ProgressiveAccep
   const failed = cases.filter((item) => item.status === "failed").length;
   const skipped = cases.filter((item) => item.status === "skipped").length;
 
+  const evidenceLevels = [...new Set(cases.map((item) => item.evidenceLevel))];
+
   return {
     runner: "progressive-resolution-acceptance",
     generatedAt: new Date().toISOString(),
     mode: "deterministic",
     evidenceLevel:
-      "production resolution/disclosure/Skill-provider functions driven directly (deterministic route); not full Main/Child/Skill graph execution",
+      `production resolution/disclosure/Skill-provider functions driven directly; evidence levels present: ${evidenceLevels.join(", ")}; not full Main/Child/Skill graph execution`,
+    evidenceScope: {
+      resolutionObserved: true,
+      // Projection cases are driven by the vitest harness in cases.test.ts,
+      // where listToolDefinitions / matchToolCandidatesByEmbedding can be
+      // stubbed in-process. This plain deterministic CLI cannot construct that
+      // seam, so it reports resolution-level evidence only.
+      plannerProjectionObserved: false,
+      governedExecutionObserved: false,
+      modelCallUsageObserved: false,
+    },
     corpus: {
       fixtureSource: "311-matrix-analogous",
       note:
-        "Analogous #311-matrix fixtures with an explicit per-case gold oracle. The original #243 / Control Room corpus is not present in this repository and was not reconstructed.",
+        "Analogous #311-matrix fixtures with an explicit per-case gold oracle. The original #243 / Control Room corpus and the 16 gold ids are recorded in comparison.reference but are not present in this repository and were not reconstructed.",
     },
     comparison: REFERENCE_243,
     summary: { total: cases.length, passed, failed, skipped },

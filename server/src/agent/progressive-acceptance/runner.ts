@@ -8,11 +8,15 @@ import type { ProgressiveAcceptanceReport } from "./contract.js";
 /**
  * Test-only CLI entrypoint for the #311 acceptance matrix.
  *
+ *   pnpm --filter @ui-chat-mira/server test:progressive:acceptance
  *   pnpm --filter @ui-chat-mira/server bench:progressive:acceptance
  *   pnpm --filter @ui-chat-mira/server bench:progressive:acceptance -- --live --max-live-calls=4
  *
- * It writes JSON + Markdown evidence under `.test-artifact/`. It never runs as
- * part of `pnpm check`; the live route is opt-in and provider calls are bounded.
+ * The vitest command drives the real `prepareContextNode` projection boundary
+ * (Planner-callable schema disclosure); this CLI emits the resolution-level
+ * matrix as JSON + Markdown under `.test-artifact/`. It never runs as part of
+ * `pnpm check`; the live route is opt-in, bounded, and fails explicitly when no
+ * Agent/Task provider is configured.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

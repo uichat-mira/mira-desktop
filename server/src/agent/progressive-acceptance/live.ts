@@ -5,6 +5,7 @@ import {
 import { createTaskModelCapabilityResolver } from "@/harness/candidates-core/capability-resolution.semantic.js";
 import { resolveHarnessCapabilityProfiles } from "@/harness/profiles/index.js";
 import { clearHarnessRegistry } from "@/harness/registry.js";
+import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 import { buildResolutionCaseResult, resolutionCaseSpecs } from "./cases.js";
 import type {
   AcceptanceCaseResult,
@@ -29,10 +30,40 @@ export interface LiveAcceptanceOptions {
   readonly maxLiveCalls: number;
 }
 
-const skippedLiveCase = (caseId: string, surface: string, query: string): AcceptanceCaseResult => ({
+/**
+ * Fail loudly before making any model call when no Agent/Task provider is
+ * configured. Silently substituting a mock would make the live route look
+ * green while proving nothing, so an unconfigured provider is a hard stop.
+ */
+export const assertLiveProviderConfigured = (): {
+  readonly providerCode: string;
+  readonly model: string;
+  readonly modelConfigId: string;
+} => {
+  try {
+    const resolved = resolveAgentTaskProvider("default");
+    return {
+      providerCode: resolved.providerCode,
+      model: resolved.model,
+      modelConfigId: resolved.modelConfigId,
+    };
+  } catch (error) {
+    throw new Error(
+      "Live progressive acceptance requires a configured Agent/Task provider. " +
+        `Provider resolution failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+};
+
+const skippedLiveCase = (
+  caseId: string,
+  surface: string,
+  query: string,
+): AcceptanceCaseResult => ({
   caseId,
   surface,
   category: "efficiency",
+  evidenceLevel: "resolved-capability",
   query,
   gold: {},
   observed: {},
@@ -43,6 +74,7 @@ const skippedLiveCase = (caseId: string, surface: string, query: string): Accept
     authorityViolations: 0,
     tokens: null,
     latencyMs: null,
+    resolverLatencyMs: null,
   },
   assertions: [],
   status: "skipped",
@@ -52,6 +84,7 @@ const skippedLiveCase = (caseId: string, surface: string, query: string): Accept
 export const runLiveAcceptanceMatrix = async (
   options: LiveAcceptanceOptions,
 ): Promise<ProgressiveAcceptanceReport> => {
+  const provider = assertLiveProviderConfigured();
   const cases: AcceptanceCaseResult[] = [];
   let liveCalls = 0;
 
@@ -73,10 +106,10 @@ export const runLiveAcceptanceMatrix = async (
       return productionResolver(input);
     };
 
-    const startedAt = Date.now();
+    // Latency is measured inside buildResolutionCaseResult, after the awaited
+    // resolver call, so it is never snapshotted before the model call resolves.
     const result = await buildResolutionCaseResult(spec, resolver, {
       live: true,
-      latencyMs: Date.now() - startedAt,
     });
     cases.push(result);
   }
@@ -92,11 +125,18 @@ export const runLiveAcceptanceMatrix = async (
     generatedAt: new Date().toISOString(),
     mode: "live",
     evidenceLevel:
-      "production Harness resolution path with the production bounded task-model semantic Resolver; token usage unmeasured by the bounded route",
+      `production Harness resolution path with the production bounded task-model semantic Resolver (provider=${provider.providerCode} model=${provider.model}); ` +
+      "token usage unmeasured by the bounded route; no governed Tool invocation observed",
+    evidenceScope: {
+      resolutionObserved: true,
+      plannerProjectionObserved: false,
+      governedExecutionObserved: false,
+      modelCallUsageObserved: false,
+    },
     corpus: {
       fixtureSource: "311-matrix-analogous",
       note:
-        "Analogous #311-matrix fixtures with an explicit per-case gold oracle. The original #243 / Control Room corpus is not present in this repository and was not reconstructed.",
+        "Analogous #311-matrix fixtures with an explicit per-case gold oracle. The original #243 / Control Room corpus and the 16 gold ids are recorded in comparison.reference but are not present in this repository and were not reconstructed.",
     },
     comparison: REFERENCE_243,
     summary: { total: cases.length, passed, failed, skipped },
