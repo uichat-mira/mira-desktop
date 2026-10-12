@@ -121,13 +121,47 @@ jobs:
           rm -rf "$repository_base/.git"
           chmod -R a-w "$repository_base"
           cd "$workspace"
-          HOME="$home_dir"           XDG_CONFIG_HOME="$home_dir/.config"           XDG_DATA_HOME="$home_dir/.local/share"           XDG_CACHE_HOME="$home_dir/.cache"           OPENCODE_CONFIG_DIR="$config_dir"           MIRA_REVIEW_PACKAGE_PATH="$review_dir/package.json"           MIRA_REVIEW_OUTPUT_PATH="$review_dir/runner-output.json"           node "$GITHUB_WORKSPACE/trusted-review-control/scripts/ai-review/opencode-review-runner.mjs"
-          RUNNER_OUTPUT="$review_dir/runner-output.json" node <<'NODE'
-          const fs = require('node:fs');
-          const output = JSON.parse(fs.readFileSync(process.env.RUNNER_OUTPUT, 'utf8'));
-          console.log(`Mira recovery runner: ${output.runner?.state ?? 'UNKNOWN'}`);
-          if (output.runner?.reason) console.log(`Mira recovery reason: ${output.runner.reason}`);
-          if (output.runner?.state !== 'COMPLETED') process.exit(2);
+          HOME="$home_dir" \
+          XDG_CONFIG_HOME="$home_dir/.config" \
+          XDG_DATA_HOME="$home_dir/.local/share" \
+          XDG_CACHE_HOME="$home_dir/.cache" \
+          OPENCODE_CONFIG_DIR="$config_dir" \
+          MIRA_REVIEW_PACKAGE_PATH="$review_dir/package.json" \
+          MIRA_REVIEW_OUTPUT_PATH="$review_dir/runner-output.json" \
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { pathToFileURL } from 'node:url';
+          const pkg = JSON.parse(fs.readFileSync(process.env.MIRA_REVIEW_PACKAGE_PATH, 'utf8'));
+          const runnerUrl = pathToFileURL(process.env.GITHUB_WORKSPACE + '/trusted-review-control/scripts/ai-review/opencode-review-runner.mjs').href;
+          const runner = await import(runnerUrl);
+          const sdk = await import(pathToFileURL(process.env.OPENCODE_SDK_ENTRY).href);
+          const route = {
+            role: 'routine',
+            enabled: true,
+            provider: 'opencode-go',
+            model: 'deepseek-v4.1-flash',
+            variant: 'none',
+            credentialEnv: 'OPENCODE_GO_API_KEY',
+          };
+          process.env.OPENCODE_AUTH_CONTENT = JSON.stringify({
+            'opencode-go': { type: 'api', key: process.env.OPENCODE_GO_API_KEY },
+          });
+          const startedAt = Date.now();
+          try {
+            const review = await runner.executeOpenCodeReview(sdk.createOpencode, pkg, route);
+            const output = {
+              runner: { state: 'COMPLETED' },
+              submission: runner.buildExternalSubmission(pkg, route, review, Date.now() - startedAt),
+            };
+            fs.writeFileSync(process.env.MIRA_REVIEW_OUTPUT_PATH, JSON.stringify(output), { mode: 0o600 });
+            console.log('Mira recovery runner: COMPLETED');
+            console.log('Mira recovery verdict: ' + review.verdict);
+          } catch (error) {
+            const name = error instanceof Error ? error.name : 'UnknownError';
+            const message = error instanceof Error ? error.message : String(error);
+            console.error('Mira recovery raw error: ' + name + ': ' + message);
+            process.exit(2);
+          }
           NODE
 
       - name: Submit recovery result to Mira Control Room
