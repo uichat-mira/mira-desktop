@@ -1,0 +1,43 @@
+name: "#339 Original PR Real-Model Verification"
+
+on:
+  push:
+    branches:
+      - feat/339-original-pr-independent-live
+    paths:
+      - .github/workflows/issue-339-original-pr-independent-live.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      DATABASE_URL: file:${{ github.workspace }}/.test-artifact/issue339-original-pr.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: mkdir -p .test-artifact
+      - name: Install server
+        run: pnpm install --frozen-lockfile --filter @ui-chat-mira/server...
+      - name: Original PR #340 real-model first-action probe 3x each
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: |
+          if [ -z "$AI_PROVIDER_OPENCODE_GO_KEY" ]; then echo "::error::OpenCode Go credential unavailable"; exit 1; fi
+          pnpm --filter @ui-chat-mira/server exec tsx scripts/smoke-planner-skill-vs-delegation.ts 3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue339-original-pr-real-model
+          path: .test-artifact/planner-skill-vs-delegation-real-smoke.json
+          if-no-files-found: ignore
