@@ -1,9 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import crypto from "node:crypto";
 import path from "node:path";
 import CONFIG from "../src/config/index.js";
-import { providerProxyService } from "../src/services/provider-proxy.service/index.js";
 import { createAgentGoal } from "../src/agent/nodes/goal-plan.js";
-import { nextActionPlannerNode } from "../src/agent/planner/node.js";
+import { buildPlannerObservationContext } from "../src/agent/node-runtime.js";
+import { buildNextActionPlannerMessages } from "../src/agent/planner/prompt.js";
+import { withPlannerTaskPlanContract } from "../src/agent/planner/task-plan.js";
+import { parseNextActionPlannerOutputWithDiagnostics } from "../src/agent/planner/text-json-codec.js";
+import { validateNextAction } from "../src/agent/planner/validate.js";
 import {
   GENERIC_TASK_DELEGATE_TOOL_ID,
   withGenericTaskDelegationTool,
@@ -26,6 +30,9 @@ import { codebaseExploreTool } from "../src/mcp/managed-codegraph/codebase-explo
  * Samples are exploratory and must not be reported as global success-rate
  * estimates. Run only against a configured model (OpenCode Go when available):
  * `pnpm --filter @ui-chat-mira/server smoke:planner-skill-vs-delegation`.
+ * It uses the production Planner prompt, task-plan contract, text codec and
+ * Tool exposure validator with a real OpenCode Go response. This smoke does NOT
+ * enter the DB-backed provider proxy or full Agent graph and must not claim so.
  * Do not paste raw prompts, credentials, or private model output into public logs.
  */
 const runs = Number(process.argv[2] ?? 3);
@@ -164,17 +171,83 @@ const makeState = (
     maxIterations: 0,
   }) as unknown as AgentNodeState;
 
-const metadata = providerProxyService.describeTaskChatInvocation([]);
+const apiKey = process.env.AI_PROVIDER_OPENCODE_GO_KEY?.trim();
+if (!apiKey) {
+  throw new Error("OpenCode Go credential unavailable: no real-model evidence was gathered.");
+}
+const endpoint = "https://opencode.ai/zen/go/v1/chat/completions";
+const model = "deepseek-v4.1-flash";
+const metadata = {
+  providerCode: "opencode-go",
+  model,
+  modelConfigId: "explicit-smoke:opencode-go/deepseek-v4.1-flash",
+};
+
+const selectRealPlannerAction = async (state: AgentNodeState) => {
+  const question = state.question ?? state.goal.text;
+  const exposure = state.toolExposure ?? baseExposure;
+  const observationContext = buildPlannerObservationContext(state);
+  const messages = withPlannerTaskPlanContract(
+    buildNextActionPlannerMessages({
+      question,
+      messages: state.messages,
+      observationContext,
+      toolExposure: exposure,
+      iteration: 0,
+      maxIterations: 0,
+    }),
+  );
+  const started = Date.now();
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "User-Agent": "mira-issue339-planner-probe",
+      "x-opencode-session": crypto.randomUUID(),
+    },
+    body: JSON.stringify({
+      model,
+      messages: messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+      max_tokens: 4096,
+      thinking: { type: "disabled" },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`OpenCode Go live request failed: HTTP ${response.status}`);
+  }
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { total_tokens?: number };
+  };
+  const modelText = payload.choices?.[0]?.message?.content;
+  if (typeof modelText !== "string") {
+    throw new Error("OpenCode Go returned no text decision.");
+  }
+  const parsed = parseNextActionPlannerOutputWithDiagnostics(modelText);
+  const validated = validateNextAction(parsed, exposure.exposedTools);
+  return {
+    action: validated.action,
+    parseErrorReason: validated.parseErrorReason ?? parsed.parseErrorReason ?? null,
+    parseWarnings: validated.parseWarnings ?? [],
+    modelTokens: payload.usage?.total_tokens ?? null,
+    latencyMs: Date.now() - started,
+  };
+};
+
 const results: Array<Record<string, unknown>> = [];
 
 for (const smokeCase of cases) {
   for (let attempt = 1; attempt <= runs; attempt += 1) {
     const startedAt = new Date().toISOString();
     try {
-      const patch = await nextActionPlannerNode(
+      const planner = await selectRealPlannerAction(
         makeState(smokeCase.question, [...smokeCase.skills]),
       );
-      const action = patch.nextAction as AgentNextAction | undefined;
+      const action = planner.action as AgentNextAction | undefined;
       const firstAction =
         action?.type === "use_tool" ? action.toolId : action?.type;
       results.push({
@@ -191,7 +264,10 @@ for (const smokeCase of cases) {
           (smokeCase.permittedFirstActions as readonly string[]).includes(
             firstAction,
           ),
-        reason: action?.reason ?? null,
+        parseErrorReason: planner.parseErrorReason,
+        parseWarnings: planner.parseWarnings,
+        latencyMs: planner.latencyMs,
+        modelTokens: planner.modelTokens,
         provider: metadata.providerCode,
         model: metadata.model,
         modelConfigId: metadata.modelConfigId,
@@ -242,15 +318,21 @@ const output = {
   modelConfigId: metadata.modelConfigId,
   runsPerCase: runs,
   probeScope:
-    "nextActionPlannerNode first valid action only; no model output mock. This does NOT prove end-to-end task outcome or success rate.",
+    "Production Planner prompt + task-plan contract + text parser + exposure validator; real OpenCode Go response without model-output mock. No DB-backed provider proxy, no full nextActionPlannerNode or Agent graph invocation; first validated action only, NOT end-to-end task outcome/success rate.",
   skillCatalogMode:
     "Summary Skills are injected directly into currentTaskFrame.skillContext for first-action probing; activate_skill execution is not run here.",
+  providerMode:
+    "Explicit OpenCode Go integration in an opt-in isolated probe; no app model_config or provider database required.",
   acceptanceOwner: "#311 retains independent success-first acceptance and final disposition.",
   interpretation:
     "Samples are exploratory. A delegate_task selection is not automatically a failure; verify the actual end result and specialist requirements in #311.",
   results,
   summary,
 };
+
+for (const row of summary) {
+  console.log(JSON.stringify({ phase: "issue339_real_model_case_summary", ...row }));
+}
 
 const outputPath = path.resolve(
   process.cwd(),
