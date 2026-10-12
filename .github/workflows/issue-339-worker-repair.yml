@@ -1,0 +1,29 @@
+name: "#339 Skill Routing Worker Repair"
+
+on:
+  push:
+    branches:
+      - feat/dispatch-339-second-pass
+    paths:
+      - .github/workflows/issue-339-worker-repair.yml
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  worker:
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@621bc797562ee2ba92e77e215deb68833113231e
+    with:
+      issue_number: 339
+      base_branch: feat/worker-339-38215220307-1
+      provider: opencode-go
+      model: deepseek-v4.1-flash
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @ui-chat-mira/server test -- src/agent/__tests__/planner-skill-vs-delegation.test.ts src/agent/__tests__/planner-task-plan.test.ts src/agent/__tests__/planner-direct-tool-action.test.ts src/agent/nodes/next-action-planner.skill-flow.test.ts src/agent/nodes/activate-skill.test.ts --maxWorkers=1 --fileParallelism=false
+        pnpm check
+    secrets:
+      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
