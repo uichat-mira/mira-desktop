@@ -1,0 +1,46 @@
+name: "#339 Consolidated Candidate Verification"
+
+on:
+  push:
+    branches: [feat/339-final-merge-verification]
+    paths: [.github/workflows/issue-339-final-merge-verification.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: file:${{ github.workspace }}/.test-artifact/issue339-final.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: mkdir -p .test-artifact
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Regression tests including new #339
+        run: pnpm --filter @ui-chat-mira/server test -- src/agent/__tests__/planner-skill-vs-delegation.test.ts src/agent/__tests__/planner-task-plan.test.ts src/agent/__tests__/planner-direct-tool-action.test.ts src/agent/nodes/next-action-planner.skill-flow.test.ts src/agent/nodes/activate-skill.test.ts --maxWorkers=1 --fileParallelism=false
+      - name: Workspace type and governance checks
+        run: pnpm check
+      - name: Fail-closed repeated 5-case real OpenCode Go Planner probe
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: |
+          if [ -z "$AI_PROVIDER_OPENCODE_GO_KEY" ]; then echo "::error::OpenCode Go secret unavailable"; exit 1; fi
+          pnpm --filter @ui-chat-mira/server exec tsx scripts/smoke-planner-skill-vs-delegation.ts 3
+      - name: Upload safe probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue339-consolidated-final-evidence
+          path: .test-artifact/planner-skill-vs-delegation-real-smoke.json
+          if-no-files-found: ignore
