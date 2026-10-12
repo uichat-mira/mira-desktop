@@ -1,0 +1,51 @@
+name: "#311 Success-first Governed Execution Acceptance"
+
+on:
+  push:
+    branches:
+      - feat/311-governed-execution-acceptance
+    paths:
+      - .github/workflows/issue-311-governed-success-acceptance.yml
+
+permissions:
+  contents: read
+
+jobs:
+  governed-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      DATABASE_URL: file:${{ github.workspace }}/.test-artifact/issue-311-success.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: mkdir -p .test-artifact
+      - name: Install isolated acceptance dependencies
+        run: pnpm install --frozen-lockfile --filter @ui-chat-mira/server...
+      - name: Real deterministic selection through actual governed Tool invocation
+        run: pnpm --filter @ui-chat-mira/server test -- src/agent/progressive-acceptance/governed-execution.acceptance.test.ts --maxWorkers=1 --fileParallelism=false
+      - name: Acceptance regression (resolver and Planner disclosure)
+        run: pnpm --filter @ui-chat-mira/server test -- src/agent/progressive-acceptance/cases.test.ts src/agent/nodes/prepare-context-progressive-resolution.test.ts --maxWorkers=1 --fileParallelism=false
+      - name: Live Main Planner Skill selection
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: pnpm --filter @ui-chat-mira/server exec tsx scripts/smoke-skill-progressive-live.ts
+      - name: Live governed Skill Child response
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+          MIRA_LIVE_SKILL_CHILD: "1"
+        run: pnpm --filter @ui-chat-mira/server test -- src/skills/agent/skill-child-live.smoke.test.ts --maxWorkers=1 --fileParallelism=false
+      - name: Preserve success-first acceptance test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-311-success-first-acceptance
+          path: .test-artifact/
+          if-no-files-found: ignore
