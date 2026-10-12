@@ -1,0 +1,58 @@
+name: "#311 Progressive Resolution Live Acceptance"
+
+on:
+  push:
+    branches:
+      - feat/311-acceptance-evidence
+
+permissions:
+  contents: read
+
+jobs:
+  live-model:
+    name: OpenCode Go Main and Skill Child Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: file:${{ github.workspace }}/.test-artifact/issue-311-live.sqlite
+    steps:
+      - name: Checkout acceptance candidate
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Create isolated test artifact directory
+        run: mkdir -p .test-artifact
+
+      - name: Install server dependencies
+        run: pnpm install --frozen-lockfile --filter @ui-chat-mira/server...
+
+      - name: Verify configured OpenCode Go credential exists
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: |
+          if [ -z "$AI_PROVIDER_OPENCODE_GO_KEY" ]; then
+            echo "::error::OpenCode Go secret missing; live acceptance is blocked."
+            exit 1
+          fi
+
+      - name: Main Planner real-model Skill summary-to-body smoke
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: pnpm --filter @ui-chat-mira/server exec tsx scripts/smoke-skill-progressive-live.ts
+
+      - name: Governed real-model Skill Child runtime smoke
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+          MIRA_LIVE_SKILL_CHILD: "1"
+        run: pnpm --filter @ui-chat-mira/server test -- src/skills/agent/skill-child-live.smoke.test.ts --maxWorkers=1 --fileParallelism=false
