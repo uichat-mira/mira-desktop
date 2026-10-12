@@ -1,4 +1,4 @@
-name: "#339 Independent Planner Contract Verification Recheck"
+name: "#339 Isolated Real Planner Choice Verification"
 
 on:
   push:
