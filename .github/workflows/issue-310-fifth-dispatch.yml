@@ -1,0 +1,28 @@
+name: Dispatch #310 Fifth Review Fix
+
+on:
+  push:
+    branches:
+      - feat/worker-310-fifth-dispatch
+    paths:
+      - .github/workflows/issue-310-fifth-dispatch.yml
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  worker:
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@621bc797562ee2ba92e77e215deb68833113231e
+    with:
+      issue_number: 310
+      base_branch: feat/worker-310-38194202262-1
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm check
+      provider: opencode-go
+      model: deepseek-v4.1-flash
+    secrets:
+      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
