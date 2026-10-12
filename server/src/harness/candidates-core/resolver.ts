@@ -7,7 +7,6 @@ import {
 } from "./expand-tool-candidates.js";
 import {
   buildCapabilityResolutionDocuments,
-  resolveCapabilityCascade,
   type CapabilityResolutionResult,
 } from "./capability-resolution.js";
 import { resolveProgressiveCapabilitySearch } from "./capability-resolution.semantic.js";
@@ -80,19 +79,25 @@ export const resolveHarnessToolCandidatesForTurn = async (
     // does not mean every Tool schema is this turn's selection. A deterministic
     // current-turn selection seam still runs so schema disclosure stays on
     // demand: exact canonical -> structural -> lexical over the same capability
-    // profiles the >20 path uses. It is deliberately deterministic-only here (no
-    // semantic model call) because a <=20 surface does not need Tool Search and
-    // must not add an LLM call to every Planner turn; genuine ambiguity stays
-    // transparent as `ambiguous`/`none` instead of fabricating a selection. The
-    // resolver still only decides disclosure order; it never grants authority.
+    // profiles the >20 path uses. Those stages are deterministic and spend no
+    // model call, so a clear case stays free. Only genuine ambiguity reuses the
+    // existing bounded cheap semantic Resolver, at most once, to pick which
+    // capability this turn should disclose. The resolver still only decides
+    // disclosure order; it never grants authority.
     const selectionProfiles = resolveHarnessCapabilityProfiles(visibleDefinitions);
     const resolution =
       input.query.trim() && selectionProfiles.length > 0
-        ? await resolveCapabilityCascade({
+        ? await resolveProgressiveCapabilitySearch({
             query: input.query,
             capabilities: buildCapabilityResolutionDocuments(selectionProfiles),
             ...(input.knownCapabilityId
               ? { knownCapabilityId: input.knownCapabilityId }
+              : {}),
+            ...(input.semanticResolver
+              ? { semanticResolver: input.semanticResolver }
+              : {}),
+            ...(input.resolutionBudget
+              ? { budget: input.resolutionBudget }
               : {}),
           })
         : undefined;

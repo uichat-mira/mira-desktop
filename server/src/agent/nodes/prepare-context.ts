@@ -544,13 +544,26 @@ export const prepareContextNode = async (
         detail: matcherResult.resolution.trace.reason,
       },
     );
-    for (const candidate of matcherResult.resolution.candidates) {
+    // Only the capability the resolver actually selected is a selection event.
+    // Ranked candidates below the selection are trace/metadata/diagnostics only
+    // and must never be recorded as "selected" or treated as disclosure.
+    const resolutionSelectedCapabilityId =
+      matcherResult.resolution.selectedCapabilityId;
+    const selectedCandidate = resolutionSelectedCapabilityId
+      ? matcherResult.resolution.candidates.find(
+          (candidate) =>
+            candidate.capabilityId === resolutionSelectedCapabilityId,
+        )
+      : undefined;
+    if (resolutionSelectedCapabilityId) {
       progressiveResolution = recordProgressiveResolutionSelection(
         progressiveResolution,
         {
-          capabilityId: candidate.capabilityId,
+          capabilityId: resolutionSelectedCapabilityId,
           path: matcherResult.resolution.path,
-          detail: candidate.reason,
+          ...(selectedCandidate?.reason
+            ? { detail: selectedCandidate.reason }
+            : {}),
         },
       );
     }
@@ -597,16 +610,17 @@ export const prepareContextNode = async (
     if (level === "schema") addSchemaTarget(toolId);
   }
 
-  // Only the capability detail this turn actually resolved/selected drives new
-  // schema disclosure. The resolver reports grouped capability ids (for example
-  // `workspace_lookup`), so each candidate is expanded to its canonical
-  // supporting Tool ids through the same Profile -> supportingToolIds mapping
-  // used for reconciliation. A turn without a confident selection discloses
-  // nothing new instead of eagerly materializing the whole catalog.
-  const resolutionSelectedToolIds = matcherResult.resolution?.selectedCapabilityId
-    ? matcherResult.resolution.candidates.flatMap((candidate) =>
-        resolveCapabilityToolIds(candidate.capabilityId),
-      )
+  // Only the capability this turn actually selected drives new schema
+  // disclosure. Ranked candidates below the selection are retained for trace /
+  // metadata / diagnostics only and must never be materialized or charged: the
+  // resolver reports grouped capability ids (for example `workspace_lookup`),
+  // so the selected capability is expanded to its canonical supporting Tool ids
+  // through the same Profile -> supportingToolIds mapping used for
+  // reconciliation. A turn without a confident selection discloses nothing new
+  // instead of eagerly materializing the whole catalog.
+  const selectedCapabilityId = matcherResult.resolution?.selectedCapabilityId;
+  const resolutionSelectedToolIds = selectedCapabilityId
+    ? resolveCapabilityToolIds(selectedCapabilityId)
     : [];
   for (const toolId of resolutionSelectedToolIds) addSchemaTarget(toolId);
 
