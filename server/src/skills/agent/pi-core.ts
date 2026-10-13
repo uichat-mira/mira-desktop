@@ -793,7 +793,7 @@ const buildSchemaReconciliationPrompt = (pendingTools: string[]) =>
     "If the task is not complete and cannot be finished, return insufficient_evidence with the real gap. Do not invent Tool results or citations.",
     "Return the normal terminal JSON object; the Main Planner still owns global task acceptance.",
     "</schema-disclosure-reconsideration>",
-  ].join("\\n");
+  ].join("\n");
 
 export const runPiSkillAgent = async (input: {
   execution: SkillAgentExecutionInput;
