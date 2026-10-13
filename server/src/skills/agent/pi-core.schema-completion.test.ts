@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     | { messages: unknown[]; tools: Array<Record<string, any>> }
     | undefined,
   completion: "",
+  completions: [] as string[],
   script: [] as ScriptedCall[][],
   promptCount: 0,
   toolResults: [] as unknown[],
@@ -95,7 +96,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
       this.state.messages.push({
         role: "assistant",
-        content: [{ type: "text", text: mocks.completion }],
+        content: [{ type: "text", text: mocks.completions[round] ?? mocks.completion }],
       });
     }
   }
@@ -157,6 +158,7 @@ describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
     mocks.agentOptions = undefined;
     mocks.agentState = undefined;
     mocks.completion = "";
+    mocks.completions = [];
     mocks.script = [];
     mocks.promptCount = 0;
     mocks.toolResults = [];
@@ -200,8 +202,15 @@ describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
     expect(disclosure?.details).toMatchObject({ bindingExecuted: false });
   });
 
-  it("does not accept completion and reconciles in the same Child when only a schema was disclosed", async () => {
-    mocks.completion = JSON.stringify({ status: "completed", summary: "done" });
+  it("asks the same Child to reconsider disclosure-only completion and preserves its honest missing-evidence decision", async () => {
+    mocks.completions = [
+      JSON.stringify({ status: "completed", summary: "done" }),
+      JSON.stringify({
+        status: "insufficient_evidence",
+        summary: "I only learned the read Tool schema; file contents were not obtained.",
+        missingEvidence: ["File contents are still unknown"],
+      }),
+    ];
     const readPaths: string[] = [];
     mocks.script = [
       [{ name: "read", args: { path: "a.txt" } }],
@@ -215,15 +224,12 @@ describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
       disclosedToolIds: [],
     });
 
-    // Schema disclosure never executed the governed binding, so the completion
-    // claim is rejected. The runtime kept the work inside the same Child before
-    // reporting the concrete gap instead of faking success.
+    // This missing-evidence judgment belongs to the Child, not a fabricated
+    // runtime rule that every named Tool must be invoked.
     expect(result.status).toBe("insufficient_evidence");
-    expect(result.missingEvidence).toEqual([
-      "Unexecuted governed Tool(s) required for completion: read",
-    ]);
+    expect(result.missingEvidence).toEqual(["File contents are still unknown"]);
     expect(readPaths).toEqual([]);
-    expect(mocks.promptCount).toBe(3);
+    expect(mocks.promptCount).toBe(2);
   });
 
   it("continues the same Child and accepts completion after the disclosed binding really runs", async () => {
@@ -247,8 +253,14 @@ describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
     expect(mocks.toolErrors).toEqual([]);
   });
 
-  it("keeps governed execution blocked until a valid retry after schema disclosure", async () => {
-    mocks.completion = JSON.stringify({ status: "completed", summary: "done" });
+  it("keeps canonical args validation intact and lets the Child report the failed retry", async () => {
+    mocks.completions = [
+      JSON.stringify({ status: "completed", summary: "done" }),
+      JSON.stringify({
+        status: "insufficient_evidence",
+        missingEvidence: ["Read arguments were invalid; file was not read"],
+      }),
+    ];
     const readPaths: string[] = [];
     mocks.script = [
       [{ name: "read", args: { path: "a.txt" } }],
@@ -266,8 +278,36 @@ describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
     // the binding. No execution evidence may be fabricated from that.
     expect(readPaths).toEqual([]);
     expect(result.status).toBe("insufficient_evidence");
+    expect(result.missingEvidence).toEqual(["Read arguments were invalid; file was not read"]);
     expect(mocks.toolErrors).toHaveLength(1);
     expect(mocks.toolErrors[0]?.name).toBe("read");
     expect(mocks.toolErrors[0]?.error).toContain("args.path is required");
   });
+  it("allows a contextual answer after reconsideration without demanding an unnecessary Tool call", async () => {
+    // Completion can be grounded in delegated input; an unexecuted exploratory
+    // Tool disclosure is NOT a mandatory execution/criterion in its own right.
+    const task = execution();
+    task.goal = "From the supplied values 2 and 3, report which is smaller.";
+    const readPaths: string[] = [];
+    mocks.completions = [
+      JSON.stringify({ status: "completed", summary: "2 is smaller" }),
+      JSON.stringify({ status: "completed", summary: "The supplied 2 is smaller than 3; no file read was needed." }),
+    ];
+    mocks.script = [[{ name: "read", args: {} }], []];
+
+    const result = await runPiSkillAgent({
+      execution: task,
+      tools: [toReadBinding(readPaths)],
+      disclosedToolIds: [],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.summary).toContain("2 is smaller than 3");
+    expect(readPaths).toEqual([]);
+    expect(result.trace?.toolCalls).toEqual([]);
+    expect(mocks.promptCount).toBe(2);
+    const disclosure = result.trace?.events?.find((event) => event.details?.disclosureTransition === "metadata->schema");
+    expect(disclosure?.details).toMatchObject({ bindingExecuted: false });
+  });
+
 });
