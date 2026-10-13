@@ -245,5 +245,5 @@ export const REFERENCE_243: AcceptanceComparison = {
   },
   directParity: "not_comparable",
   reason:
-    "The original #243 / Control Room 16-case gold corpus is not present in this repository, so the exact fixtures cannot be fetched or reused. The research gold refers to synthetic external MCP capabilities that are not registered in current Desktop dev; this matrix uses an explicit #311-matrix-analogous gold oracle and does not silently reconstruct the #243 fixtures or the original per-case model-call bookkeeping. Direct cost/reachability parity against 13/13 / 86 calls / 209,148 tokens is therefore NOT COMPARABLE.",
+    "The original #243 / Control Room 16-case gold corpus is available in uichat-mira/control-room (PR #74, src/research/progressive-agent-eval.ts, lines 303-433) but has not been ported into this Desktop matrix. Several research gold Tool IDs refer to synthetic or external MCP capabilities not registered in current Desktop dev; these #311-matrix-analogous fixtures do NOT reproduce their original catalog, authority conditions or model-call accounting. Direct cost/reachability parity against 13/13 gold reachability, 86 calls and 209,148 tokens is therefore NOT COMPARABLE.",
 };
