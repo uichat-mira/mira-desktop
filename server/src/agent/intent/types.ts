@@ -1,5 +1,6 @@
 import type { ProxyProviderParam } from "@/services/provider-proxy.service/index";
 import type {
+  CapabilityResolutionResult,
   HarnessToolCandidate,
   HarnessToolExposure,
 } from "@/harness/tool-candidates";
@@ -47,7 +48,18 @@ export interface ToolIntentResult {
   topCandidates: ToolIntentCandidate[];
   toolCandidates: HarnessToolCandidate[];
   toolExposure: HarnessToolExposure;
+  /**
+   * Authoritative pre-ranking eligibility envelope from the Harness turn
+   * resolution. Optional for legacy callers that only carry disclosure.
+   */
+  eligibleToolIds?: string[];
   exposureReasons?: string[];
+  /**
+   * Deterministic-first resolution evidence for this turn: which cascade stage
+   * decided the capability set and how many ranking/semantic model calls it
+   * spent. It makes Tool Search usage auditable without changing exposure.
+   */
+  resolution?: CapabilityResolutionResult;
   retrievalModel?: {
     provider?: string;
     model?: string;

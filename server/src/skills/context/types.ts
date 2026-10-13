@@ -1,3 +1,5 @@
+import type { SkillVisibilitySnapshot } from "./disclosure.js";
+
 export type SkillExecutionContextMode = "inline" | "fork";
 export type SkillPackageOrigin = "built-in" | "user" | "external";
 
@@ -98,6 +100,22 @@ export type SkillContext = {
     uri: string;
     content: string;
   }>;
+  /**
+   * Optional progressive Tool disclosure for a forked execution. When present,
+   * only these exact-known Tool ids are presented to the subAgent model with
+   * their full input schema; the remaining allowed Tools stay at the compact
+   * metadata stage. Absent means the Skill did not request progressive
+   * disclosure and every allowed Tool is schema-disclosed.
+   */
+  disclosedTools?: string[];
+  /**
+   * Serializable scoped visibility state for this Agent scope. It records which
+   * Skills/Resources were discoverable and which reached the body/content stage.
+   * It carries disclosure only: execution profile, `allowedTools`, runtime
+   * bindings, Policy and Approval stay outside it, so it can never widen
+   * authority.
+   */
+  skillVisibility?: SkillVisibilitySnapshot;
   match?: {
     source: SkillMatchSource;
     reason: string;

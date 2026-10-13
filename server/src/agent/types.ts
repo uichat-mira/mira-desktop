@@ -2,6 +2,7 @@ import type { AssistantExecutionNodeEvent } from "@/services/chat-stream-events"
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
 import type { RetrievedChunk } from "@/services/rag-nodes";
 import type { ContextBudgetAudit } from "@/services/context-budget/index";
+import type { ProgressiveResolutionState } from "@/harness/progressive-resolution-state";
 import type { SandboxOutputEncoding } from "@/harness/sandbox/contract";
 import type { ToolInvocationFailureCode, ToolDefinition, ToolEvidence } from "@/mcp/core/definitions";
 import type { ConversationArtifactReference } from "@/services/conversation-artifact.service";
@@ -443,6 +444,12 @@ export type AgentNextAction =
       reason: string;
     }
   | {
+      /** Disclose one already-discoverable Skill's body through the governed Skill runtime. */
+      type: "activate_skill";
+      skillId: string;
+      reason: string;
+    }
+  | {
       type: "use_tool";
       toolId: string;
       args: Record<string, unknown>;
@@ -461,6 +468,14 @@ export type AgentNextAction =
 export interface AgentToolExposureState {
   exposedTools: string[];
   toolMeta: AgentToolMeta[];
+  /**
+   * Authoritative pre-ranking eligibility envelope for this run: every
+   * runtime-ready, Harness-eligible capability before the ranked <=20
+   * disclosure narrowing. It is the Parent authority+readiness surface a
+   * delegated scope may build from. It is independent of `exposedTools`, which
+   * stays the Parent's current disclosed/visible subset.
+   */
+  eligibleTools?: string[];
   requestedToolGroups?: AgentRequestedToolGroupHint[];
 }
 
@@ -698,6 +713,12 @@ export interface AgentGraphInput {
   pendingToolCall?: AgentToolCallRequest;
   currentTaskFrame?: CurrentTaskFrame;
   finalizationPacket?: AgentFinalizationPacket;
+  /**
+   * Durable Progressive Resolution state restored from an approval checkpoint.
+   * It carries capability disclosure visibility, resolution budget usage, and
+   * the compact resolution/disclosure trace across a resume.
+   */
+  progressiveResolution?: ProgressiveResolutionState;
   maxIterations?: number;
   onExecutionNode?: (
     event: AssistantExecutionNodeEvent,
@@ -725,6 +746,8 @@ export interface AgentGraphOutput {
   lastToolExecution?: AgentToolExecutionResult;
   currentTaskFrame?: CurrentTaskFrame;
   finalizationPacket?: AgentFinalizationPacket;
+  /** Durable Progressive Resolution state persisted for an approval resume. */
+  progressiveResolution?: ProgressiveResolutionState;
   blockedReason?: string;
   terminalReason?: string;
   errorMessage?: string;

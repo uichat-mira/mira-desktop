@@ -153,6 +153,67 @@ describe("useToolsWorkbench", () => {
     );
   });
 
+  it("keeps web search blocked until persisted configuration finishes loading", async () => {
+    let resolveConfig: ((value: { apiKey: string; baseUrl: string; maxResults: number }) => void) | null = null;
+    getMcpWebSearchConfigMock.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveConfig = resolve;
+      }),
+    );
+
+    const useToolsWorkbench = await importHook();
+    const { result } = renderHook(() => useToolsWorkbench());
+
+    await waitFor(() => expect(result.current.tools).toHaveLength(1));
+    expect(result.current.isLoading).toBe(true);
+
+    act(() => {
+      result.current.setArgsDraft(JSON.stringify({ query: "codex" }));
+    });
+    await act(async () => {
+      await result.current.runSelectedTool();
+    });
+    expect(executeMcpInvocationStreamMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveConfig?.({ apiKey: "saved-key", baseUrl: "", maxResults: 7 });
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.runSelectedTool();
+    });
+    expect(executeMcpInvocationStreamMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolId: "web_search",
+        args: { query: "codex", maxResults: 7 },
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it("keeps the last web search config when reload fails and reports save failure", async () => {
+    const useToolsWorkbench = await importHook();
+    getMcpWebSearchConfigMock
+      .mockResolvedValueOnce({ apiKey: "saved-key", baseUrl: "", maxResults: 4 })
+      .mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useToolsWorkbench());
+
+    await waitFor(() => expect(result.current.webSearchConfig.apiKey).toBe("saved-key"));
+    await act(async () => {
+      await expect(result.current.reloadWebSearchConfig()).rejects.toThrow();
+    });
+    expect(result.current.webSearchConfig.apiKey).toBe("saved-key");
+    expect(result.current.webSearchConfigLoadError).toBeTruthy();
+
+    saveMcpWebSearchConfigMock.mockRejectedValueOnce(new Error("offline"));
+    let saved: boolean | undefined;
+    await act(async () => {
+      saved = await result.current.saveWebSearchConfig();
+    });
+    expect(saved).toBe(false);
+  });
+
   it("runs the terminal persistent acceptance flow through approval and continuation", async () => {
     const persistentArgs = {
       command:

@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 import * as harnessInvocations from "@/harness/invocations";
 import * as harnessRegistry from "@/harness/registry";
+import {
+  registerToolRuntimeReadiness,
+  unregisterToolRuntimeReadiness,
+} from "@/harness/runtime-readiness";
 import * as intentMatcherModule from "../intent/embedding-capability-matcher";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
 import { createInitialAgentGraphState } from "../graph/state";
@@ -45,6 +49,34 @@ const makeToolDefinition = (toolId: string, domain = "read") => ({
   mode: "sync" as const,
   tags: [domain],
   capabilities: { sideEffect: "none" as const, requiresApproval: false },
+});
+
+// Mirrors the deterministic current-turn selection the Harness resolver now
+// produces for every catalog size, including <=20.
+const makeSelectionResolution = (
+  selectedCapabilityId: string,
+  candidates: string[] = [selectedCapabilityId],
+) => ({
+  path: "structural" as const,
+  selectedCapabilityId,
+  candidates: candidates.map((capabilityId, index) => ({
+    capabilityId,
+    score: 1 - index * 0.1,
+    reason: `${capabilityId} matched`,
+  })),
+  trace: {
+    query: "inspect docs",
+    path: "structural" as const,
+    modelCalls: 0,
+    semanticAttempted: false,
+    ambiguous: false,
+    deterministicCandidates: [],
+    selectedCapabilityId,
+    domainHint: null,
+    selectedDomain: null,
+    wrongDomainRecovered: false,
+    reason: "structural test resolution",
+  },
 });
 
 test("createInitialAgentGraphState initializes the runtime-minimum currentTaskFrame from goal when no newer user question exists", () => {
@@ -190,7 +222,13 @@ test("prepareContextNode keeps the initialized currentTaskFrame unchanged", asyn
 
 test("prepareContextNode initializes runtime toolExposure independently from toolIntent diagnostics", async () => {
   const readOpen = makeToolDefinition("read_open");
-  const webSearch = makeToolDefinition("web_search", "research");
+  // Use a synthetic ready Tool here. A real web_search Tool has runtime
+  // readiness of its own, which would make this diagnostic-independence test
+  // accidentally depend on provider configuration.
+  const diagnosticTool = makeToolDefinition("diagnostic_tool", "research");
+  const registrySpy = vi
+    .spyOn(harnessRegistry, "listToolDefinitions")
+    .mockReturnValue([readOpen, diagnosticTool]);
   const matcherSpy = vi
     .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
     .mockResolvedValue({
@@ -202,7 +240,10 @@ test("prepareContextNode initializes runtime toolExposure independently from too
         exposedDefinitions: [readOpen],
         reason: ["matched read_open"],
       },
+      // Pre-ranking authority+readiness envelope is broader than disclosure.
+      eligibleToolIds: ["read_open", "diagnostic_tool"],
       exposureReasons: ["matched read_open"],
+      resolution: makeSelectionResolution("read_open"),
     });
 
   try {
@@ -221,14 +262,15 @@ test("prepareContextNode initializes runtime toolExposure independently from too
           capabilities: { sideEffect: "none", requiresApproval: false },
         },
       ],
+      eligibleTools: ["read_open", "diagnostic_tool"],
     });
     const conflictingState = createBaseState({
       ...patch,
       toolIntent: {
         ...patch.toolIntent!,
         toolExposure: {
-          exposedToolIds: ["web_search"],
-          exposedDefinitions: [webSearch],
+          exposedToolIds: ["diagnostic_tool"],
+          exposedDefinitions: [diagnosticTool],
           reason: ["diagnostic mismatch"],
         },
         exposureReasons: ["diagnostic mismatch"],
@@ -256,10 +298,122 @@ test("prepareContextNode initializes runtime toolExposure independently from too
     );
   } finally {
     matcherSpy.mockRestore();
+    registrySpy.mockRestore();
   }
 });
 
-test("prepareContextNode injects an explicit tool package as a Planner preference without filtering exposed tools", async () => {
+test("prepareContextNode discloses metadata for every eligible Tool but materializes schema only for exposed Tools", async () => {
+  const readOpen = makeToolDefinition("read_open");
+  const webSearch = makeToolDefinition("web_search", "web_search");
+  const registrySpy = vi
+    .spyOn(harnessRegistry, "listToolDefinitions")
+    .mockReturnValue([readOpen, webSearch]);
+  const matcherSpy = vi
+    .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
+    .mockResolvedValue({
+      query: "inspect docs",
+      topCandidates: [],
+      toolCandidates: [],
+      toolExposure: {
+        exposedToolIds: ["read_open"],
+        exposedDefinitions: [readOpen],
+        reason: ["matched read_open"],
+      },
+      // Two Tools are discoverable in the authority+readiness envelope, but only
+      // one is selected into this turn's schema-disclosed exposure.
+      eligibleToolIds: ["read_open", "web_search"],
+      exposureReasons: ["matched read_open"],
+      resolution: makeSelectionResolution("read_open"),
+    });
+  const events: Array<{ details?: Record<string, unknown> }> = [];
+
+  try {
+    const patch = await prepareContextNode(createBaseState(), async (event) => {
+      if (event.nodeId === "agent-prepare-context" && event.phase === "done") {
+        events.push({ details: event.details });
+      }
+    });
+
+    assert.deepEqual(patch.toolExposure?.exposedTools, ["read_open"]);
+    assert.deepEqual(
+      patch.toolExposure?.toolMeta.map((tool) => tool.toolId),
+      ["read_open"],
+    );
+    assert.ok(patch.toolExposure?.toolMeta[0]?.inputSchema);
+
+    const details = events[events.length - 1]?.details ?? {};
+    assert.equal(details.capabilityMetadataDisclosedCount, 2);
+    assert.equal(details.capabilitySchemaDisclosedCount, 1);
+    assert.deepEqual(
+      (details.capabilityMetadataToolIds as string[]).slice().sort(),
+      ["read_open", "web_search"],
+    );
+    assert.deepEqual(details.schemaMaterializedToolIds, ["read_open"]);
+    assert.deepEqual(
+      (details.capabilityDisclosureTransitions as Array<{ reason: string }>).map(
+        (transition) => transition.reason,
+      ),
+      ["promoted"],
+    );
+  } finally {
+    matcherSpy.mockRestore();
+    registrySpy.mockRestore();
+  }
+});
+
+test("prepareContextNode does not let schema disclosure bypass runtime readiness", async () => {
+  const readOpen = makeToolDefinition("read_open");
+  const webSearch = makeToolDefinition("web_search", "web_search");
+  const registrySpy = vi
+    .spyOn(harnessRegistry, "listToolDefinitions")
+    .mockReturnValue([readOpen, webSearch]);
+  registerToolRuntimeReadiness("web_search", () => ({
+    state: "unavailable",
+    reason: "Runtime prerequisite is missing.",
+    code: "test_runtime_unavailable",
+  }));
+  const matcherSpy = vi
+    .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
+    .mockResolvedValue({
+      query: "inspect docs",
+      topCandidates: [],
+      toolCandidates: [],
+      toolExposure: {
+        exposedToolIds: ["read_open", "web_search"],
+        exposedDefinitions: [readOpen, webSearch],
+        reason: ["matched tools"],
+      },
+      eligibleToolIds: ["read_open", "web_search"],
+      exposureReasons: ["matched tools"],
+      resolution: makeSelectionResolution("read_open"),
+    });
+
+  try {
+    const patch = await prepareContextNode(createBaseState());
+    // The unavailable Tool may still exist in registry/matcher data, but it is
+    // not Planner-callable and is not carried into the current eligible envelope.
+    assert.deepEqual(patch.toolExposure?.exposedTools, ["read_open"]);
+    assert.deepEqual(
+      patch.toolExposure?.toolMeta.map((tool) => tool.toolId),
+      ["read_open"],
+    );
+    assert.deepEqual(patch.toolExposure?.eligibleTools, ["read_open"]);
+    assert.ok(
+      patch.toolExposure?.toolMeta.find((tool) => tool.toolId === "read_open")
+        ?.inputSchema,
+    );
+    assert.equal(
+      patch.toolExposure?.toolMeta.find((tool) => tool.toolId === "web_search"),
+      undefined,
+    );
+  } finally {
+    matcherSpy.mockRestore();
+    registrySpy.mockRestore();
+    unregisterToolRuntimeReadiness("web_search");
+  }
+});
+
+test("prepareContextNode injects an explicit tool package as a Planner preference without changing resolution-driven exposure", async () => {
   const readOpen = makeToolDefinition("read_open");
   const webSearch = makeToolDefinition("web_search", "web_search");
   const registrySpy = vi
@@ -277,6 +431,10 @@ test("prepareContextNode injects an explicit tool package as a Planner preferenc
         reason: ["matched tools"],
       },
       exposureReasons: ["matched tools"],
+      // The resolver selected read_open and kept web as a ranked candidate. Only
+      // the selected capability is disclosed; requesting a tool package is a
+      // preference and does not materialize the candidate or change exposure.
+      resolution: makeSelectionResolution("read_open", ["read_open", "web"]),
     }));
   const events: Array<{
     nodeId: string;
@@ -303,7 +461,7 @@ test("prepareContextNode injects an explicit tool package as a Planner preferenc
       /用户明确选择了以下工具包作为本轮工具偏好/,
     );
     assert.match(matcherSpy.mock.calls[0]?.[0].query ?? "", /网络搜索/);
-    assert.deepEqual(patch.toolExposure?.exposedTools, ["read_open", "web_search"]);
+    assert.deepEqual(patch.toolExposure?.exposedTools, ["read_open"]);
     assert.deepEqual(patch.toolExposure?.requestedToolGroups, [
       {
         groupId: "web_search",
@@ -331,10 +489,7 @@ test("prepareContextNode injects an explicit tool package as a Planner preferenc
       toolSelectionHints: Array<{ groupId: string; status: string }>;
       toolExposure: { exposedTools: string[] };
     };
-    assert.deepEqual(plannerPayload.toolExposure.exposedTools, [
-      "read_open",
-      "web_search",
-    ]);
+    assert.deepEqual(plannerPayload.toolExposure.exposedTools, ["read_open"]);
     assert.deepEqual(plannerPayload.toolSelectionHints, [
       {
         groupId: "web_search",
@@ -374,6 +529,7 @@ test("prepareContextNode reports unavailable and unknown tool packages without c
         reason: ["matched read_open"],
       },
       exposureReasons: ["matched read_open"],
+      resolution: makeSelectionResolution("read_open"),
     });
 
   try {
@@ -459,6 +615,7 @@ test("prepareContextNode hides external expert from a user without a runtime con
         blockedCapabilityReasons: {},
       },
       exposureReasons: ["matched tools"],
+      resolution: makeSelectionResolution("read_open"),
     });
 
   try {
@@ -500,6 +657,7 @@ test("prepareContextNode exposes external expert after the current user creates 
         blockedCapabilityReasons: {},
       },
       exposureReasons: ["matched external expert"],
+      resolution: makeSelectionResolution("external_expert"),
     });
 
   try {

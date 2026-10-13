@@ -42,6 +42,7 @@ describe("planner structured output", () => {
       "reason",
       "query",
       "toolId",
+      "skillId",
       "args",
       "question",
       "completionProof",

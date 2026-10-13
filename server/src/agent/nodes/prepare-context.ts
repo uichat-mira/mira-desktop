@@ -2,8 +2,28 @@
  * 上下文准备节点：收集线程消息、可用工具、策略允许的自动工具列表和按需 Skill 语义。
  */
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability";
+import {
+  createMainAgentCapabilityScope,
+  projectAgentCapabilityView,
+} from "@/harness/capability-view";
+import {
+  describeCapabilityDisclosure,
+  projectCapabilityToolMetadata,
+  promoteCapabilitySchema,
+  type CapabilityDisclosureTransition,
+} from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
+import { resolveHarnessCapabilityProfiles } from "@/harness/profiles";
+import {
+  createCapabilityToolIdResolver,
+  createProgressiveResolutionState,
+  readCapabilityDisclosure,
+  recordProgressiveResolutionSearch,
+  recordProgressiveResolutionSelection,
+  reconcileProgressiveResolutionState,
+  resolveAndDiscloseCapability,
+} from "@/harness/progressive-resolution-state";
 import { externalExpertService } from "@/microapps/external-expert/index.js";
 import { withWorkbenchMetadata } from "@/mcp/workbench-metadata.js";
 import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
@@ -36,6 +56,9 @@ const filterExternalExpertExposure = <T extends Awaited<
     ),
     toolCandidates: matcherResult.toolCandidates.filter(
       (candidate) => candidate.toolId !== EXTERNAL_EXPERT_TOOL_ID,
+    ),
+    eligibleToolIds: matcherResult.eligibleToolIds?.filter(
+      (toolId) => toolId !== EXTERNAL_EXPERT_TOOL_ID,
     ),
     toolExposure: {
       ...matcherResult.toolExposure,
@@ -130,20 +153,44 @@ const toAgentToolExposureState = (
     Awaited<ReturnType<typeof matchToolCandidatesByEmbedding>>["toolExposure"]["exposedDefinitions"][number]
   >,
   requestedToolGroups: AgentRequestedToolGroupHint[],
+  eligibleToolIds: string[],
+  schemaDisclosedToolIds: ReadonlySet<string>,
 ) => ({
   exposedTools: exposedToolIds,
   toolMeta: exposedDefinitions.map((definition) => ({
     toolId: definition.id,
     title: definition.title,
     description: definition.description,
-    inputSchema: definition.inputSchema,
+    // Full schema is a disclosure stage, not an automatic property of exposure.
+    // Only Tools promoted to the schema stage carry their input schema; a Tool
+    // that never reached schema disclosure stays compact metadata only.
+    ...(schemaDisclosedToolIds.has(definition.id)
+      ? { inputSchema: definition.inputSchema }
+      : {}),
     domain: definition.domain,
     source: definition.source,
     tags: definition.tags,
     capabilities: definition.capabilities,
   })),
+  eligibleTools: eligibleToolIds,
   ...(requestedToolGroups.length > 0 ? { requestedToolGroups } : {}),
 });
+
+const mergeCapabilityDefinitions = (
+  registryDefinitions: ReturnType<typeof listToolDefinitions>,
+  exposedDefinitions: Array<
+    Awaited<ReturnType<typeof matchToolCandidatesByEmbedding>>["toolExposure"]["exposedDefinitions"][number]
+  >,
+): ReturnType<typeof listToolDefinitions> => {
+  const merged = [...registryDefinitions];
+  const known = new Set(merged.map((definition) => definition.id));
+  for (const definition of exposedDefinitions) {
+    if (known.has(definition.id)) continue;
+    merged.push(definition);
+    known.add(definition.id);
+  }
+  return merged;
+};
 
 type SkillRuntimeProjection = {
   skillId: string;
@@ -257,6 +304,49 @@ const withSkillRuntimeContext = (
   } as SkillAwareTaskFrame;
 };
 
+const summarizeSkillVisibility = (skillContext: SkillContext | undefined) => {
+  const snapshot = skillContext?.skillVisibility;
+  if (!snapshot) {
+    return {
+      scopeId: null,
+      scopeKind: null,
+      summaryDisclosedSkillIds: [] as string[],
+      bodyDisclosedSkillIds: [] as string[],
+      resourceMetadataUris: [] as string[],
+      resourceContentUris: [] as string[],
+    };
+  }
+
+  const summaryDisclosedSkillIds: string[] = [];
+  const bodyDisclosedSkillIds: string[] = [];
+  const resourceMetadataUris: string[] = [];
+  const resourceContentUris: string[] = [];
+  for (const skill of snapshot.skills) {
+    if (skill.discoverable && skill.disclosure !== "hidden") {
+      summaryDisclosedSkillIds.push(skill.skillId);
+    }
+    if (skill.discoverable && skill.disclosure === "body") {
+      bodyDisclosedSkillIds.push(skill.skillId);
+    }
+    for (const resource of skill.resources) {
+      if (!resource.discoverable || resource.disclosure === "hidden") continue;
+      resourceMetadataUris.push(resource.uri);
+      if (resource.disclosure === "content") {
+        resourceContentUris.push(resource.uri);
+      }
+    }
+  }
+
+  return {
+    scopeId: snapshot.scopeId,
+    scopeKind: snapshot.scopeKind,
+    summaryDisclosedSkillIds,
+    bodyDisclosedSkillIds,
+    resourceMetadataUris,
+    resourceContentUris,
+  };
+};
+
 const toSkillTraceDetails = (skillContext: SkillContext | undefined) => {
   if (!skillContext?.primary) {
     return {
@@ -270,9 +360,13 @@ const toSkillTraceDetails = (skillContext: SkillContext | undefined) => {
         disclosedResourceCount: 0,
         disclosedResourceUris: [],
       },
+      skillVisibility: summarizeSkillVisibility(skillContext),
       toolExposureMutation: false,
     };
   }
+
+  const visibility = summarizeSkillVisibility(skillContext);
+  const hasScopedVisibility = skillContext.skillVisibility !== undefined;
 
   return {
     status: "matched",
@@ -290,12 +384,16 @@ const toSkillTraceDetails = (skillContext: SkillContext | undefined) => {
         }
       : null,
     disclosure: {
-      skillBodyLoaded: true,
+      // Legacy contexts without scoped visibility fall back to body presence.
+      skillBodyLoaded: hasScopedVisibility
+        ? visibility.bodyDisclosedSkillIds.includes(skillContext.primary.id)
+        : Boolean(skillContext.primary.body),
       availableResourceCount: skillContext.resources.length,
       availableResourceUris: skillContext.resources.map((resource) => resource.uri),
       disclosedResourceCount: skillContext.disclosedResources.length,
       disclosedResourceUris: skillContext.disclosedResources.map((resource) => resource.uri),
     },
+    skillVisibility: visibility,
     toolExposureMutation: false,
   };
 };
@@ -381,10 +479,201 @@ export const prepareContextNode = async (
     skillRuntime,
   );
 
+  const eligibleToolIds =
+    matcherResult.eligibleToolIds ?? matcherResult.toolExposure.exposedToolIds;
+
+  // The Main Agent consumes the same Capability View disclosure semantics as a
+  // delegated Child. Its scope makes the whole authority+readiness envelope
+  // discoverable at the compact-metadata stage; full schemas are then
+  // materialized only for the Tools Harness selected into this turn's exposure.
+  // Metadata disclosure changes model context only and never grants authority:
+  // every invocation still flows through Normalize / Policy / Approval / Harness.
+  const capabilityDefinitions = mergeCapabilityDefinitions(
+    toolDefinitions,
+    matcherResult.toolExposure.exposedDefinitions,
+  );
+  const capabilityProfiles = resolveHarnessCapabilityProfiles(capabilityDefinitions);
+  const resolveCapabilityToolIds =
+    createCapabilityToolIdResolver(capabilityProfiles);
+
+  const initialMainAgentCapabilityView = projectAgentCapabilityView({
+    scope: createMainAgentCapabilityScope({
+      scopeId: "main_agent",
+      eligibleCapabilityIds: [...eligibleToolIds],
+      discoverableCapabilityIds: [...eligibleToolIds],
+    }),
+    definitions: capabilityDefinitions,
+  });
+  const capabilityDisclosureTransitions: CapabilityDisclosureTransition[] = [];
+  let mainAgentCapabilityView = initialMainAgentCapabilityView;
+
+  // Matcher exposure can be stale relative to Harness readiness. The Capability
+  // View keeps compact metadata for the whole envelope, but only currently
+  // eligible Tools may become Planner-callable. Schema disclosure is the
+  // Planner-callable filter: a metadata-stage Tool stays discoverable but is
+  // never exposed to the Planner without a usable input schema.
+  const currentEligibleToolIds = [...initialMainAgentCapabilityView.capabilities.values()]
+    .filter((entry) => entry.eligible)
+    .map((entry) => entry.capabilityId);
+  const currentEligibleToolIdSet = new Set(currentEligibleToolIds);
+
+  // Durable Progressive Resolution state. It is restored from an approval
+  // checkpoint and reconciled against the current authoritative registry,
+  // readiness, and eligibility envelope before any of it is reused, so a
+  // revocation or readiness loss always wins over stale persisted visibility.
+  // Only newly expanded capability detail consumes the resolution budget;
+  // Planner turns, tool execution, retrieval and approval/resume do not.
+  // Failure/no-progress recovery keeps its own separate Planner budget.
+  let progressiveResolution = reconcileProgressiveResolutionState({
+    state: state.progressiveResolution ?? createProgressiveResolutionState(),
+    definitions: capabilityDefinitions,
+    eligibleCapabilityIds: currentEligibleToolIds,
+    // Disclosure is recorded under canonical Tool ids, but reconcile also
+    // resolves a grouped capability-profile key through the authoritative
+    // Profile -> supportingToolIds mapping so a resumed snapshot is never
+    // cleared merely because its key is a profile rather than a Tool id.
+    resolveToolIds: resolveCapabilityToolIds,
+  });
+  const resolutionPath = matcherResult.resolution?.path;
+  if (matcherResult.resolution) {
+    progressiveResolution = recordProgressiveResolutionSearch(
+      progressiveResolution,
+      {
+        path: matcherResult.resolution.path,
+        modelCalls: matcherResult.resolution.trace.modelCalls,
+        detail: matcherResult.resolution.trace.reason,
+      },
+    );
+    // Only the capability the resolver actually selected is a selection event.
+    // Ranked candidates below the selection are trace/metadata/diagnostics only
+    // and must never be recorded as "selected" or treated as disclosure.
+    const resolutionSelectedCapabilityId =
+      matcherResult.resolution.selectedCapabilityId;
+    const selectedCandidate = resolutionSelectedCapabilityId
+      ? matcherResult.resolution.candidates.find(
+          (candidate) =>
+            candidate.capabilityId === resolutionSelectedCapabilityId,
+        )
+      : undefined;
+    if (resolutionSelectedCapabilityId) {
+      progressiveResolution = recordProgressiveResolutionSelection(
+        progressiveResolution,
+        {
+          capabilityId: resolutionSelectedCapabilityId,
+          path: matcherResult.resolution.path,
+          ...(selectedCandidate?.reason
+            ? { detail: selectedCandidate.reason }
+            : {}),
+        },
+      );
+    }
+  }
+
+  // Resolution budget gate. The Progressive Resolution state is the single
+  // source of truth for which capability schemas reach the Planner. The whole
+  // eligible surface stays discoverable as compact metadata in the Capability
+  // View, but schema disclosure is on demand:
+  //
+  // - the deterministic-first resolver selects the capability this turn needs;
+  //   exactly that capability's supporting Tools are promoted and each newly
+  //   disclosed Tool spends one budget step. This holds whether the eligible
+  //   surface is larger or smaller than the Planner disclosure limit: a small
+  //   catalog is cheap to *discover*, not automatically *selected*, so a <=20
+  //   surface never eager-materializes every schema for free;
+  // - Tools already disclosed are idempotent and free, so ordinary continuation
+  //   and approval/resume never re-charge;
+  // - when nothing is confidently selected the turn expands no new schema. That
+  //   is bounded and transparent: already-disclosed detail stays usable and the
+  //   budget never marks the task complete.
+  //
+  // A Tool refused after exhaustion stays compact-metadata only with a
+  // transparent unresolved gap. The Capability View still clamps every promotion
+  // to the authoritative readiness/eligibility/discoverability envelope, so the
+  // budget never grants authority and exhaustion never marks the task complete.
+  //
+  // Planner-callable exposure (`toolExposure.exposedTools`) is restricted to the
+  // schema-disclosed Tools. A Tool that only reached the metadata stage stays
+  // discoverable in the Capability View but is never exposed to the Planner with
+  // an empty parameter schema, which would otherwise be an unusable dead path.
+  const schemaTargetToolIds: string[] = [];
+  const seenSchemaTargets = new Set<string>();
+  const addSchemaTarget = (candidateToolId: string) => {
+    if (!currentEligibleToolIdSet.has(candidateToolId)) return;
+    if (seenSchemaTargets.has(candidateToolId)) return;
+    seenSchemaTargets.add(candidateToolId);
+    schemaTargetToolIds.push(candidateToolId);
+  };
+
+  // Already schema-disclosed Tools stay callable across ordinary continuation
+  // and approval/resume and never re-charge the budget.
+  for (const [toolId, level] of Object.entries(progressiveResolution.disclosure)) {
+    if (level === "schema") addSchemaTarget(toolId);
+  }
+
+  // Only the capability this turn actually selected drives new schema
+  // disclosure. Ranked candidates below the selection are retained for trace /
+  // metadata / diagnostics only and must never be materialized or charged: the
+  // resolver reports grouped capability ids (for example `workspace_lookup`),
+  // so the selected capability is expanded to its canonical supporting Tool ids
+  // through the same Profile -> supportingToolIds mapping used for
+  // reconciliation. A turn without a confident selection discloses nothing new
+  // instead of eagerly materializing the whole catalog.
+  const selectedCapabilityId = matcherResult.resolution?.selectedCapabilityId;
+  const resolutionSelectedToolIds = selectedCapabilityId
+    ? resolveCapabilityToolIds(selectedCapabilityId)
+    : [];
+  for (const toolId of resolutionSelectedToolIds) addSchemaTarget(toolId);
+
+  const schemaDisclosedToolIds = new Set<string>();
+  for (const toolId of schemaTargetToolIds) {
+    const alreadyDisclosed =
+      readCapabilityDisclosure(progressiveResolution, toolId) === "schema";
+
+    if (!alreadyDisclosed) {
+      const disclosure = resolveAndDiscloseCapability(progressiveResolution, {
+        capabilityId: toolId,
+        target: "schema",
+        ...(resolutionPath ? { path: resolutionPath } : {}),
+        detail: "Progressive capability resolution schema disclosure",
+      });
+      progressiveResolution = disclosure.state;
+      if (!disclosure.applied) continue;
+    }
+
+    const promoted = promoteCapabilitySchema({
+      view: mainAgentCapabilityView,
+      capabilityId: toolId,
+      definitions: capabilityDefinitions,
+    });
+    mainAgentCapabilityView = promoted.view;
+    capabilityDisclosureTransitions.push(promoted.transition);
+    if (!promoted.transition.schemaMaterialized) continue;
+    schemaDisclosedToolIds.add(toolId);
+  }
+
+  const capabilityDisclosureTrace = describeCapabilityDisclosure(
+    mainAgentCapabilityView,
+  );
+  const compactCapabilityMetadata = projectCapabilityToolMetadata(
+    mainAgentCapabilityView,
+    capabilityDefinitions,
+  );
+
+  const capabilityDefinitionsById = new Map(
+    capabilityDefinitions.map((definition) => [definition.id, definition]),
+  );
+  const schemaDisclosedDefinitions = [...schemaDisclosedToolIds].flatMap(
+    (toolId) => {
+      const definition = capabilityDefinitionsById.get(toolId);
+      return definition ? [definition] : [];
+    },
+  );
   const toolExposure = toAgentToolExposureState(
-    [...matcherResult.toolExposure.exposedToolIds],
-    [...matcherResult.toolExposure.exposedDefinitions],
+    [...schemaDisclosedToolIds],
+    schemaDisclosedDefinitions,
     requestedToolGroupsWithAvailability,
+    currentEligibleToolIds,
+    schemaDisclosedToolIds,
   );
   const toolIntent = matcherResult;
 
@@ -443,6 +732,8 @@ export const prepareContextNode = async (
     });
   }
 
+  const skillVisibilitySummary = summarizeSkillVisibility(skillContext);
+
   await emitStepNode(emit, {
     runId: state.runId,
     nodeId: "agent-prepare-context",
@@ -456,6 +747,8 @@ export const prepareContextNode = async (
       autoAllowedTools,
       exposedToolCount: toolExposure.exposedTools.length,
       exposedToolIds: toolExposure.exposedTools,
+      eligibleToolCount: toolExposure.eligibleTools?.length ?? 0,
+      eligibleToolIds: toolExposure.eligibleTools ?? [],
       requestedToolGroups: requestedToolGroupsWithAvailability,
       activeSkillId: skillContext?.primary?.id ?? null,
       activeSkillVersion: skillContext?.primary?.version ?? null,
@@ -468,11 +761,41 @@ export const prepareContextNode = async (
       skillMatchSource: skillContext?.match?.source ?? null,
       skillResourceCount: skillContext?.resources.length ?? 0,
       disclosedSkillResourceCount: skillContext?.disclosedResources.length ?? 0,
+      skillVisibilityScopeKind: skillContext?.skillVisibility?.scopeKind ?? null,
+      skillSummaryDisclosedCount:
+        skillVisibilitySummary.summaryDisclosedSkillIds.length,
+      skillBodyDisclosedCount: skillVisibilitySummary.bodyDisclosedSkillIds.length,
+      skillResourceMetadataDisclosedCount:
+        skillVisibilitySummary.resourceMetadataUris.length,
+      skillResourceContentDisclosedCount:
+        skillVisibilitySummary.resourceContentUris.length,
       skillToolExposureMutation: false,
       wenshuRuntimePackAvailable: wenshuCapabilityState.runtimePackAvailable,
       wenshuRegisteredCapabilityIds: wenshuCapabilityState.registeredCapabilityIds,
       codebaseExploreExposed: toolExposure.exposedTools.includes("codebase_explore"),
       externalExpertAvailable,
+      capabilityResolutionPath: matcherResult.resolution?.path ?? null,
+      capabilityResolutionModelCalls:
+        matcherResult.resolution?.trace.modelCalls ?? 0,
+      capabilityResolutionTrace: matcherResult.resolution?.trace ?? null,
+      capabilityMetadataToolIds: compactCapabilityMetadata.map(
+        (tool) => tool.capabilityId,
+      ),
+      capabilityMetadataDisclosedCount:
+        capabilityDisclosureTrace.metadataDisclosedCount,
+      capabilitySchemaDisclosedCount:
+        capabilityDisclosureTrace.schemaDisclosedCount,
+      capabilityDisclosureTrace,
+      capabilityDisclosureTransitions,
+      schemaMaterializedToolIds: [...schemaDisclosedToolIds],
+      progressiveResolutionBudget: progressiveResolution.budget,
+      progressiveResolutionExhausted: progressiveResolution.exhausted,
+      progressiveResolutionUnresolvedCapabilityGap:
+        progressiveResolution.unresolvedCapabilityGap ?? null,
+      progressiveResolutionDisclosedToolIds: Object.keys(
+        progressiveResolution.disclosure,
+      ),
+      progressiveResolutionTrace: progressiveResolution.trace,
       currentTaskFrameWriter:
         "prepareContextNode attaches SkillContext and a bounded Skill runtime projection; Planner remains the sole writer of goal/subtask/completion inference",
     },
@@ -482,5 +805,6 @@ export const prepareContextNode = async (
     toolIntent,
     toolExposure,
     currentTaskFrame,
+    progressiveResolution,
   };
 };

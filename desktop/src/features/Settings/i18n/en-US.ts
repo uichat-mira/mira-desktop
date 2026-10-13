@@ -1409,9 +1409,11 @@ const settingsPending = {
         argsModalDescription:
           "Maintain the current tool's JSON invocation args here. Closing the modal does not reset the draft.",
         webSearchTavilyHint: "Tavily is available when an API key is configured.",
+        webSearchTavily: "Tavily",
         webSearchApiKey: "Tavily API Key",
         webSearchApiKeyPlaceholder: "Enter the Tavily API key",
         webSearchSearxngHint: "SearXNG is available when a baseUrl is configured.",
+        webSearchSearxng: "SearXNG",
         webSearchBaseUrl: "SearXNG Base URL",
         webSearchBaseUrlPlaceholder: "For example http://localhost:8080",
         webSearchMaxResults: "Result Count",
@@ -1442,6 +1444,7 @@ const settingsPending = {
         selectToolFirst: "Select a tool first",
         invalidArgsJson: "Invocation args must be valid JSON",
         webSearchConfigSaved: "Web Search config saved",
+        webSearchConfigSaveFailed: "Failed to save Web Search config",
         runFailed: "Tool execution failed",
         approvalFailed: "Failed to resolve tool approval",
       },
@@ -2434,6 +2437,14 @@ const settingsPending = {
           input: "Input",
           output: "Output",
           capabilities: "Capabilities",
+          config: "Configuration",
+        },
+        config: {
+          description: "Configure the search providers used by Web Search. Credentials are used only by the backend search runtime.",
+          loading: "Loading Web Search configuration…",
+          loadFailed: "Failed to load Web Search configuration. Try again.",
+          save: "Save configuration",
+          saving: "Saving…",
         },
         caseGroups: {
           extension: "External MCP",
@@ -2490,6 +2501,9 @@ const settingsPending = {
           ready: "Ready",
           degraded: "Degraded",
           unavailable: "Unavailable",
+        },
+        readinessReasons: {
+          webSearchUnavailable: "Web Search runtime readiness is unavailable.",
         },
         invocation: {
           idle: "Not run",

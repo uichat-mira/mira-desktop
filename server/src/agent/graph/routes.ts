@@ -44,6 +44,8 @@ export const routeAfterNextAction = (state: AgentGraphStateType) => {
       return "generate";
     case "retrieve":
       return "retrieve";
+    case "activate_skill":
+      return "activateSkill";
     case "ask_user":
       return "generate";
     case "use_tool":
@@ -151,9 +153,12 @@ export const routeAfterEvidence = (state: AgentGraphStateType) => {
     return "approval";
   }
 
-  // A delegated needs_input action is already a governed Parent decision.
-  // Evidence must be committed first, but Main Planner must not rewrite it.
-  if (state.nextAction?.type === "ask_user") {
+  // Governed Skill Child completion and needs_input must reach Generate after
+  // evidence commit. The Main Planner must not repeat Child construction.
+  if (
+    state.nextAction?.type === "ask_user" ||
+    (state.nextAction?.type === "answer" && state.finalizationPacket)
+  ) {
     return "generate";
   }
 

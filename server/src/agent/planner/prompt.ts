@@ -95,6 +95,27 @@ const summarizeToolSchemas = (toolExposure: AgentToolExposureState) =>
     };
   });
 
+/** Only brief model-visible Skill summaries; no body or execution authority. */
+const summarizeDiscoverableSkills = (context: PlannerObservationContext) => {
+  const frame = context.currentTaskFrame as
+    | { skillContext?: { skillVisibility?: { skills?: Array<{
+        skillId: string;
+        name: string;
+        description: string;
+        discoverable: boolean;
+        disclosure: string;
+      }> } } }
+    | undefined;
+  return (frame?.skillContext?.skillVisibility?.skills ?? [])
+    .filter((entry) => entry.discoverable && entry.disclosure !== "hidden")
+    .map((entry) => ({
+      skillId: entry.skillId,
+      name: entry.name,
+      description: entry.description,
+      disclosure: entry.disclosure,
+    }));
+};
+
 const getRemainingRecoveryAttempts = (observationContext: PlannerObservationContext) =>
   getRemainingPlannerRecoveryAttempts(observationContext.recovery);
 
@@ -208,7 +229,8 @@ const buildSchemaReplanMessages = (input: {
     content: [
       "你正在做一次 bounded replan。",
       "只允许返回一个合法的 nextAction JSON。",
-      "允许动作只有 answer / retrieve / use_tool / ask_user / error。",
+      "允许动作只有 answer / retrieve / use_tool / activate_skill / ask_user / error。",
+      "skillCatalog 是当前 scope 已发现的 Skill 摘要，只有任务确实需要其中某个 summary Skill 时才用 activate_skill，并提供精确 skillId。该动作仅披露 Skill 正文，不授予 Tool 权限。",
       "不要输出 Markdown，不要输出代码块，不要输出解释。",
       "当前 workspace 已绑定。",
       "如果问题明显在问本地 workspace 或本地文件，不要使用 web_search 代替本地证据路径。",
@@ -218,7 +240,8 @@ const buildSchemaReplanMessages = (input: {
       "Skill requirements 只是缺失条件事实；只有 Planner 可以在判断其阻塞完整目标后选择 ask_user 并组织用户问题。不要把 Skill stateRef 当作 workspace 路径。",
       "CodeGraph verifiedSource 是已重新读取原文件的正文证据；不要机械 read 同一批已验证文件，只补明确缺口。",
       "Main Planner owns the complete user goal, dependencies, acceptance, and final answer; a generic subAgent owns one bounded local work package and returns structured evidence for Main Planner acceptance.",
-      "Before applying tool-specific guidance, judge the entire unfinished work package. Select one use_tool(delegate_task) when it has a clear independent acceptance boundary and is expected to need multiple sequential tools, post-execution verification, or local recovery.",
+      "First inspect skillCatalog: when a summary Skill's guidance is materially needed to produce the requested artifact or perform the work, choose activate_skill with its exact skillId before delegate_task or concrete tools.",
+      "Only when no specialist Skill is materially needed, judge the entire unfinished work package. Select one use_tool(delegate_task) when it has a clear independent acceptance boundary and is expected to need multiple sequential tools, post-execution verification, or local recovery.",
       'Delegation must use {"type":"use_tool","toolId":"delegate_task","args":{"goal":"complete local objective","acceptanceCriteria":["observable condition"]},"reason":"..."}; never put goal or acceptanceCriteria at the top level.',
       "Use a normal tool directly only when one concrete call completes the action. Do not split the same bounded package into Main Planner's separate tool turns; delegation is not mandatory for trivial one-step work or pure answer requests.",
       "这次 replan 的目标是修正上一次失败动作：你可以改参数、换工具、ask_user，或在确实无法继续时输出明确终局。",
@@ -239,6 +262,7 @@ const buildSchemaReplanMessages = (input: {
           input.observationContext,
         ),
         allowedTools: summarizeToolSchemas(input.toolExposure),
+        skillCatalog: summarizeDiscoverableSkills(input.observationContext),
         toolSelectionHints: input.toolExposure.requestedToolGroups ?? [],
         observationContext: input.observationContext,
         instruction:
@@ -277,9 +301,14 @@ export const buildNextActionPlannerMessages = (input: {
         "你是 Agent graph 的 nextAction planner。",
         "你的唯一任务是决定当前这一轮的下一步动作。",
         "你是完整用户任务的唯一语义控制器：Harness 和 Evidence 只报告事实，不能替你宣布任务完成。",
+        "SPECIALIST SKILL VS GENERIC DELEGATION CONTRACT:",
+        "First inspect skillCatalog (discoverable summary Skills for the current scope). A specialist Skill is materially needed only when its summary guidance is required to produce the requested artifact or to perform the work correctly, not merely because the request mentions a related topic.",
+        "When a specialist Skill is materially needed, choose activate_skill with its exact skillId before delegate_task or any concrete tool. That action only discloses the Skill body; the governed Skill Child owns subsequent execution, Tool authority, and recovery.",
+        "When no specialist Skill is materially needed but the work package still has a clear independent acceptance boundary and needs multiple sequential tools, post-execution verification, or local recovery, choose use_tool(delegate_task) for that package.",
+        "Simple one-call tasks and pure answers stay direct even when a Skill summary is visible; do not force a Skill or a delegation only because a topic keyword matches.",
         "DELEGATION DECISION CONTRACT:",
-        "Before considering any concrete tool, evaluate the entire current unfinished work package against its completion criteria.",
-        "If that package has a clear independent acceptance boundary and completing it is expected to require more than one tool call, a tool call followed by verification, or local recovery, choose one use_tool(delegate_task) now. Do not start with the first concrete tool.",
+        "Before considering any concrete tool, first apply the specialist Skill check above, then evaluate the entire current unfinished work package against its completion criteria.",
+        "If no specialist Skill is materially needed, and that package has a clear independent acceptance boundary and completing it is expected to require more than one tool call, a tool call followed by verification, or local recovery, choose one use_tool(delegate_task) now. Do not start with the first concrete tool.",
         "A direct concrete tool is appropriate only when that one call completes the requested action and the next step can be answer without another tool call or execution verification.",
         "Apply that direct-tool rule strictly: if any explicit completion criterion will still require another evidence-producing action after the proposed call returns, do not choose that call; delegate the whole bounded package instead.",
         "Reading multiple inputs before comparing them, or mutating state and then reading or testing it, are multi-action package structures even though their first action is a single read or edit.",
@@ -292,13 +321,16 @@ export const buildNextActionPlannerMessages = (input: {
         "如果有限历史存在多个可能目标或无法唯一确定要继续的任务，才使用 ask_user 澄清；不要自行猜测或继承不明确的任务。",
         "当你从有限历史继承任务语义时，planPatch.addItems 的 text 必须写出完整的语义目标和必要完成条件，不能只记录本轮的授权或方式说明；敏感值只需表述为已由用户提供，不要复制到计划文本；若工具和参数已经齐备，应在同一决策中直接选择 use_tool。",
         "你必须只输出 JSON，不要输出解释性自然语言，不要输出 Markdown，不要输出代码块。",
-        "允许输出的 JSON 只有五种：",
+        "允许输出的 JSON 只有六种：",
         '{"type":"answer","reason":"...","completionProof":[{"criterion":"...","evidenceRefs":["tool:0"]}],"unresolvedGaps":[]}',
         '{"type":"retrieve","query":"...","reason":"..."}',
+        '{"type":"activate_skill","skillId":"skillCatalog 中的精确 ID","reason":"..."}',
         '{"type":"use_tool","toolId":"...","args":{},"reason":"..."}',
         '{"type":"ask_user","question":"...","reason":"..."}',
         '{"type":"error","reason":"..."}',
         "如果你选择 use_tool，toolId 必须来自当前暴露的真实工具列表，args 必须是 JSON object。",
+        "只有当 skillCatalog 有 disclosure=summary 且任务实际需要 Skill 正文（其指导是产出目标 artifact 或正确执行工作所必需）时，才选择 activate_skill，并优先于 delegate_task 和具体工具。不要为了普通问答或仅凭关键词命中额外激活 Skill；它并不扩大 Tool authority，后续受治理执行由 Skill Child 负责。",
+        "当没有任何 specialist Skill 是任务所必需，但工作包仍有清晰独立验收边界且需要多次顺序工具、执行后验证或本地恢复时，才选择 use_tool(delegate_task) 处理整个包；简单一步任务和纯回答保持直接执行。",
         "toolSelectionHints 表示用户通过 @ 明确选择的工具包偏好；任务需要工具时优先考虑其中 exposedToolIds，但是否调用以及调用哪个工具仍由你判断。",
         "工具包偏好不改变 exposedTools，不绕过权限和审批。状态为 unavailable 或 unknown 时，不得声称已经应用或调用该工具包。",
         "不要输出 capabilityId，不要发明未暴露工具，不要输出额外字段。",
@@ -364,6 +396,7 @@ export const buildNextActionPlannerMessages = (input: {
             latestObservationRecoverable:
               input.observationContext.latestObservation?.recoverable ?? false,
           },
+          skillCatalog: summarizeDiscoverableSkills(input.observationContext),
           toolExposure: {
             exposedTools: input.toolExposure.exposedTools,
             toolMeta: summarizeToolSchemas(input.toolExposure),

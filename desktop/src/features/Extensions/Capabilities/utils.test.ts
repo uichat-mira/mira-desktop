@@ -11,6 +11,7 @@ import {
   summarizeCapabilityInvocation,
   toExternalCapabilityTools,
   toNativeCapabilityTool,
+  resolveToolReadiness,
 } from "./utils";
 
 const caseDefinition: CapabilityAcceptanceCase = {
@@ -54,6 +55,35 @@ const invocation = (
 });
 
 describe("Capability view helpers", () => {
+  it("does not mark web search ready when runtime readiness is missing", () => {
+    const tool = toNativeCapabilityTool({
+      ...readTool,
+      id: "web_search",
+      title: "Web Search",
+      domain: "web_search",
+    });
+
+    expect(resolveToolReadiness(tool)).toBe("unavailable");
+  });
+
+  it("uses the localized reason when web search readiness is unavailable", () => {
+    const tool = toNativeCapabilityTool({
+      ...readTool,
+      id: "web_search",
+      title: "Web Search",
+      domain: "web_search",
+    });
+
+    expect(
+      resolveCapabilityReadiness({
+        caseDefinition: { ...caseDefinition, toolId: "web_search" },
+        tool,
+        workspaceRoot: null,
+        translate: () => "localized readiness reason",
+      }),
+    ).toMatchObject({ reason: "localized readiness reason" });
+  });
+
   it("keeps readiness separate from invocation failure", () => {
     const tool = toNativeCapabilityTool(readTool);
 

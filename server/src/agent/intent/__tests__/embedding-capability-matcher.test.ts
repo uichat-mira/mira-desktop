@@ -50,6 +50,7 @@ test("matchToolCandidatesByEmbedding returns exposed tool candidates without sel
     .mockResolvedValue({
       query: "查一下最新新闻",
       source: "agent_intent",
+      eligibleToolIds: ["web_search", "read_open"],
       toolCandidates: [
         {
           toolId: "web_search",
@@ -222,6 +223,7 @@ test("matchToolCandidatesByEmbedding short-circuits low-intent greeting queries 
     .mockResolvedValue({
       query: "Hi",
       source: "agent_intent",
+      eligibleToolIds: [],
       toolCandidates: [],
       toolExposure: {
         exposedToolIds: [],
@@ -252,6 +254,7 @@ test("matchToolCandidatesByEmbedding respects topK while keeping selection empty
     .mockResolvedValue({
       query: "帮我看看文件夹下有啥",
       source: "agent_intent",
+      eligibleToolIds: ["read_list", "edit"],
       toolCandidates: [
         {
           toolId: "read_list",

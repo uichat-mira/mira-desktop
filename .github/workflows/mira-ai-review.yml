@@ -145,7 +145,15 @@ jobs:
           workspace="$review_dir/workspace"
           home_dir="$review_dir/home"
           config_dir="$review_dir/opencode-config"
-          mkdir -p "$workspace" "$home_dir" "$config_dir"
+          repository_base="$workspace/repository-base"
+          mkdir -p "$workspace" "$home_dir" "$config_dir" "$repository_base"
+
+          # Give the reviewer a read-only snapshot of the trusted PR base for
+          # surrounding-code investigation without exposing the live checkout,
+          # Git credentials, or any PR-head filesystem content.
+          cp -a "$GITHUB_WORKSPACE/trusted-review-control/." "$repository_base/"
+          rm -rf "$repository_base/.git"
+          chmod -R a-w "$repository_base"
 
           cd "$workspace"
 
