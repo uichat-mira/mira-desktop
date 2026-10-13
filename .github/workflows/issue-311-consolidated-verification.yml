@@ -1,0 +1,78 @@
+name: "#311 Consolidated Acceptance Independent Verification"
+on:
+  push:
+    branches:
+      - feat/311-independent-acceptance-verification
+    paths:
+      - .github/workflows/issue-311-consolidated-verification.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: file:${{ github.workspace }}/.test-artifact/issue311-consolidated.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: mkdir -p .test-artifact
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test resolution evidence, disclosure and governed Tool invocation
+        run: pnpm --filter @ui-chat-mira/server test -- src/agent/progressive-acceptance/cases.test.ts src/agent/progressive-acceptance/governed-execution.acceptance.test.ts src/agent/nodes/prepare-context-progressive-resolution.test.ts --maxWorkers=1 --fileParallelism=false
+      - name: Generate analogous acceptance matrix JSON and Markdown
+        run: pnpm --filter @ui-chat-mira/server exec tsx src/agent/progressive-acceptance/runner.ts
+      - name: Verify governance and workspace typecheck
+        run: pnpm check
+      - name: Probe real model Main Planner choosing specialist Skill
+        id: skill
+        continue-on-error: true
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+        run: |
+          if [ -z "$AI_PROVIDER_OPENCODE_GO_KEY" ]; then echo "::error::Missing OpenCode Go key, cannot verify"; exit 1; fi
+          pnpm --filter @ui-chat-mira/server exec tsx scripts/smoke-skill-progressive-live.ts
+      - name: Three real Planner decisions through governed late Tool invocation
+        id: planner
+        continue-on-error: true
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+          MIRA_LIVE_311: "1"
+        run: |
+          if [ -z "$AI_PROVIDER_OPENCODE_GO_KEY" ]; then echo "::error::Missing OpenCode Go key, cannot verify"; exit 1; fi
+          pnpm --filter @ui-chat-mira/server test -- src/agent/progressive-acceptance/governed-real-planner.live.smoke.test.ts --maxWorkers=1 --fileParallelism=false
+      - name: Real Skill Child execution
+        id: child
+        continue-on-error: true
+        env:
+          AI_PROVIDER_OPENCODE_GO_KEY: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+          MIRA_LIVE_SKILL_CHILD: "1"
+        run: |
+          if [ -z "$AI_PROVIDER_OPENCODE_GO_KEY" ]; then echo "::error::Missing OpenCode Go key, cannot verify"; exit 1; fi
+          pnpm --filter @ui-chat-mira/server test -- src/skills/agent/skill-child-live.smoke.test.ts --maxWorkers=1 --fileParallelism=false
+      - name: Archive acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue311-consolidated-evidence
+          path: .test-artifact/
+          if-no-files-found: ignore
+      - name: Keep any red live probe red
+        if: always()
+        env:
+          SKILL: ${{ steps.skill.outcome }}
+          PLANNER: ${{ steps.planner.outcome }}
+          CHILD: ${{ steps.child.outcome }}
+        run: |
+          echo "Live Skill=$SKILL; live Planner=$PLANNER; live Child=$CHILD"
+          [ "$SKILL" = success ] && [ "$PLANNER" = success ] && [ "$CHILD" = success ]
