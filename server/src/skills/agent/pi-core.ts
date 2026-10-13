@@ -1000,7 +1000,6 @@ export const runPiSkillAgent = async (input: {
         toolId: pending.toolId,
         result: resumed.toolResult,
       });
-      executedBindingIds.add(binding.id);
     } catch (error) {
       await ledger.updateWorkingState({
         phase: "failed",
@@ -1223,6 +1222,9 @@ export const runPiSkillAgent = async (input: {
     }
     completion = nextCompletion;
   }
+
+  const status = completion.status as SkillAgentExecutionResult["status"];
+  const summary = asNonEmptyString(completion.summary);
 
   const completionRequirements =
     status === "needs_input"
