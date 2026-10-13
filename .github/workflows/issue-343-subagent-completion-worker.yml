@@ -1,4 +1,4 @@
-name: "#343 subAgent Completion Evidence Worker"
+name: "#343 subAgent Completion Evidence Worker (Review Repair)"
 
 on:
   push:
@@ -17,13 +17,13 @@ jobs:
     uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@621bc797562ee2ba92e77e215deb68833113231e
     with:
       issue_number: 343
-      base_branch: dev
+      base_branch: feat/worker-343-38344000791-1
       provider: opencode-go
       model: deepseek-v4.1-flash
       verification_command: |
         corepack enable
         pnpm install --frozen-lockfile
-        pnpm --filter @ui-chat-mira/server test -- src/skills/agent/pi-core.stream-fn.test.ts src/skills/agent/pi-core.completion.test.ts src/skills/agent/pi-core.approval-resume.test.ts src/agent/__tests__/generic-task-subagent.test.ts src/agent/__tests__/generic-task-default-runtime.test.ts src/agent/__tests__/generic-task-resume.test.ts src/skills/agent/subagent-visibility.integration.test.ts --maxWorkers=1 --fileParallelism=false
+        pnpm --filter @ui-chat-mira/server test -- src/skills/agent/pi-core.stream-fn.test.ts src/skills/agent/pi-core.schema-completion.test.ts src/skills/agent/pi-core.completion.test.ts src/skills/agent/pi-core.approval-resume.test.ts src/agent/__tests__/generic-task-subagent.test.ts src/agent/__tests__/generic-task-default-runtime.test.ts src/agent/__tests__/generic-task-resume.test.ts src/skills/agent/subagent-visibility.integration.test.ts --maxWorkers=1 --fileParallelism=false
         pnpm check
     secrets:
       opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
