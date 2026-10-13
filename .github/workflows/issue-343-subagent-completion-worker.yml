@@ -1,4 +1,4 @@
-name: "#343 Child Completion Proof Worker (Delivery Repair)"
+name: "#343 Child Completion Proof Worker (Target Coverage Repair)"
 
 on:
   push:
@@ -14,10 +14,10 @@ permissions:
 
 jobs:
   worker:
-    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@621bc797562ee2ba92e77e215deb68833113231e
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@c3006fe0043c087dfc7eb63af22b5fcc08ebf6d7
     with:
       issue_number: 343
-      base_branch: feat/worker-343-38344000791-1
+      base_branch: feat/worker-343-38352937356-1
       provider: opencode-go
       model: deepseek-v4.1-flash
       verification_command: |
