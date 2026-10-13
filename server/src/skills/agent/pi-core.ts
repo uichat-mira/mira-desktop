@@ -485,6 +485,7 @@ const executeBinding = async (input: {
         toolCallId: input.toolCallId,
         artifactCount: executed.artifacts?.length ?? 0,
         evidenceAdded: executed.evidence !== undefined,
+        bindingExecuted: true,
       });
     }
 
@@ -518,12 +519,6 @@ const toPiTool = (input: {
   schemaDisclosed: boolean;
   promoteSchema?: () => boolean;
   markSchemaExecutionAttempted?: () => void;
-  /**
-   * Called only after the governed binding actually returned during a real
-   * (post-schema) execution. Schema disclosure and failed/blocked attempts must
-   * never satisfy goal evidence coverage.
-   */
-  onBindingExecuted?: () => void;
   parentSignal?: AbortSignal;
 }): AgentTool<any> => ({
   name: input.binding.id,
@@ -600,7 +595,6 @@ const toPiTool = (input: {
         recordToolCall: true,
         ledger: input.ledger,
       });
-      input.onBindingExecuted?.();
       return toolResult;
     } finally {
       combined.cleanup();
@@ -784,23 +778,22 @@ const failResult = (input: {
 });
 
 /**
- * How many same-Child reconciliation prompts the runtime may issue after a model
- * claims `completed` while schema-disclosed Tools remain unexecuted and no
- * authoritative execution evidence exists. Bounded so a stuck model cannot loop
- * forever; schema disclosure alone must never be accepted as completion.
+ * A disclosure is a Tool-context update, not a task result. Give the Child one
+ * chance to reconsider its terminal declaration with the newly visible schema.
+ * Whether that Tool is actually needed is a task-semantic decision, not a
+ * deterministic check on file names, invocation counts or Evidence array sizes.
  */
-const MAX_SCHEMA_RECONCILIATION_ROUNDS = 2;
-
 const buildSchemaReconciliationPrompt = (pendingTools: string[]) =>
   [
-    "<schema-reconciliation>",
-    `These Tools had their input schema disclosed but were never actually executed: ${pendingTools.join(", ")}.`,
-    "Schema disclosure is not execution and is not evidence; it must not be counted as a completed Tool call.",
-    "If the task goal still requires any of these Tools, call the Tool(s) now using the disclosed schema.",
-    "If they are genuinely not required, complete again only when the goal is already supported by real governed Tool results or supplied context. Schema disclosure alone cannot justify a completed status.",
-    "Return exactly one terminal JSON object.",
-    "</schema-reconciliation>",
-  ].join("\n");
+    "<schema-disclosure-reconsideration>",
+    `The following Tool schemas were disclosed, but those Tool bindings have not been invoked: ${pendingTools.join(", ")}.`,
+    "Schema disclosure is not an execution or a successful task result.",
+    "Reassess your delegated goal using the actual task context and governed Tool results available in this Child.",
+    "If any disclosed Tool is required to finish your work, invoke it now with its full schema. If your task is already completed without that Tool, you may report completed and explain the concrete result in the summary.",
+    "If the task is not complete and cannot be finished, return insufficient_evidence with the real gap. Do not invent Tool results or citations.",
+    "Return the normal terminal JSON object; the Main Planner still owns global task acceptance.",
+    "</schema-disclosure-reconsideration>",
+  ].join("\\n");
 
 export const runPiSkillAgent = async (input: {
   execution: SkillAgentExecutionInput;
@@ -838,11 +831,6 @@ export const runPiSkillAgent = async (input: {
     ? new Set(input.disclosedToolIds)
     : undefined;
   const pendingSchemaExecutions = new Set<string>();
-  // Tools whose governed binding actually returned during this run. This is the
-  // execution state, distinct from schema disclosure and from the model's claim.
-  const executedBindingIds = new Set<string>();
-  const hasAuthoritativeExecution = () =>
-    executedBindingIds.size > 0 || evidence.length > 0 || artifacts.length > 0;
   const stateReportingTool = createStateReportingTool({ ledger });
   let toolLoadoutDirty = false;
 
@@ -889,9 +877,6 @@ export const runPiSkillAgent = async (input: {
               },
             }
           : {}),
-        onBindingExecuted: () => {
-          executedBindingIds.add(binding.id);
-        },
         parentSignal: input.execution.signal,
       });
     }),
@@ -1174,40 +1159,28 @@ export const runPiSkillAgent = async (input: {
     };
   }
 
-  // Schema disclosure is neither execution nor evidence. When a model claims
-  // `completed` while schema-disclosed Tools were never executed and no
-  // authoritative execution exists yet, give the *same* Child a bounded chance
-  // to close the gap instead of returning a recoverable failure that makes the
-  // Parent restart the Child. A schema-only Tool that is genuinely no longer
-  // needed does not block a completion already supported by real governed
-  // execution, so the loop never runs in that case.
-  let reconciliationRounds = 0;
-  while (
-    completion.status === "completed" &&
-    pendingSchemaExecutions.size > 0 &&
-    !hasAuthoritativeExecution() &&
-    reconciliationRounds < MAX_SCHEMA_RECONCILIATION_ROUNDS
-  ) {
-    reconciliationRounds += 1;
+  // A metadata-stage Tool call only changes the Child's Tool context. If the
+  // model tried to finish while such schema disclosures were pending, ask the
+  // SAME Child once to reconsider its task with the promoted schemas available.
+  // Crucially, do not decide task completion by whether ANY Tool ran, nor by
+  // trying to parse natural-language acceptance criteria. The Child returns an
+  // explicit local judgement and actual Tool results to the Main Planner, which
+  // retains responsibility for deciding whether the delegated task is useful
+  // and whether the user's global goal is finished.
+  if (completion.status === "completed" && pendingSchemaExecutions.size > 0) {
     const pendingTools = [...pendingSchemaExecutions].sort();
     await ledger.updateWorkingState({
       phase: "working",
       currentJudgement:
-        "完成声明缺少受治理 Tool 的真实执行证据；Schema 披露本身不算执行。",
-      currentAction: "在同一 subAgent 内继续补足证据",
-      nextAction: "执行已披露 schema 的待完成 Tool，或依据真实证据重新确认完成",
-      blockingReason: `Unexecuted schema-disclosed Tool(s): ${pendingTools.join(", ")}`,
+        "Schema 披露不代表工具已执行；请基于实际任务和工具结果再次确认是否完成。",
+      currentAction: "在同一 subAgent 中确认尚未调用的已披露工具是否必要",
+      nextAction: "需要则执行工具；不需要则说明已有结果；无法完成则如实上报缺口",
     });
-    await ledger.emitTrace(
-      "plan.revised",
-      "在同一 subAgent 内继续执行待完成 Tool",
-      {
-        reason: "completed_without_authoritative_execution",
-        pendingSchemaExecutions: pendingTools,
-        reconciliationRound: reconciliationRounds,
-      },
-    );
-
+    await ledger.emitTrace("plan.revised", "同一 subAgent 内重新判断任务完成状态", {
+      reason: "schema_disclosed_not_executed",
+      pendingSchemaExecutions: pendingTools,
+      bindingExecuted: false,
+    });
     try {
       await agent.prompt(buildSchemaReconciliationPrompt(pendingTools));
     } catch (error) {
@@ -1235,54 +1208,20 @@ export const runPiSkillAgent = async (input: {
       await ledger.updateWorkingState({
         phase: "failed",
         currentAction: "无法确认 subAgent 的最终交付状态",
-        blockingReason: "Invalid completion envelope",
+        blockingReason: "Invalid completion envelope after schema reconsideration",
       });
-      await ledger.emitTrace("subagent.failed", "subAgent 返回格式无效");
-      return {
-        status: "failed",
+      await ledger.emitTrace("subagent.failed", "subAgent 重审后返回格式无效");
+      return failResult({
+        skillId: primary.id,
+        error: "subAgent returned an invalid completion envelope after schema reconsideration",
         recoverable: true,
-        error: "subAgent returned an invalid completion envelope",
         evidence,
         artifacts,
-        trace: buildTrace({ ledger, skillId: primary.id, toolCalls }),
-      };
+        toolCalls,
+        ledger,
+      });
     }
     completion = nextCompletion;
-  }
-
-  const status = completion.status as SkillAgentExecutionResult["status"];
-  const summary = asNonEmptyString(completion.summary);
-
-  if (
-    status === "completed" &&
-    pendingSchemaExecutions.size > 0 &&
-    !hasAuthoritativeExecution()
-  ) {
-    const pendingTools = [...pendingSchemaExecutions].sort();
-    await ledger.updateWorkingState({
-      phase: "blocked",
-      currentJudgement:
-        "Tool schema 已披露，但没有任何受治理 Tool 的真实执行证据；完成声明不成立。",
-      currentAction: "拒绝仅凭 schema 披露的完成声明",
-      nextAction: "使用已披露的完整 schema 重试 Tool 调用并取得真实结果",
-      blockingReason: `Pending schema-disclosed Tool execution: ${pendingTools.join(", ")}`,
-    });
-    await ledger.emitTrace(
-      "input.required",
-      "subAgent 完成声明缺少真实执行证据",
-      { pendingSchemaExecutions: pendingTools },
-    );
-    return {
-      status: "insufficient_evidence",
-      summary:
-        "The subAgent declared completion after only disclosing Tool schemas, without executing the Tools required for verified task evidence.",
-      missingEvidence: [
-        `Unexecuted governed Tool(s) required for completion: ${pendingTools.join(", ")}`,
-      ],
-      evidence,
-      artifacts,
-      trace: buildTrace({ ledger, skillId: primary.id, toolCalls }),
-    };
   }
 
   const completionRequirements =
