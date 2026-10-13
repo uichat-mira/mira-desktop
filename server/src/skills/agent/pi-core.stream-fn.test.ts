@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     | undefined,
   providerResolutionCalls: 0,
   completion: "",
+  completions: [] as string[],
   promptCount: 0,
   promptToolCall: undefined as
     | { name: string; args: Record<string, unknown> }
@@ -151,7 +152,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       }
       this.state.messages.push({
         role: "assistant",
-        content: [{ type: "text", text: mocks.completion }],
+        content: [{ type: "text", text: mocks.completions[callIndex] ?? mocks.completion }],
       });
     }
   }
@@ -182,6 +183,7 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
     mocks.agentOptions = undefined;
     mocks.agentState = undefined;
     mocks.promptCount = 0;
+    mocks.completions = [];
     mocks.promptToolCall = undefined;
     mocks.promptToolResult = undefined;
     mocks.promptRetryToolCall = undefined;
@@ -299,8 +301,15 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
     expect(write?.parameters).toEqual({ type: "object" });
   });
 
-  it("rejects a completion built only on schema disclosure and reconciles in the same Child", async () => {
-    mocks.completion = JSON.stringify({ status: "completed", summary: "done" });
+  it("reconsiders a schema-only claim in the same Child and preserves its honest unfinished status", async () => {
+    mocks.completions = [
+      JSON.stringify({ status: "completed", summary: "done" }),
+      JSON.stringify({
+        status: "insufficient_evidence",
+        summary: "Tool schema disclosed, but the requested file has not been written.",
+        missingEvidence: ["Requested write did not happen"],
+      }),
+    ];
     mocks.promptToolCall = { name: "write", args: {} };
 
     let executionCount = 0;
@@ -332,13 +341,10 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
     // and schema disclosure alone can never satisfy the completion contract.
     expect(executionCount).toBe(0);
     expect(result.status).toBe("insufficient_evidence");
-    expect(result.missingEvidence).toEqual([
-      "Unexecuted governed Tool(s) required for completion: write",
-    ]);
-    // The gap was worked inside the same Child (initial prompt + bounded
-    // reconciliation rounds) instead of handing a schema-only failure back to
-    // the Parent for a fresh delegation.
-    expect(mocks.promptCount).toBe(3);
+    expect(result.missingEvidence).toEqual(["Requested write did not happen"]);
+    // The model, not a fabricated Tool-count criterion, reports the gap after
+    // one in-place reconsideration with the promoted schema available.
+    expect(mocks.promptCount).toBe(2);
     expect(mocks.promptToolResult).toMatchObject({
       details: {
         toolId: "write",
@@ -374,7 +380,11 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
   });
 
   it("does not report a failed governed Tool attempt as never executed after schema promotion", async () => {
-    mocks.completion = JSON.stringify({ status: "completed", summary: "recovered" });
+    mocks.completion = JSON.stringify({
+      status: "insufficient_evidence",
+      summary: "Tool failed",
+      missingEvidence: ["Write failed"],
+    });
     mocks.promptToolCall = { name: "write", args: {} };
     mocks.promptRetryToolCall = {
       name: "write",
@@ -409,14 +419,15 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
       isError: true,
       error: "simulated binding failure",
     });
-    expect(result.status).toBe("completed");
-    expect(result.error).toBeUndefined();
+    expect(result.status).toBe("insufficient_evidence");
+    expect(result.missingEvidence).toEqual(["Write failed"]);
+    expect(result.trace?.events?.some((event) => event.type === "tool.failed")).toBe(true);
   });
 
-  it("accepts a completion supported by real execution even when another Tool only disclosed its schema", async () => {
+  it("accepts Child completion after reconsidering an unrelated schema-only Tool", async () => {
     mocks.completion = JSON.stringify({
       status: "completed",
-      summary: "compared",
+      summary: "Read a.txt successfully",
     });
     mocks.promptToolCall = { name: "read", args: { path: "a.txt" } };
     mocks.promptRetryToolCall = { name: "write", args: {} };
@@ -460,13 +471,12 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
       disclosedToolIds: ["read"],
     });
 
-    // `write` was only promoted metadata -> schema and is no longer needed, but
-    // the goal already has real governed execution evidence, so it must not be
-    // treated as an automatic evidence gap or force another delegation.
+    // The unrelated Tool's disclosure does not force any execution or a new
+    // Child; the existing Child gets one chance to explain why it is not needed.
     expect(result.status).toBe("completed");
     expect(readExecutions).toEqual(["a.txt"]);
     expect(writeExecutions).toBe(0);
-    expect(mocks.promptCount).toBe(1);
+    expect(mocks.promptCount).toBe(2);
 
     // The schema-only promotion is still truthfully marked as not executed.
     const disclosure = result.trace?.events?.find(
@@ -509,8 +519,8 @@ describe("runPiSkillAgent Pi 1.0 stream boundary", () => {
 
     expect(result.status).toBe("completed");
     expect(executionCount).toBe(1);
-    // Initial prompt + one bounded reconciliation in the same Child; no parent
-    // re-delegation and no further reconciliation once the Tool really ran.
+    // Initial prompt + an in-place reconsideration with the actual Tool
+    // schema, without a fresh Child or a mechanically repeated retry loop.
     expect(mocks.promptCount).toBe(2);
     expect(mocks.continuationToolResults[0]).toMatchObject({
       details: { toolId: "write" },
