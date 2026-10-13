@@ -2,6 +2,31 @@
 
 > 当前产品更新日志的唯一真相源。官网可以做面向用户的公开投影，但版本事实与最终发布说明以本文件和 GitHub Release 为准。
 
+## 0.104.0 - 2026-10-13
+
+Mira Next 二期维护者 Sign-off 后的正式发布版本；本次继续以实际 Agent 任务完成和受治理工具执行为交付准则。
+
+- **Agent 能力发现进入渐进式运行时**：引入按 Agent 范围隔离的 Capability View，Generic Child 可以在自己的权限上限内发现能力；工具由元数据逐步披露完整 Schema，避免把披露视为真正调用。
+- **工具搜索与可用性治理**：将 Tool Search / Progressive Resolution 接入生产路径，结合结构化匹配与有界语义检索；配置缺失、运行时不可用或超出授权的能力不应冒充可执行工具，Web Search 配置可从能力界面维护。
+- **Skills 与 Resources 渐进可见**：主 Planner 可以看到紧凑 Skill 摘要并选择激活；Skill 执行保持现有 Child 和权限范围，Skill/Resource 内容按需进入上下文。
+- **子 Agent 连续执行与恢复**：持久化渐进披露/解析预算、跟踪与恢复状态；Generic / Skill Child 的委派路径进一步对齐；仅披露 Schema 而未执行的工具不再机械阻断完成声明，Child 可在原会话重新判断是否需要调用，主 Planner 仍负责全局任务验收。
+- **能力工作台与工程可观测性**：改进 Capabilities 工具状态、可用性与回归覆盖；工程审查器获得只读上下文能力，相关修改不改变其合并权限。
+- **验收证据**：维护者在 Mac `dev` 上完成两个文件读取比较的真人烟测，观察到一次 Generic Child 委派、两次真实读取及正确结论（100、160，差值 60）。这证明该场景通过，不代表所有模型/任务的端到端成功率已经充分验证。
+
+**已知问题（不在本次发版中修补）**
+
+- [#347](https://github.com/uichat-mira/mira-desktop/issues/347)：自定义 OpenAI 兼容连接被错误标记为 `volcengine`；后续计划将 LLM 接入架构逐步收敛到 OpenAI 与 Claude 协议，尚未实施。
+- Planner 文本 JSON 兼容路径在特定真实模型调用下可能生成不完整决策并中止 AgentRun；目前保留严格的无效输出拒绝，不通过自动补括号制造成功。进一步调查服务商响应与原生结构化能力。
+- 其它更大范围的 Progressive Resolution 验收矩阵继续单独追踪（[#311](https://github.com/uichat-mira/mira-desktop/issues/311)）。
+
+## 0.103.0 - 2026-10-07
+
+- **Mira Next 二期基础工具体系**：Pi Agent Core 升级至 1.0.2；Tool Core 中立化，统一 ToolResult 与 Harness Evidence 合同，接入外部 MCP 适配。
+- **核心文件与执行能力**：Universal Read、File Mutation、Terminal 与 Web 工具形成可治理的通用能力基础，包含跨平台运行时及 apply_patch 工具语义。
+- **扩展入口与能力验收界面**：新增「扩展」导航，整合能力、Skills 和 MCP 原型入口，Tool Lab 形成可观察的工具验收工作台。
+- **跨端通知基础设施**：Host Push Broker、通知 outbox，以及 FCM/APNs 投递链路纳入工程基线；移动端完整接收体验仍需独立验收。
+- **Agent Benchmark 与发布工程**：建立 Core Benchmark 用例、运行与记录链路，并推进 Review、Tool 合同和跨平台打包验证。
+
 ## 0.102.0 - 2026-10-02
 
 - **应用导航重构**：新增全局 Navigation Rail，把知识库、评测、开发、关于、远程访问与 Forge 等能力从聊天侧栏/设置页中拆成独立工作区；统一页面骨架、页边距与嵌套路由状态，配对弹窗等细节同步收紧。
