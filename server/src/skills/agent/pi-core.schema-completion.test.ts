@@ -192,7 +192,8 @@ describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
     expect(result.status).toBe("completed");
     expect(readPaths).toEqual(["a.txt", "b.txt"]);
     expect(writeCounter.executions).toBe(0);
-    expect(mocks.promptCount).toBe(1);
+    // Reassessment stays in the same Child after a schema-only disclosure.
+    expect(mocks.promptCount).toBe(2);
 
     // Disclosure is still reported truthfully as a non-execution.
     const disclosure = result.trace?.events?.find(
