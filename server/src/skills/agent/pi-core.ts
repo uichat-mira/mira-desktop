@@ -518,6 +518,12 @@ const toPiTool = (input: {
   schemaDisclosed: boolean;
   promoteSchema?: () => boolean;
   markSchemaExecutionAttempted?: () => void;
+  /**
+   * Called only after the governed binding actually returned during a real
+   * (post-schema) execution. Schema disclosure and failed/blocked attempts must
+   * never satisfy goal evidence coverage.
+   */
+  onBindingExecuted?: () => void;
   parentSignal?: AbortSignal;
 }): AgentTool<any> => ({
   name: input.binding.id,
@@ -594,6 +600,7 @@ const toPiTool = (input: {
         recordToolCall: true,
         ledger: input.ledger,
       });
+      input.onBindingExecuted?.();
       return toolResult;
     } finally {
       combined.cleanup();
@@ -776,6 +783,25 @@ const failResult = (input: {
       },
 });
 
+/**
+ * How many same-Child reconciliation prompts the runtime may issue after a model
+ * claims `completed` while schema-disclosed Tools remain unexecuted and no
+ * authoritative execution evidence exists. Bounded so a stuck model cannot loop
+ * forever; schema disclosure alone must never be accepted as completion.
+ */
+const MAX_SCHEMA_RECONCILIATION_ROUNDS = 2;
+
+const buildSchemaReconciliationPrompt = (pendingTools: string[]) =>
+  [
+    "<schema-reconciliation>",
+    `These Tools had their input schema disclosed but were never actually executed: ${pendingTools.join(", ")}.`,
+    "Schema disclosure is not execution and is not evidence; it must not be counted as a completed Tool call.",
+    "If the task goal still requires any of these Tools, call the Tool(s) now using the disclosed schema.",
+    "If they are genuinely not required, complete again only when the goal is already supported by real governed Tool results or supplied context. Schema disclosure alone cannot justify a completed status.",
+    "Return exactly one terminal JSON object.",
+    "</schema-reconciliation>",
+  ].join("\n");
+
 export const runPiSkillAgent = async (input: {
   execution: SkillAgentExecutionInput;
   tools: SkillAgentToolBinding[];
@@ -812,6 +838,11 @@ export const runPiSkillAgent = async (input: {
     ? new Set(input.disclosedToolIds)
     : undefined;
   const pendingSchemaExecutions = new Set<string>();
+  // Tools whose governed binding actually returned during this run. This is the
+  // execution state, distinct from schema disclosure and from the model's claim.
+  const executedBindingIds = new Set<string>();
+  const hasAuthoritativeExecution = () =>
+    executedBindingIds.size > 0 || evidence.length > 0 || artifacts.length > 0;
   const stateReportingTool = createStateReportingTool({ ledger });
   let toolLoadoutDirty = false;
 
@@ -858,6 +889,9 @@ export const runPiSkillAgent = async (input: {
               },
             }
           : {}),
+        onBindingExecuted: () => {
+          executedBindingIds.add(binding.id);
+        },
         parentSignal: input.execution.signal,
       });
     }),
@@ -981,6 +1015,7 @@ export const runPiSkillAgent = async (input: {
         toolId: pending.toolId,
         result: resumed.toolResult,
       });
+      executedBindingIds.add(binding.id);
     } catch (error) {
       await ledger.updateWorkingState({
         phase: "failed",
@@ -1121,7 +1156,7 @@ export const runPiSkillAgent = async (input: {
   }
 
   const finalText = extractAssistantText(agent.state.messages as unknown[]);
-  const completion = parseCompletionEnvelope(finalText);
+  let completion = parseCompletionEnvelope(finalText);
   if (!completion) {
     await ledger.updateWorkingState({
       phase: "failed",
@@ -1139,33 +1174,115 @@ export const runPiSkillAgent = async (input: {
     };
   }
 
+  // Schema disclosure is neither execution nor evidence. When a model claims
+  // `completed` while schema-disclosed Tools were never executed and no
+  // authoritative execution exists yet, give the *same* Child a bounded chance
+  // to close the gap instead of returning a recoverable failure that makes the
+  // Parent restart the Child. A schema-only Tool that is genuinely no longer
+  // needed does not block a completion already supported by real governed
+  // execution, so the loop never runs in that case.
+  let reconciliationRounds = 0;
+  while (
+    completion.status === "completed" &&
+    pendingSchemaExecutions.size > 0 &&
+    !hasAuthoritativeExecution() &&
+    reconciliationRounds < MAX_SCHEMA_RECONCILIATION_ROUNDS
+  ) {
+    reconciliationRounds += 1;
+    const pendingTools = [...pendingSchemaExecutions].sort();
+    await ledger.updateWorkingState({
+      phase: "working",
+      currentJudgement:
+        "完成声明缺少受治理 Tool 的真实执行证据；Schema 披露本身不算执行。",
+      currentAction: "在同一 subAgent 内继续补足证据",
+      nextAction: "执行已披露 schema 的待完成 Tool，或依据真实证据重新确认完成",
+      blockingReason: `Unexecuted schema-disclosed Tool(s): ${pendingTools.join(", ")}`,
+    });
+    await ledger.emitTrace(
+      "plan.revised",
+      "在同一 subAgent 内继续执行待完成 Tool",
+      {
+        reason: "completed_without_authoritative_execution",
+        pendingSchemaExecutions: pendingTools,
+        reconciliationRound: reconciliationRounds,
+      },
+    );
+
+    try {
+      await agent.prompt(buildSchemaReconciliationPrompt(pendingTools));
+    } catch (error) {
+      await ledger.updateWorkingState({
+        phase: "failed",
+        currentAction: "subAgent 继续执行中断",
+        blockingReason: error instanceof Error ? error.message : String(error),
+      });
+      await ledger.emitTrace("subagent.failed", "subAgent 继续执行失败");
+      return failResult({
+        skillId: primary.id,
+        error,
+        recoverable: true,
+        evidence,
+        artifacts,
+        toolCalls,
+        ledger,
+      });
+    }
+
+    const nextCompletion = parseCompletionEnvelope(
+      extractAssistantText(agent.state.messages as unknown[]),
+    );
+    if (!nextCompletion) {
+      await ledger.updateWorkingState({
+        phase: "failed",
+        currentAction: "无法确认 subAgent 的最终交付状态",
+        blockingReason: "Invalid completion envelope",
+      });
+      await ledger.emitTrace("subagent.failed", "subAgent 返回格式无效");
+      return {
+        status: "failed",
+        recoverable: true,
+        error: "subAgent returned an invalid completion envelope",
+        evidence,
+        artifacts,
+        trace: buildTrace({ ledger, skillId: primary.id, toolCalls }),
+      };
+    }
+    completion = nextCompletion;
+  }
+
   const status = completion.status as SkillAgentExecutionResult["status"];
   const summary = asNonEmptyString(completion.summary);
 
-  if (status === "completed" && pendingSchemaExecutions.size > 0) {
+  if (
+    status === "completed" &&
+    pendingSchemaExecutions.size > 0 &&
+    !hasAuthoritativeExecution()
+  ) {
     const pendingTools = [...pendingSchemaExecutions].sort();
     await ledger.updateWorkingState({
-      phase: "failed",
+      phase: "blocked",
       currentJudgement:
-        "Tool schema 已披露，但对应的 governed Tool 调用尚未真正执行。",
-      currentAction: "拒绝过早完成 subAgent",
-      nextAction: "使用已披露的完整 schema 重试 Tool 调用",
+        "Tool schema 已披露，但没有任何受治理 Tool 的真实执行证据；完成声明不成立。",
+      currentAction: "拒绝仅凭 schema 披露的完成声明",
+      nextAction: "使用已披露的完整 schema 重试 Tool 调用并取得真实结果",
       blockingReason: `Pending schema-disclosed Tool execution: ${pendingTools.join(", ")}`,
     });
     await ledger.emitTrace(
-      "subagent.failed",
-      "subAgent 在 schema promotion 后过早完成",
+      "input.required",
+      "subAgent 完成声明缺少真实执行证据",
       { pendingSchemaExecutions: pendingTools },
     );
-    return failResult({
-      skillId: primary.id,
-      error: `subAgent completed before executing promoted Tool(s): ${pendingTools.join(", ")}`,
-      recoverable: true,
+    return {
+      status: "insufficient_evidence",
+      summary:
+        "The subAgent declared completion after only disclosing Tool schemas, without executing the Tools required for verified task evidence.",
+      missingEvidence: [
+        `Unexecuted governed Tool(s) required for completion: ${pendingTools.join(", ")}`,
+      ],
       evidence,
       artifacts,
-      toolCalls,
-      ledger,
-    });
+      trace: buildTrace({ ledger, skillId: primary.id, toolCalls }),
+    };
   }
 
   const completionRequirements =
