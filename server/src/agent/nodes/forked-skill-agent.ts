@@ -9,6 +9,7 @@ import type {
 import type { SkillContext } from "@/skills/context/types.js";
 import { resolveSubAgentExecutionProfile } from "@/skills/agent/profiles.js";
 import { runSubAgent } from "@/skills/agent/subagent-runtime.js";
+import { GENERIC_TASK_SUBAGENT_SKILL_ID } from "../delegation/contract.js";
 import { getAgentRunSignal } from "../run-control.js";
 import type {
   SubAgentApprovedInvocation,
@@ -310,6 +311,25 @@ export const forkedSkillAgentNode = async (
     },
   });
 
+  // The delegation contract already owns the Child's local acceptance criteria.
+  // A Generic Child receives them unchanged from `delegate_task`; a specialist
+  // Skill Child has no structured per-criterion contract today, so its smallest
+  // honest local criterion is the explicit execution goal itself. This never
+  // widens whole-task authority: the Main Planner still owns global acceptance.
+  const goal = state.question?.trim() || state.goal.text;
+  const delegatedCriteria =
+    skillId === GENERIC_TASK_SUBAGENT_SKILL_ID
+      ? (state.goal.successCriteria ?? [])
+      : [];
+  const completionCriteria = [
+    ...new Set(
+      delegatedCriteria.map((criterion) => criterion.trim()).filter(Boolean),
+    ),
+  ];
+  if (completionCriteria.length === 0 && goal.trim()) {
+    completionCriteria.push(goal.trim());
+  }
+
   const createdAt = new Date().toISOString();
   if (profile.workspaceBound && !state.workspaceRoot) {
     const observation: AgentObservation = {
@@ -340,8 +360,9 @@ export const forkedSkillAgentNode = async (
   }
 
   const result = await runSubAgent({
-    goal: state.question?.trim() || state.goal.text,
+    goal,
     skillContext,
+    ...(completionCriteria.length > 0 ? { completionCriteria } : {}),
     workspaceRoot: state.workspaceRoot ?? undefined,
     exposedHarnessToolIds,
     userId: state.userId,

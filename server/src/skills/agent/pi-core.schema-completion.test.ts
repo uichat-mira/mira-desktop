@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     | { messages: unknown[]; tools: Array<Record<string, any>> }
     | undefined,
   completion: "",
+  completions: [] as Array<string | undefined>,
   script: [] as ScriptedCall[][],
   promptCount: 0,
   toolResults: [] as unknown[],
@@ -95,7 +96,9 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
       this.state.messages.push({
         role: "assistant",
-        content: [{ type: "text", text: mocks.completion }],
+        content: [
+          { type: "text", text: mocks.completions[round] ?? mocks.completion },
+        ],
       });
     }
   }
@@ -104,12 +107,16 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
 import { runPiSkillAgent } from "./pi-core.js";
 
-const execution = (): SkillAgentExecutionInput => ({
+const execution = (
+  completionCriteria?: string[],
+  skillId = "generic-task",
+): SkillAgentExecutionInput => ({
   goal: "Compare a.txt and b.txt",
+  ...(completionCriteria ? { completionCriteria } : {}),
   skillContext: {
     instruction: "Use the supplied governed tools.",
     primary: {
-      id: "generic-task",
+      id: skillId,
       version: "0.1.0",
       name: "Generic Task",
       body: "Read and compare the requested files with the supplied governed tools.",
@@ -135,7 +142,7 @@ const toReadBinding = (paths: string[]) => ({
   execute: async (args: Record<string, unknown>) => {
     paths.push(String(args.path));
     return {
-      result: { content: `${args.path}=${paths.length * 100}` },
+      result: { content: `${args.path}=100` },
       evidence: { path: args.path },
     };
   },
@@ -152,21 +159,28 @@ const toWriteBinding = (counter: { executions: number }) => ({
   },
 });
 
-describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
+const twoFileCriteria = ["a.txt is read", "b.txt is read"];
+
+describe("runPiSkillAgent criterion-backed completion evidence", () => {
   beforeEach(() => {
     mocks.agentOptions = undefined;
     mocks.agentState = undefined;
     mocks.completion = "";
+    mocks.completions = [];
     mocks.script = [];
     mocks.promptCount = 0;
     mocks.toolResults = [];
     mocks.toolErrors = [];
   });
 
-  it("accepts multiple real read results plus a schema-only Tool as a correct completion", async () => {
+  it("completes when every criterion is covered by real reads even if another Tool only disclosed its schema", async () => {
     mocks.completion = JSON.stringify({
       status: "completed",
       summary: "a.txt is smaller than b.txt",
+      completionProof: [
+        { criterion: "a.txt is read", evidenceRefs: ["tool:0"] },
+        { criterion: "b.txt is read", evidenceRefs: ["tool:1"] },
+      ],
     });
     const readPaths: string[] = [];
     const writeCounter = { executions: 0 };
@@ -179,13 +193,13 @@ describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
     ];
 
     const result = await runPiSkillAgent({
-      execution: execution(),
+      execution: execution(twoFileCriteria),
       tools: [toReadBinding(readPaths), toWriteBinding(writeCounter)],
       disclosedToolIds: ["read"],
     });
 
-    // The goal is already supported by two real governed reads. The `write`
-    // Tool only disclosed its schema and is not required, so it is neither an
+    // The goal is fully supported by two real governed reads. `write` only
+    // disclosed its schema and is genuinely not required, so it is neither an
     // automatic evidence gap nor a reason to restart the Child.
     expect(result.status).toBe("completed");
     expect(readPaths).toEqual(["a.txt", "b.txt"]);
@@ -200,63 +214,141 @@ describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
     expect(disclosure?.details).toMatchObject({ bindingExecuted: false });
   });
 
-  it("does not accept completion and reconciles in the same Child when only a schema was disclosed", async () => {
-    mocks.completion = JSON.stringify({ status: "completed", summary: "done" });
+  it("does not complete when only a.txt was read and the model supplies a misapplied proof for b.txt", async () => {
+    mocks.completion = JSON.stringify({
+      status: "completed",
+      summary: "compared both files",
+      completionProof: [
+        { criterion: "a.txt is read", evidenceRefs: ["tool:0"] },
+        // The model reuses the single a.txt execution to prop up the second
+        // criterion. Real coverage of b.txt never happened.
+        { criterion: "b.txt is read", evidenceRefs: ["tool:0"] },
+      ],
+    });
     const readPaths: string[] = [];
+    const writeCounter = { executions: 0 };
     mocks.script = [
-      [{ name: "read", args: { path: "a.txt" } }],
+      [
+        { name: "read", args: { path: "a.txt" } },
+        { name: "write", args: {} },
+      ],
       [],
       [],
     ];
 
     const result = await runPiSkillAgent({
-      execution: execution(),
-      tools: [toReadBinding(readPaths)],
-      disclosedToolIds: [],
+      execution: execution(twoFileCriteria),
+      tools: [toReadBinding(readPaths), toWriteBinding(writeCounter)],
+      disclosedToolIds: ["read"],
     });
 
-    // Schema disclosure never executed the governed binding, so the completion
-    // claim is rejected. The runtime kept the work inside the same Child before
+    // A `completed` claim with an invalid/misapplied proof must not be accepted:
+    // b.txt was never actually read, and the same execution cannot cover two
+    // criteria. The runtime keeps the work inside the same Child before
     // reporting the concrete gap instead of faking success.
     expect(result.status).toBe("insufficient_evidence");
-    expect(result.missingEvidence).toEqual([
-      "Unexecuted governed Tool(s) required for completion: read",
-    ]);
-    expect(readPaths).toEqual([]);
+    expect(result.missingEvidence).toEqual(["b.txt is read"]);
+    expect(readPaths).toEqual(["a.txt"]);
+    expect(writeCounter.executions).toBe(0);
     expect(mocks.promptCount).toBe(3);
   });
 
-  it("continues the same Child and accepts completion after the disclosed binding really runs", async () => {
-    mocks.completion = JSON.stringify({ status: "completed", summary: "done" });
+  it("continues the same Child and accepts completion once the missing criterion really runs", async () => {
+    mocks.completions = [
+      JSON.stringify({
+        status: "completed",
+        summary: "a.txt read",
+        completionProof: [
+          { criterion: "a.txt is read", evidenceRefs: ["tool:0"] },
+        ],
+      }),
+      JSON.stringify({
+        status: "completed",
+        summary: "compared both files",
+        completionProof: [
+          { criterion: "a.txt is read", evidenceRefs: ["tool:0"] },
+          { criterion: "b.txt is read", evidenceRefs: ["tool:1"] },
+        ],
+      }),
+    ];
     const readPaths: string[] = [];
     mocks.script = [
       [{ name: "read", args: { path: "a.txt" } }],
-      [{ name: "read", args: { path: "a.txt" } }],
+      [{ name: "read", args: { path: "b.txt" } }],
     ];
 
     const result = await runPiSkillAgent({
-      execution: execution(),
+      execution: execution(twoFileCriteria),
       tools: [toReadBinding(readPaths)],
-      disclosedToolIds: [],
+      disclosedToolIds: ["read"],
     });
 
     expect(result.status).toBe("completed");
-    expect(readPaths).toEqual(["a.txt"]);
-    // Initial prompt + exactly one reconciliation round; no re-delegation.
+    expect(readPaths).toEqual(["a.txt", "b.txt"]);
+    // Initial prompt + exactly one bounded reconciliation in the same Child.
     expect(mocks.promptCount).toBe(2);
     expect(mocks.toolErrors).toEqual([]);
   });
 
-  it("keeps governed execution blocked until a valid retry after schema disclosure", async () => {
-    mocks.completion = JSON.stringify({ status: "completed", summary: "done" });
+  it("rejects completion proof that references a nonexistent execution", async () => {
+    mocks.completion = JSON.stringify({
+      status: "completed",
+      summary: "done",
+      completionProof: [
+        { criterion: "a.txt is read", evidenceRefs: ["tool:9"] },
+      ],
+    });
     const readPaths: string[] = [];
     mocks.script = [
       [{ name: "read", args: { path: "a.txt" } }],
+      [],
+      [],
+    ];
+
+    const result = await runPiSkillAgent({
+      execution: execution(["a.txt is read"]),
+      tools: [toReadBinding(readPaths)],
+      disclosedToolIds: ["read"],
+    });
+
+    expect(result.status).toBe("insufficient_evidence");
+    expect(result.missingEvidence).toEqual(["a.txt is read"]);
+    expect(readPaths).toEqual(["a.txt"]);
+    expect(mocks.promptCount).toBe(3);
+  });
+
+  it("rejects a Skill Child completion that omits the completion proof entirely", async () => {
+    mocks.completion = JSON.stringify({ status: "completed", summary: "done" });
+    const readPaths: string[] = [];
+    mocks.script = [[], [], []];
+
+    const result = await runPiSkillAgent({
+      execution: execution(["Create smoke.docx"], "docx"),
+      tools: [toReadBinding(readPaths)],
+      disclosedToolIds: undefined,
+    });
+
+    expect(result.status).toBe("insufficient_evidence");
+    expect(result.missingEvidence).toEqual(["Create smoke.docx"]);
+    expect(mocks.promptCount).toBe(3);
+  });
+
+  it("keeps governed execution blocked until a valid retry after schema disclosure", async () => {
+    mocks.completion = JSON.stringify({
+      status: "completed",
+      summary: "done",
+      completionProof: [
+        { criterion: "a.txt is read", evidenceRefs: ["tool:0"] },
+      ],
+    });
+    const readPaths: string[] = [];
+    mocks.script = [
+      [{ name: "read", args: {} }],
       [{ name: "read", args: {} }],
     ];
 
     const result = await runPiSkillAgent({
-      execution: execution(),
+      execution: execution(["a.txt is read"]),
       tools: [toReadBinding(readPaths)],
       disclosedToolIds: [],
     });
@@ -269,5 +361,56 @@ describe("runPiSkillAgent schema disclosure vs verified task evidence", () => {
     expect(mocks.toolErrors).toHaveLength(1);
     expect(mocks.toolErrors[0]?.name).toBe("read");
     expect(mocks.toolErrors[0]?.error).toContain("args.path is required");
+  });
+
+  it("accepts a compared pair of real reads for a specialist Skill Child goal criterion", async () => {
+    mocks.completion = JSON.stringify({
+      status: "completed",
+      summary: "created smoke.docx",
+      completionProof: [
+        { criterion: "Create smoke.docx", evidenceRefs: ["tool:0"] },
+      ],
+    });
+    const executions: string[] = [];
+    const documentBinding = {
+      id: "office_document",
+      label: "Document Runtime",
+      description: "create a document",
+      inputSchema: {
+        type: "object",
+        required: ["operation", "outputPath"],
+        properties: {
+          operation: { type: "string" },
+          outputPath: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      execute: async (args: Record<string, unknown>) => {
+        executions.push(String(args.outputPath));
+        return {
+          result: { status: "completed", path: args.outputPath },
+          evidence: { status: "completed", path: args.outputPath },
+          artifacts: [{ path: args.outputPath }],
+        };
+      },
+    };
+    mocks.script = [
+      [
+        {
+          name: "office_document",
+          args: { operation: "create", outputPath: "smoke.docx" },
+        },
+      ],
+    ];
+
+    const result = await runPiSkillAgent({
+      execution: execution(["Create smoke.docx"], "docx"),
+      tools: [documentBinding],
+      disclosedToolIds: undefined,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(executions).toEqual(["smoke.docx"]);
+    expect(mocks.promptCount).toBe(1);
   });
 });

@@ -116,6 +116,12 @@ export type SkillAgentCheckpoint = {
   skillId?: string;
   skillVersion?: string;
   skillContextSnapshot?: SkillContext;
+  /**
+   * The frozen task-local acceptance criteria for this Child work package. It is
+   * captured at the approval boundary so a resume proves coverage against the
+   * same criteria the paused run was delegated, not the Parent's global goal.
+   */
+  completionCriteria?: string[];
 };
 
 export type SkillAgentTrace = {
@@ -150,6 +156,15 @@ export type SkillAgentApprovedInvocation = {
 export type SkillAgentExecutionInput = {
   goal: string;
   skillContext: SkillContext;
+  /**
+   * Task-local acceptance criteria owned by whoever delegated this bounded work
+   * package (the Main Planner for a Generic Child, or the derived local goal
+   * criterion for a specialist Skill Child). When present, a `completed`
+   * terminal claim must carry a completionProof that covers every criterion
+   * with references to real governed Tool executions. Absent means the runtime
+   * keeps its pre-existing completion behavior.
+   */
+  completionCriteria?: string[];
   workspaceRoot?: string;
   userId?: number;
   threadId?: string;
