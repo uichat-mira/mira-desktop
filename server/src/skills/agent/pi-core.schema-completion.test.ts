@@ -290,6 +290,138 @@ describe("runPiSkillAgent criterion-backed completion evidence", () => {
     expect(mocks.toolErrors).toEqual([]);
   });
 
+  it("rejects a single multi-target criterion when only one named file was read", async () => {
+    mocks.completion = JSON.stringify({
+      status: "completed",
+      summary: "compared a.txt and b.txt",
+      completionProof: [
+        { criterion: "Compare a.txt and b.txt", evidenceRefs: ["tool:0"] },
+      ],
+    });
+    const readPaths: string[] = [];
+    mocks.script = [
+      [{ name: "read", args: { path: "a.txt" } }],
+      [],
+      [],
+    ];
+
+    const result = await runPiSkillAgent({
+      execution: execution(["Compare a.txt and b.txt"]),
+      tools: [toReadBinding(readPaths)],
+      disclosedToolIds: ["read"],
+    });
+
+    // The criterion names two concrete targets derived from the criterion text,
+    // not from the ledger. A single read of a.txt leaves b.txt uncovered even
+    // though the model cites a real execution, so the claim is not accepted.
+    expect(result.status).toBe("insufficient_evidence");
+    expect(result.missingEvidence).toEqual(["Compare a.txt and b.txt"]);
+    expect(readPaths).toEqual(["a.txt"]);
+    expect(mocks.promptCount).toBe(3);
+  });
+
+  it("accepts a single multi-target criterion only when every named file was really read", async () => {
+    mocks.completion = JSON.stringify({
+      status: "completed",
+      summary: "compared a.txt and b.txt",
+      completionProof: [
+        {
+          criterion: "Compare a.txt and b.txt",
+          evidenceRefs: ["tool:0", "tool:1"],
+        },
+      ],
+    });
+    const readPaths: string[] = [];
+    mocks.script = [
+      [
+        { name: "read", args: { path: "a.txt" } },
+        { name: "read", args: { path: "b.txt" } },
+      ],
+    ];
+
+    const result = await runPiSkillAgent({
+      execution: execution(["Compare a.txt and b.txt"]),
+      tools: [toReadBinding(readPaths)],
+      disclosedToolIds: ["read"],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(readPaths).toEqual(["a.txt", "b.txt"]);
+    expect(mocks.promptCount).toBe(1);
+  });
+
+  it("does not let a distinct unrelated execution satisfy a criterion naming a different file", async () => {
+    mocks.completion = JSON.stringify({
+      status: "completed",
+      summary: "both read",
+      completionProof: [
+        { criterion: "a.txt is read", evidenceRefs: ["tool:0"] },
+        { criterion: "b.txt is read", evidenceRefs: ["tool:1"] },
+      ],
+    });
+    const readPaths: string[] = [];
+    mocks.script = [
+      [
+        { name: "read", args: { path: "a.txt" } },
+        { name: "read", args: { path: "c.txt" } },
+      ],
+      [],
+      [],
+    ];
+
+    const result = await runPiSkillAgent({
+      execution: execution(twoFileCriteria),
+      tools: [toReadBinding(readPaths)],
+      disclosedToolIds: ["read"],
+    });
+
+    // tool:0 and tool:1 are distinct real executions, but neither touches b.txt.
+    // The criterion names b.txt from its own text, so the unrelated c.txt read
+    // cannot cover it.
+    expect(result.status).toBe("insufficient_evidence");
+    expect(result.missingEvidence).toEqual(["b.txt is read"]);
+    expect(readPaths).toEqual(["a.txt", "c.txt"]);
+    expect(mocks.promptCount).toBe(3);
+  });
+
+  it("does not accept a different operation on the named target for an operation-specific criterion", async () => {
+    mocks.completion = JSON.stringify({
+      status: "completed",
+      summary: "a.txt read",
+      completionProof: [{ criterion: "read a.txt", evidenceRefs: ["tool:0"] }],
+    });
+    const writePaths: string[] = [];
+    const writeBinding = {
+      id: "write",
+      label: "write",
+      description: "write tool",
+      inputSchema: pathSchema,
+      execute: async (args: Record<string, unknown>) => {
+        writePaths.push(String(args.path));
+        return { result: { ok: true }, evidence: { path: args.path } };
+      },
+    };
+    mocks.script = [
+      [{ name: "write", args: { path: "a.txt" } }],
+      [],
+      [],
+    ];
+
+    const result = await runPiSkillAgent({
+      execution: execution(["read a.txt"]),
+      tools: [writeBinding],
+      disclosedToolIds: ["write"],
+    });
+
+    // The execution really touched a.txt, but the criterion asks to read it. The
+    // governed Tool contract (id "write") clearly exposes a different operation,
+    // so this unrelated successful operation cannot establish the requested read.
+    expect(result.status).toBe("insufficient_evidence");
+    expect(result.missingEvidence).toEqual(["read a.txt"]);
+    expect(writePaths).toEqual(["a.txt"]);
+    expect(mocks.promptCount).toBe(3);
+  });
+
   it("rejects completion proof that references a nonexistent execution", async () => {
     mocks.completion = JSON.stringify({
       status: "completed",

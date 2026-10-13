@@ -159,29 +159,144 @@ const parseCompletionProof = (value: unknown): CompletionProof[] | null => {
   return proofs;
 };
 
-const criterionMentionedTargets = (
-  criterion: string,
-  ledger: GovernedExecutionRecord[],
-): string[] => {
-  const lower = criterion.toLowerCase();
-  const mentioned = new Set<string>();
-  for (const record of ledger) {
-    for (const target of record.targets) {
-      if (lower.includes(target.toLowerCase())) mentioned.add(target.toLowerCase());
+/**
+ * Concretely named targets come from the criterion text itself, never from the
+ * successful-execution ledger. Deriving them from recorded targets alone would
+ * let a target that was never touched silently disappear from verification, so a
+ * criterion that names `a.txt` and `b.txt` could be "proven" by a single read of
+ * `a.txt`. Only file/path-like tokens are treated as concrete; a criterion with
+ * no concrete target stays semantically judged by the model and receives no
+ * mechanical target check.
+ */
+const CRITERION_TARGET_PATTERN = /[A-Za-z][A-Za-z0-9_@-]*(?:\.[A-Za-z0-9]{2,})+/g;
+
+const extractCriterionTargets = (criterion: string): string[] => {
+  const targets = new Set<string>();
+  for (const match of criterion.matchAll(CRITERION_TARGET_PATTERN)) {
+    targets.add(match[0].toLowerCase());
+  }
+  return [...targets];
+};
+
+/**
+ * Operation verbs a criterion can request, grouped so read-like and write-like
+ * intents stay distinguishable. A successful operation on the right target that
+ * is a clearly different kind of operation must not be accepted as proof of the
+ * requested one when the governed Tool contract exposes enough information.
+ */
+const OPERATION_GROUPS: Record<string, readonly string[]> = {
+  read: [
+    "read",
+    "open",
+    "cat",
+    "view",
+    "inspect",
+    "load",
+    "show",
+    "display",
+    "preview",
+    "fetch",
+  ],
+  write: [
+    "write",
+    "create",
+    "save",
+    "update",
+    "modify",
+    "edit",
+    "append",
+    "insert",
+    "produce",
+    "generate",
+    "export",
+    "render",
+  ],
+  delete: ["delete", "remove", "unlink", "drop", "erase", "purge"],
+  list: ["list", "ls", "enumerate", "scan", "browse", "glob", "search", "find"],
+  move: ["move", "rename", "copy", "duplicate"],
+};
+
+const OPERATION_BY_ALIAS = new Map<string, string>(
+  Object.entries(OPERATION_GROUPS).flatMap(([group, aliases]) =>
+    aliases.map((alias) => [alias, group] as const),
+  ),
+);
+
+const operationGroupsFromText = (text: string): Set<string> => {
+  const groups = new Set<string>();
+  for (const token of text.toLowerCase().split(/[^a-z0-9]+/)) {
+    const group = OPERATION_BY_ALIAS.get(token);
+    if (group) groups.add(group);
+  }
+  return groups;
+};
+
+const extractCriterionOperation = (criterion: string): string | null => {
+  const groups = operationGroupsFromText(criterion);
+  return groups.size === 1 ? [...groups][0]! : null;
+};
+
+const OPERATION_ARGUMENT_KEYS = new Set([
+  "operation",
+  "action",
+  "op",
+  "command",
+  "mode",
+  "method",
+  "verb",
+]);
+
+const collectOperationValues = (value: unknown, output: Set<string>) => {
+  const record = asRecord(value);
+  if (!record) return;
+  for (const [key, nested] of Object.entries(record)) {
+    if (
+      typeof nested === "string" &&
+      OPERATION_ARGUMENT_KEYS.has(key.toLowerCase())
+    ) {
+      const trimmed = nested.trim();
+      if (trimmed) output.add(trimmed);
+    } else if (Array.isArray(nested) || asRecord(nested)) {
+      collectOperationValues(nested, output);
     }
   }
-  return [...mentioned];
+};
+
+const executionOperationGroups = (
+  record: GovernedExecutionRecord,
+): Set<string> => {
+  const groups = new Set<string>();
+  for (const group of operationGroupsFromText(record.toolId)) groups.add(group);
+  const values = new Set<string>();
+  collectOperationValues(record.args, values);
+  collectOperationValues(record.evidence, values);
+  for (const value of values) {
+    for (const group of operationGroupsFromText(value)) groups.add(group);
+  }
+  return groups;
+};
+
+const normalizeTarget = (target: string) =>
+  target.toLowerCase().replace(/\\/g, "/").replace(/\/+$/, "");
+
+const targetsMatch = (expected: string, actual: string): boolean => {
+  const a = normalizeTarget(expected);
+  const b = normalizeTarget(actual);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
 };
 
 /**
  * Deterministic provenance guard for a `completed` claim. The model still judges
  * semantic sufficiency: it decides which real execution covers which criterion
- * and writes the criterion text. The runtime only enforces that every declared
- * criterion is present, that each reference points at a real successful governed
- * execution recorded in this run, that a concrete target named by the criterion
- * was actually touched by the referenced execution, and that no single execution
- * is reused to prop up several criteria. Ref existence alone is never treated as
- * proof of semantic coverage; an unsupported criterion is reported as missing.
+ * and writes the criterion text. The runtime enforces reference provenance
+ * (existing, successful governed executions recorded in this run), concrete
+ * target coverage derived from the criterion, operation compatibility where the
+ * Tool contract exposes it, and that no single execution is reused to prop up
+ * several criteria. Every target named by a criterion must be covered, not just
+ * one of them. Ref existence alone is never treated as proof of semantic
+ * coverage; an unsupported criterion is reported as missing.
  */
 const validateCompletionProof = (input: {
   criteria: readonly string[];
@@ -205,25 +320,46 @@ const validateCompletionProof = (input: {
       missing.push(criterion);
       continue;
     }
-    const mentionedTargets = criterionMentionedTargets(criterion, input.ledger);
-    let supported = false;
+
+    const namedTargets = extractCriterionTargets(criterion);
+    const requiredOperation = extractCriterionOperation(criterion);
+
+    const candidateIndexes: number[] = [];
     for (const ref of proof.evidenceRefs) {
       const index = parseEvidenceRefIndex(ref);
       if (index === null || index >= input.ledger.length) continue;
       const owner = executionOwner.get(index);
       if (owner !== undefined && owner !== criterion) continue;
       const record = input.ledger[index]!;
-      if (mentionedTargets.length > 0) {
-        const recordTargets = record.targets.map((target) => target.toLowerCase());
-        if (!mentionedTargets.some((target) => recordTargets.includes(target))) {
+      if (requiredOperation) {
+        const operationGroups = executionOperationGroups(record);
+        // Only reject when the Tool contract clearly exposes an operation and it
+        // is a different one; unknown operation semantics stay model-judged.
+        if (operationGroups.size > 0 && !operationGroups.has(requiredOperation)) {
           continue;
         }
       }
-      executionOwner.set(index, criterion);
-      supported = true;
-      break;
+      candidateIndexes.push(index);
     }
-    if (!supported) missing.push(criterion);
+
+    if (candidateIndexes.length === 0) {
+      missing.push(criterion);
+      continue;
+    }
+
+    const coveredTargets: string[] = [];
+    for (const index of candidateIndexes) {
+      coveredTargets.push(...input.ledger[index]!.targets);
+    }
+    const allTargetsCovered = namedTargets.every((target) =>
+      coveredTargets.some((covered) => targetsMatch(target, covered)),
+    );
+    if (!allTargetsCovered) {
+      missing.push(criterion);
+      continue;
+    }
+
+    for (const index of candidateIndexes) executionOwner.set(index, criterion);
   }
 
   return missing.length === 0 ? { ok: true } : { ok: false, missing };
@@ -1049,6 +1185,7 @@ const buildCompletionProofReconciliationPrompt = (input: {
     `Available governed evidence: ${JSON.stringify(catalog)}`,
     "Call the exposed Tool(s) now so each unsupported criterion has a real successful governed execution.",
     'Then return one terminal JSON object whose completionProof covers every criterion, using the exact criterion text and evidenceRefs of the form "tool:<n>" taken only from real successful governed executions.',
+    "A reference must be an execution that really touched every concrete target named in the criterion and performed the requested operation; an execution on a different target or operation cannot support it.",
     "Schema disclosure, approval waits, blocked attempts and failed executions are not evidence, and one execution may support at most one criterion.",
     "</completion-proof-reconciliation>",
   ].join("\n");
