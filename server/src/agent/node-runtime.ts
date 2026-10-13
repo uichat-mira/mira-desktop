@@ -1,6 +1,7 @@
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
 import type { RetrievedChunk } from "@/services/rag-nodes";
 import type { ContextBudgetAudit } from "@/services/context-budget/index";
+import type { ProgressiveResolutionState } from "@/harness/progressive-resolution-state";
 import { toAgentExecutionNode } from "./trace";
 export {
   getToolTraceTargetPreview,
@@ -97,6 +98,7 @@ export interface AgentNodeState {
   pendingRetrievalEvidence?: AgentRetrievalEvidence;
   evidence?: AgentEvidencePayload;
   contextBudget?: ContextBudgetAudit;
+  progressiveResolution?: ProgressiveResolutionState;
   errorMessage?: string;
   errorSourceNodeId?: string;
   schemaReplanDiagnostics?: AgentSchemaReplanDiagnostics;

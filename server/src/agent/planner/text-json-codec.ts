@@ -92,6 +92,8 @@ const getDefaultPlannerReason = (
       return `Planner requested retrieval for query: ${String(payload.query ?? "").trim()}.`;
     case "use_tool":
       return `Planner selected tool ${String(payload.toolId ?? "").trim()}.`;
+    case "activate_skill":
+      return `Planner selected Skill ${String(payload.skillId ?? "").trim()}.`;
     case "ask_user":
       return "Planner needs the user to clarify the missing information.";
     case "error":
@@ -248,6 +250,27 @@ export const parseNextActionPlannerObject = (
         action: {
           type: "retrieve",
           query: parsed.query.trim(),
+          reason,
+        },
+        sanitizedOutput: "",
+        parseErrorReason: null,
+        parseWarnings,
+        rawDecision: parsed,
+      };
+    case "activate_skill":
+      if (typeof parsed.skillId !== "string" || !parsed.skillId.trim()) {
+        return {
+          action: null,
+          sanitizedOutput: "",
+          parseErrorReason: 'Planner "activate_skill" needs a non-empty skillId.',
+          parseWarnings: [],
+          rawDecision: parsed,
+        };
+      }
+      return {
+        action: {
+          type: "activate_skill",
+          skillId: parsed.skillId.trim(),
           reason,
         },
         sanitizedOutput: "",

@@ -67,6 +67,15 @@ const narrowParentRecoveryToolExposure = (input: {
   return {
     exposedTools: input.toolExposure.exposedTools.filter((toolId) => allowed.has(toolId)),
     toolMeta: input.toolExposure.toolMeta.filter((tool) => allowed.has(tool.toolId)),
+    // Recovery narrowing is an authority boundary for the active Skill, so the
+    // delegated envelope narrows with it instead of staying broad.
+    ...(input.toolExposure.eligibleTools
+      ? {
+          eligibleTools: input.toolExposure.eligibleTools.filter((toolId) =>
+            allowed.has(toolId),
+          ),
+        }
+      : {}),
   };
 };
 

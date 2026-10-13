@@ -10,6 +10,7 @@ import type {
   CurrentTaskFrame,
 } from "./types";
 import type { RetrievedChunk } from "@/services/rag-nodes";
+import type { ProgressiveResolutionState } from "@/harness/progressive-resolution-state";
 
 export interface AgentRuntimeCheckpoint {
   currentTaskFrame?: CurrentTaskFrame;
@@ -20,6 +21,7 @@ export interface AgentRuntimeCheckpoint {
   iterationCount?: number;
   finalizationPacket?: AgentFinalizationPacket;
   workspaceOutputs?: AgentWorkspaceOutputDeclaration[];
+  progressiveResolution?: ProgressiveResolutionState;
 }
 
 type PersistedRuntimeInput = NonNullable<AgentRun["runtimeInput"]>;
@@ -60,6 +62,8 @@ export const applyAgentRuntimeCheckpoint = (
     workspaceOutputs:
       explicitInput.workspaceOutputs ??
       checkpoint?.workspaceOutputs,
+    progressiveResolution:
+      explicitInput.progressiveResolution ?? checkpoint?.progressiveResolution,
   };
 };
 
@@ -95,6 +99,7 @@ export const persistAgentRuntimeCheckpoint = (
         checkpointOutput.iterationCount ?? derivedIterationCount,
       finalizationPacket: output.finalizationPacket,
       workspaceOutputs: output.workspaceOutputs,
+      progressiveResolution: checkpointOutput.progressiveResolution,
     },
   };
 };

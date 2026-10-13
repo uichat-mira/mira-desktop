@@ -149,6 +149,30 @@ const makeToolIntentResult = (
     reason: [],
     blockedCapabilityIds: [],
   },
+  // Deterministic current-turn selection the Harness resolver now produces for
+  // every catalog size; the selected capability's Tools are the ones disclosed.
+  resolution: {
+    path: "exact",
+    selectedCapabilityId: definitions[0]?.id ?? null,
+    candidates: definitions.map((definition) => ({
+      capabilityId: definition.id,
+      score: 0.9,
+      reason: `${definition.id} matched`,
+    })),
+    trace: {
+      query,
+      path: "exact",
+      modelCalls: 0,
+      semanticAttempted: false,
+      ambiguous: false,
+      deterministicCandidates: [],
+      selectedCapabilityId: definitions[0]?.id ?? null,
+      domainHint: null,
+      selectedDomain: null,
+      wrongDomainRecovered: false,
+      reason: "test resolution",
+    },
+  },
 });
 
 const setupToolExposure = (

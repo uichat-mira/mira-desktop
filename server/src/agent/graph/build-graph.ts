@@ -10,6 +10,7 @@ import {
   policyNode,
   prepareContextNode,
   retrieveNode,
+  activateSkillNode,
   toolCallNormalizeNode,
   toolNode,
 } from "../nodes/index";
@@ -48,6 +49,7 @@ export const compiledAgentStateGraph = new StateGraph(AgentGraphStateAnnotation)
   .addNode("policyStep", createAgentNode("policyStep", policyNode))
   .addNode("approval", createAgentNode("approval", approvalNode))
   .addNode("retrieve", createAgentNode("retrieve", retrieveNode))
+  .addNode("activateSkill", createAgentNode("activateSkill", activateSkillNode))
   .addNode("tool", createAgentNode("tool", toolNode))
   .addNode("evidenceStage", createAgentNode("evidenceStage", evidenceNode))
   .addNode("generate", createAgentNode("generate", generateNode))
@@ -63,6 +65,7 @@ export const compiledAgentStateGraph = new StateGraph(AgentGraphStateAnnotation)
   .addConditionalEdges("nextActionPlanner", routeAfterNextAction, [
     "generate",
     "retrieve",
+    "activateSkill",
     "genericTaskSubAgent",
     "toolCallNormalize",
     "error",
@@ -85,6 +88,9 @@ export const compiledAgentStateGraph = new StateGraph(AgentGraphStateAnnotation)
     "error",
   ])
   .addConditionalEdges("approval", routeAfterApproval, [END, "error"])
+  .addConditionalEdges("activateSkill", routeAfterGenericTaskSubAgent, [
+    "evidenceStage", "nextActionPlanner", "approval", "error",
+  ])
   .addConditionalEdges("retrieve", routeAfterRetrieve, [
     "evidenceStage",
     "generate",

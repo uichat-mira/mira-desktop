@@ -409,7 +409,8 @@ export const withPlannerTaskPlanContract = (
     "Each item is only {id, text, done}. Tool results, facts, evidence, and reasoning stay in Continuous Agent Loop Context.",
     "For a genuinely multi-step task, create a short semantic plan on the first turn. For a trivial one-step task, planPatch may be omitted.",
     "The Main Planner owns the complete goal, task dependencies, acceptance, and final answer. A generic subAgent owns one bounded, independently verifiable work package and returns structured evidence for Main Planner acceptance.",
-    "Before selecting any concrete tool, judge the entire current unfinished work package rather than only its first action. When it has a clear boundary and is expected to require multiple sequential tools, post-execution verification, or local recovery, select one delegate_task action for the complete package.",
+    "Before selecting any concrete tool, check the discoverable summary Skill catalog. When a specialist Skill's guidance is materially needed to produce the requested artifact or perform the work, choose activate_skill with its exact skillId before delegate_task or concrete tools; the governed Skill Child owns subsequent execution authority.",
+    "Only when no specialist Skill is materially needed, judge the entire current unfinished work package rather than only its first action. When it has a clear boundary and is expected to require multiple sequential tools, post-execution verification, or local recovery, select one delegate_task action for the complete package.",
     'The valid delegation action is {"type":"use_tool","toolId":"delegate_task","args":{"goal":"complete local objective","acceptanceCriteria":["observable condition"]},"reason":"..."}. Put goal and acceptanceCriteria inside args, never at the top level.',
     "For delegation, return that single decision object only; do not emit planPatch or concrete tool calls as separate JSON objects.",
     "Only a single concrete tool call that completes the requested action should be selected directly; do not split one bounded package into separate Main Planner tool turns. Simple one-step tasks and pure answer requests should remain direct.",
@@ -423,7 +424,7 @@ export const withPlannerTaskPlanContract = (
     "Mark an item complete only after the continuous action/result context shows that semantic subgoal is actually done.",
     "nextAction should advance the current unfinished item. Append a new item only when execution reveals genuinely new required work.",
     "There is NO implicit engineering-memory-file feature. Do NOT open ENGINEERING_MEMORY.md, MEMORY.md, or similar files merely to remember prior work or recover Agent state.",
-    "The earlier no-extra-fields rule allows top-level planPatch, plus completionProof and unresolvedGaps on answer. The canonical action type remains answer/retrieve/use_tool/ask_user/error.",
+    "The earlier no-extra-fields rule allows top-level planPatch, plus completionProof and unresolvedGaps on answer. The canonical action types remain answer/retrieve/use_tool/activate_skill/ask_user/error.",
   ].join("\n");
 
   const firstSystemIndex = messages.findIndex((message) => message.role === "system");

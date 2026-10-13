@@ -3,13 +3,14 @@ import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { Button } from "@/shared/ui/Button";
 import { Modal } from "@/shared/ui/Modal";
-import { NumberInput, TextArea, TextInput } from "@/shared/ui/Input";
+import { TextArea } from "@/shared/ui/Input";
 import SettingsPageLayout from "../../components/SettingsPageLayout";
 import ToolsPackagePanel from "./components/ToolsPackagePanel";
 import ToolsSidebar from "./components/ToolsSidebar";
 import ToolsTracePanel from "./components/ToolsTracePanel";
 import ToolsWorkbenchPanel from "./components/ToolsWorkbenchPanel";
 import { useToolsWorkbench } from "./hooks/useToolsWorkbench";
+import WebSearchConfigPanel from "../../components/WebSearchConfigPanel";
 import type { ToolWorkbenchHandoff } from "./types";
 
 const getToolWorkbenchHandoff = (state: unknown): ToolWorkbenchHandoff | null => {
@@ -90,6 +91,14 @@ export default function ToolsSettings() {
             terminalSummary={workbench.terminalSummary}
             runStatus={workbench.runStatus}
             isRunning={workbench.isRunning}
+            isConfigLoading={
+              workbench.selectedTool?.id === "web_search" && workbench.webSearchConfigLoading
+            }
+            isExecuteBlocked={
+              workbench.selectedTool?.id === "web_search" &&
+              (workbench.webSearchConfigLoading || workbench.webSearchConfigSaving ||
+                Boolean(workbench.webSearchConfigLoadError))
+            }
             pendingApproval={Boolean(workbench.pendingApproval)}
             activeCase={workbench.activeCase}
             tracePanel={
@@ -158,9 +167,15 @@ export default function ToolsSettings() {
             </Button>
             <Button
               variant="primary"
+              disabled={
+                workbench.selectedTool?.id === "web_search" &&
+                (workbench.webSearchConfigLoading || workbench.webSearchConfigSaving ||
+                  Boolean(workbench.webSearchConfigLoadError))
+              }
               onClick={async () => {
                 if (workbench.selectedTool?.id === "web_search") {
-                  await workbench.saveWebSearchConfig();
+                  const saved = await workbench.saveWebSearchConfig();
+                  if (!saved) return;
                 }
                 setIsArgsModalOpen(false);
               }}
@@ -201,77 +216,17 @@ export default function ToolsSettings() {
             </div>
           ) : null}
           {workbench.selectedTool?.id === "web_search" ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3">
-                <div className="rounded-ui-control border border-border bg-surface-primary px-3 py-3">
-                  <div className="flex items-center gap-2">
-                    <img
-                      src="https://www.tavily.com/logos/tavily-full.svg"
-                      alt="Tavily"
-                      className="h-4 w-auto"
-                    />
-                    <span className="text-xs text-text-tertiary">
-                      {t("settings.tools.package.webSearchTavilyHint")}
-                    </span>
-                  </div>
-                  <div className="mt-3">
-                    <TextInput
-                      label={t("settings.tools.package.webSearchApiKey")}
-                      value={workbench.webSearchConfig.apiKey}
-                      onChange={(value) =>
-                        workbench.setWebSearchConfig((current) => ({
-                          ...current,
-                          apiKey: value,
-                        }))
-                      }
-                      placeholder={t("settings.tools.package.webSearchApiKeyPlaceholder")}
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-ui-control border border-border bg-surface-primary px-3 py-3">
-                  <div className="flex items-center gap-2">
-                    <img
-                      src="https://upload.wikimedia.org/wikipedia/en/a/a3/SearXNG_logo.svg"
-                      alt="SearXNG"
-                      className="h-4 w-auto"
-                    />
-                    <span className="text-xs text-text-tertiary">
-                      {t("settings.tools.package.webSearchSearxngHint")}
-                    </span>
-                  </div>
-                  <div className="mt-3">
-                    <TextInput
-                      label={t("settings.tools.package.webSearchBaseUrl")}
-                      value={workbench.webSearchConfig.baseUrl}
-                      onChange={(value) =>
-                        workbench.setWebSearchConfig((current) => ({
-                          ...current,
-                          baseUrl: value,
-                        }))
-                      }
-                      placeholder={t("settings.tools.package.webSearchBaseUrlPlaceholder")}
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-ui-control border border-border bg-surface-primary px-3 py-3">
-                  <NumberInput
-                    label={t("settings.tools.package.webSearchMaxResults")}
-                    value={workbench.webSearchConfig.maxResults}
-                    onChange={(value) =>
-                      workbench.setWebSearchConfig((current) => ({
-                        ...current,
-                        maxResults: value,
-                      }))
-                    }
-                    step={1}
-                    labelHelp={t("settings.tools.package.webSearchMaxResultsHint")}
-                  />
-                </div>
-              </div>
-
-            </div>
+            <WebSearchConfigPanel
+              config={workbench.webSearchConfig}
+              isLoading={workbench.webSearchConfigLoading}
+              isSaving={workbench.webSearchConfigSaving}
+              loadError={workbench.webSearchConfigLoadError}
+              onReload={workbench.reloadWebSearchConfig}
+              onChange={(update) =>
+                workbench.setWebSearchConfig(update(workbench.webSearchConfig))
+              }
+              onSave={workbench.saveWebSearchConfig}
+            />
           ) : (
             <>
               <div className="text-sm text-text-secondary">

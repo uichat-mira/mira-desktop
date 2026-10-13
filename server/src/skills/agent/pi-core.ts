@@ -10,6 +10,7 @@ import type { JsonValue } from "@earendil-works/pi-ai";
 import { streamSimple as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { createProviderVisibleInputSchema } from "@/mcp/core/provider-visible-schema.js";
+import { validateInvocationArgs } from "@/mcp/core/schema";
 import { getProviderDefinition } from "@/providers/catalog.js";
 import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 import type {
@@ -43,14 +44,35 @@ const asNonEmptyString = (value: unknown) =>
 type PiModel = NonNullable<NonNullable<AgentOptions["initialState"]>["model"]>;
 type BindingExecution = Awaited<ReturnType<SkillAgentToolBinding["execute"]>>;
 
-// Pi 1.0 requires an explicit streamFn. Mira deliberately shapes its Pi model as
-// `api: "openai-completions"` (see resolvePiModel), so it pairs that model with
-// Pi's official OpenAI-completions stream function instead of Pi's provider
-// catalog. AgentOptions.streamFn is typed against the generic `Model<Api>`, while
-// the exported implementation accepts the narrower `Model<"openai-completions">`
-// it is meant to serve; this cast only bridges that generic slot and does not
-// change the runtime pairing.
-const piStreamFn = streamOpenAICompletions as unknown as AgentOptions["streamFn"];
+// Pi's OpenAI-completions transport does not infer OpenCode Go's required
+// x-opencode-session header from Agent.sessionId. Supply a stable ID to *each*
+// request in one Skill Child run without changing other provider transports.
+// The stream-function cast only bridges Pi's generic API slot to the dedicated
+// OpenAI-completions implementation; the runtime remains Pi's official SDK.
+const openAiCompletionsStream =
+  streamOpenAICompletions as unknown as NonNullable<AgentOptions["streamFn"]>;
+
+export const createSkillAgentStreamFn = (
+  sessionId: string,
+): NonNullable<AgentOptions["streamFn"]> =>
+  (model, context, options) => {
+    // Only the official OpenCode Go origin receives these affinity headers.
+    // Never copy Go routing headers to arbitrary OpenAI-compatible endpoints.
+    const isOpenCodeGo =
+      typeof model.baseUrl === "string" &&
+      /^https:\/\/opencode\.ai\/zen\/go\/v1(?:\/|$)/i.test(model.baseUrl);
+
+    return openAiCompletionsStream(model, context, isOpenCodeGo
+      ? {
+          ...options,
+          headers: {
+            ...options?.headers,
+            "x-opencode-session": sessionId,
+            "User-Agent": "mira-pi-skill-agent/1",
+          },
+        }
+      : options);
+  };
 
 const isArkPlanProvider = (providerTemplateCode: string) =>
   providerTemplateCode === "volcengine-code-plan" ||
@@ -463,6 +485,7 @@ const executeBinding = async (input: {
         toolCallId: input.toolCallId,
         artifactCount: executed.artifacts?.length ?? 0,
         evidenceAdded: executed.evidence !== undefined,
+        bindingExecuted: true,
       });
     }
 
@@ -488,23 +511,82 @@ const toPiTool = (input: {
   toolCalls: string[];
   ledger: Ledger;
   projectComplexToolSchemas: boolean;
+  /**
+   * Progressive Tool disclosure: only exact-known Tools are presented to the
+   * model with their full schema. Metadata-stage Tools remain callable by name,
+   * but their first call only promotes the schema and never executes the binding.
+   */
+  schemaDisclosed: boolean;
+  promoteSchema?: () => boolean;
+  markSchemaExecutionAttempted?: () => void;
   parentSignal?: AbortSignal;
 }): AgentTool<any> => ({
   name: input.binding.id,
   label: input.binding.label,
-  description: input.binding.description,
-  parameters: projectProviderVisibleToolSchema({
-    schema: input.binding.inputSchema,
-    projectComplexToolSchemas: input.projectComplexToolSchemas,
-  }) as any,
+  description: input.schemaDisclosed
+    ? input.binding.description
+    : `${input.binding.description} Full input details are not disclosed yet. Invoke this Tool once to disclose its schema; that metadata-stage invocation will not execute the Tool.`,
+  parameters: (input.schemaDisclosed
+    ? projectProviderVisibleToolSchema({
+        schema: input.binding.inputSchema,
+        projectComplexToolSchemas: input.projectComplexToolSchemas,
+      })
+    : projectProviderVisibleToolSchema({
+        schema: { type: "object" },
+        projectComplexToolSchemas: input.projectComplexToolSchemas,
+      })) as any,
   executionMode: "sequential",
   execute: async (toolCallId, params, signal) => {
+    if (!input.schemaDisclosed) {
+      const promoted = input.promoteSchema?.() ?? false;
+      if (!promoted) {
+        throw new Error(
+          `Tool schema could not be disclosed for ${input.binding.id}; execution was blocked.`,
+        );
+      }
+      await input.ledger.emitTrace(
+        "plan.revised",
+        `${input.binding.label} 参数结构已披露`,
+        {
+          toolId: input.binding.id,
+          disclosureTransition: "metadata->schema",
+          bindingExecuted: false,
+        },
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: `The full input schema for ${input.binding.id} is now disclosed. Retry this Tool using the disclosed schema. This metadata-stage call did not execute the Tool.`,
+          },
+        ],
+        details: {
+          toolId: input.binding.id,
+          disclosure: "schema",
+          bindingExecuted: false,
+        },
+      };
+    }
+
+    const args = (params ?? {}) as Record<string, unknown>;
+    // Pi validates against the provider-visible Tool schema before execute().
+    // Keep the canonical Harness schema check here as the final adapter guard so
+    // a provider projection can never send unchecked args into the binding.
+    validateInvocationArgs(args, input.binding.inputSchema);
+
+    // Reaching the governed binding with canonically valid args is the execution
+    // attempt boundary. Pi converts binding throws into error Tool results and
+    // continues the Agent loop, so clearing the disclosure guard only after a
+    // successful return would later misreport a real failed execution as
+    // "never executed".
+    input.markSchemaExecutionAttempted?.();
+
     const combined = combineAbortSignals(input.parentSignal, signal);
     try {
       const { toolResult } = await executeBinding({
         binding: input.binding,
         toolCallId,
-        args: (params ?? {}) as Record<string, unknown>,
+        args,
         signal: combined.signal,
         evidence: input.evidence,
         artifacts: input.artifacts,
@@ -695,9 +777,33 @@ const failResult = (input: {
       },
 });
 
+/**
+ * A disclosure is a Tool-context update, not a task result. Give the Child one
+ * chance to reconsider its terminal declaration with the newly visible schema.
+ * Whether that Tool is actually needed is a task-semantic decision, not a
+ * deterministic check on file names, invocation counts or Evidence array sizes.
+ */
+const buildSchemaReconciliationPrompt = (pendingTools: string[]) =>
+  [
+    "<schema-disclosure-reconsideration>",
+    `The following Tool schemas were disclosed, but those Tool bindings have not been invoked: ${pendingTools.join(", ")}.`,
+    "Schema disclosure is not an execution or a successful task result.",
+    "Reassess your delegated goal using the actual task context and governed Tool results available in this Child.",
+    "If any disclosed Tool is required to finish your work, invoke it now with its full schema. If your task is already completed without that Tool, you may report completed and explain the concrete result in the summary.",
+    "If the task is not complete and cannot be finished, return insufficient_evidence with the real gap. Do not invent Tool results or citations.",
+    "Return the normal terminal JSON object; the Main Planner still owns global task acceptance.",
+    "</schema-disclosure-reconsideration>",
+  ].join("\n");
+
 export const runPiSkillAgent = async (input: {
   execution: SkillAgentExecutionInput;
   tools: SkillAgentToolBinding[];
+  /**
+   * Exact-known Tools that may be presented to the model with their full schema.
+   * Undefined means the Skill did not opt into progressive disclosure, so every
+   * allowed Tool keeps its full schema (the pre-existing behavior).
+   */
+  disclosedToolIds?: readonly string[];
 }): Promise<SkillAgentExecutionResult> => {
   const primary = input.execution.skillContext.primary;
   if (!primary) {
@@ -721,10 +827,38 @@ export const runPiSkillAgent = async (input: {
   const toolCalls: string[] = checkpoint ? [...checkpoint.toolCalls] : [];
   const ledger = createLedger({ execution: input.execution, skillId: primary.id });
   const { model, apiKey, projectComplexToolSchemas } = resolvePiModel();
-  const tools: AgentTool<any>[] = [createStateReportingTool({ ledger })];
-  tools.push(
-    ...input.tools.map((binding) =>
-      toPiTool({
+  const disclosedToolIds = input.disclosedToolIds
+    ? new Set(input.disclosedToolIds)
+    : undefined;
+  const pendingSchemaExecutions = new Set<string>();
+  const stateReportingTool = createStateReportingTool({ ledger });
+  let toolLoadoutDirty = false;
+
+  const promoteToolSchema = (toolId: string) => {
+    if (!disclosedToolIds || disclosedToolIds.has(toolId)) return false;
+    disclosedToolIds.add(toolId);
+    pendingSchemaExecutions.add(toolId);
+
+    // Disclosure is execution context, not authority. Persist the newly exact-
+    // known Tool into the local SkillContext so an approval checkpoint/resume
+    // cannot regress it back to metadata-only.
+    input.execution.skillContext.disclosedTools = [...disclosedToolIds];
+
+    // Pi snapshots the Tool context at prompt start. Mark the loadout dirty
+    // here and apply it through prepareNextTurnWithContext at the supported
+    // turn boundary, so the current Tool call finishes against a stable
+    // snapshot and the next provider request receives the promoted schema.
+    toolLoadoutDirty = true;
+    return true;
+  };
+
+  const buildAgentTools = (): AgentTool<any>[] => [
+    stateReportingTool,
+    ...input.tools.map((binding) => {
+      const schemaDisclosed = disclosedToolIds
+        ? disclosedToolIds.has(binding.id)
+        : true;
+      return toPiTool({
         binding,
         evidence,
         artifacts,
@@ -732,10 +866,21 @@ export const runPiSkillAgent = async (input: {
         toolCalls,
         ledger,
         projectComplexToolSchemas,
+        schemaDisclosed,
+        ...(disclosedToolIds && !schemaDisclosed
+          ? { promoteSchema: () => promoteToolSchema(binding.id) }
+          : {}),
+        ...(disclosedToolIds && schemaDisclosed
+          ? {
+              markSchemaExecutionAttempted: () => {
+                pendingSchemaExecutions.delete(binding.id);
+              },
+            }
+          : {}),
         parentSignal: input.execution.signal,
-      }),
-    ),
-  );
+      });
+    }),
+  ];
 
   let restoredMessages: AgentMessage[] | undefined;
   if (checkpoint) {
@@ -897,17 +1042,29 @@ export const runPiSkillAgent = async (input: {
     });
   }
 
+  const sessionId = `mira-subagent:${primary.id}:${ledger.runId}`;
   const agent = new Agent({
     initialState: {
       systemPrompt: buildSystemPrompt(input.execution),
       model,
-      tools,
+      tools: buildAgentTools(),
       ...(restoredMessages ? { messages: restoredMessages } : {}),
     },
     getApiKey: () => apiKey || undefined,
     toolExecution: "sequential",
-    sessionId: `mira-subagent:${primary.id}:${ledger.runId}`,
-    streamFn: piStreamFn,
+    prepareNextTurnWithContext: (turn) => {
+      if (!toolLoadoutDirty) return undefined;
+      const tools = buildAgentTools();
+      toolLoadoutDirty = false;
+      return {
+        context: {
+          ...turn.context,
+          tools,
+        },
+      };
+    },
+    sessionId,
+    streamFn: createSkillAgentStreamFn(sessionId),
   });
 
   try {
@@ -983,7 +1140,7 @@ export const runPiSkillAgent = async (input: {
   }
 
   const finalText = extractAssistantText(agent.state.messages as unknown[]);
-  const completion = parseCompletionEnvelope(finalText);
+  let completion = parseCompletionEnvelope(finalText);
   if (!completion) {
     await ledger.updateWorkingState({
       phase: "failed",
@@ -1001,8 +1158,74 @@ export const runPiSkillAgent = async (input: {
     };
   }
 
+  // A metadata-stage Tool call only changes the Child's Tool context. If the
+  // model tried to finish while such schema disclosures were pending, ask the
+  // SAME Child once to reconsider its task with the promoted schemas available.
+  // Crucially, do not decide task completion by whether ANY Tool ran, nor by
+  // trying to parse natural-language acceptance criteria. The Child returns an
+  // explicit local judgement and actual Tool results to the Main Planner, which
+  // retains responsibility for deciding whether the delegated task is useful
+  // and whether the user's global goal is finished.
+  if (completion.status === "completed" && pendingSchemaExecutions.size > 0) {
+    const pendingTools = [...pendingSchemaExecutions].sort();
+    await ledger.updateWorkingState({
+      phase: "working",
+      currentJudgement:
+        "Schema 披露不代表工具已执行；请基于实际任务和工具结果再次确认是否完成。",
+      currentAction: "在同一 subAgent 中确认尚未调用的已披露工具是否必要",
+      nextAction: "需要则执行工具；不需要则说明已有结果；无法完成则如实上报缺口",
+    });
+    await ledger.emitTrace("plan.revised", "同一 subAgent 内重新判断任务完成状态", {
+      reason: "schema_disclosed_not_executed",
+      pendingSchemaExecutions: pendingTools,
+      bindingExecuted: false,
+    });
+    try {
+      await agent.prompt(buildSchemaReconciliationPrompt(pendingTools));
+    } catch (error) {
+      await ledger.updateWorkingState({
+        phase: "failed",
+        currentAction: "subAgent 继续执行中断",
+        blockingReason: error instanceof Error ? error.message : String(error),
+      });
+      await ledger.emitTrace("subagent.failed", "subAgent 继续执行失败");
+      return failResult({
+        skillId: primary.id,
+        error,
+        recoverable: true,
+        evidence,
+        artifacts,
+        toolCalls,
+        ledger,
+      });
+    }
+
+    const nextCompletion = parseCompletionEnvelope(
+      extractAssistantText(agent.state.messages as unknown[]),
+    );
+    if (!nextCompletion) {
+      await ledger.updateWorkingState({
+        phase: "failed",
+        currentAction: "无法确认 subAgent 的最终交付状态",
+        blockingReason: "Invalid completion envelope after schema reconsideration",
+      });
+      await ledger.emitTrace("subagent.failed", "subAgent 重审后返回格式无效");
+      return failResult({
+        skillId: primary.id,
+        error: "subAgent returned an invalid completion envelope after schema reconsideration",
+        recoverable: true,
+        evidence,
+        artifacts,
+        toolCalls,
+        ledger,
+      });
+    }
+    completion = nextCompletion;
+  }
+
   const status = completion.status as SkillAgentExecutionResult["status"];
   const summary = asNonEmptyString(completion.summary);
+
   const completionRequirements =
     status === "needs_input"
       ? normalizeCompletionRequirements(completion.requirements)

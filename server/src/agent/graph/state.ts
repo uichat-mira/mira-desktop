@@ -5,6 +5,7 @@ import {
 import type { NormalizedChatMessage } from "@/services/provider-proxy.message-protocol";
 import type { RetrievedChunk } from "@/services/rag-nodes";
 import type { ContextBudgetAudit } from "@/services/context-budget/index";
+import type { ProgressiveResolutionState } from "@/harness/progressive-resolution-state";
 import { runWithAgentNodeSpan } from "../observability";
 import type { AgentIntentEmbeddingConfig, ToolIntentResult } from "../intent/index";
 import type {
@@ -65,6 +66,7 @@ export const AgentGraphStateAnnotation = Annotation.Root({
   schemaReplanDiagnostics: Annotation<AgentSchemaReplanDiagnostics | undefined>,
   generatedAnswerEmptyFallback: Annotation<boolean | undefined>,
   approvedInvocations: Annotation<AgentGraphInput["approvedInvocations"] | undefined>,
+  progressiveResolution: Annotation<ProgressiveResolutionState | undefined>,
   iterationCount: Annotation<number | undefined>,
   maxIterations: Annotation<number | undefined>,
 });
@@ -169,6 +171,7 @@ export const createInitialAgentGraphState = (
     pendingApproval: undefined,
     schemaReplanDiagnostics: undefined,
     generatedAnswerEmptyFallback: false,
+    progressiveResolution: checkpointInput.progressiveResolution,
     iterationCount: checkpointInput.iterationCount ?? 0,
     maxIterations: input.maxIterations ?? DEFAULT_AGENT_MAX_ITERATIONS,
   };

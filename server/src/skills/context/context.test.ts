@@ -233,6 +233,9 @@ describe("SkillContextProvider", () => {
       ],
     });
 
-    expect(context).toBeUndefined();
+    expect(context?.primary).toBeUndefined();
+    expect(context?.skillVisibility?.skills.find(
+      (entry) => entry.skillId === "xlsx",
+    )?.disclosure).toBe("summary");
   });
 });
