@@ -1,4 +1,4 @@
-name: "#311 Consolidated Acceptance Independent Verification"
+name: "#311 Consolidated Acceptance Independent Verification with Child Scope"
 on:
   push:
     branches:
@@ -30,6 +30,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Test resolution evidence, disclosure and governed Tool invocation
         run: pnpm --filter @ui-chat-mira/server test -- src/agent/progressive-acceptance/cases.test.ts src/agent/progressive-acceptance/governed-execution.acceptance.test.ts src/agent/nodes/prepare-context-progressive-resolution.test.ts --maxWorkers=1 --fileParallelism=false
+      - name: Deterministic scoped Child, approval resume, readiness and checkpoint regression
+        run: pnpm --filter @ui-chat-mira/server test -- src/agent/__tests__/generic-task-subagent.test.ts src/agent/__tests__/generic-task-default-runtime.test.ts src/agent/__tests__/generic-task-resume.test.ts src/agent/__tests__/approval-resume-scheduling.test.ts src/agent/__tests__/runtime-checkpoint.test.ts src/agent/nodes/prepare-context-with-delegation.test.ts src/agent/nodes/prepare-context-skill-visibility.test.ts src/harness/capability-view.test.ts src/harness/runtime-readiness.test.ts src/skills/agent/subagent-visibility.integration.test.ts src/skills/context/skill-progressive-runtime.acceptance.test.ts --maxWorkers=1 --fileParallelism=false
       - name: Generate analogous acceptance matrix JSON and Markdown
         run: pnpm --filter @ui-chat-mira/server exec tsx src/agent/progressive-acceptance/runner.ts
       - name: Verify governance and workspace typecheck
