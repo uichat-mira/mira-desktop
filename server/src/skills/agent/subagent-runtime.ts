@@ -375,6 +375,13 @@ const buildDeterministicNeedsInput = (input: {
 type PrepareSubAgentInput = {
   goal: string;
   skillContext: SkillContext;
+  /**
+   * Task-local acceptance criteria for this bounded Child work package. The
+   * caller derives them from the delegation contract (Generic Child) or from the
+   * explicit local goal (specialist Skill Child). They flow unchanged into
+   * `SkillAgentExecutionInput` so the Child can prove per-criterion coverage.
+   */
+  completionCriteria?: string[];
   workspaceRoot?: string;
   exposedHarnessToolIds?: string[];
   userId?: number;
@@ -516,6 +523,9 @@ export const prepareSubAgent = (input: PrepareSubAgentInput) => {
   const execution: SubAgentExecutionInput = {
     goal: input.goal,
     skillContext: childSkillContext,
+    ...(input.completionCriteria && input.completionCriteria.length > 0
+      ? { completionCriteria: [...input.completionCriteria] }
+      : {}),
     workspaceRoot,
     userId: input.userId,
     threadId: input.threadId,

@@ -44,6 +44,191 @@ const asNonEmptyString = (value: unknown) =>
 type PiModel = NonNullable<NonNullable<AgentOptions["initialState"]>["model"]>;
 type BindingExecution = Awaited<ReturnType<SkillAgentToolBinding["execute"]>>;
 
+/**
+ * Authoritative record of one governed Tool binding that actually returned
+ * successfully during this Child run. It is execution state, distinct from
+ * schema disclosure and from the model's own `completed` claim, and is the only
+ * thing an evidence reference may point at. `targets` are the concrete
+ * path/uri-like values the invocation touched, extracted deterministically so
+ * a criterion that names a target can only be satisfied by the execution that
+ * really operated on it.
+ */
+type GovernedExecutionRecord = {
+  toolId: string;
+  toolCallId: string;
+  args: Record<string, unknown>;
+  evidence?: unknown;
+  artifacts: unknown[];
+  targets: string[];
+};
+
+type CompletionProof = {
+  criterion: string;
+  evidenceRefs: string[];
+};
+
+type CompletionEvaluation =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | "completed_without_criterion_proof"
+        | "completed_without_authoritative_execution";
+      missing: string[];
+      missingEvidence: string[];
+      prompt: string;
+    };
+
+const TARGET_ARGUMENT_KEYS = new Set([
+  "path",
+  "filepath",
+  "file_path",
+  "inputpath",
+  "outputpath",
+  "input_path",
+  "output_path",
+  "uri",
+  "target",
+  "source",
+  "destination",
+]);
+
+const collectTargetValues = (
+  value: unknown,
+  key: string | undefined,
+  output: Set<string>,
+) => {
+  if (typeof value === "string") {
+    if (key && TARGET_ARGUMENT_KEYS.has(key.toLowerCase())) {
+      const trimmed = value.trim();
+      if (trimmed && trimmed.length <= 512 && !trimmed.includes("\n")) {
+        output.add(trimmed);
+      }
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectTargetValues(item, undefined, output);
+    return;
+  }
+  const record = asRecord(value);
+  if (!record) return;
+  for (const [nestedKey, nested] of Object.entries(record)) {
+    collectTargetValues(nested, nestedKey, output);
+  }
+};
+
+const extractExecutionTargets = (input: {
+  args: Record<string, unknown>;
+  evidence?: unknown;
+  artifacts: unknown[];
+}): string[] => {
+  const targets = new Set<string>();
+  collectTargetValues(input.args, undefined, targets);
+  collectTargetValues(input.evidence, undefined, targets);
+  for (const artifact of input.artifacts) {
+    collectTargetValues(artifact, undefined, targets);
+  }
+  return [...targets].filter((target) => target.length > 1).slice(0, 16);
+};
+
+const parseEvidenceRefIndex = (ref: string): number | null => {
+  const match = /^tool:(\d+)$/.exec(ref.trim());
+  if (!match) return null;
+  const index = Number(match[1]);
+  return Number.isInteger(index) && index >= 0 ? index : null;
+};
+
+const parseCompletionProof = (value: unknown): CompletionProof[] | null => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const proofs: CompletionProof[] = [];
+  for (const item of value) {
+    const record = asRecord(item);
+    const criterion = asNonEmptyString(record?.criterion);
+    if (!record || !criterion) return null;
+    const rawRefs = record.evidenceRefs;
+    if (!Array.isArray(rawRefs) || rawRefs.length === 0) return null;
+    const evidenceRefs: string[] = [];
+    for (const ref of rawRefs) {
+      const normalized = asNonEmptyString(ref);
+      if (!normalized) return null;
+      evidenceRefs.push(normalized);
+    }
+    proofs.push({ criterion, evidenceRefs });
+  }
+  return proofs;
+};
+
+const criterionMentionedTargets = (
+  criterion: string,
+  ledger: GovernedExecutionRecord[],
+): string[] => {
+  const lower = criterion.toLowerCase();
+  const mentioned = new Set<string>();
+  for (const record of ledger) {
+    for (const target of record.targets) {
+      if (lower.includes(target.toLowerCase())) mentioned.add(target.toLowerCase());
+    }
+  }
+  return [...mentioned];
+};
+
+/**
+ * Deterministic provenance guard for a `completed` claim. The model still judges
+ * semantic sufficiency: it decides which real execution covers which criterion
+ * and writes the criterion text. The runtime only enforces that every declared
+ * criterion is present, that each reference points at a real successful governed
+ * execution recorded in this run, that a concrete target named by the criterion
+ * was actually touched by the referenced execution, and that no single execution
+ * is reused to prop up several criteria. Ref existence alone is never treated as
+ * proof of semantic coverage; an unsupported criterion is reported as missing.
+ */
+const validateCompletionProof = (input: {
+  criteria: readonly string[];
+  proof: CompletionProof[] | null;
+  ledger: GovernedExecutionRecord[];
+}): { ok: true } | { ok: false; missing: string[] } => {
+  const missing: string[] = [];
+  if (!input.proof) return { ok: false, missing: [...input.criteria] };
+
+  const proofByCriterion = new Map<string, CompletionProof>();
+  for (const proof of input.proof) {
+    if (!proofByCriterion.has(proof.criterion)) {
+      proofByCriterion.set(proof.criterion, proof);
+    }
+  }
+
+  const executionOwner = new Map<number, string>();
+  for (const criterion of input.criteria) {
+    const proof = proofByCriterion.get(criterion);
+    if (!proof) {
+      missing.push(criterion);
+      continue;
+    }
+    const mentionedTargets = criterionMentionedTargets(criterion, input.ledger);
+    let supported = false;
+    for (const ref of proof.evidenceRefs) {
+      const index = parseEvidenceRefIndex(ref);
+      if (index === null || index >= input.ledger.length) continue;
+      const owner = executionOwner.get(index);
+      if (owner !== undefined && owner !== criterion) continue;
+      const record = input.ledger[index]!;
+      if (mentionedTargets.length > 0) {
+        const recordTargets = record.targets.map((target) => target.toLowerCase());
+        if (!mentionedTargets.some((target) => recordTargets.includes(target))) {
+          continue;
+        }
+      }
+      executionOwner.set(index, criterion);
+      supported = true;
+      break;
+    }
+    if (!supported) missing.push(criterion);
+  }
+
+  return missing.length === 0 ? { ok: true } : { ok: false, missing };
+};
+
 // Pi's OpenAI-completions transport does not infer OpenCode Go's required
 // x-opencode-session header from Agent.sessionId. Supply a stable ID to *each*
 // request in one Skill Child run without changing other provider transports.
@@ -245,7 +430,10 @@ export const projectProviderVisibleToolSchema = (input: {
     ? createProviderVisibleInputSchema(input.schema)
     : input.schema;
 
-const buildSystemPrompt = (input: SkillAgentExecutionInput) => {
+const buildSystemPrompt = (
+  input: SkillAgentExecutionInput,
+  completionCriteria: readonly string[],
+) => {
   const primary = input.skillContext.primary;
   if (!primary) throw new Error("subAgent requires one primary SkillContext");
 
@@ -269,6 +457,14 @@ const buildSystemPrompt = (input: SkillAgentExecutionInput) => {
     "subagent_report_state is a user-visible safe work summary: state your current judgment, current action and next action without revealing hidden chain-of-thought, private scratch work or secrets.",
     "At the end, output exactly one JSON object and no prose outside it:",
     '{"status":"completed|insufficient_evidence|needs_input|failed","summary":"...","missingEvidence":[],"requirements":[{"kind":"user_input","description":"...","requiredFor":"..."}],"recoverable":true}',
+    ...(completionCriteria.length > 0
+      ? [
+          "A completed status must also carry a completionProof that covers every local acceptance criterion.",
+          'Each completionProof item is {"criterion":"<exact criterion text>","evidenceRefs":["tool:<n>"]}, where the ref points at a real successful governed Tool execution marked in its result as [governed-evidence tool:<n>].',
+          "Schema disclosure, approval waits, blocked attempts and failed executions are not evidence. One execution may support at most one criterion.",
+          `Local acceptance criteria: ${JSON.stringify([...completionCriteria])}`,
+        ]
+      : []),
     "",
     `<skill id="${primary.id}" version="${primary.version}" name="${primary.name}">`,
     primary.body,
@@ -284,15 +480,19 @@ const buildSystemPrompt = (input: SkillAgentExecutionInput) => {
 const toAgentToolResult = (
   binding: SkillAgentToolBinding,
   executed: BindingExecution,
+  evidenceRef?: string,
 ): AgentToolResult<Record<string, unknown>> => ({
   content: [
     {
       type: "text",
-      text: renderSkillAgentToolResult(executed),
+      text: evidenceRef
+        ? `[governed-evidence ${evidenceRef}]\n${renderSkillAgentToolResult(executed)}`
+        : renderSkillAgentToolResult(executed),
     },
   ],
   details: {
     toolId: binding.id,
+    ...(evidenceRef ? { evidenceRef } : {}),
     result: executed.result ?? null,
     evidence: executed.evidence ?? null,
     artifacts: executed.artifacts ?? [],
@@ -441,6 +641,12 @@ const executeBinding = async (input: {
   recordToolCall: boolean;
   ledger: Ledger;
   resumedFromApproval?: boolean;
+  /**
+   * Records a real successful governed execution and returns the stable
+   * `tool:<n>` reference the model can cite. It is never invoked for a schema
+   * disclosure, an approval wait, a blocked attempt or a thrown binding.
+   */
+  onGovernedExecution?: (record: GovernedExecutionRecord) => string;
 }) => {
   if (input.recordToolCall) input.toolCalls.push(input.binding.id);
   await input.ledger.emitTrace("tool.started", `正在执行 ${input.binding.label}`, {
@@ -461,6 +667,23 @@ const executeBinding = async (input: {
     if (executed.evidence !== undefined) input.evidence.push(executed.evidence);
     if (executed.artifacts?.length) input.artifacts.push(...executed.artifacts);
     if (executed.requirement) input.requirements.push(executed.requirement);
+
+    // Only a genuine governed return is authoritative execution proof. An
+    // approval requirement stops before execution, so it records no evidence ref.
+    const evidenceRef = !executed.requirement
+      ? input.onGovernedExecution?.({
+          toolId: input.binding.id,
+          toolCallId: input.toolCallId,
+          args: structuredClone(input.args),
+          evidence: executed.evidence,
+          artifacts: structuredClone(executed.artifacts ?? []),
+          targets: extractExecutionTargets({
+            args: input.args,
+            evidence: executed.evidence,
+            artifacts: executed.artifacts ?? [],
+          }),
+        })
+      : undefined;
 
     if (executed.requirement?.kind === "approval") {
       await input.ledger.updateWorkingState({
@@ -490,7 +713,7 @@ const executeBinding = async (input: {
 
     return {
       executed,
-      toolResult: toAgentToolResult(input.binding, executed),
+      toolResult: toAgentToolResult(input.binding, executed, evidenceRef),
     };
   } catch (error) {
     await input.ledger.emitTrace("tool.failed", `${input.binding.label} 执行失败`, {
@@ -523,7 +746,7 @@ const toPiTool = (input: {
    * (post-schema) execution. Schema disclosure and failed/blocked attempts must
    * never satisfy goal evidence coverage.
    */
-  onBindingExecuted?: () => void;
+  onGovernedExecution?: (record: GovernedExecutionRecord) => string;
   parentSignal?: AbortSignal;
 }): AgentTool<any> => ({
   name: input.binding.id,
@@ -599,8 +822,8 @@ const toPiTool = (input: {
         toolCalls: input.toolCalls,
         recordToolCall: true,
         ledger: input.ledger,
+        onGovernedExecution: input.onGovernedExecution,
       });
-      input.onBindingExecuted?.();
       return toolResult;
     } finally {
       combined.cleanup();
@@ -675,6 +898,7 @@ const createApprovalCheckpoint = (input: {
   evidence: unknown[];
   artifacts: unknown[];
   toolCalls: string[];
+  completionCriteria: readonly string[];
 }): SkillAgentCheckpoint | undefined => {
   if (
     input.requirement.kind !== "approval" ||
@@ -705,6 +929,9 @@ const createApprovalCheckpoint = (input: {
     skillId: input.execution.skillContext.primary?.id,
     skillVersion: input.execution.skillContext.primary?.version,
     skillContextSnapshot: structuredClone(input.execution.skillContext),
+    ...(input.completionCriteria.length > 0
+      ? { completionCriteria: [...input.completionCriteria] }
+      : {}),
   };
 };
 
@@ -785,9 +1012,11 @@ const failResult = (input: {
 
 /**
  * How many same-Child reconciliation prompts the runtime may issue after a model
- * claims `completed` while schema-disclosed Tools remain unexecuted and no
- * authoritative execution evidence exists. Bounded so a stuck model cannot loop
- * forever; schema disclosure alone must never be accepted as completion.
+ * claims `completed` while its claim is not yet supported (schema-disclosed Tools
+ * remain unexecuted with no authoritative execution, or declared acceptance
+ * criteria lack verified evidence references). Bounded so a stuck model cannot
+ * loop forever; neither schema disclosure nor a bare claim may be accepted as
+ * completion.
  */
 const MAX_SCHEMA_RECONCILIATION_ROUNDS = 2;
 
@@ -801,6 +1030,29 @@ const buildSchemaReconciliationPrompt = (pendingTools: string[]) =>
     "Return exactly one terminal JSON object.",
     "</schema-reconciliation>",
   ].join("\n");
+
+const buildCompletionProofReconciliationPrompt = (input: {
+  criteria: readonly string[];
+  missing: readonly string[];
+  ledger: GovernedExecutionRecord[];
+}) => {
+  const catalog = input.ledger.map((record, index) => ({
+    ref: `tool:${index}`,
+    toolId: record.toolId,
+    targets: record.targets,
+  }));
+  return [
+    "<completion-proof-reconciliation>",
+    "Your completed claim is not yet supported by governed execution evidence for every local acceptance criterion.",
+    `Acceptance criteria: ${JSON.stringify([...input.criteria])}`,
+    `Unsupported criteria: ${JSON.stringify([...input.missing])}`,
+    `Available governed evidence: ${JSON.stringify(catalog)}`,
+    "Call the exposed Tool(s) now so each unsupported criterion has a real successful governed execution.",
+    'Then return one terminal JSON object whose completionProof covers every criterion, using the exact criterion text and evidenceRefs of the form "tool:<n>" taken only from real successful governed executions.',
+    "Schema disclosure, approval waits, blocked attempts and failed executions are not evidence, and one execution may support at most one criterion.",
+    "</completion-proof-reconciliation>",
+  ].join("\n");
+};
 
 export const runPiSkillAgent = async (input: {
   execution: SkillAgentExecutionInput;
@@ -837,10 +1089,30 @@ export const runPiSkillAgent = async (input: {
   const disclosedToolIds = input.disclosedToolIds
     ? new Set(input.disclosedToolIds)
     : undefined;
+  // A resumed Child proves coverage against the criteria frozen into its
+  // approval checkpoint, not the Parent goal the resume caller happens to hold.
+  const rawCompletionCriteria =
+    checkpoint?.completionCriteria ?? input.execution.completionCriteria ?? [];
+  const completionCriteria = [
+    ...new Set(
+      rawCompletionCriteria
+        .map((criterion) => criterion.trim())
+        .filter(Boolean),
+    ),
+  ];
   const pendingSchemaExecutions = new Set<string>();
   // Tools whose governed binding actually returned during this run. This is the
   // execution state, distinct from schema disclosure and from the model's claim.
   const executedBindingIds = new Set<string>();
+  // Ordered record of real successful governed executions. Completion proof
+  // references are indices into this ledger, so an unexecuted binding or a
+  // failed attempt can never be cited as evidence.
+  const executionLedger: GovernedExecutionRecord[] = [];
+  const recordGovernedExecution = (record: GovernedExecutionRecord): string => {
+    executedBindingIds.add(record.toolId);
+    executionLedger.push(record);
+    return `tool:${executionLedger.length - 1}`;
+  };
   const hasAuthoritativeExecution = () =>
     executedBindingIds.size > 0 || evidence.length > 0 || artifacts.length > 0;
   const stateReportingTool = createStateReportingTool({ ledger });
@@ -889,9 +1161,7 @@ export const runPiSkillAgent = async (input: {
               },
             }
           : {}),
-        onBindingExecuted: () => {
-          executedBindingIds.add(binding.id);
-        },
+        onGovernedExecution: recordGovernedExecution,
         parentSignal: input.execution.signal,
       });
     }),
@@ -996,6 +1266,7 @@ export const runPiSkillAgent = async (input: {
         ledger,
         resumedFromApproval: true,
         signal: input.execution.signal,
+        onGovernedExecution: recordGovernedExecution,
       });
       if (resumed.executed.requirement || resumed.executed.terminate) {
         return failResult({
@@ -1015,7 +1286,6 @@ export const runPiSkillAgent = async (input: {
         toolId: pending.toolId,
         result: resumed.toolResult,
       });
-      executedBindingIds.add(binding.id);
     } catch (error) {
       await ledger.updateWorkingState({
         phase: "failed",
@@ -1061,7 +1331,7 @@ export const runPiSkillAgent = async (input: {
   const sessionId = `mira-subagent:${primary.id}:${ledger.runId}`;
   const agent = new Agent({
     initialState: {
-      systemPrompt: buildSystemPrompt(input.execution),
+      systemPrompt: buildSystemPrompt(input.execution, completionCriteria),
       model,
       tools: buildAgentTools(),
       ...(restoredMessages ? { messages: restoredMessages } : {}),
@@ -1129,6 +1399,7 @@ export const runPiSkillAgent = async (input: {
           evidence,
           artifacts,
           toolCalls,
+          completionCriteria,
         })
       : undefined;
 
@@ -1174,42 +1445,95 @@ export const runPiSkillAgent = async (input: {
     };
   }
 
-  // Schema disclosure is neither execution nor evidence. When a model claims
-  // `completed` while schema-disclosed Tools were never executed and no
-  // authoritative execution exists yet, give the *same* Child a bounded chance
-  // to close the gap instead of returning a recoverable failure that makes the
-  // Parent restart the Child. A schema-only Tool that is genuinely no longer
-  // needed does not block a completion already supported by real governed
-  // execution, so the loop never runs in that case.
+  // A `completed` claim is only accepted when it is backed by verified
+  // execution evidence. When the delegation contract supplied local acceptance
+  // criteria, the model still judges semantic sufficiency and writes the
+  // criterion -> evidence mapping, while the runtime deterministically enforces
+  // that every criterion is present, that each reference is a real successful
+  // governed execution recorded in this run, that a concrete target named by the
+  // criterion was actually touched, and that no single execution is reused to
+  // prop up several criteria. Without declared criteria the runtime keeps its
+  // earlier schema-disclosure guard.
+  //
+  // Schema disclosure is neither execution nor evidence, so when a claim is not
+  // yet supported the *same* Child gets a bounded chance to close the gap instead
+  // of handing a recoverable failure back for a fresh delegation.
+  const evaluateCompletedClaim = (
+    candidate: Record<string, unknown>,
+  ): CompletionEvaluation => {
+    if (completionCriteria.length > 0) {
+      const proof = parseCompletionProof(candidate.completionProof);
+      const validation = validateCompletionProof({
+        criteria: completionCriteria,
+        proof,
+        ledger: executionLedger,
+      });
+      if (validation.ok) return { ok: true };
+      return {
+        ok: false,
+        reason: "completed_without_criterion_proof",
+        missing: validation.missing,
+        missingEvidence: validation.missing,
+        prompt: buildCompletionProofReconciliationPrompt({
+          criteria: completionCriteria,
+          missing: validation.missing,
+          ledger: executionLedger,
+        }),
+      };
+    }
+
+    if (pendingSchemaExecutions.size > 0 && !hasAuthoritativeExecution()) {
+      const pendingTools = [...pendingSchemaExecutions].sort();
+      return {
+        ok: false,
+        reason: "completed_without_authoritative_execution",
+        missing: pendingTools,
+        missingEvidence: [
+          `Unexecuted governed Tool(s) required for completion: ${pendingTools.join(", ")}`,
+        ],
+        prompt: buildSchemaReconciliationPrompt(pendingTools),
+      };
+    }
+
+    return { ok: true };
+  };
+
   let reconciliationRounds = 0;
+  let evaluation: CompletionEvaluation =
+    completion.status === "completed"
+      ? evaluateCompletedClaim(completion)
+      : { ok: true };
   while (
     completion.status === "completed" &&
-    pendingSchemaExecutions.size > 0 &&
-    !hasAuthoritativeExecution() &&
+    !evaluation.ok &&
     reconciliationRounds < MAX_SCHEMA_RECONCILIATION_ROUNDS
   ) {
+    // Snapshot the unsupported claim so its discriminated failure fields stay
+    // narrowed while the loop reassigns `evaluation` for the next round.
+    const unsupported = evaluation;
     reconciliationRounds += 1;
-    const pendingTools = [...pendingSchemaExecutions].sort();
     await ledger.updateWorkingState({
       phase: "working",
       currentJudgement:
-        "完成声明缺少受治理 Tool 的真实执行证据；Schema 披露本身不算执行。",
+        unsupported.reason === "completed_without_criterion_proof"
+          ? "完成声明尚未被每一条局部验收准则的真实执行证据覆盖。"
+          : "完成声明缺少受治理 Tool 的真实执行证据；Schema 披露本身不算执行。",
       currentAction: "在同一 subAgent 内继续补足证据",
-      nextAction: "执行已披露 schema 的待完成 Tool，或依据真实证据重新确认完成",
-      blockingReason: `Unexecuted schema-disclosed Tool(s): ${pendingTools.join(", ")}`,
+      nextAction: "执行受治理 Tool 以补齐缺口，或依据真实证据重新确认完成",
+      blockingReason: `Unsupported completion proof: ${unsupported.missing.join(", ")}`,
     });
     await ledger.emitTrace(
       "plan.revised",
       "在同一 subAgent 内继续执行待完成 Tool",
       {
-        reason: "completed_without_authoritative_execution",
-        pendingSchemaExecutions: pendingTools,
+        reason: unsupported.reason,
+        missing: unsupported.missing,
         reconciliationRound: reconciliationRounds,
       },
     );
 
     try {
-      await agent.prompt(buildSchemaReconciliationPrompt(pendingTools));
+      await agent.prompt(unsupported.prompt);
     } catch (error) {
       await ledger.updateWorkingState({
         phase: "failed",
@@ -1248,37 +1572,41 @@ export const runPiSkillAgent = async (input: {
       };
     }
     completion = nextCompletion;
+    evaluation =
+      completion.status === "completed"
+        ? evaluateCompletedClaim(completion)
+        : { ok: true };
   }
 
   const status = completion.status as SkillAgentExecutionResult["status"];
   const summary = asNonEmptyString(completion.summary);
 
-  if (
-    status === "completed" &&
-    pendingSchemaExecutions.size > 0 &&
-    !hasAuthoritativeExecution()
-  ) {
-    const pendingTools = [...pendingSchemaExecutions].sort();
+  if (status === "completed" && !evaluation.ok) {
     await ledger.updateWorkingState({
       phase: "blocked",
       currentJudgement:
-        "Tool schema 已披露，但没有任何受治理 Tool 的真实执行证据；完成声明不成立。",
-      currentAction: "拒绝仅凭 schema 披露的完成声明",
-      nextAction: "使用已披露的完整 schema 重试 Tool 调用并取得真实结果",
-      blockingReason: `Pending schema-disclosed Tool execution: ${pendingTools.join(", ")}`,
+        evaluation.reason === "completed_without_criterion_proof"
+          ? "局部验收准则缺少真实、可追溯的受治理 Tool 执行证据；完成声明不成立。"
+          : "Tool schema 已披露，但没有任何受治理 Tool 的真实执行证据；完成声明不成立。",
+      currentAction: "拒绝缺少可核实证据的完成声明",
+      nextAction: "执行受治理 Tool 取得真实结果，或如实上报证据缺口",
+      blockingReason: `Unsupported completion proof: ${evaluation.missing.join(", ")}`,
     });
     await ledger.emitTrace(
       "input.required",
       "subAgent 完成声明缺少真实执行证据",
-      { pendingSchemaExecutions: pendingTools },
+      {
+        reason: evaluation.reason,
+        missing: evaluation.missing,
+      },
     );
     return {
       status: "insufficient_evidence",
       summary:
-        "The subAgent declared completion after only disclosing Tool schemas, without executing the Tools required for verified task evidence.",
-      missingEvidence: [
-        `Unexecuted governed Tool(s) required for completion: ${pendingTools.join(", ")}`,
-      ],
+        evaluation.reason === "completed_without_criterion_proof"
+          ? "The subAgent declared completion without verified execution evidence covering every local acceptance criterion."
+          : "The subAgent declared completion after only disclosing Tool schemas, without executing the Tools required for verified task evidence.",
+      missingEvidence: evaluation.missingEvidence,
       evidence,
       artifacts,
       trace: buildTrace({ ledger, skillId: primary.id, toolCalls }),
