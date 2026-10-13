@@ -485,6 +485,7 @@ const executeBinding = async (input: {
         toolCallId: input.toolCallId,
         artifactCount: executed.artifacts?.length ?? 0,
         evidenceAdded: executed.evidence !== undefined,
+        bindingExecuted: true,
       });
     }
 
@@ -775,6 +776,24 @@ const failResult = (input: {
         toolCalls: input.toolCalls,
       },
 });
+
+/**
+ * A disclosure is a Tool-context update, not a task result. Give the Child one
+ * chance to reconsider its terminal declaration with the newly visible schema.
+ * Whether that Tool is actually needed is a task-semantic decision, not a
+ * deterministic check on file names, invocation counts or Evidence array sizes.
+ */
+const buildSchemaReconciliationPrompt = (pendingTools: string[]) =>
+  [
+    "<schema-disclosure-reconsideration>",
+    `The following Tool schemas were disclosed, but those Tool bindings have not been invoked: ${pendingTools.join(", ")}.`,
+    "Schema disclosure is not an execution or a successful task result.",
+    "Reassess your delegated goal using the actual task context and governed Tool results available in this Child.",
+    "If any disclosed Tool is required to finish your work, invoke it now with its full schema. If your task is already completed without that Tool, you may report completed and explain the concrete result in the summary.",
+    "If the task is not complete and cannot be finished, return insufficient_evidence with the real gap. Do not invent Tool results or citations.",
+    "Return the normal terminal JSON object; the Main Planner still owns global task acceptance.",
+    "</schema-disclosure-reconsideration>",
+  ].join("\n");
 
 export const runPiSkillAgent = async (input: {
   execution: SkillAgentExecutionInput;
@@ -1121,7 +1140,7 @@ export const runPiSkillAgent = async (input: {
   }
 
   const finalText = extractAssistantText(agent.state.messages as unknown[]);
-  const completion = parseCompletionEnvelope(finalText);
+  let completion = parseCompletionEnvelope(finalText);
   if (!completion) {
     await ledger.updateWorkingState({
       phase: "failed",
@@ -1139,34 +1158,73 @@ export const runPiSkillAgent = async (input: {
     };
   }
 
-  const status = completion.status as SkillAgentExecutionResult["status"];
-  const summary = asNonEmptyString(completion.summary);
-
-  if (status === "completed" && pendingSchemaExecutions.size > 0) {
+  // A metadata-stage Tool call only changes the Child's Tool context. If the
+  // model tried to finish while such schema disclosures were pending, ask the
+  // SAME Child once to reconsider its task with the promoted schemas available.
+  // Crucially, do not decide task completion by whether ANY Tool ran, nor by
+  // trying to parse natural-language acceptance criteria. The Child returns an
+  // explicit local judgement and actual Tool results to the Main Planner, which
+  // retains responsibility for deciding whether the delegated task is useful
+  // and whether the user's global goal is finished.
+  if (completion.status === "completed" && pendingSchemaExecutions.size > 0) {
     const pendingTools = [...pendingSchemaExecutions].sort();
     await ledger.updateWorkingState({
-      phase: "failed",
+      phase: "working",
       currentJudgement:
-        "Tool schema 已披露，但对应的 governed Tool 调用尚未真正执行。",
-      currentAction: "拒绝过早完成 subAgent",
-      nextAction: "使用已披露的完整 schema 重试 Tool 调用",
-      blockingReason: `Pending schema-disclosed Tool execution: ${pendingTools.join(", ")}`,
+        "Schema 披露不代表工具已执行；请基于实际任务和工具结果再次确认是否完成。",
+      currentAction: "在同一 subAgent 中确认尚未调用的已披露工具是否必要",
+      nextAction: "需要则执行工具；不需要则说明已有结果；无法完成则如实上报缺口",
     });
-    await ledger.emitTrace(
-      "subagent.failed",
-      "subAgent 在 schema promotion 后过早完成",
-      { pendingSchemaExecutions: pendingTools },
+    await ledger.emitTrace("plan.revised", "同一 subAgent 内重新判断任务完成状态", {
+      reason: "schema_disclosed_not_executed",
+      pendingSchemaExecutions: pendingTools,
+      bindingExecuted: false,
+    });
+    try {
+      await agent.prompt(buildSchemaReconciliationPrompt(pendingTools));
+    } catch (error) {
+      await ledger.updateWorkingState({
+        phase: "failed",
+        currentAction: "subAgent 继续执行中断",
+        blockingReason: error instanceof Error ? error.message : String(error),
+      });
+      await ledger.emitTrace("subagent.failed", "subAgent 继续执行失败");
+      return failResult({
+        skillId: primary.id,
+        error,
+        recoverable: true,
+        evidence,
+        artifacts,
+        toolCalls,
+        ledger,
+      });
+    }
+
+    const nextCompletion = parseCompletionEnvelope(
+      extractAssistantText(agent.state.messages as unknown[]),
     );
-    return failResult({
-      skillId: primary.id,
-      error: `subAgent completed before executing promoted Tool(s): ${pendingTools.join(", ")}`,
-      recoverable: true,
-      evidence,
-      artifacts,
-      toolCalls,
-      ledger,
-    });
+    if (!nextCompletion) {
+      await ledger.updateWorkingState({
+        phase: "failed",
+        currentAction: "无法确认 subAgent 的最终交付状态",
+        blockingReason: "Invalid completion envelope after schema reconsideration",
+      });
+      await ledger.emitTrace("subagent.failed", "subAgent 重审后返回格式无效");
+      return failResult({
+        skillId: primary.id,
+        error: "subAgent returned an invalid completion envelope after schema reconsideration",
+        recoverable: true,
+        evidence,
+        artifacts,
+        toolCalls,
+        ledger,
+      });
+    }
+    completion = nextCompletion;
   }
+
+  const status = completion.status as SkillAgentExecutionResult["status"];
+  const summary = asNonEmptyString(completion.summary);
 
   const completionRequirements =
     status === "needs_input"
