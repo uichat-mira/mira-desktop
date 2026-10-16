@@ -12,8 +12,9 @@ on:
         description: Verified official OpenCode free model
         required: true
         type: choice
-        default: deepseek-v4.1-flash-free
+        default: mimo-v2.6-flash-free
         options:
+          - mimo-v2.6-flash-free
           - deepseek-v4.1-flash-free
 
 permissions:
@@ -23,7 +24,7 @@ permissions:
 
 jobs:
   free-worker:
-    uses: uichat-mira/.github/.github/workflows/mira-free-external-worker.yml@934c55222f261c831fc1e519afd5f7a14b654301
+    uses: uichat-mira/.github/.github/workflows/mira-free-external-worker.yml@e692f848cc6137d0e390285278fa6ac0fa080acd
     with:
       issue_number: ${{ fromJSON(inputs.issue_number) }}
       base_branch: dev
