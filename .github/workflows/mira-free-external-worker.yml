@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   free-worker:
-    uses: uichat-mira/.github/.github/workflows/mira-free-external-worker.yml@934c55222f261c831fc1e519afd5f7a14b654301
+    uses: uichat-mira/.github/.github/workflows/mira-free-external-worker.yml@3e2481a33f03799ebcc27a329aeaeb0be42f5318
     with:
       issue_number: ${{ fromJSON(inputs.issue_number) }}
       base_branch: dev
