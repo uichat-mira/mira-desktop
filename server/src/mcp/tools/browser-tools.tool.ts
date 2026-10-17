@@ -151,16 +151,21 @@ export const createComputerUseBrowserTools = (
   // These facades only operate on an existing thread-bound Managed Browser session.
   // Browser navigation/session creation is owned by the legacy observe bootstrap
   // and, after the atomic migration, by browser_navigate (#360).
-  const requireBoundSession = (context: ToolInvocationContext) => {
+  const requireBoundSession = (context: ToolInvocationContext): string | undefined => {
     const key = context.threadId;
     const id = key ? sessionsByContext.get(key) : undefined;
     const session = id ? sessionManager?.get(id) : undefined;
-    if (!id || !session || session.info.status !== "ready") {
-      if (key) sessionsByContext.delete(key);
-      throw mcpBadRequest("No active Managed Browser session for this thread. Navigate first.");
-    }
-    return id;
+    // Busy is still an owned, live session. Do not discard its binding: the
+    // BrowserService will reject concurrent observations without creating one.
+    if (session?.info.status === "ready" || session?.info.status === "busy") return id;
+    if (key) sessionsByContext.delete(key);
+    return undefined;
   };
+  const unavailable = (context: ToolInvocationContext): BrowserToolResult => ({
+    ok: false, sessionId: "", invocationId: context.invocationId,
+    page: { url: "", title: "" }, artifacts: [],
+    error: { code: "session_unavailable", message: "No active Managed Browser session for this thread. Navigate first.", retryable: true },
+  });
 
   const snapshot: ToolImplementation = {
     definition: {
@@ -180,7 +185,10 @@ export const createComputerUseBrowserTools = (
     },
     execute: async (context) => {
       const args = requireObject<{ includeVisibleText?: boolean; maxSnapshotChars?: number }>(context.args, "args");
-      const result = await browser.observe({ ...args, sessionId: requireBoundSession(context), includeScreenshot: false });
+      const bound = requireBoundSession(context);
+      const result = bound
+        ? await browser.observe({ ...args, sessionId: bound, includeScreenshot: false })
+        : unavailable(context);
       emitBrowserArtifacts(context, result);
       return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
     },
@@ -202,7 +210,10 @@ export const createComputerUseBrowserTools = (
     execute: async (context) => {
       const args = requireObject<{ fullPage?: boolean }>(context.args, "args");
       if (args.fullPage === false) throw mcpBadRequest("Viewport-only screenshots are not supported; use fullPage=true.");
-      const result = await browser.observe({ sessionId: requireBoundSession(context), includeScreenshot: true, includeVisibleText: false });
+      const bound = requireBoundSession(context);
+      const result = bound
+        ? await browser.observe({ sessionId: bound, includeScreenshot: true, includeVisibleText: false })
+        : unavailable(context);
       emitBrowserArtifacts(context, result);
       return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
     },
