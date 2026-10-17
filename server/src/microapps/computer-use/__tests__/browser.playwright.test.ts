@@ -60,62 +60,53 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       const before = await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} });
       expect(before.status).toBe("completed");
       const observed = await browser.observe({ sessionId });
-      expect(observed.observation?.snapshot).toMatch(/textbox "Recipient Name" ref=e[0-9a-f]{32}/);
-      expect(observed.observation?.snapshot).toMatch(/button "Confirm" ref=e[0-9a-f]{32}/);
+      expect(observed.observation?.snapshot).toMatch(/textbox "Recipient Name" [ref=e\\d+\\]/);
+      expect(observed.observation?.snapshot).toMatch(/button "Confirm" [ref=e\\d+\\]/);
       expect(observed.observation?.snapshot).toMatch(/link "Details"/);
       expect(observed.observation?.snapshot).toMatch(/combobox "Shipping"/);
-      const ref = observed.observation?.snapshot?.match(/button "Confirm" ref=(e[0-9a-f]{32})/)?.[1]!;
+      const ref = observed.observation?.snapshot?.match(/button "Confirm" \\[ref=(e\\d+)\\]/)?.[1]!;
       const url = observed.page.url;
       const snapshotHash = observed.page.snapshotHash!;
       const same = await browser.observe({ sessionId });
       expect(same.page.snapshotHash).toBe(snapshotHash);
-      expect(same.observation?.snapshot).toContain(`ref=${ref}`);
+      expect(same.observation?.snapshot).toContain(`[ref=${ref}]`);
       const current = manager.get(sessionId)!;
-      // Force the precise race: state() captures the OLD element, then the page
-      // replaces it before the saved Playwright ElementHandle clicks.
-      // A selector-based implementation would click the clone instead.
-      const racePage = current.page as typeof current.page & {
-        evaluateHandle: (fn: () => unknown) => Promise<unknown>;
-      };
-      const originalEvaluateHandle = racePage.evaluateHandle.bind(racePage);
-      let replaceAfterCapture = true;
-      racePage.evaluateHandle = async (fn) => {
-        const collection = await originalEvaluateHandle(fn);
-        if (replaceAfterCapture) {
-          replaceAfterCapture = false;
-          await current.page.evaluate(() => {
-            const old = document.getElementById("replace")!;
-            const clone = old.cloneNode(true);
-            clone.addEventListener("click", () => document.body.setAttribute("data-wrong-click", "yes"));
-            old.replaceWith(clone);
-          });
-        }
-        return collection;
-      };
-      const racingClick = await browser.act({ sessionId, pageUrl: url, snapshotHash, action: { kind: "click", ref } });
-      racePage.evaluateHandle = originalEvaluateHandle;
-      expect(racingClick.ok).toBe(false);
-      expect(racingClick.error?.code).toBe("stale_snapshot");
-      expect(await current.page.evaluate(() => document.body.hasAttribute("data-wrong-click"))).toBe(false);
-      // A second replacement before an action must also be rejected.
+      const clicked = await browser.act({ sessionId, pageUrl: url, snapshotHash, action: { kind: "click", ref } });
+      expect(clicked.ok).toBe(true);
+
+      // Playwright's latest AI snapshot owns the ref -> DOM-node mapping.
+      // Replacing the node with an identical clone disconnects the original
+      // mapped object; getByRef(ref) must never rebound the old ref to the clone.
       await current.page.evaluate(() => {
-        const prior = document.getElementById("replace")!;
-        const clone = prior.cloneNode(true);
-        prior.replaceWith(clone);
+        const old = document.getElementById("replace")!;
+        const clone = old.cloneNode(true);
+        clone.addEventListener("click", () => document.body.setAttribute("data-wrong-click", "yes"));
+        old.replaceWith(clone);
       });
-      const click = await browser.act({ sessionId, pageUrl: url, snapshotHash, action: { kind: "click", ref } });
+      const click = await browser.act({
+        sessionId,
+        pageUrl: clicked.page.url,
+        snapshotHash: clicked.page.snapshotHash!,
+        action: { kind: "click", ref },
+      });
       expect(click.ok).toBe(false);
       expect(click.error?.code).toBe("stale_snapshot");
+      expect(await current.page.evaluate(() => document.body.hasAttribute("data-wrong-click"))).toBe(false);
       const visible = await browser.assert({ sessionId, assertion: { kind: "visible", ref } });
       expect(visible.ok).toBe(false);
       expect(visible.error?.code).toBe("stale_snapshot");
-      const wait = await browser.act({ sessionId, pageUrl: url, snapshotHash, action: { kind: "wait", ref, timeoutMs: 10 } });
+      const wait = await browser.act({
+        sessionId,
+        pageUrl: clicked.page.url,
+        snapshotHash: clicked.page.snapshotHash!,
+        action: { kind: "wait", ref, timeoutMs: 10 },
+      });
       expect(wait.ok).toBe(false);
       expect(wait.error?.code).toBe("stale_snapshot");
       const after = await browser.observe({ sessionId });
-      expect(after.observation?.snapshot).not.toContain(`ref=${ref}`);
+      expect(after.observation?.snapshot).not.toContain(`[ref=${ref}]`);
       // An identical input clone must not inherit the observed node identity.
-      const inputRef = after.observation?.snapshot?.match(/textbox "Recipient Name" ref=(e[0-9a-f]{32})/)?.[1]!;
+      const inputRef = after.observation?.snapshot?.match(/textbox "Recipient Name" \\[ref=(e\\d+)\\]/)?.[1]!;
       await current.page.evaluate(() => {
         const original = document.getElementById("name")!;
         original.replaceWith(original.cloneNode(true));
@@ -179,7 +170,7 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
 
       const before = await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} });
       const beforeResult = before.result as { page: { url: string; snapshotHash: string }; observation?: { snapshot?: string } };
-      const ref = beforeResult.observation?.snapshot?.match(/button "Confirm" ref=(e[0-9a-f]{32})/)?.[1]!;
+      const ref = beforeResult.observation?.snapshot?.match(/button "Confirm" \\[ref=(e\\d+)\\]/)?.[1]!;
       expect(ref).toBeTruthy();
       const sessionId = nav.args.sessionId as string;
       await manager.get(sessionId)!.page.evaluate(() => {
@@ -196,4 +187,62 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       fs.rmSync(file, { force: true });
     }
   }, 30000);
+
+  it("keeps a native ref bound to the same hidden node and invalidates it on navigation", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const file = path.join(root, \`visibility-fixture-\${crypto.randomUUID()}.html\`);
+    fs.writeFileSync(file, \`<!doctype html><html><head><title>Managed Browser Visibility</title></head>
+<body><button id="target">Continue</button></body></html>\`);
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    try {
+      const created = await manager.create({ allowedDomains: [], allowedSchemes: ["file:"], initialUrl: pathToFileURL(file).href });
+      expect(created.status).toBe("ready");
+      const sessionId = created.id;
+      const observed = await browser.observe({ sessionId });
+      const ref = observed.observation?.snapshot?.match(/button "Continue" \[ref=(e\d+)\]/)?.[1];
+      expect(ref).toBeTruthy();
+      const page = manager.get(sessionId)!.page;
+
+      await page.evaluate(() => { (document.getElementById("target") as HTMLElement).style.display = "none"; });
+      setTimeout(() => { void page.evaluate(() => { (document.getElementById("target") as HTMLElement).style.display = "block"; }); }, 50);
+      const reappeared = await browser.wait({
+        sessionId,
+        condition: { kind: "visible", ref: ref!, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! },
+        timeoutMs: 1000,
+      });
+      expect(reappeared.ok).toBe(true);
+
+      const visibleObservation = await browser.observe({ sessionId });
+      const visibleRef = visibleObservation.observation?.snapshot?.match(/button "Continue" \[ref=(e\d+)\]/)?.[1];
+      expect(visibleRef).toBeTruthy();
+      await page.evaluate(() => { (document.getElementById("target") as HTMLElement).style.visibility = "hidden"; });
+      const hidden = await browser.wait({
+        sessionId,
+        condition: { kind: "visible", ref: visibleRef!, pageUrl: visibleObservation.page.url, snapshotHash: visibleObservation.page.snapshotHash! },
+        timeoutMs: 100,
+      });
+      expect(hidden.ok).toBe(false);
+      expect(hidden.error?.code).toBe("wait_timeout");
+
+      await page.evaluate(() => {
+        (document.getElementById("target") as HTMLElement).style.visibility = "visible";
+        history.pushState({}, "", "#next");
+      });
+      const navigated = await browser.wait({
+        sessionId,
+        condition: { kind: "visible", ref: visibleRef!, pageUrl: visibleObservation.page.url, snapshotHash: visibleObservation.page.snapshotHash! },
+        timeoutMs: 100,
+      });
+      expect(navigated.ok).toBe(false);
+      expect(navigated.error?.code).toBe("stale_snapshot");
+    } finally {
+      await manager.closeAll();
+      fs.rmSync(file, { force: true });
+    }
+  }, 30000);
+
 });
