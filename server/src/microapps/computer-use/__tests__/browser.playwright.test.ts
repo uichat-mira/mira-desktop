@@ -60,11 +60,11 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       const before = await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} });
       expect(before.status).toBe("completed");
       const observed = await browser.observe({ sessionId });
-      expect(observed.observation?.snapshot).toMatch(/textbox "Recipient Name" [ref=e\\d+\\]/);
-      expect(observed.observation?.snapshot).toMatch(/button "Confirm" [ref=e\\d+\\]/);
+      expect(observed.observation?.snapshot).toMatch(/textbox "Recipient Name" [ref=e\d+\]/);
+      expect(observed.observation?.snapshot).toMatch(/button "Confirm" [ref=e\d+\]/);
       expect(observed.observation?.snapshot).toMatch(/link "Details"/);
       expect(observed.observation?.snapshot).toMatch(/combobox "Shipping"/);
-      const ref = observed.observation?.snapshot?.match(/button "Confirm" \\[ref=(e\\d+)\\]/)?.[1]!;
+      const ref = observed.observation?.snapshot?.match(/button "Confirm" \[ref=(e\d+)\]/)?.[1]!;
       const url = observed.page.url;
       const snapshotHash = observed.page.snapshotHash!;
       const same = await browser.observe({ sessionId });
@@ -106,7 +106,7 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       const after = await browser.observe({ sessionId });
       expect(after.observation?.snapshot).not.toContain(`[ref=${ref}]`);
       // An identical input clone must not inherit the observed node identity.
-      const inputRef = after.observation?.snapshot?.match(/textbox "Recipient Name" \\[ref=(e\\d+)\\]/)?.[1]!;
+      const inputRef = after.observation?.snapshot?.match(/textbox "Recipient Name" \[ref=(e\d+)\]/)?.[1]!;
       await current.page.evaluate(() => {
         const original = document.getElementById("name")!;
         original.replaceWith(original.cloneNode(true));
@@ -170,7 +170,7 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
 
       const before = await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} });
       const beforeResult = before.result as { page: { url: string; snapshotHash: string }; observation?: { snapshot?: string } };
-      const ref = beforeResult.observation?.snapshot?.match(/button "Confirm" \\[ref=(e\\d+)\\]/)?.[1]!;
+      const ref = beforeResult.observation?.snapshot?.match(/button "Confirm" \[ref=(e\d+)\]/)?.[1]!;
       expect(ref).toBeTruthy();
       const sessionId = nav.args.sessionId as string;
       await manager.get(sessionId)!.page.evaluate(() => {
@@ -190,9 +190,9 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
 
   it("keeps a native ref bound to the same hidden node and invalidates it on navigation", async () => {
     fs.mkdirSync(root, { recursive: true });
-    const file = path.join(root, \`visibility-fixture-\${crypto.randomUUID()}.html\`);
-    fs.writeFileSync(file, \`<!doctype html><html><head><title>Managed Browser Visibility</title></head>
-<body><button id="target">Continue</button></body></html>\`);
+    const file = path.join(root, `visibility-fixture-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(file, `<!doctype html><html><head><title>Managed Browser Visibility</title></head>
+<body><button id="target">Continue</button></body></html>`);
     const manager = new BrowserSessionManager({
       launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
       artifactRoot: root,
