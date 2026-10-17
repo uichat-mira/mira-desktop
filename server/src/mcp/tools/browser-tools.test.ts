@@ -31,11 +31,13 @@ describe("Computer Use browser MCP tools", () => {
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
     tools.forEach(registerTool);
     const absent = await executeInvocation({ toolId: "browser_snapshot", threadId: "thread-no-session", args: {} });
-    expect(absent.status).toBe("failed");
-    expect(absent.error?.message).toMatch(/Navigate first/);
+    expect(absent.status).toBe("completed");
+    expect(absent.result).toMatchObject({ ok: false, error: { code: "session_unavailable", retryable: true } });
     const invalidMode = await executeInvocation({ toolId: "browser_screenshot", threadId: "thread-no-session", args: { fullPage: false } });
     expect(invalidMode.status).toBe("failed");
     expect(invalidMode.error?.message).toMatch(/not supported/);
+    const absentScreenshot = await executeInvocation({ toolId: "browser_screenshot", threadId: "thread-no-session", args: {} });
+    expect(absentScreenshot.result).toMatchObject({ ok: false, error: { code: "session_unavailable" } });
     expect(manager.create).not.toHaveBeenCalled();
     expect(browser.observe).not.toHaveBeenCalled();
     expect(tools.find((x) => x.definition.id === "browser_snapshot")?.definition.capabilities).toMatchObject({ sideEffect: "none", requiresApproval: false });
