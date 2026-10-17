@@ -43,30 +43,30 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
     ariaSnapshot: vi.fn(async () => {
       const visible = nodes.filter((node) => node.isConnected && node.visible);
       latestSnapshotRefs = new Map(visible.map((node) => [node.ref, node]));
-      return visible.map((node) => \`- \${node.role} "\${node.name}" [ref=\${node.ref}]\`).join("\n");
+      return visible.map((node) => `- ${node.role} "${node.name}" [ref=${node.ref}]`).join("\n");
     }),
     getByRef: vi.fn((ref: string) => ({
       count: vi.fn(async () => resolveRef(ref) ? 1 : 0),
       isVisible: vi.fn(async () => Boolean(resolveRef(ref)?.visible)),
       inputValue: vi.fn(async () => {
         const node = resolveRef(ref);
-        if (!node) throw new Error(\`Ref \${ref} not found in current page snapshot\`);
+        if (!node) throw new Error(`Ref ${ref} not found in current page snapshot`);
         return node.value ?? "";
       }),
       click: vi.fn(async (options?: { timeout?: number }) => {
-        if (!resolveRef(ref)) throw new Error(\`Ref \${ref} not found in current page snapshot\`);
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
         return page.click(ref, options);
       }),
       type: vi.fn(async (text: string, options?: { timeout?: number }) => {
-        if (!resolveRef(ref)) throw new Error(\`Ref \${ref} not found in current page snapshot\`);
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
         return page.type(ref, text, options);
       }),
       selectOption: vi.fn(async (value: string, options?: { timeout?: number }) => {
-        if (!resolveRef(ref)) throw new Error(\`Ref \${ref} not found in current page snapshot\`);
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
         return page.selectOption(ref, value, options);
       }),
       press: vi.fn(async (key: string, options?: { timeout?: number }) => {
-        if (!resolveRef(ref)) throw new Error(\`Ref \${ref} not found in current page snapshot\`);
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
         return page.press(ref, key, options);
       }),
     })),
