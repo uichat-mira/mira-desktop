@@ -70,13 +70,15 @@ export class BrowserService {
     const invocationId = crypto.randomUUID();
     const session = this.sessions.get(input.sessionId);
     if (!session || session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
+    this.sessions.beginOperation(session);
     try {
       const current = await state(session, input.maxSnapshotChars ?? 12000);
-      this.sessions.touch(session);
       const artifacts = input.includeScreenshot ? [await makeArtifact(session, invocationId)] : [];
       return { ok: true, sessionId: input.sessionId, invocationId, page: { url: current.url, title: current.title, snapshotHash: current.snapshotHash }, observation: { snapshot: current.observation.snapshot, visibleText: input.includeVisibleText === false ? undefined : current.observation.visibleText, truncated: current.observation.truncated }, artifacts };
     } catch (cause) {
       return failure(input.sessionId, invocationId, { url: session.page.url(), title: "" }, "observe_failed", cause instanceof Error ? cause.message : String(cause), true);
+    } finally {
+      this.sessions.endOperation(session);
     }
   }
 
@@ -84,6 +86,7 @@ export class BrowserService {
     const invocationId = crypto.randomUUID();
     const session = this.sessions.get(input.sessionId);
     if (!session || (session.info.status !== "ready" && session.info.status !== "busy")) return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
+    this.sessions.beginOperation(session);
     const previous = this.actionQueues.get(input.sessionId) ?? Promise.resolve();
     let release!: () => void;
     const turn = new Promise<void>((resolve) => { release = resolve; });
@@ -123,7 +126,6 @@ export class BrowserService {
         }
       }
       const next = await state(session);
-      this.sessions.touch(session);
       return { ok: true, sessionId: input.sessionId, invocationId, page: { url: next.url, title: next.title, snapshotHash: next.snapshotHash }, observation: { snapshot: next.observation.snapshot, visibleText: next.observation.visibleText, truncated: next.observation.truncated }, artifacts: [] };
     } catch (cause) {
       if (cause instanceof BrowserActionTimeoutError) pendingOperation = cause.operation;
@@ -133,6 +135,7 @@ export class BrowserService {
     } finally {
       const finish = () => {
         if (session.info.status === "busy") session.info.status = "ready";
+        this.sessions.endOperation(session);
         release();
         if (this.actionQueues.get(input.sessionId) === queued) this.actionQueues.delete(input.sessionId);
       };
@@ -145,19 +148,24 @@ export class BrowserService {
     const invocationId = crypto.randomUUID();
     const session = this.sessions.get(input.sessionId);
     if (!session || session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
-    const current = await state(session);
-    const assertion = input.assertion;
-    let passed = false;
-    if (assertion.kind === "title") passed = current.title === assertion.expected;
-    if (assertion.kind === "url") passed = current.url === assertion.expected;
-    if (assertion.kind === "text") passed = current.observation.visibleText.includes(assertion.expected);
-    if (assertion.kind === "visible") passed = session.refs.has(assertion.ref);
-    if (assertion.kind === "value") {
-      const selector = session.refs.get(assertion.ref);
-      passed = Boolean(selector && session.page.inputValue && (await session.page.inputValue(selector)) === assertion.expected);
+    this.sessions.beginOperation(session);
+    try {
+      const current = await state(session);
+      const assertion = input.assertion;
+      let passed = false;
+      if (assertion.kind === "title") passed = current.title === assertion.expected;
+      if (assertion.kind === "url") passed = current.url === assertion.expected;
+      if (assertion.kind === "text") passed = current.observation.visibleText.includes(assertion.expected);
+      if (assertion.kind === "visible") passed = session.refs.has(assertion.ref);
+      if (assertion.kind === "value") {
+        const selector = session.refs.get(assertion.ref);
+        passed = Boolean(selector && session.page.inputValue && (await session.page.inputValue(selector)) === assertion.expected);
+      }
+      const result: BrowserToolResult = { ok: passed, sessionId: input.sessionId, invocationId, page: { url: current.url, title: current.title, snapshotHash: current.snapshotHash }, observation: { snapshot: current.observation.snapshot, visibleText: current.observation.visibleText, truncated: current.observation.truncated }, assertion: { kind: assertion.kind, passed }, artifacts: [] };
+      if (!passed) result.error = { code: "assertion_failed", message: `Browser assertion failed: ${assertion.kind}.`, retryable: false } as BrowserToolError;
+      return result;
+    } finally {
+      this.sessions.endOperation(session);
     }
-    const result: BrowserToolResult = { ok: passed, sessionId: input.sessionId, invocationId, page: { url: current.url, title: current.title, snapshotHash: current.snapshotHash }, observation: { snapshot: current.observation.snapshot, visibleText: current.observation.visibleText, truncated: current.observation.truncated }, assertion: { kind: assertion.kind, passed }, artifacts: [] };
-    if (!passed) result.error = { code: "assertion_failed", message: `Browser assertion failed: ${assertion.kind}.`, retryable: false } as BrowserToolError;
-    return result;
   }
 }
