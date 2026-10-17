@@ -223,6 +223,9 @@ export class BrowserService {
         if (!latest.refs.has(action.ref)) {
           return failure(input.sessionId, invocationId, validatedPage, "ref_not_found", "Snapshot ref is not available: " + action.ref, true);
         }
+        // Playwright 1.64 scopes AI refs to the current injected-document snapshot.
+        // A new-document navigation re-numbers the frame ref prefix, so an old
+        // ref cannot resolve into an identical replacement document.
         const target = session.page.getByRef(action.ref);
         if (await withTimeout(() => target.count(), actionTimeoutMs) === 0) {
           return failure(input.sessionId, invocationId, validatedPage, "stale_snapshot", "The observed element was replaced or detached; take a fresh snapshot.", true);

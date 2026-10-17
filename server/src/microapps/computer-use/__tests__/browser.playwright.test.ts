@@ -129,6 +129,51 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
     }
   }, 30000);
 
+  it("rejects a pre-navigation native ref after a same-URL full-document navigation", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const file = path.join(root, `generation-fixture-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(file, `<!doctype html><html><head><title>Same Document Shape</title></head>
+<body><button id="target">Go</button></body></html>`);
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    const fileUrl = pathToFileURL(file).href;
+    try {
+      const created = await manager.create({ allowedDomains: [], allowedSchemes: ["file:"], initialUrl: fileUrl });
+      expect(created.status).toBe("ready");
+      const sessionId = created.id;
+      const observed = await browser.observe({ sessionId });
+      const oldRef = observed.observation?.snapshot?.match(/button "Go" \[ref=([^\]\s]+)\]/)?.[1];
+      expect(oldRef).toBeTruthy();
+
+      // Bypass BrowserService navigation so it still holds the old URL/hash.
+      // Playwright itself must make the old aria-ref unusable in the new document.
+      const page = manager.get(sessionId)!.page;
+      await page.goto(fileUrl, { waitUntil: "domcontentloaded" });
+      expect(page.url()).toBe(observed.page.url);
+
+      const stale = await browser.act({
+        sessionId,
+        pageUrl: observed.page.url,
+        snapshotHash: observed.page.snapshotHash!,
+        action: { kind: "click", ref: oldRef! },
+      });
+      expect(stale.ok).toBe(false);
+      expect(stale.error?.code).toBe("stale_snapshot");
+
+      const fresh = await browser.observe({ sessionId });
+      const freshRef = fresh.observation?.snapshot?.match(/button "Go" \[ref=([^\]\s]+)\]/)?.[1];
+      expect(freshRef).toBeTruthy();
+      expect(freshRef).not.toBe(oldRef);
+      expect(freshRef).toMatch(/^f\d+e\d+$/);
+    } finally {
+      await manager.closeAll();
+      fs.rmSync(file, { force: true });
+    }
+  }, 30000);
+
   it("navigates, blocks out-of-scope URLs, waits on real conditions and rejects replaced refs", async () => {
     fs.mkdirSync(root, { recursive: true });
     const file = path.join(root, `wait-fixture-${crypto.randomUUID()}.html`);
