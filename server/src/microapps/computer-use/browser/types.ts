@@ -35,6 +35,22 @@ export type BrowserActInput = {
   action: BrowserAction;
 };
 
+export type BrowserNavigateInput = {
+  sessionId: string;
+  url: string;
+};
+
+export type BrowserWaitCondition =
+  | { kind: "text"; value: string }
+  | { kind: "url"; value: string }
+  | { kind: "visible"; ref: string; pageUrl: string; snapshotHash: string };
+
+export type BrowserWaitInput = {
+  sessionId: string;
+  condition: BrowserWaitCondition;
+  timeoutMs?: number;
+};
+
 export type BrowserAssertion =
   | { kind: "title"; expected: string }
   | { kind: "url"; expected: string }

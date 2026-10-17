@@ -9,6 +9,7 @@ import { BrowserSessionManager } from "../session/manager.js";
 import { createComputerUseBrowserTools } from "../../../mcp/tools/browser-tools.tool.js";
 import { clearRegistry, listToolDefinitions, registerTool } from "../../../mcp/core/registry.js";
 import { clearInvocations, executeInvocation } from "../../../mcp/core/invocations.js";
+import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 
 const root = path.join(path.basename(process.cwd()) === "server" ? path.resolve(process.cwd(), "..") : process.cwd(), ".test-artifact", "computer-use", "agt-006");
 const executableCandidates = (() => {
@@ -130,6 +131,65 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       expect(shot.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "image" })]));
       const artifact = shot.artifacts.find((a) => a.kind === "image")!;
       expect(fs.readFileSync(artifact.uri!).subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    } finally {
+      await manager.closeAll();
+      clearRegistry(); clearInvocations();
+      fs.rmSync(file, { force: true });
+    }
+  }, 30000);
+
+  it("navigates, blocks out-of-scope URLs, waits on real conditions and rejects replaced refs", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const file = path.join(root, `wait-fixture-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(file, `<!doctype html><html><head><title>Managed Browser Wait</title></head>
+<body><button id="replace">Confirm</button><div id="status">starting</div>
+<script>setTimeout(function () { document.getElementById("status").textContent = "Loaded"; }, 150);</script>
+</body></html>`);
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    const fileUrl = pathToFileURL(file).href;
+    const approve = (toolId: string, args: Record<string, unknown>) => ({ toolId, inputHash: createInvocationInputHash(args) });
+    try {
+      clearRegistry(); clearInvocations();
+      const tools = createComputerUseBrowserTools(browser, { sessionManager: manager });
+      for (const tool of tools) registerTool(tool);
+      const threadId = `wait-${crypto.randomUUID()}`;
+
+      const navArgs = { url: fileUrl };
+      const nav = await executeInvocation({ toolId: "browser_navigate", threadId, args: navArgs, approvedInvocations: [approve("browser_navigate", navArgs)] });
+      expect(nav.status).toBe("completed");
+      expect(nav.result).toMatchObject({ ok: true, page: { url: fileUrl } });
+
+      const textArgs = { condition: { kind: "text", value: "Loaded" }, timeoutMs: 5000 };
+      const waited = await executeInvocation({ toolId: "browser_wait_for", threadId, args: textArgs, approvedInvocations: [approve("browser_wait_for", textArgs)] });
+      expect(waited.status).toBe("completed");
+      expect(waited.result).toMatchObject({ ok: true });
+
+      const timeoutArgs = { condition: { kind: "text", value: "NeverAppears" }, timeoutMs: 200 };
+      const timedOut = await executeInvocation({ toolId: "browser_wait_for", threadId, args: timeoutArgs, approvedInvocations: [approve("browser_wait_for", timeoutArgs)] });
+      expect(timedOut.status).toBe("completed");
+      expect(timedOut.result).toMatchObject({ ok: false, error: { code: "wait_timeout" } });
+
+      const blockedArgs = { url: "https://example.com" };
+      const blocked = await executeInvocation({ toolId: "browser_navigate", threadId, args: blockedArgs, approvedInvocations: [approve("browser_navigate", blockedArgs)] });
+      expect(blocked.result).toMatchObject({ ok: false, error: { code: "navigation_blocked" } });
+
+      const before = await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} });
+      const beforeResult = before.result as { page: { url: string; snapshotHash: string }; observation?: { snapshot?: string } };
+      const ref = beforeResult.observation?.snapshot?.match(/button "Confirm" ref=(e[0-9a-f]{32})/)?.[1]!;
+      expect(ref).toBeTruthy();
+      const sessionId = nav.args.sessionId as string;
+      await manager.get(sessionId)!.page.evaluate(() => {
+        const original = document.getElementById("replace")!;
+        original.replaceWith(original.cloneNode(true));
+      });
+      const visibleArgs = { condition: { kind: "visible", ref, pageUrl: beforeResult.page.url, snapshotHash: beforeResult.page.snapshotHash }, timeoutMs: 500 };
+      const replaced = await executeInvocation({ toolId: "browser_wait_for", threadId, args: visibleArgs, approvedInvocations: [approve("browser_wait_for", visibleArgs)] });
+      expect(replaced.result).toMatchObject({ ok: false });
+      expect(["stale_snapshot", "ref_not_found"]).toContain((replaced.result as { error?: { code?: string } }).error?.code);
     } finally {
       await manager.closeAll();
       clearRegistry(); clearInvocations();

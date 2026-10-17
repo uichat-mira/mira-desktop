@@ -60,7 +60,7 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
     launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), close: contextClose })), close: browserClose })) },
   });
   const session = await manager.create({ allowedDomains: ["example.com"], ...config });
-  return { manager, service: new BrowserService(manager), session, page, browserClose, contextClose };
+  return { manager, service: new BrowserService(manager), session, page, nodes, browserClose, contextClose };
 };
 
 const pathLib = path;
@@ -141,6 +141,110 @@ describe("BrowserService", () => {
     expect(invalidRef.error?.code).toBe("ref_not_found");
     const unsafe = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "navigate", url: "https://not-example.com/" } });
     expect(unsafe.error?.code).toBe("action_failed");
+  });
+
+  it("navigates an allowed URL and reports the resulting page", async () => {
+    const { service, session, page } = await createHarness();
+    const result = await service.navigate({ sessionId: session.id, url: "https://example.com/next" });
+    expect(result.ok).toBe(true);
+    expect(result.page.url).toBe("https://example.com/next");
+    expect(result.page.snapshotHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(page.goto).toHaveBeenCalledWith("https://example.com/next", expect.objectContaining({ waitUntil: "domcontentloaded" }));
+  });
+
+  it("rejects a disallowed navigation without rewriting the URL", async () => {
+    const { service, session, page } = await createHarness();
+    const domain = await service.navigate({ sessionId: session.id, url: "https://evil.com/steal" });
+    expect(domain.ok).toBe(false);
+    expect(domain.error?.code).toBe("navigation_blocked");
+    expect(page.goto).not.toHaveBeenCalled();
+    const scheme = await service.navigate({ sessionId: session.id, url: "ftp://example.com/file" });
+    expect(scheme.ok).toBe(false);
+    expect(scheme.error?.code).toBe("navigation_blocked");
+    expect(page.goto).not.toHaveBeenCalled();
+  });
+
+  it("waits for text and URL conditions and reports deterministic timeouts", async () => {
+    const { service, session } = await createHarness("Ready now");
+    const text = await service.wait({ sessionId: session.id, condition: { kind: "text", value: "Ready" }, timeoutMs: 50 });
+    expect(text.ok).toBe(true);
+    const url = await service.wait({ sessionId: session.id, condition: { kind: "url", value: "https://example.com/" }, timeoutMs: 50 });
+    expect(url.ok).toBe(true);
+    const timeout = await service.wait({ sessionId: session.id, condition: { kind: "text", value: "never-present" }, timeoutMs: 5 });
+    expect(timeout.ok).toBe(false);
+    expect(timeout.error?.code).toBe("wait_timeout");
+  });
+
+  it("does not treat a URL prefix as a matching destination", async () => {
+    const { service, session } = await createHarness();
+    await service.navigate({ sessionId: session.id, url: "https://example.com/checkout/success-error" });
+    const falsePositive = await service.wait({
+      sessionId: session.id, condition: { kind: "url", value: "https://example.com/checkout/success" }, timeoutMs: 30,
+    });
+    expect(falsePositive.ok).toBe(false);
+    expect(falsePositive.error?.code).toBe("wait_timeout");
+
+    await service.navigate({ sessionId: session.id, url: "https://example.com/checkout/success" });
+    const exactMatch = await service.wait({
+      sessionId: session.id, condition: { kind: "url", value: "https://example.com/checkout/success" }, timeoutMs: 100,
+    });
+    expect(exactMatch.ok).toBe(true);
+  });
+
+  it("times out a stalled page observation without releasing its session lock early", async () => {
+    const { service, session, page } = await createHarness("Ready");
+    let resolveTitle!: (title: string) => void;
+    let signalEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { signalEntered = resolve; });
+    const stalledTitle = new Promise<string>((resolve) => { resolveTitle = resolve; });
+    page.title.mockImplementationOnce(() => {
+      signalEntered();
+      return stalledTitle;
+    });
+
+    const first = service.wait({
+      sessionId: session.id, condition: { kind: "text", value: "Ready" }, timeoutMs: 30,
+    });
+    await entered;
+    const timedOut = await first;
+    expect(timedOut.ok).toBe(false);
+    expect(timedOut.error?.code).toBe("wait_timeout");
+
+    // The Playwright read is still pending. Its handle/snapshot work must
+    // finish before the next action enters the same session.
+    const second = service.wait({
+      sessionId: session.id, condition: { kind: "text", value: "Ready" }, timeoutMs: 200,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.title).toHaveBeenCalledTimes(1);
+    resolveTitle("Example Domain");
+    expect((await second).ok).toBe(true);
+  });
+
+  it("waits on a bound visible ref and rejects a mismatched page identity", async () => {
+    const { service, session } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(observed);
+    const ok = await service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 50 });
+    expect(ok.ok).toBe(true);
+    const stale = await service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: "different-hash" }, timeoutMs: 5 });
+    expect(stale.ok).toBe(false);
+    expect(stale.error?.code).toBe("stale_snapshot");
+    const unknownRef = await service.wait({ sessionId: session.id, condition: { kind: "visible", ref: "e-missing", pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 5 });
+    expect(unknownRef.ok).toBe(false);
+    expect(unknownRef.error?.code).toBe("ref_not_found");
+  });
+
+  it("does not accept a replaced DOM node for a visible wait even with the same ref hint", async () => {
+    const { service, session, nodes } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(observed);
+    // A clone that carries the same data-cu-ref hint is still a different DOM
+    // object; the runtime-held ElementHandle identity must reject it.
+    nodes[1] = { ...nodes[1]!, ref };
+    const result = await service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 5 });
+    expect(result.ok).toBe(false);
+    expect(["stale_snapshot", "ref_not_found"]).toContain(result.error?.code);
   });
 
   it("returns structured assertion failures and wait timeouts", async () => {
