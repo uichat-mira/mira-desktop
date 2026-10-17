@@ -167,14 +167,32 @@ const state = async (session: ManagedBrowserSession, maxChars = 12000) => {
 
 export class BrowserService {
   private readonly actionQueues = new Map<string, Promise<void>>();
+  // An observation may be waiting on page.title() while an action starts.
+  // Hold the same session lock through every consumer of bound ElementHandles,
+  // not merely the map swap, so in-flight click/assert handles are never disposed.
+  private readonly operationQueues = new WeakMap<ManagedBrowserSession, Promise<void>>();
 
   constructor(private readonly sessions: BrowserSessionManager) {}
+
+  private async acquireSessionOperation(session: ManagedBrowserSession): Promise<() => void> {
+    const previous = this.operationQueues.get(session) ?? Promise.resolve();
+    let release!: () => void;
+    const turn = new Promise<void>((resolve) => { release = resolve; });
+    const queued = previous.catch(() => undefined).then(() => turn);
+    this.operationQueues.set(session, queued);
+    await previous.catch(() => undefined);
+    return () => {
+      release();
+      if (this.operationQueues.get(session) === queued) this.operationQueues.delete(session);
+    };
+  }
 
   async observe(input: BrowserInspectInput): Promise<BrowserToolResult> {
     const invocationId = crypto.randomUUID();
     const session = this.sessions.get(input.sessionId);
     if (!session || session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
     this.sessions.beginOperation(session);
+    const releaseOperation = await this.acquireSessionOperation(session);
     try {
       const current = await state(session, input.maxSnapshotChars ?? 12000);
       const artifacts = input.includeScreenshot ? [await makeArtifact(session, invocationId)] : [];
@@ -182,6 +200,7 @@ export class BrowserService {
     } catch (cause) {
       return failure(input.sessionId, invocationId, { url: session.page.url(), title: "" }, "observe_failed", cause instanceof Error ? cause.message : String(cause), true);
     } finally {
+      releaseOperation();
       this.sessions.endOperation(session);
     }
   }
@@ -197,6 +216,7 @@ export class BrowserService {
     const queued = previous.catch(() => undefined).then(() => turn);
     this.actionQueues.set(input.sessionId, queued);
     await previous.catch(() => undefined);
+    const releaseOperation = await this.acquireSessionOperation(session);
     let pendingOperation: Promise<unknown> | undefined;
     let validatedPage: BrowserToolResult["page"] | undefined;
     try {
@@ -254,6 +274,7 @@ export class BrowserService {
     } finally {
       const finish = () => {
         if (session.info.status === "busy") session.info.status = "ready";
+        releaseOperation();
         this.sessions.endOperation(session);
         release();
         if (this.actionQueues.get(input.sessionId) === queued) this.actionQueues.delete(input.sessionId);
@@ -268,6 +289,7 @@ export class BrowserService {
     const session = this.sessions.get(input.sessionId);
     if (!session || session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
     this.sessions.beginOperation(session);
+    const releaseOperation = await this.acquireSessionOperation(session);
     try {
       const assertion = input.assertion;
       const priorRef = assertion.kind === "visible" || assertion.kind === "value"
@@ -291,6 +313,7 @@ export class BrowserService {
       if (!passed) result.error = { code: "assertion_failed", message: `Browser assertion failed: ${assertion.kind}.`, retryable: false } as BrowserToolError;
       return result;
     } finally {
+      releaseOperation();
       this.sessions.endOperation(session);
     }
   }
