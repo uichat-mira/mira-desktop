@@ -18,6 +18,16 @@ export type ComputerUseExecutionResult = {
   finishSummary?: string;
 };
 
+export type PlaywrightLocatorLike = {
+  click(options?: { timeout?: number }): Promise<unknown>;
+  type(text: string, options?: { timeout?: number }): Promise<unknown>;
+  selectOption(value: string, options?: { timeout?: number }): Promise<unknown>;
+  press(key: string, options?: { timeout?: number }): Promise<unknown>;
+  count(): Promise<number>;
+  isVisible(): Promise<boolean>;
+  inputValue(): Promise<string>;
+};
+
 export type PlaywrightPageLike = {
   goto(url: string, options?: { waitUntil?: "load" | "domcontentloaded" | "networkidle"; timeout?: number }): Promise<unknown>;
   click(selector: string, options?: { timeout?: number }): Promise<unknown>;
@@ -37,6 +47,8 @@ export type PlaywrightPageLike = {
     arg?: TArg,
   ): Promise<R>;
   screenshot(options: { path: string; fullPage?: boolean }): Promise<unknown>;
+  ariaSnapshot(options?: { mode?: "ai" | "default"; timeout?: number }): Promise<string>;
+  getByRef(ref: string): PlaywrightLocatorLike;
   url(): string;
 };
 
