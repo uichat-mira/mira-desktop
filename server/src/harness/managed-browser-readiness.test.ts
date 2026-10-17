@@ -94,6 +94,23 @@ describe("Managed Browser Harness runtime readiness", () => {
     }
   });
 
+  it("applies the exact Managed Browser Runtime gate to both new atomic read-only tools", () => {
+    for (const [runtime, state, code] of [
+      [readyRuntime, "ready", undefined],
+      [unavailableRuntime, "unavailable", "browser_runtime_unavailable"],
+      [{ resolveRuntime: () => { throw new Error("secret path must not leak"); } }, "unavailable", "readiness_check_failed"],
+    ] as const) {
+      clearHarnessRegistry();
+      registerManagedBrowserTools(runtime);
+      for (const toolId of ["browser_snapshot", "browser_screenshot"]) {
+        const definition = listToolDefinitions().find((tool) => tool.id === toolId);
+        expect(definition).toBeDefined();
+        expect(definition?.capabilities).toMatchObject({ sideEffect: "none", requiresApproval: false });
+        expect(resolveToolRuntimeReadiness(toolId)).toMatchObject({ state, ...(code ? { code } : {}) });
+      }
+    }
+  });
+
   it("projects unavailable and blocks exposure for every browser tool when the runtime is not installed", () => {
     registerManagedBrowserTools(unavailableRuntime);
 

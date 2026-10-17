@@ -148,6 +148,77 @@ export const createComputerUseBrowserTools = (
     return created.id;
   };
 
+  // These facades only operate on an existing thread-bound Managed Browser session.
+  // Browser navigation/session creation is owned by the legacy observe bootstrap
+  // and, after the atomic migration, by browser_navigate (#360).
+  const requireBoundSession = (context: ToolInvocationContext): string | undefined => {
+    const key = context.threadId;
+    const id = key ? sessionsByContext.get(key) : undefined;
+    const session = id ? sessionManager?.get(id) : undefined;
+    // Busy is still an owned, live session. Do not discard its binding: the
+    // BrowserService will reject concurrent observations without creating one.
+    if (session?.info.status === "ready" || session?.info.status === "busy") return id;
+    if (key) sessionsByContext.delete(key);
+    return undefined;
+  };
+  const unavailable = (context: ToolInvocationContext): BrowserToolResult => ({
+    ok: false, sessionId: "", invocationId: context.invocationId,
+    page: { url: "", title: "" }, artifacts: [],
+    error: { code: "session_unavailable", message: "No active Managed Browser session for this thread. Navigate first.", retryable: true },
+  });
+
+  const snapshot: ToolImplementation = {
+    definition: {
+      id: "browser_snapshot", title: "Browser Snapshot",
+      description: "Read a bounded, accessible snapshot of the existing Managed Browser page. Returns roles, names, stable element refs, page URL, title and snapshot hash. Navigate first; this tool never starts a browser.",
+      domain: "browser_action", source: "internal", mode: "sync",
+      inputSchema: {
+        type: "object", additionalProperties: false, required: [],
+        properties: {
+          includeVisibleText: { type: "boolean" },
+          maxSnapshotChars: { type: "integer", minimum: 100, maximum: 50000 },
+        },
+      },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "snapshot"],
+      capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ includeVisibleText?: boolean; maxSnapshotChars?: number }>(context.args, "args");
+      const bound = requireBoundSession(context);
+      const result = bound
+        ? await browser.observe({ ...args, sessionId: bound, includeScreenshot: false })
+        : unavailable(context);
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  const screenshot: ToolImplementation = {
+    definition: {
+      id: "browser_screenshot", title: "Browser Screenshot",
+      description: "Capture a full-page screenshot Artifact from the existing Managed Browser session. Navigate first. Only fullPage=true is currently supported.",
+      domain: "browser_action", source: "internal", mode: "sync",
+      inputSchema: {
+        type: "object", additionalProperties: false, required: [],
+        properties: { fullPage: { type: "boolean" } },
+      },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "screenshot"],
+      capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ fullPage?: boolean }>(context.args, "args");
+      if (args.fullPage === false) throw mcpBadRequest("Viewport-only screenshots are not supported; use fullPage=true.");
+      const bound = requireBoundSession(context);
+      const result = bound
+        ? await browser.observe({ sessionId: bound, includeScreenshot: true, includeVisibleText: false })
+        : unavailable(context);
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
   const observe: ToolImplementation = {
     definition: {
       id: "browser_observe",
@@ -251,5 +322,5 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  return [observe, act, assert];
+  return [observe, act, assert, snapshot, screenshot];
 };

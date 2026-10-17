@@ -39,6 +39,8 @@ const COMPUTER_USE_TOOL_IDS = new Set([
   "browser_observe",
   "browser_act",
   "browser_assert",
+  "browser_snapshot",
+  "browser_screenshot",
 ]);
 const isComputerUseInvocation = (toolId: string) =>
   COMPUTER_USE_TOOL_IDS.has(toolId);

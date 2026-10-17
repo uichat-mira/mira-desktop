@@ -14,7 +14,41 @@ const evidenceRoot = path.resolve(
 const createPage = () => {
   let url = "https://example.com/";
   let visibleText = "Example Domain";
+  const nodes = [
+    { role: "heading", name: "Example Domain", ref: null as string | null, isConnected: true,
+      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
+    { role: "button", name: "Go", ref: null as string | null, isConnected: true,
+      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
+  ];
   const page = {
+    evaluateHandle: vi.fn(async () => {
+      const handles = nodes.map((node) => ({
+        node,
+        evaluate: vi.fn(async (fn: (node: typeof node, arg?: unknown) => unknown, arg?: unknown) =>
+          fn(node, arg && typeof arg === "object" && "node" in arg ? (arg as { node: unknown }).node : arg)),
+        click: vi.fn(async (options?: { timeout?: number }) =>
+          page.click('[data-cu-ref="' + node.ref + '"]', options)),
+        type: vi.fn(async (text: string, options?: { timeout?: number }) =>
+          page.type('[data-cu-ref="' + node.ref + '"]', text, options)),
+        selectOption: vi.fn(async () => undefined),
+        press: vi.fn(async () => undefined),
+        dispose: vi.fn(async () => undefined),
+      }));
+      return {
+        evaluate: vi.fn(async () => ({
+          rows: nodes.map((node) => ({ hint: node.ref, role: node.role, name: node.name })),
+          visibleText: visibleText,
+        })),
+        getProperty: vi.fn(async () => ({
+          getProperties: vi.fn(async () => new Map(handles.map((handle, i) => [String(i), {
+            getProperty: vi.fn(async () => handle),
+            dispose: vi.fn(async () => undefined),
+          }]))),
+          dispose: vi.fn(async () => undefined),
+        })),
+        dispose: vi.fn(async () => undefined),
+      };
+    }),
     goto: vi.fn(async (nextUrl: string) => {
       url = nextUrl;
     }),
@@ -119,7 +153,7 @@ describe("Computer Use T122 server acceptance", () => {
       sessionId: session.id,
       pageUrl: observed.page.url,
       snapshotHash: observed.page.snapshotHash!,
-      action: { kind: "click", ref: "e2" },
+      action: { kind: "click", ref: observed.observation?.snapshot?.match(/button "Go" ref=(e[0-9a-f]{32})/)?.[1]! },
     });
     expect(acted.ok).toBe(true);
 
@@ -148,7 +182,7 @@ describe("Computer Use T122 server acceptance", () => {
     const browser = new BrowserService(manager);
     const session = await manager.create({ allowedDomains: ["example.com"] });
     const observed = await browser.observe({ sessionId: session.id });
-    const stale = await browser.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: "stale", action: { kind: "click", ref: "e2" } });
+    const stale = await browser.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: "stale", action: { kind: "click", ref: observed.observation?.snapshot?.match(/button "Go" ref=(e[0-9a-f]{32})/)?.[1]! } });
     const boundary = await browser.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "navigate", url: "https://not-example.com/" } });
     expect(stale.error?.code).toBe("stale_snapshot");
     expect(boundary.error?.code).toBe("action_failed");
