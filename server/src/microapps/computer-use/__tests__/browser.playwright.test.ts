@@ -217,6 +217,19 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       const refOf = (result: { observation?: { snapshot?: string } }) =>
         result.observation?.snapshot?.match(/button "Confirm" ref=(e[0-9a-f]{32})/)?.[1]!;
 
+      // A hidden original node must still validate the exact source snapshot
+      // generation that minted the ref; an arbitrary hash cannot wait through
+      // the hide and later succeed when the same node reappears.
+      await page.evaluate(() => { document.getElementById("target")!.style.display = "none"; });
+      const wrongGeneration = await browser.wait({
+        sessionId: session.id,
+        condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: "0".repeat(64) },
+        timeoutMs: 300,
+      });
+      expect(wrongGeneration.ok).toBe(false);
+      expect(wrongGeneration.error?.code).toBe("stale_snapshot");
+      await page.evaluate(() => { document.getElementById("target")!.style.display = ""; });
+
       // Hide the original node, then restore the same DOM object before the deadline.
       await page.evaluate(() => {
         const el = document.getElementById("target")!;
