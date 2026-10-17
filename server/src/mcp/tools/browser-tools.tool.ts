@@ -9,6 +9,7 @@ import type {
   BrowserAssertInput,
   BrowserInspectInput,
   BrowserToolResult,
+  BrowserWaitInput,
 } from "@/microapps/computer-use/browser/types.js";
 import type { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
 
@@ -41,6 +42,14 @@ const actionSchema = {
     { type: "object", required: ["kind", "ref", "key"], additionalProperties: false, properties: { kind: { enum: ["press"] }, ref: { type: "string", minLength: 1 }, key: { type: "string", minLength: 1 } } },
     { type: "object", required: ["kind"], additionalProperties: false, properties: { kind: { enum: ["scroll"] }, x: { type: "number" }, y: { type: "number" } } },
     { type: "object", required: ["kind"], additionalProperties: false, properties: { kind: { enum: ["wait"] }, ref: { type: "string", minLength: 1 }, text: { type: "string" }, timeoutMs: { type: "integer", minimum: 1 } } },
+  ],
+} as const;
+
+const conditionSchema = {
+  oneOf: [
+    { type: "object", required: ["kind", "value"], additionalProperties: false, properties: { kind: { enum: ["text"] }, value: { type: "string", minLength: 1 } } },
+    { type: "object", required: ["kind", "value"], additionalProperties: false, properties: { kind: { enum: ["url"] }, value: { type: "string", minLength: 1 } } },
+    { type: "object", required: ["kind", "ref", "pageUrl", "snapshotHash"], additionalProperties: false, properties: { kind: { enum: ["visible"] }, ref: { type: "string", minLength: 1 }, pageUrl: { type: "string", minLength: 1 }, snapshotHash: { type: "string", minLength: 1 } } },
   ],
 } as const;
 
@@ -78,6 +87,18 @@ const agentAssertSchema = {
   additionalProperties: false,
   required: ["assertion"],
   properties: { assertion: { ...assertionSchema } },
+} as const;
+const agentNavigateSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["url"],
+  properties: { url: { type: "string", minLength: 1 } },
+} as const;
+const agentWaitSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["condition"],
+  properties: { condition: { ...conditionSchema }, timeoutMs: { type: "integer", minimum: 1 } },
 } as const;
 
 const emitBrowserArtifacts = (
@@ -322,5 +343,97 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  return [observe, act, assert, snapshot, screenshot];
+  const navigate: ToolImplementation = {
+    definition: {
+      id: "browser_navigate",
+      title: "Browser Navigate",
+      description: "Navigate the Managed Browser to an explicit URL, or bootstrap the first Managed Browser session for this thread when none is bound. Enforces the session's configured scheme and domain restrictions: a disallowed URL is rejected, never silently allowed or rewritten. Returns the resulting page observation so the agent can observe the destination before acting. Requires approval.",
+      domain: "browser_action",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["url"],
+        properties: {
+          sessionId,
+          url: { type: "string", minLength: 1 },
+        },
+      },
+      inputSchemaByExposure: { agent_intent: agentNavigateSchema },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "navigate"],
+      capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ url?: string }>(context.args, "args");
+      const rawUrl = typeof args.url === "string" ? args.url.trim() : "";
+      if (!rawUrl) throw mcpBadRequest("url is required");
+      let url: string;
+      try {
+        url = new URL(rawUrl.includes("://") ? rawUrl : `https://${rawUrl}`).toString();
+      } catch {
+        throw mcpBadRequest(`url is not a valid absolute URL: ${rawUrl}`);
+      }
+      const bound = requireBoundSession(context);
+      let sessionId: string;
+      if (bound) {
+        sessionId = bound;
+      } else {
+        if (!sessionManager) throw mcpBadRequest("Computer Use browser session is not bound; a target URL is required.");
+        const parsed = new URL(url);
+        const created = await sessionManager.create({ allowedDomains: [parsed.hostname], headless: true, sessionTimeoutMs: sessionIdleTimeoutMs });
+        if (created.status !== "ready") {
+          const result: BrowserToolResult = {
+            ok: false, sessionId: "", invocationId: context.invocationId,
+            page: { url: "", title: "" }, artifacts: [],
+            error: { code: created.error?.code ?? "session_unavailable", message: created.error?.message ?? "Computer Use browser session could not be created.", retryable: true },
+          };
+          return { structuredContent: result, isError: true };
+        }
+        if (context.threadId) sessionsByContext.set(context.threadId, created.id);
+        sessionId = created.id;
+      }
+      (context.args as Record<string, unknown>).sessionId = sessionId;
+      const result = await browser.navigate({ sessionId, url });
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  const wait: ToolImplementation = {
+    definition: {
+      id: "browser_wait_for",
+      title: "Browser Wait For",
+      description: "Wait, up to a bounded timeout, for a future page condition. condition.kind=text waits for visible text; kind=url waits for the page URL to match; kind=visible waits for a previously observed element ref and requires the observed pageUrl and snapshotHash plus the runtime-held element identity, so a replaced or renumbered element never satisfies the wait. Waiting on UI that was never observed should use text/url conditions followed by a fresh snapshot. A timeout is a failure (wait_timeout), never a false success. Requires approval.",
+      domain: "browser_action",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["condition"],
+        properties: {
+          sessionId,
+          condition: { ...conditionSchema },
+          timeoutMs: { type: "integer", minimum: 1 },
+        },
+      },
+      inputSchemaByExposure: { agent_intent: agentWaitSchema },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "wait"],
+      capabilities: { sideEffect: "none", requiresApproval: true, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<BrowserWaitInput & { sessionId?: string }>(context.args, "args");
+      const bound = requireBoundSession(context);
+      const result = bound
+        ? await browser.wait({ sessionId: bound, condition: args.condition, timeoutMs: args.timeoutMs })
+        : unavailable(context);
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  return [observe, act, assert, navigate, wait, snapshot, screenshot];
 };

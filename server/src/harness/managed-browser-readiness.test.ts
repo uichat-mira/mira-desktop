@@ -111,6 +111,26 @@ describe("Managed Browser Harness runtime readiness", () => {
     }
   });
 
+  it("applies the exact Managed Browser Runtime gate to navigation and wait facades", () => {
+    const expected = [
+      ["browser_navigate", { sideEffect: "network", requiresApproval: true }],
+      ["browser_wait_for", { sideEffect: "none", requiresApproval: true }],
+    ] as const;
+    for (const [runtime, state, code] of [
+      [readyRuntime, "ready", undefined],
+      [unavailableRuntime, "unavailable", "browser_runtime_unavailable"],
+    ] as const) {
+      clearHarnessRegistry();
+      registerManagedBrowserTools(runtime);
+      for (const [toolId, capabilities] of expected) {
+        const definition = listToolDefinitions().find((tool) => tool.id === toolId);
+        expect(definition).toBeDefined();
+        expect(definition?.capabilities).toMatchObject(capabilities);
+        expect(resolveToolRuntimeReadiness(toolId)).toMatchObject({ state, ...(code ? { code } : {}) });
+      }
+    }
+  });
+
   it("projects unavailable and blocks exposure for every browser tool when the runtime is not installed", () => {
     registerManagedBrowserTools(unavailableRuntime);
 

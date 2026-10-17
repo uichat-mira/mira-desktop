@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { BrowserActInput, BrowserArtifact, BrowserAssertInput, BrowserAssertion, BrowserInspectInput, BrowserToolError, BrowserToolResult } from "./types.js";
+import type { BrowserActInput, BrowserArtifact, BrowserAssertInput, BrowserAssertion, BrowserInspectInput, BrowserNavigateInput, BrowserToolError, BrowserToolResult, BrowserWaitInput } from "./types.js";
 import { BrowserActionTimeoutError } from "../session/manager.js";
 import type { BrowserPage, BrowserSessionManager, ManagedBrowserSession } from "../session/manager.js";
 
@@ -187,6 +187,21 @@ export class BrowserService {
     };
   }
 
+  // Keep later actions queued behind a timed-out underlying Playwright
+  // operation so a slow/aborted call cannot overlap the next one.
+  private async acquireActionTurn(sessionId: string): Promise<() => void> {
+    const previous = this.actionQueues.get(sessionId) ?? Promise.resolve();
+    let release!: () => void;
+    const turn = new Promise<void>((resolve) => { release = resolve; });
+    const queued = previous.catch(() => undefined).then(() => turn);
+    this.actionQueues.set(sessionId, queued);
+    await previous.catch(() => undefined);
+    return () => {
+      release();
+      if (this.actionQueues.get(sessionId) === queued) this.actionQueues.delete(sessionId);
+    };
+  }
+
   async observe(input: BrowserInspectInput): Promise<BrowserToolResult> {
     const invocationId = crypto.randomUUID();
     const session = this.sessions.get(input.sessionId);
@@ -210,12 +225,7 @@ export class BrowserService {
     const session = this.sessions.get(input.sessionId);
     if (!session || (session.info.status !== "ready" && session.info.status !== "busy")) return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
     this.sessions.beginOperation(session);
-    const previous = this.actionQueues.get(input.sessionId) ?? Promise.resolve();
-    let release!: () => void;
-    const turn = new Promise<void>((resolve) => { release = resolve; });
-    const queued = previous.catch(() => undefined).then(() => turn);
-    this.actionQueues.set(input.sessionId, queued);
-    await previous.catch(() => undefined);
+    const releaseAction = await this.acquireActionTurn(input.sessionId);
     const releaseOperation = await this.acquireSessionOperation(session);
     let pendingOperation: Promise<unknown> | undefined;
     let validatedPage: BrowserToolResult["page"] | undefined;
@@ -276,11 +286,107 @@ export class BrowserService {
         if (session.info.status === "busy") session.info.status = "ready";
         releaseOperation();
         this.sessions.endOperation(session);
-        release();
-        if (this.actionQueues.get(input.sessionId) === queued) this.actionQueues.delete(input.sessionId);
+        releaseAction();
       };
       if (pendingOperation) void pendingOperation.catch(() => undefined).then(finish);
       else finish();
+    }
+  }
+
+  async navigate(input: BrowserNavigateInput): Promise<BrowserToolResult> {
+    const invocationId = crypto.randomUUID();
+    const session = this.sessions.get(input.sessionId);
+    if (!session || (session.info.status !== "ready" && session.info.status !== "busy")) return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
+    this.sessions.beginOperation(session);
+    const releaseAction = await this.acquireActionTurn(input.sessionId);
+    const releaseOperation = await this.acquireSessionOperation(session);
+    let pendingOperation: Promise<unknown> | undefined;
+    try {
+      if (session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
+      session.info.status = "busy";
+      await this.sessions.navigate(session, input.url);
+      const next = await state(session);
+      return { ok: true, sessionId: input.sessionId, invocationId, page: { url: next.url, title: next.title, snapshotHash: next.snapshotHash }, observation: { snapshot: next.observation.snapshot, visibleText: next.observation.visibleText, truncated: next.observation.truncated }, artifacts: [] };
+    } catch (cause) {
+      if (cause instanceof BrowserActionTimeoutError) pendingOperation = cause.operation;
+      const message = cause instanceof Error ? cause.message : String(cause);
+      const recovered = pendingOperation ? undefined : await state(session).catch(() => undefined);
+      // BrowserSessionManager rejects disallowed scheme/domain explicitly; do
+      // not rewrite or silently widen the allowlist for the requested URL.
+      const blocked = /not allowed|is not permitted|disallowed/i.test(message);
+      const timeout = cause instanceof BrowserActionTimeoutError || /timed out/i.test(message);
+      const errorPage = recovered ? { url: recovered.url, title: recovered.title, snapshotHash: recovered.snapshotHash }
+        : { url: session.page.url(), title: "" };
+      return failure(input.sessionId, invocationId, errorPage, timeout ? "action_timeout" : blocked ? "navigation_blocked" : "navigation_failed", message, true);
+    } finally {
+      const finish = () => {
+        if (session.info.status === "busy") session.info.status = "ready";
+        releaseOperation();
+        this.sessions.endOperation(session);
+        releaseAction();
+      };
+      if (pendingOperation) void pendingOperation.catch(() => undefined).then(finish);
+      else finish();
+    }
+  }
+
+  async wait(input: BrowserWaitInput): Promise<BrowserToolResult> {
+    const invocationId = crypto.randomUUID();
+    const session = this.sessions.get(input.sessionId);
+    if (!session || (session.info.status !== "ready" && session.info.status !== "busy")) return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
+    this.sessions.beginOperation(session);
+    const releaseAction = await this.acquireActionTurn(input.sessionId);
+    const releaseOperation = await this.acquireSessionOperation(session);
+    try {
+      if (session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
+      session.info.status = "busy";
+      const actionTimeoutMs = session.info.config.actionTimeoutMs ?? 30000;
+      const condition = input.condition;
+      if (condition.kind === "visible") {
+        // visible(ref) can only wait on a ref that belongs to a previously
+        // observed page generation; the caller must pin pageUrl + snapshotHash.
+        const current = await state(session);
+        const boundPage = { url: current.url, title: current.title, snapshotHash: current.snapshotHash };
+        if (current.url !== condition.pageUrl || current.snapshotHash !== condition.snapshotHash) {
+          return failure(input.sessionId, invocationId, boundPage, "stale_snapshot", "The page or snapshot changed; observe again before waiting on a ref.", true);
+        }
+        if (!boundElement(session, condition.ref)) {
+          return failure(input.sessionId, invocationId, boundPage, "ref_not_found", "Snapshot ref is not available: " + condition.ref, true);
+        }
+      }
+      const deadline = Date.now() + Math.min(input.timeoutMs ?? actionTimeoutMs, actionTimeoutMs);
+      let matched = false;
+      let replaced = false;
+      while (Date.now() < deadline) {
+        const next = await state(session);
+        if (condition.kind === "text") matched = next.observation.visibleText.includes(condition.value);
+        else if (condition.kind === "url") matched = next.url === condition.value || next.url.startsWith(condition.value);
+        else {
+          const target = boundElement(session, condition.ref);
+          // A replaced/renumbered node loses its ref binding; only the original
+          // runtime-held ElementHandle can satisfy visible(ref).
+          if (!target) { replaced = true; break; }
+          matched = Boolean(await target.evaluate((node) => node.isConnected && Boolean(node.getClientRects().length)).catch(() => false));
+        }
+        if (matched) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      if (replaced) {
+        const next = await state(session).catch(() => undefined);
+        return failure(input.sessionId, invocationId, next ? { url: next.url, title: next.title, snapshotHash: next.snapshotHash } : { url: session.page.url(), title: "" }, "stale_snapshot", "The observed element was replaced; take a fresh snapshot.", true);
+      }
+      const next = await state(session);
+      const page = { url: next.url, title: next.title, snapshotHash: next.snapshotHash };
+      if (!matched) return failure(input.sessionId, invocationId, page, "wait_timeout", "Browser wait timed out before the condition became true.", true);
+      return { ok: true, sessionId: input.sessionId, invocationId, page, observation: { snapshot: next.observation.snapshot, visibleText: next.observation.visibleText, truncated: next.observation.truncated }, artifacts: [] };
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      return failure(input.sessionId, invocationId, { url: session.page.url(), title: "" }, "wait_failed", message, true);
+    } finally {
+      if (session.info.status === "busy") session.info.status = "ready";
+      releaseOperation();
+      this.sessions.endOperation(session);
+      releaseAction();
     }
   }
 

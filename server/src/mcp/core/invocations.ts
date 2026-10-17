@@ -39,6 +39,8 @@ const COMPUTER_USE_TOOL_IDS = new Set([
   "browser_observe",
   "browser_act",
   "browser_assert",
+  "browser_navigate",
+  "browser_wait_for",
   "browser_snapshot",
   "browser_screenshot",
 ]);
