@@ -50,7 +50,7 @@ const boundElementBinding = (session: ManagedBrowserSession, ref: string) =>
 const boundElement = (session: ManagedBrowserSession, ref: string) =>
   boundElementBinding(session, ref)?.handle;
 
-const observePageCapture = async (session: ManagedBrowserSession, maxChars = 12000, preserve?: ReadonlySet<SafeElementHandle>) => {
+const observePageCapture = async (session: ManagedBrowserSession, maxChars = 12000, preserve?: ReadonlySet<SafeElementHandle>, sourcePageUrl = session.page.url()) => {
   const page = session.page as typeof session.page & {
     evaluateHandle?: (fn: () => unknown) => Promise<CollectionHandle>;
   };
@@ -132,9 +132,8 @@ const observePageCapture = async (session: ManagedBrowserSession, maxChars = 120
   const snapshot = lines.join("\n");
   const truncated = snapshot.length > maxChars || visibleText.length > maxChars;
   const fingerprint = crypto.createHash("sha256").update(snapshot).update("\0").update(visibleText).digest("hex");
-  const pageUrl = session.page.url();
   for (const binding of next.values()) {
-    binding.pageUrl = pageUrl;
+    binding.pageUrl = sourcePageUrl;
     binding.snapshotHash = fingerprint;
   }
   elementBindings.set(session, next);
@@ -155,7 +154,7 @@ const observePageCapture = async (session: ManagedBrowserSession, maxChars = 120
 // binding map is not. Serialize this part per session so parallel reads cannot
 // dispose one another's handles or return an already-obsolete ref map.
 const observationQueues = new WeakMap<ManagedBrowserSession, Promise<void>>();
-const observePage = async (session: ManagedBrowserSession, maxChars = 12000, preserve?: ReadonlySet<SafeElementHandle>) => {
+const observePage = async (session: ManagedBrowserSession, maxChars = 12000, preserve?: ReadonlySet<SafeElementHandle>, sourcePageUrl = session.page.url()) => {
   const previous = observationQueues.get(session) ?? Promise.resolve();
   let release!: () => void;
   const turn = new Promise<void>((resolve) => { release = resolve; });
@@ -163,7 +162,7 @@ const observePage = async (session: ManagedBrowserSession, maxChars = 12000, pre
   observationQueues.set(session, queued);
   await previous.catch(() => undefined);
   try {
-    return await observePageCapture(session, maxChars, preserve);
+    return await observePageCapture(session, maxChars, preserve, sourcePageUrl);
   } finally {
     release();
     if (observationQueues.get(session) === queued) observationQueues.delete(session);
@@ -177,9 +176,13 @@ const makeArtifact = async (session: ManagedBrowserSession, invocationId: string
 };
 
 const state = async (session: ManagedBrowserSession, maxChars = 12000, preserve?: ReadonlySet<SafeElementHandle>) => {
+  // One state capture owns one source URL. The page may mutate its URL while
+  // title/DOM reads are in flight, but refs and the returned page metadata must
+  // describe the same observation generation. A later state read will detect
+  // any genuine navigation and invalidate the old ref normally.
   const url = session.page.url();
   const title = await pageTitle(session.page);
-  const observation = await observePage(session, maxChars, preserve);
+  const observation = await observePage(session, maxChars, preserve, url);
   return { url, title, snapshotHash: observation.fingerprint, observation };
 };
 
