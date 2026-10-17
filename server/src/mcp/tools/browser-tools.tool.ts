@@ -191,7 +191,7 @@ export const createComputerUseBrowserTools = (
   const snapshot: ToolImplementation = {
     definition: {
       id: "browser_snapshot", title: "Browser Snapshot",
-      description: "Read a bounded, accessible snapshot of the existing Managed Browser page. Returns roles, names, stable element refs, page URL, title and snapshot hash. Navigate first; this tool never starts a browser.",
+      description: "Read a bounded Playwright AI aria snapshot of the existing Managed Browser page. Returns roles, names, ephemeral refs from the latest AI snapshot, page URL, title and snapshot hash. Navigate first; this tool never starts a browser.",
       domain: "browser_action", source: "internal", mode: "sync",
       inputSchema: {
         type: "object", additionalProperties: false, required: [],
@@ -279,7 +279,7 @@ export const createComputerUseBrowserTools = (
     definition: {
       id: "browser_act",
       title: "Browser Act",
-      description: "Perform exactly one structured action in the managed browser using pageUrl and snapshotHash from the latest browser_observe result. Supported actions are navigate(url), click(ref), type(ref,text), select(ref,value), press(ref,key), scroll(x,y), and wait(ref?,text?,timeoutMs?). Use the exact element ref from the latest snapshot for click, type, select, press, or wait. The tool manages sessionId internally, requires approval for write actions, and returns the updated page state and observation. Do not invent refs or reuse a stale snapshot.",
+      description: "Perform exactly one structured action in the managed browser using pageUrl and snapshotHash from the latest accepted observation. Supported actions are navigate(url), click(ref), type(ref,text), select(ref,value), press(ref,key), scroll(x,y), and wait(ref?,text?,timeoutMs?). Element identity is resolved by Playwright getByRef() against the latest AI snapshot; snapshotHash is an observation/approval fingerprint, not a DOM-node identity. The tool manages sessionId internally, requires approval for write actions, and returns the updated page state and observation.",
       domain: "browser_action",
       source: "internal",
       mode: "sync",
@@ -382,6 +382,7 @@ export const createComputerUseBrowserTools = (
       }
       const bound = requireBoundSession(context);
       let sessionId: string;
+      let bootstrappedSessionId: string | undefined;
       if (bound) {
         sessionId = bound;
       } else {
@@ -398,11 +399,25 @@ export const createComputerUseBrowserTools = (
         }
         if (context.threadId) sessionsByContext.set(context.threadId, created.id);
         sessionId = created.id;
+        bootstrappedSessionId = created.id;
       }
+      const cleanupFailedBootstrap = async () => {
+        if (!bootstrappedSessionId || !sessionManager) return;
+        if (context.threadId && sessionsByContext.get(context.threadId) === bootstrappedSessionId) {
+          sessionsByContext.delete(context.threadId);
+        }
+        await sessionManager.stop(bootstrappedSessionId);
+      };
       (context.args as Record<string, unknown>).sessionId = sessionId;
-      const result = await browser.navigate({ sessionId, url });
-      emitBrowserArtifacts(context, result);
-      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+      try {
+        const result = await browser.navigate({ sessionId, url });
+        if (!result.ok) await cleanupFailedBootstrap();
+        emitBrowserArtifacts(context, result);
+        return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+      } catch (cause) {
+        await cleanupFailedBootstrap();
+        throw cause;
+      }
     },
   };
 
@@ -410,7 +425,7 @@ export const createComputerUseBrowserTools = (
     definition: {
       id: "browser_wait_for",
       title: "Browser Wait For",
-      description: "Wait, up to a bounded timeout, for a future page condition. condition.kind=text waits for visible text; kind=url waits for the page URL to match; kind=visible waits for a previously observed element ref and requires the observed pageUrl and snapshotHash plus the runtime-held element identity, so a replaced or renumbered element never satisfies the wait. Waiting on UI that was never observed should use text/url conditions followed by a fresh snapshot. A timeout is a failure (wait_timeout), never a false success. Requires approval.",
+      description: "Wait, up to a bounded timeout, for a future page condition. condition.kind=text waits for visible text; kind=url waits for the page URL to match; kind=visible validates pageUrl and snapshotHash from the accepted observation, then follows Playwright getByRef() for that AI-snapshot ref without rebinding to a replacement node. Waiting on UI that was never observed should use text/url conditions followed by a fresh snapshot. A timeout is a failure (wait_timeout), never a false success. Requires approval.",
       domain: "browser_action",
       source: "internal",
       mode: "sync",
