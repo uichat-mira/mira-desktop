@@ -11,9 +11,11 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
   let currentText = visibleText;
   const nodes = [
     { role: "heading", name: "Example Domain", ref: null as string | null, isConnected: true,
-      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
+      setAttribute(_key: string, value: string) { this.ref = value; },
+      getClientRects: () => [1], getBoundingClientRect: () => ({ width: 1, height: 1 }) },
     { role: "button", name: "Go", ref: null as string | null, isConnected: true,
-      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
+      setAttribute(_key: string, value: string) { this.ref = value; },
+      getClientRects: () => [1], getBoundingClientRect: () => ({ width: 1, height: 1 }) },
   ];
   const page = {
     evaluateHandle: vi.fn(async () => {
@@ -256,7 +258,7 @@ describe("BrowserService", () => {
     const ref = buttonRef(observed);
     const button = nodes[1]!;
     let hidden = false;
-    button.getClientRects = () => (hidden ? [] : [1]);
+    button.getBoundingClientRect = () => ({ width: hidden ? 0 : 1, height: hidden ? 0 : 1 });
     const originalEvaluateHandle = page.evaluateHandle.getMockImplementation()!;
     page.evaluateHandle.mockImplementation(async () => {
       const collection = await originalEvaluateHandle();
@@ -287,7 +289,7 @@ describe("BrowserService", () => {
     const observed = await service.observe({ sessionId: session.id });
     const ref = buttonRef(observed);
     const button = nodes[1]!;
-    button.getClientRects = () => [];
+    button.getBoundingClientRect = () => ({ width: 0, height: 0 });
     const originalEvaluateHandle = page.evaluateHandle.getMockImplementation()!;
     page.evaluateHandle.mockImplementation(async () => {
       const collection = await originalEvaluateHandle();
