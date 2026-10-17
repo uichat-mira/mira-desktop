@@ -263,6 +263,36 @@ describe("Computer Use browser MCP tools", () => {
     expect(browser.navigate).toHaveBeenLastCalledWith({ sessionId: "nav-session", url: "https://example.com/next" });
   });
 
+  test("browser_navigate preserves explicit URI schemes but still supports host:port shorthand", async () => {
+    clearRegistry();
+    clearInvocations();
+    const navigate = vi.fn(async (input: { sessionId: string; url: string }) => ({
+      ok: true, sessionId: input.sessionId, invocationId: "navigate",
+      page: { url: input.url, title: "" }, artifacts: [],
+    }));
+    const create = vi.fn(async () => ({ id: "uri-session", status: "ready" as const }));
+    const manager = { create, get: vi.fn(() => ({ info: { status: "ready" as const } })) };
+    createComputerUseBrowserTools({ ...browser, navigate } as never, { sessionManager: manager as never }).forEach(registerTool);
+
+    const scenarios = [
+      ["mailto:alice@example.com", "mailto:alice@example.com"],
+      ["tel:1234567", "tel:1234567"],
+      ["file:/tmp/report.txt", "file:///tmp/report.txt"],
+      ["localhost:3000", "https://localhost:3000/"],
+    ];
+    for (const [index, [input, expected]] of scenarios.entries()) {
+      const args = { url: input };
+      const threadId = "uri-" + index;
+      const pending = await executeInvocation({ toolId: "browser_navigate", threadId, args });
+      expect(pending.status).toBe("awaiting_approval");
+      await executeInvocation({
+        toolId: "browser_navigate", threadId, args,
+        approvedInvocations: [{ toolId: "browser_navigate", inputHash: pending.inputHash! }],
+      });
+      expect(navigate).toHaveBeenLastCalledWith({ sessionId: "uri-session", url: expected });
+    }
+  });
+
   test("browser_navigate surfaces a blocked navigation result without rewriting the URL", async () => {
     clearRegistry();
     clearInvocations();
