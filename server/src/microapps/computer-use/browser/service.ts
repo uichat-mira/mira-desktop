@@ -94,8 +94,10 @@ const observePage = async (session: ManagedBrowserSession, maxChars = 12000) => 
     members = await collection.getProperty("entries");
     const nodes = await members.getProperties();
     for (let index = 0; index < data.rows.length; index++) {
-      const handle = nodes.get(String(index)) as SafeElementHandle | undefined;
-      if (!handle) throw new Error("Playwright observation lost an element handle.");
+      const rowHandle = nodes.get(String(index));
+      if (!rowHandle) throw new Error("Playwright observation lost an element row.");
+      const handle = await rowHandle.getProperty("node") as unknown as SafeElementHandle;
+      await rowHandle.dispose().catch(() => undefined);
       const row = data.rows[index]!;
       const hint = row.hint;
       let ref: string | undefined;
