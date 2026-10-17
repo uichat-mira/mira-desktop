@@ -18,7 +18,6 @@ export type ManagedBrowserSession = {
   browser: PlaywrightBrowserLike;
   context: PlaywrightContextLike;
   page: BrowserPage;
-  refs: Map<string, string>;
   artifactRoot: string;
   lastUsedAt: number;
   timeoutHandle?: ReturnType<typeof setTimeout>;
@@ -83,7 +82,7 @@ export class BrowserSessionManager {
         const pageWithViewport = page as BrowserPage & { setViewportSize?: (size: { width: number; height: number }) => Promise<unknown> };
         await pageWithViewport.setViewportSize?.(config.viewport);
       }
-      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, refs: new Map(), artifactRoot: sessionRoot, lastUsedAt: this.now(), activeOperations: 0 };
+      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, artifactRoot: sessionRoot, lastUsedAt: this.now(), activeOperations: 0 };
       this.sessions.set(id, session);
       this.scheduleTimeout(session);
       if (config.initialUrl) {
