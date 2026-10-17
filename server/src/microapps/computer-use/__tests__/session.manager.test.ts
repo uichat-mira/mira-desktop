@@ -47,9 +47,44 @@ describe("BrowserSessionManager", () => {
     }
   });
 
-  it("does not terminate in-flight work when the idle timer fires and closes resources once", async () => {
+  it("defers idle cleanup while an operation lease is held and closes once after release", async () => {
     vi.useFakeTimers();
     try {
+      const browserClose = vi.fn(async () => undefined);
+      const manager = new BrowserSessionManager({ runtime: readyRuntime, launcher: launcher(browserClose) });
+      const created = await manager.create({ allowedDomains: ["example.com"], sessionTimeoutMs: 10 });
+      const session = manager.get(created.id)!;
+      manager.beginOperation(session);
+      await vi.advanceTimersByTimeAsync(11);
+      expect(manager.get(created.id)).toBeDefined();
+      expect(browserClose).not.toHaveBeenCalled();
+      manager.endOperation(session);
+      await vi.advanceTimersByTimeAsync(11);
+      expect(browserClose).toHaveBeenCalledOnce();
+      expect(manager.get(created.id)).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps sessions from different threads separate when one is stopped", async () => {
+    const manager = new BrowserSessionManager({ runtime: readyRuntime, launcher: launcher() });
+    const first = await manager.create({ allowedDomains: ["example.com"], sessionTimeoutMs: 1000 });
+    const second = await manager.create({ allowedDomains: ["example.com"], sessionTimeoutMs: 1000 });
+    expect(first.id).not.toBe(second.id);
+    await manager.stop(first.id);
+    expect(manager.get(first.id)).toBeUndefined();
+    expect(manager.get(second.id)?.info.status).toBe("ready");
+    await manager.closeAll();
+  });
+
+  it("keeps an initial navigation alive while its idle timer fires, then expires it normally", async () => {
+    vi.useFakeTimers();
+    let finishNavigation!: () => void;
+    try {
+      let startedNavigation!: () => void;
+      const started = new Promise<void>((resolve) => { startedNavigation = resolve; });
+      const gate = new Promise<void>((resolve) => { finishNavigation = resolve; });
       const browserClose = vi.fn(async () => undefined);
       const contextClose = vi.fn(async () => undefined);
       const manager = new BrowserSessionManager({
@@ -57,28 +92,36 @@ describe("BrowserSessionManager", () => {
         launcher: {
           launch: vi.fn(async () => ({
             newContext: vi.fn(async () => ({
-              newPage: vi.fn(async () => ({ goto: vi.fn(async () => undefined), url: vi.fn(() => "https://example.com"), close: vi.fn(async () => undefined) })),
+              newPage: vi.fn(async () => ({
+                goto: vi.fn(async () => { startedNavigation(); await gate; }),
+                url: vi.fn(() => "https://example.com/"),
+                close: vi.fn(async () => undefined),
+              })),
               close: contextClose,
             })),
             close: browserClose,
           })),
         },
       });
-      const created = await manager.create({ allowedDomains: ["example.com"], sessionTimeoutMs: 10 });
-      const session = manager.get(created.id)!;
-
-      session.info.status = "busy";
+      const creating = manager.create({
+        allowedDomains: ["example.com"],
+        initialUrl: "https://example.com/",
+        sessionTimeoutMs: 10,
+      });
+      await started;
       await vi.advanceTimersByTimeAsync(11);
       expect(browserClose).not.toHaveBeenCalled();
       expect(contextClose).not.toHaveBeenCalled();
-      expect(manager.get(created.id)).toBeDefined();
-
-      session.info.status = "ready";
+      finishNavigation();
+      const session = await creating;
+      expect(session.status).toBe("ready");
+      expect(manager.get(session.id)).toBeDefined();
       await vi.advanceTimersByTimeAsync(11);
-      expect(manager.get(created.id)).toBeUndefined();
-      expect(contextClose).toHaveBeenCalledOnce();
+      expect(manager.get(session.id)).toBeUndefined();
       expect(browserClose).toHaveBeenCalledOnce();
+      expect(contextClose).toHaveBeenCalledOnce();
     } finally {
+      finishNavigation?.();
       vi.useRealTimers();
     }
   });

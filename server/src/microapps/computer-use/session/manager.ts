@@ -22,6 +22,7 @@ export type ManagedBrowserSession = {
   artifactRoot: string;
   lastUsedAt: number;
   timeoutHandle?: ReturnType<typeof setTimeout>;
+  activeOperations: number;
 };
 
 export type BrowserSessionManagerOptions = {
@@ -82,11 +83,18 @@ export class BrowserSessionManager {
         const pageWithViewport = page as BrowserPage & { setViewportSize?: (size: { width: number; height: number }) => Promise<unknown> };
         await pageWithViewport.setViewportSize?.(config.viewport);
       }
-      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, refs: new Map(), artifactRoot: sessionRoot, lastUsedAt: this.now() };
+      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, refs: new Map(), artifactRoot: sessionRoot, lastUsedAt: this.now(), activeOperations: 0 };
       this.sessions.set(id, session);
       this.scheduleTimeout(session);
       if (config.initialUrl) {
-        await this.navigate(session, config.initialUrl);
+        // Initial navigation is also active session work; the idle timer must
+        // never close Chromium while the first page is still loading.
+        this.beginOperation(session);
+        try {
+          await this.navigate(session, config.initialUrl);
+        } finally {
+          this.endOperation(session);
+        }
       }
       return session.info;
     } catch (cause) {
@@ -105,11 +113,12 @@ export class BrowserSessionManager {
     if (!timeoutMs || timeoutMs <= 0) return;
     if (session.timeoutHandle) clearTimeout(session.timeoutHandle);
     session.timeoutHandle = setTimeout(() => {
-      session.timeoutHandle = undefined;
-      if (this.sessions.get(session.info.id) !== session) return;
-      // In-flight work keeps the session alive even when its idle timer fires,
-      // so a long action is never terminated mid-flight.
-      if (session.info.status === "busy" || this.now() - session.lastUsedAt < timeoutMs) {
+      if (!this.sessions.has(session.info.id)) return;
+      if (session.activeOperations > 0) {
+        this.scheduleTimeout(session);
+        return;
+      }
+      if (this.now() - session.lastUsedAt < timeoutMs) {
         this.scheduleTimeout(session);
         return;
       }
@@ -122,11 +131,19 @@ export class BrowserSessionManager {
     this.scheduleTimeout(session);
   }
 
+  beginOperation(session: ManagedBrowserSession) {
+    session.activeOperations += 1;
+  }
+
+  endOperation(session: ManagedBrowserSession) {
+    if (session.activeOperations > 0) session.activeOperations -= 1;
+    if (session.info.status !== "stopped") this.touch(session);
+  }
+
   private async closeSession(session: ManagedBrowserSession) {
     if (session.info.status === "stopped") return;
     session.info.status = "stopped";
     if (session.timeoutHandle) clearTimeout(session.timeoutHandle);
-    session.timeoutHandle = undefined;
     await session.context.close().catch(() => undefined);
     await session.browser.close().catch(() => undefined);
     this.sessions.delete(session.info.id);

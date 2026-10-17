@@ -12,6 +12,9 @@ import type {
 } from "@/microapps/computer-use/browser/types.js";
 import type { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
 
+// Agent-created sessions must not live indefinitely; callers can override this finite idle bound.
+const AGENT_BROWSER_SESSION_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+
 const browserResultSchema = {
   type: "object",
   required: ["ok", "sessionId", "invocationId", "page", "artifacts"],
@@ -77,8 +80,6 @@ const agentAssertSchema = {
   properties: { assertion: { ...assertionSchema } },
 } as const;
 
-const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-
 const emitBrowserArtifacts = (
   context: ToolInvocationContext,
   result: BrowserToolResult,
@@ -106,7 +107,10 @@ export const createComputerUseBrowserTools = (
 ): ToolImplementation[] => {
   const sessionsByContext = new Map<string, string>();
   const sessionManager = options.sessionManager;
-  const sessionIdleTimeoutMs = options.sessionIdleTimeoutMs ?? DEFAULT_SESSION_IDLE_TIMEOUT_MS;
+  const requestedIdleTimeoutMs = options.sessionIdleTimeoutMs;
+  const sessionIdleTimeoutMs = typeof requestedIdleTimeoutMs === "number" && Number.isFinite(requestedIdleTimeoutMs) && requestedIdleTimeoutMs > 0
+    ? requestedIdleTimeoutMs
+    : AGENT_BROWSER_SESSION_IDLE_TIMEOUT_MS;
   const resolveSessionId = async (context: ToolInvocationContext, args: Record<string, unknown>) => {
     const explicitSessionId = typeof args.sessionId === "string" ? args.sessionId : undefined;
     if (explicitSessionId) {
