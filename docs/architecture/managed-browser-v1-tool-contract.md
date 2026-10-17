@@ -13,9 +13,9 @@ related:
   - ../tooling-runtime/tools-protocol.md
 ---
 
-# Managed Browser v1 — Agent Tool 语义契约（待维护者审定）
+# Managed Browser v1 — Agent Tool 语义契约（已审定设计，待实现）
 
-> **文档状态：设计草案，不是现有可执行工具列表。** 工作项 [AGT-004 / #357](https://github.com/uichat-mira/mira-desktop/issues/357)；总边界 [#316](https://github.com/uichat-mira/mira-desktop/issues/316)。这份文档定义 **Mira-owned Playwright** 的首版目标工具语义、边界和验收点，只有维护者审定后才能作为 #360–#365 的实现依据。当前真实 Tool 状态以源码及 `docs/TOOL_CURRENT_TRUTH.md` 为准。
+> **文档状态：已审定目标契约，不是现有可执行工具列表。** 工作项 [AGT-004 / #357](https://github.com/uichat-mira/mira-desktop/issues/357)；总边界 [#316](https://github.com/uichat-mira/mira-desktop/issues/316)。这份文档定义 **Mira-owned Playwright** 的首版目标工具语义、边界和验收点，作为 #359–#365 的后续实现依据；任何 Tool 施工仍需按各实施卡单独授权。当前真实 Tool 状态以源码及 `docs/TOOL_CURRENT_TRUTH.md` 为准。
 
 ## 1. 一句话结论
 
@@ -56,17 +56,17 @@ related:
 | 阶段 | Tool ID | Agent 何时选它（与相邻工具的边界） | 最小 Agent 输入（目标 schema） | 结果要证明什么 | 来源 / 施工卡 | 审批预期 |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | `browser_navigate` | **显式前往 URL**、首个页面启动；不是点某个链接 | `url: string`（受域名和 scheme 策略约束） | 实际最终 URL、标题、最新页面观察/错误 | 现有 `act.navigate` + SessionManager；[#360](https://github.com/uichat-mira/mira-desktop/issues/360) | 是，保留现有 act 网络动作门槛 |
-| P0 | `browser_snapshot` | 为下一次操作**看清当前 DOM/元素**；不是抽取业务结构化表格 | `includeVisibleText?: boolean, maxSnapshotChars?: number` | 有限快照、可见文本、refs、`snapshotHash`、截断标记 | 现有 `observe`，可靠性改进归 [#359](https://github.com/uichat-mira/mira-desktop/issues/359) | 否（仍经 Policy） |
-| P0 | `browser_screenshot` | 需要视觉证据/布局时，独立于 DOM 快照 | `fullPage?: boolean`（默认 full-page；如果只支持全页，应拒绝未实现模式） | 图像 Artifact 的 URI/ID + 所属页面身份 | 现有 `observe(includeScreenshot)` 可复用；独立 facade 待实现 | 否（仍经 Policy） |
+| P0 | `browser_snapshot` | 为下一次操作**看清当前 DOM/元素**；不是抽取业务结构化表格 | `includeVisibleText?: boolean, maxSnapshotChars?: number` | 有限快照、可见文本、refs、`snapshotHash`、截断标记 | 现有 `observe`；**独立 Tool facade/schema/registry/readiness + snapshot/ref 安全**归 [#359](https://github.com/uichat-mira/mira-desktop/issues/359) | 否（仍经 Policy） |
+| P0 | `browser_screenshot` | 需要视觉证据/布局时，独立于 DOM 快照 | `fullPage?: boolean`（默认 full-page；如果只支持全页，应拒绝未实现模式） | 图像 Artifact 的 URI/ID + 所属页面身份 | 现有 `observe(includeScreenshot)` 可复用；**独立 Tool facade/schema/registry/readiness**归 [#359](https://github.com/uichat-mira/mira-desktop/issues/359) | 否（仍经 Policy） |
 | P0 | `browser_click` | 点**刚观察到的元素 ref**；不接受伪造 selector / 无关联坐标 | `pageUrl, snapshotHash, ref` | 实际动作结果、新页面状态或明确 stale 错误 | 现有 `act.click`，安全 ref 归 #359；[#361](https://github.com/uichat-mira/mira-desktop/issues/361) | 是 |
 | P0 | `browser_fill` | 将表单控件**最终值设置**为指定文本；与逐字 `type` 不同 | `pageUrl, snapshotHash, ref, value: string` | 实际已填值/结果状态；不应 append 或默默更换目标 | Playwright PageLike 已有 `fill`，当前 `act` 只暴露 `type`；#361 | 是 |
 | P0 | `browser_press_key` | 对观察到的输入/可操作控件发送键或组合键；不是 fill | `pageUrl, snapshotHash, ref, key` | 实际按键执行/作用后的页面状态 | 现有 `act.press`；[#362](https://github.com/uichat-mira/mira-desktop/issues/362) | 是（Enter 可能提交） |
 | P0 | `browser_select_option` | 选择原生 `<select>` 项；不拿 fill 模拟 | `pageUrl, snapshotHash, ref, value` | 实际选中值；目标不是 select 时清晰失败 | 现有 `act.select`；#362 | 是 |
 | P0 | `browser_scroll` | **移动当前页面视口**；不是导航、也不是等待 | `pageUrl, snapshotHash, x?: number, y?: number`（有限数值，至少有一个非零偏移） | 可观察视口变化/结果；无法滚动要如实说明 | 现有 `act.scroll`；#362 | 是（可能触发懒加载） |
-| P0 | `browser_wait_for` | 等待**将来**的网页条件成立；不是当前状态断言 | `condition: {kind: "text", value} \| {kind: "url", value} \| {kind: "visible", ref}, timeoutMs?` | 条件满足才 `ok=true`；过期必须明确 `timeout` | 现有 `act.wait` 轮询文本/ref，目标条件需补齐；#360 | **拟否**：当前 wait 属于需审批的 `act`，变更需单独签核 |
+| P0 | `browser_wait_for` | 等待**将来**的网页条件成立；不是当前状态断言 | `condition: {kind: "text", value} \| {kind: "url", value} \| {kind: "visible", ref}, timeoutMs?` | 条件满足才 `ok=true`；过期必须明确 `timeout` | 现有 `act.wait` 轮询文本/ref，目标条件需补齐；#360 | **是（v1 保守门槛）**：沿用当前 `browser_act.wait` 的审批要求；后续免审批提案需单独签核 |
 | P0 | `browser_assert` | **现在**对标题、URL、文字、元素可见性、输入值作严格断言；不是等将来 | `assertion: {kind, expected?/ref?}`（沿用现有联合约束） | `assertion.passed`；失败是显式失败，不是“执行成功” | **已存在** `browser_assert`；#365 验收 | 否 |
 | P1 | `browser_tabs_list` | 需要理解**当前 Managed 会话**有哪些标签页 | 无业务参数 | 同会话 tab ID/URL/标题/选中项；不得列触界 Chrome 标签 | 目前仅单页引用；[#363](https://github.com/uichat-mira/mira-desktop/issues/363) | 否 |
-| P1 | `browser_tab_select` | 在**同一 Managed 会话内部**明确切换 tab | `tabId`（由 list 获得） | 选中 tab 身份和新页面观察，旧 refs 失效 | 需要 SessionManager 多页面建模；#363 | **拟是**，等待独立审批评审 |
+| P1 | `browser_tab_select` | 在**同一 Managed 会话内部**明确切换 tab | `tabId`（由 list 获得） | 选中 tab 身份和新页面观察，旧 refs 失效 | 需要 SessionManager 多页面建模；#363 | **是（v1 保守门槛）**：待实现时必须复用同一 Harness 审批管线 |
 
 ### 使用意图示例
 
@@ -80,6 +80,8 @@ related:
 | “等列表出现” | `browser_wait_for` | `browser_assert` 的即时检查 |
 | “确认标题必须是订单页” | `browser_assert` | 无条件多次 `wait_for` |
 | “在 Mira 打开的另一个标签中找文件” | `browser_tabs_list` → `browser_tab_select`（P1） | 触界标签管理工具 |
+
+**观察工具单独交付责任**：[#359](https://github.com/uichat-mira/mira-desktop/issues/359) 负责实际定义/注册 `browser_snapshot`、`browser_screenshot`，并沿用现有 Playwright BrowserService、session 归属、Artifact 和 Readiness。无会话时应明确失败（首次导航初始化由 #360 负责），`browser_screenshot(fullPage=false)` 在底层尚不支持时必须拒绝，不能声称截取了当前视口。#364 只消费这两个真实 Tool 的 metadata 进行 `browser` Profile/披露映射，不负责代写 Tool 实现。
 
 ## 4. 输入、输出与风险的不变量
 
@@ -134,7 +136,7 @@ type BrowserToolResult = {
 ### 4.4 权限：与工具粒度绑定，而非按 Browser 全部放行
 
 - 现有 `browser_observe` 和 `browser_assert` 是 `requiresApproval=false`，`browser_act` 一律 `requiresApproval=true`。v1 将 `click/fill/press/select/navigate/scroll` **保持保守审批**，不能因拆成新 ID 绕开审查；低风险只读 `snapshot/screenshot/tabs_list/assert` 仍受普通 Policy/Readiness 约束。
-- `wait_for` 从受审批的旧 act 中独立成只读条件等待，`tab_select` 改变活动页面；两者审批预期必须由独立 Risk Gate 确认后才能落地。签核前采取不低于原有风险防护的方案。
+- **v1 审批决议**：`browser_wait_for` 即使是只读条件等待，也暂时沿用原 `browser_act.wait` 的 `requiresApproval=true`；`browser_tab_select` 也保守设置 `requiresApproval=true`。后续任何降低审批级别的改动必须另行风险评审和维护者签核；不得在原子 facade 接入时自行放宽。
 - Approval 永远作用于**参数冻结后的具体 Tool 调用**；更换 `pageUrl / snapshotHash / ref / value` 必须重新评估授权，不能复用另一调用的批准。
 - 网页点击可能提交订单/付款/发送信息，`fill` 可能触发自动保存；“只是浏览器动作”不等于无风险。目标工具不能自行承诺所有按钮都可自动提交。
 
@@ -161,7 +163,7 @@ browser Capability（元信息：交互网页，Managed/Mira-owned）
 
 | 当前入口 | 目标 / 状态 | 实现所有者 |
 | --- | --- | --- |
-| `browser_observe`（URL 启动、快照、可选截图） | `browser_navigate` + `browser_snapshot` + `browser_screenshot`（拆分） | #360 / #359 / #364 |
+| `browser_observe`（URL 启动、快照、可选截图） | `browser_navigate` + `browser_snapshot` + `browser_screenshot`（拆分） | #360 负责导航；**#359 负责 snapshot/screenshot 两个 concrete Tool 的定义、schema、registry、readiness 与底层观察安全**；#364 负责 Profile/渐进式披露 |
 | `browser_act.navigate` | `browser_navigate`（拆分） | #360 |
 | `browser_act.click` | `browser_click`（拆分） | #359 + #361 |
 | `browser_act.type` | `browser_fill` **不是等价替换**；`type` 暂缓、必要时保留旧调用能力直至迁移验证 | #361 / #365 |
@@ -182,7 +184,7 @@ browser Capability（元信息：交互网页，Managed/Mira-owned）
 - **面向用户的 Browser Setup**：若需入口展示 Playwright 是否已安装、为何不可用以及经过授权的安装/修复动作，必须复用既有 Computer Use runtime API/Status，而不是在前端假定“工具存在=Browser Ready”；此类前端任务与 #364 的数据契约另行小卡验收。
 - **Chat 反馈**：Agent 真实执行时，应沿用既有 Chat Tool invocation / Approval / Evidence / Artifact，提供 Browser 页面目标、动作进展、审批原因、失败恢复建议与截图查看；不以调试 JSON 或 `browser_*` 工具名串替代用户反馈。
 - **Computer Use Studio**：`/settings/micro-apps/computer-use-studio` 现有调试器可继续供内部/工程验证，但**不是新 Browser Capability 的一等产品入口**；迁移或退役它属于独立决策，不能顺手在 #364 改造。
-- 这部分是**前端投影设计边界**，不代表 UI 已实现。当前 #357 仍然只允许文档修改；新前端卡必须按组织治理单独获得创建/实施授权。
+- 这部分是**前端投影设计边界**，不代表 UI 已实现。前端实施分别由 [#367 / DSK-001](https://github.com/uichat-mira/mira-desktop/issues/367)（能力页）和 [#368 / DSK-002](https://github.com/uichat-mira/mira-desktop/issues/368)（Chat 执行反馈）持有；两卡已建档但未授权施工。
 
 ## 6. 明确延期，不得报作 v1 完成
 
@@ -204,7 +206,7 @@ browser Capability（元信息：交互网页，Managed/Mira-owned）
 | --- | --- | --- |
 | [#355 / AGT-003](https://github.com/uichat-mira/mira-desktop/issues/355) | Readiness（已合并 dev） | real readiness gate；单测支持，不冒充实机烟测 |
 | [#358 / AGT-005](https://github.com/uichat-mira/mira-desktop/issues/358) | Session 超时/复用/清理 | 同 thread 复用、超时回收、活动任务不误杀 |
-| [#359 / AGT-006](https://github.com/uichat-mira/mira-desktop/issues/359) | 快照/ref/截图可靠性 | 浏览器支撑的“DOM 更换后拒绝旧 ref”证据 |
+| [#359 / AGT-006](https://github.com/uichat-mira/mira-desktop/issues/359) | Snapshot + Screenshot **两个原子 Tool facade/schema/registration/readiness**，快照/ref/截图可靠性 | 真实 Tool 列表含两 ID；browser-backed DOM 替换旧 ref 拒绝、截图 Artifact、缺失会话/Runtime 拒绝 |
 | [#360 / AGT-007](https://github.com/uichat-mira/mira-desktop/issues/360) | 导航与等待 | 正常/越界 URL、条件等待/超时 |
 | [#361 / AGT-008](https://github.com/uichat-mira/mira-desktop/issues/361) | 点击与填值 | 真实 fixture 执行、最终值、stale/approval 拒绝 |
 | [#362 / AGT-009](https://github.com/uichat-mira/mira-desktop/issues/362) | 按键、下拉、滚动 | 真实控件、失败可诊断 |
@@ -212,10 +214,10 @@ browser Capability（元信息：交互网页，Managed/Mira-owned）
 | [#364 / AGT-011](https://github.com/uichat-mira/mira-desktop/issues/364) | `browser` Profile + 二期披露集成 | 一个能力目录、按需选 schema、授权不扩张 |
 | [#365 / AGT-012](https://github.com/uichat-mira/mira-desktop/issues/365) | 真实任务与旧入口切换 | Agent 实跑且不调用旧路径，旧入口再退役 |
 
-### 维护者签核前需要明确的三点
+### 维护者设计决议（2026-10-17）
 
-1. **P0 10 个具体 ID** 是否接受（其中 `browser_assert` 复用，`browser_screenshot` 独立 facade）？
-2. **只读 `wait_for`** 能否采用不需审批的定义？它原来属于需审批的 `browser_act`；未批准前保持保守门槛。
-3. **P1 标签切换** 是否先保守审批？下载、上传等仍独立延期。
+1. **接受 P0 10 个 Tool ID 和 P1 2 个 Tool ID** 作为实现目标（其中 `browser_assert` 复用、`browser_screenshot` 必须独立）。工具是否真正可用以各施工卡的实际代码与证据为准。
+2. **`browser_wait_for` v1 继续要求审批**。本期不借 Tool 拆分改变旧 `browser_act.wait` 的审批语义；免审批属于未来单独风险决议。
+3. **`browser_tab_select` v1 继续要求审批**；上传/下载和新建/关闭标签仍延期。此处是设计约束，不代表已完成风险验证或真实 Runtime 测试。
 
 **本文件只完成语义契约草案和源代码映射，不授权改动 Tool schemas、审批或删除旧 Computer Use 入口。**
