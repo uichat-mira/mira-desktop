@@ -103,7 +103,7 @@ const observePage = async (session: ManagedBrowserSession, maxChars = 12000) => 
       // same remote DOM object. A page can forge attributes but not JSHandles.
       if (hint && previous.has(hint) && !next.has(hint)) {
         const original = previous.get(hint)!;
-        if (await handle.evaluate((node, prior) => node === prior, original).catch(() => false)) {
+        if (await handle.evaluate((node, prior) => node === (prior as unknown as Element), original).catch(() => false)) {
           ref = hint;
         }
       }
