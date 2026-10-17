@@ -175,6 +175,52 @@ describe("BrowserService", () => {
     expect(timeout.error?.code).toBe("wait_timeout");
   });
 
+  it("does not treat a URL prefix as a matching destination", async () => {
+    const { service, session } = await createHarness();
+    await service.navigate({ sessionId: session.id, url: "https://example.com/checkout/success-error" });
+    const falsePositive = await service.wait({
+      sessionId: session.id, condition: { kind: "url", value: "https://example.com/checkout/success" }, timeoutMs: 30,
+    });
+    expect(falsePositive.ok).toBe(false);
+    expect(falsePositive.error?.code).toBe("wait_timeout");
+
+    await service.navigate({ sessionId: session.id, url: "https://example.com/checkout/success" });
+    const exactMatch = await service.wait({
+      sessionId: session.id, condition: { kind: "url", value: "https://example.com/checkout/success" }, timeoutMs: 100,
+    });
+    expect(exactMatch.ok).toBe(true);
+  });
+
+  it("times out a stalled page observation without releasing its session lock early", async () => {
+    const { service, session, page } = await createHarness("Ready");
+    let resolveTitle!: (title: string) => void;
+    let signalEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { signalEntered = resolve; });
+    const stalledTitle = new Promise<string>((resolve) => { resolveTitle = resolve; });
+    page.title.mockImplementationOnce(() => {
+      signalEntered();
+      return stalledTitle;
+    });
+
+    const first = service.wait({
+      sessionId: session.id, condition: { kind: "text", value: "Ready" }, timeoutMs: 30,
+    });
+    await entered;
+    const timedOut = await first;
+    expect(timedOut.ok).toBe(false);
+    expect(timedOut.error?.code).toBe("wait_timeout");
+
+    // The Playwright read is still pending. Its handle/snapshot work must
+    // finish before the next action enters the same session.
+    const second = service.wait({
+      sessionId: session.id, condition: { kind: "text", value: "Ready" }, timeoutMs: 200,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.title).toHaveBeenCalledTimes(1);
+    resolveTitle("Example Domain");
+    expect((await second).ok).toBe(true);
+  });
+
   it("waits on a bound visible ref and rejects a mismatched page identity", async () => {
     const { service, session } = await createHarness();
     const observed = await service.observe({ sessionId: session.id });
