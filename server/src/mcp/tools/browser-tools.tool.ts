@@ -371,7 +371,12 @@ export const createComputerUseBrowserTools = (
       if (!rawUrl) throw mcpBadRequest("url is required");
       let url: string;
       try {
-        url = new URL(rawUrl.includes("://") ? rawUrl : `https://${rawUrl}`).toString();
+        // A URI scheme does not have to contain "://": preserve mailto:, tel:,
+        // file:/ and other absolute schemes for SessionManager policy checks.
+        // Keep the existing hostname:port convenience for localhost and DNS.
+        const explicitScheme = /^[a-z][a-z0-9+.-]*:/i.test(rawUrl);
+        const hostnameWithPort = /^(?:localhost|(?:[a-z0-9-]+\.)+[a-z0-9-]+):\d+(?:[/?#]|$)/i.test(rawUrl);
+        url = new URL(explicitScheme && !hostnameWithPort ? rawUrl : `https://${rawUrl}`).toString();
       } catch {
         throw mcpBadRequest(`url is not a valid absolute URL: ${rawUrl}`);
       }
