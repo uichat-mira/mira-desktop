@@ -178,11 +178,13 @@ export class BrowserService {
     this.actionQueues.set(input.sessionId, queued);
     await previous.catch(() => undefined);
     let pendingOperation: Promise<unknown> | undefined;
+    let validatedPage: BrowserToolResult["page"] | undefined;
     try {
       if (session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
       session.info.status = "busy";
       const actionTimeoutMs = session.info.config.actionTimeoutMs ?? 30000;
       const current = await state(session);
+      validatedPage = { url: current.url, title: current.title, snapshotHash: current.snapshotHash };
       if (current.url !== input.pageUrl || current.snapshotHash !== input.snapshotHash) return failure(input.sessionId, invocationId, { url: current.url, title: current.title, snapshotHash: current.snapshotHash }, "stale_snapshot", "The page or snapshot changed; observe again before acting.", true);
       const action = input.action;
       if (action.kind === "navigate") await this.sessions.navigate(session, action.url);
@@ -221,9 +223,14 @@ export class BrowserService {
     } catch (cause) {
       if (cause instanceof BrowserActionTimeoutError) pendingOperation = cause.operation;
       const message = cause instanceof Error ? cause.message : String(cause);
-      const recovered = await state(session).catch(() => undefined);
+      // A timed-out Playwright action may still be executing on its original
+      // ElementHandle. Re-observing here would dispose that handle early and
+      // defeat the AGT-005 active-operation/serialization guarantee.
+      const recovered = pendingOperation ? undefined : await state(session).catch(() => undefined);
       const detached = /element is not attached|element is detached|not connected|was detached|node is detached/i.test(message);
-      return failure(input.sessionId, invocationId, recovered ? { url: recovered.url, title: recovered.title, snapshotHash: recovered.snapshotHash } : { url: session.page.url(), title: await pageTitle(session.page) }, detached ? "stale_snapshot" : message.includes("timed out") ? "action_timeout" : "action_failed", message, true);
+      const errorPage = recovered ? { url: recovered.url, title: recovered.title, snapshotHash: recovered.snapshotHash }
+        : validatedPage ?? { url: session.page.url(), title: "" };
+      return failure(input.sessionId, invocationId, errorPage, detached ? "stale_snapshot" : message.includes("timed out") ? "action_timeout" : "action_failed", message, true);
     } finally {
       const finish = () => {
         if (session.info.status === "busy") session.info.status = "ready";
