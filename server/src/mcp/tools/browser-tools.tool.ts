@@ -148,6 +148,66 @@ export const createComputerUseBrowserTools = (
     return created.id;
   };
 
+  // These facades only operate on an existing thread-bound Managed Browser session.
+  // Browser navigation/session creation is owned by the legacy observe bootstrap
+  // and, after the atomic migration, by browser_navigate (#360).
+  const requireBoundSession = (context: ToolInvocationContext) => {
+    const key = context.threadId;
+    const id = key ? sessionsByContext.get(key) : undefined;
+    const session = id ? sessionManager?.get(id) : undefined;
+    if (!id || !session || session.info.status !== "ready") {
+      if (key) sessionsByContext.delete(key);
+      throw mcpBadRequest("No active Managed Browser session for this thread. Navigate first.");
+    }
+    return id;
+  };
+
+  const snapshot: ToolImplementation = {
+    definition: {
+      id: "browser_snapshot", title: "Browser Snapshot",
+      description: "Read a bounded, accessible snapshot of the existing Managed Browser page. Returns roles, names, stable element refs, page URL, title and snapshot hash. Navigate first; this tool never starts a browser.",
+      domain: "browser_action", source: "internal", mode: "sync",
+      inputSchema: {
+        type: "object", additionalProperties: false, required: [],
+        properties: {
+          includeVisibleText: { type: "boolean" },
+          maxSnapshotChars: { type: "integer", minimum: 100, maximum: 50000 },
+        },
+      },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "snapshot"],
+      capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ includeVisibleText?: boolean; maxSnapshotChars?: number }>(context.args, "args");
+      const result = await browser.observe({ ...args, sessionId: requireBoundSession(context), includeScreenshot: false });
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  const screenshot: ToolImplementation = {
+    definition: {
+      id: "browser_screenshot", title: "Browser Screenshot",
+      description: "Capture a full-page screenshot Artifact from the existing Managed Browser session. Navigate first. Only fullPage=true is currently supported.",
+      domain: "browser_action", source: "internal", mode: "sync",
+      inputSchema: {
+        type: "object", additionalProperties: false, required: [],
+        properties: { fullPage: { type: "boolean" } },
+      },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "screenshot"],
+      capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ fullPage?: boolean }>(context.args, "args");
+      if (args.fullPage === false) throw mcpBadRequest("Viewport-only screenshots are not supported; use fullPage=true.");
+      const result = await browser.observe({ sessionId: requireBoundSession(context), includeScreenshot: true, includeVisibleText: false });
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
   const observe: ToolImplementation = {
     definition: {
       id: "browser_observe",
@@ -251,5 +311,5 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  return [observe, act, assert];
+  return [observe, act, assert, snapshot, screenshot];
 };

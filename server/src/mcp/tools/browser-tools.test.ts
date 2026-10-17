@@ -11,9 +11,9 @@ const browser = {
 };
 
 describe("Computer Use browser MCP tools", () => {
-  test("exposes exactly the three strict browser tools", () => {
+  test("exposes legacy tools and the two atomic observation tools", () => {
     const tools = createComputerUseBrowserTools(browser as never);
-    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_observe", "browser_act", "browser_assert"]);
+    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_observe", "browser_act", "browser_assert", "browser_snapshot", "browser_screenshot"]);
     expect(tools.every((tool) => tool.definition.inputSchema.additionalProperties === false)).toBe(true);
     expect(tools.find((tool) => tool.definition.id === "browser_act")?.definition.capabilities.requiresApproval).toBe(true);
     expect(tools.find((tool) => tool.definition.id === "browser_observe")?.definition.description).toContain("page.title");
@@ -22,6 +22,57 @@ describe("Computer Use browser MCP tools", () => {
     expect(tools.find((tool) => tool.definition.id === "browser_assert")?.definition.description).toContain("value(ref,expected)");
     expect(tools.find((tool) => tool.definition.id === "browser_observe")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
     expect(tools.find((tool) => tool.definition.id === "browser_act")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
+  });
+
+  test("snapshot and screenshot require a live bound session and reject unsupported screenshot mode", async () => {
+    clearRegistry(); clearInvocations();
+    const get = vi.fn((_id: string) => ({ info: { status: "ready" as const } }));
+    const manager = { get, create: vi.fn(async () => ({ id: "browser-test", status: "ready" as const })) };
+    const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
+    tools.forEach(registerTool);
+    const absent = await executeInvocation({ toolId: "browser_snapshot", threadId: "thread-no-session", args: {} });
+    expect(absent.status).toBe("failed");
+    expect(absent.error?.message).toMatch(/Navigate first/);
+    const invalidMode = await executeInvocation({ toolId: "browser_screenshot", threadId: "thread-no-session", args: { fullPage: false } });
+    expect(invalidMode.status).toBe("failed");
+    expect(invalidMode.error?.message).toMatch(/not supported/);
+    expect(manager.create).not.toHaveBeenCalled();
+    expect(browser.observe).not.toHaveBeenCalled();
+    expect(tools.find((x) => x.definition.id === "browser_snapshot")?.definition.capabilities).toMatchObject({ sideEffect: "none", requiresApproval: false });
+    expect(tools.find((x) => x.definition.id === "browser_screenshot")?.definition.capabilities).toMatchObject({ sideEffect: "none", requiresApproval: false });
+    for (const toolId of ["browser_snapshot", "browser_screenshot"]) {
+      const def = tools.find((tool) => tool.definition.id === toolId)!.definition;
+      expect(def.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: [] });
+      expect(def.outputSchema).toHaveProperty("properties.artifacts");
+    }
+  });
+
+  test("atomic snapshot and screenshot reuse the existing thread session and surface image Artifacts", async () => {
+    clearRegistry(); clearInvocations();
+    const screenshotArtifact = { id: "shot", kind: "screenshot", title: "Captured", uri: "/tmp/test.png" };
+    const mock = {
+      ...browser,
+      observe: vi.fn(async (arg: { sessionId: string; includeScreenshot?: boolean }) => ({
+        ok: true, sessionId: arg.sessionId, invocationId: "inv", page: { url: "https://example.com/", title: "Page", snapshotHash: "valid" },
+        observation: { snapshot: 'button "Checkout" ref=e1', truncated: false },
+        artifacts: arg.includeScreenshot ? [screenshotArtifact] : [],
+      })),
+    };
+    const tools = createComputerUseBrowserTools(mock as never, { sessionManager: {
+      create: vi.fn(async () => ({ id: "bound", status: "ready" as const })),
+      get: vi.fn(() => ({ info: { status: "ready" as const } })),
+    } as never });
+    tools.forEach(registerTool);
+    await executeInvocation({ toolId: "browser_observe", threadId: "bound-thread", args: { url: "https://example.com" } });
+    const snapshot = await executeInvocation({ toolId: "browser_snapshot", threadId: "bound-thread", args: { maxSnapshotChars: 100 } });
+    expect(snapshot.status).toBe("completed");
+    expect(mock.observe).toHaveBeenCalledWith({ sessionId: "bound", includeScreenshot: false, maxSnapshotChars: 100 });
+    const screenshot = await executeInvocation({ toolId: "browser_screenshot", threadId: "bound-thread", args: { fullPage: true } });
+    expect(screenshot.status).toBe("completed");
+    expect(mock.observe).toHaveBeenCalledWith({ sessionId: "bound", includeScreenshot: true, includeVisibleText: false });
+    expect(screenshot.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "image", uri: "/tmp/test.png", metadata: { browserArtifactId: "shot" },
+    })]));
   });
 
   test("creates a session in the tool runtime and reuses it for the browser context", async () => {

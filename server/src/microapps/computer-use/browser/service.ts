@@ -24,28 +24,62 @@ const withTimeout = async <T>(operation: () => Promise<T>, timeoutMs: number): P
 
 const observePage = async (session: ManagedBrowserSession, maxChars = 12000) => {
   const result = await session.page.evaluate(() => {
-    const elements = Array.from(document.querySelectorAll("body *")).filter((element) => {
+    // The WeakMap binds each ref to its actual DOM node, not its position in the
+    // snapshot. Replacing e.g. the third button cannot inherit that button's ref.
+    // The opaque random ID also prevents ref reuse after a full page navigation.
+    const holder = window as typeof window & { __miraComputerUseRefs?: WeakMap<Element, string> };
+    if (!holder.__miraComputerUseRefs) {
+      Object.defineProperty(holder, "__miraComputerUseRefs", {
+        value: new WeakMap<Element, string>(), configurable: false,
+      });
+    }
+    const identities = holder.__miraComputerUseRefs!;
+    const elements = Array.from(document.querySelectorAll("body *"));
+    const refs: Array<{ ref: string; selector: string; line: string }> = [];
+    for (const element of elements) {
+      if (refs.length >= 500) break;
+      const tag = element.tagName.toLowerCase();
+      const role = element.getAttribute("role") ??
+        (tag === "a" ? "link" : tag === "input" ? (
+          ["checkbox", "radio"].includes((element as HTMLInputElement).type)
+            ? (element as HTMLInputElement).type : "textbox"
+        ) : tag === "textarea" ? "textbox" : tag === "select" ? "combobox" : /^h[1-6]$/.test(tag) ? "heading" : tag);
+      if (!["a", "button", "input", "textarea", "select"].includes(tag) &&
+          !/^h[1-6]$/.test(tag) && !element.hasAttribute("role")) continue;
       const style = window.getComputedStyle(element);
       const rect = element.getBoundingClientRect();
-      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-    });
-    const refs: Array<{ ref: string; selector: string; line: string }> = [];
-    let index = 0;
-    for (const element of elements) {
-      const tag = element.tagName.toLowerCase();
-      if (!["a", "button", "input", "textarea", "select", "h1", "h2", "h3", "[role]"].some((name) => name === tag || (name === "[role]" && element.hasAttribute("role")))) continue;
-      const ref = `e${++index}`;
+      if (style.visibility === "hidden" || style.display === "none" || !rect.width || !rect.height) continue;
+
+      let ref = identities.get(element);
+      if (!ref) {
+        const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+        ref = "e" + Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        identities.set(element, ref);
+      }
+      // A cloned element may copy the old attribute, but never the WeakMap identity.
       element.setAttribute("data-cu-ref", ref);
-      const role = element.getAttribute("role") ?? tag;
-      const name = (element.getAttribute("aria-label") ?? element.textContent ?? (element as HTMLInputElement).value ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
-      refs.push({ ref, selector: `[data-cu-ref="${ref}"]`, line: `${role} "${name}" ref=${ref}` });
+      const form = element as HTMLInputElement;
+      const labelledBy = element.getAttribute("aria-labelledby")?.split(/\s+/)
+        .map((id) => document.getElementById(id)?.textContent?.trim() ?? "").filter(Boolean).join(" ");
+      const name = (element.getAttribute("aria-label") || labelledBy ||
+        form.labels?.item(0)?.textContent || element.getAttribute("alt") ||
+        element.getAttribute("placeholder") || element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160);
+      refs.push({ ref, selector: `[data-cu-ref="${ref}"]`, line: `${role} "${name.replace(/"/g, "'")}" ref=${ref}` });
     }
-    return { snapshot: refs.map((entry) => entry.line).join("\n"), visibleText: (document.body?.innerText ?? "").replace(/\s+/g, " ").trim(), refs };
+    return {
+      snapshot: refs.map((entry) => entry.line).join("\n"),
+      visibleText: (document.body?.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 100000),
+      refs,
+    };
   });
   session.refs.clear();
   for (const ref of result.refs) session.refs.set(ref.ref, ref.selector);
   const truncated = result.snapshot.length > maxChars || result.visibleText.length > maxChars;
-  return { snapshot: result.snapshot.slice(0, maxChars), visibleText: result.visibleText.slice(0, maxChars), truncated };
+  // Hash the full bounded observation, not only its presentation-truncated preview.
+  // DOM-node identities change the hash even when replacement text is identical.
+  const fingerprint = crypto.createHash("sha256")
+    .update(result.snapshot).update("\0").update(result.visibleText).digest("hex");
+  return { snapshot: result.snapshot.slice(0, maxChars), visibleText: result.visibleText.slice(0, maxChars), truncated, fingerprint };
 };
 
 const makeArtifact = async (session: ManagedBrowserSession, invocationId: string): Promise<BrowserArtifact> => {
@@ -58,7 +92,7 @@ const state = async (session: ManagedBrowserSession, maxChars = 12000) => {
   const url = session.page.url();
   const title = await pageTitle(session.page);
   const observation = await observePage(session, maxChars);
-  return { url, title, snapshotHash: crypto.createHash("sha256").update(observation.snapshot).digest("hex"), observation };
+  return { url, title, snapshotHash: observation.fingerprint, observation };
 };
 
 export class BrowserService {
@@ -150,8 +184,17 @@ export class BrowserService {
     if (!session || session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
     this.sessions.beginOperation(session);
     try {
-      const current = await state(session);
       const assertion = input.assertion;
+      const priorRef = assertion.kind === "visible" || assertion.kind === "value"
+        ? session.refs.get(assertion.ref) : undefined;
+      const current = await state(session);
+      if ((assertion.kind === "visible" || assertion.kind === "value") &&
+          (!priorRef || session.refs.get(assertion.ref) !== priorRef)) {
+        return failure(input.sessionId, invocationId,
+          { url: current.url, title: current.title, snapshotHash: current.snapshotHash },
+          "stale_snapshot", "The observed element ref is no longer valid; take a fresh snapshot.", true,
+          { kind: assertion.kind, passed: false });
+      }
       let passed = false;
       if (assertion.kind === "title") passed = current.title === assertion.expected;
       if (assertion.kind === "url") passed = current.url === assertion.expected;
