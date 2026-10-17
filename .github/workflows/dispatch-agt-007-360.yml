@@ -1,0 +1,26 @@
+name: "Dispatch AGT-007 Free Worker #360"
+
+# One bounded, GitHub-native dispatch; no default-branch mutation.
+on:
+  push:
+    branches:
+      - chore/dispatch-agt-007-360
+    paths:
+      - .github/workflows/dispatch-agt-007-360.yml
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  worker:
+    uses: uichat-mira/.github/.github/workflows/mira-free-external-worker.yml@3602168185c405dbb29e37e0aeb88f5521107594
+    with:
+      issue_number: 360
+      base_branch: dev
+      model: mimo-v2.6-flash-free
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm check
