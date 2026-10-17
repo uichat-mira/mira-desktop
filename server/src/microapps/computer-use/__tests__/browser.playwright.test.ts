@@ -230,6 +230,29 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       });
       expect(restored.ok).toBe(true);
 
+      // CSS visibility keeps layout rectangles, so it must not be mistaken for
+      // visible until the same original DOM node becomes visible again.
+      const visibilityObserved = await browser.observe({ sessionId: session.id });
+      const visibilityRef = refOf(visibilityObserved);
+      expect(visibilityRef).toBeTruthy();
+      await page.evaluate(() => {
+        const el = document.getElementById("target")!;
+        el.style.visibility = "hidden";
+        setTimeout(() => { el.style.visibility = "visible"; }, 150);
+      });
+      const visibilityRestored = await browser.wait({
+        sessionId: session.id,
+        condition: {
+          kind: "visible",
+          ref: visibilityRef,
+          pageUrl: visibilityObserved.page.url,
+          snapshotHash: visibilityObserved.page.snapshotHash!,
+        },
+        timeoutMs: 5000,
+      });
+      expect(visibilityRestored.ok).toBe(true);
+      expect(await page.evaluate(() => window.getComputedStyle(document.getElementById("target")!).visibility)).toBe("visible");
+
       // A node that stays hidden must time out, not report a premature stale ref.
       const reObserved = await browser.observe({ sessionId: session.id });
       const ref2 = refOf(reObserved);
@@ -243,8 +266,28 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       expect(timedOut.ok).toBe(false);
       expect(timedOut.error?.code).toBe("wait_timeout");
 
-      // Replacing the original detaches it; the observed ref must never succeed.
+      // visibility:hidden preserves geometry; a permanently hidden original
+      // node must still time out rather than succeed from non-empty rects.
       await page.evaluate(() => { document.getElementById("target")!.style.display = ""; });
+      const visibilityTimeoutObserved = await browser.observe({ sessionId: session.id });
+      const visibilityTimeoutRef = refOf(visibilityTimeoutObserved);
+      expect(visibilityTimeoutRef).toBeTruthy();
+      await page.evaluate(() => { document.getElementById("target")!.style.visibility = "hidden"; });
+      const visibilityTimedOut = await browser.wait({
+        sessionId: session.id,
+        condition: {
+          kind: "visible",
+          ref: visibilityTimeoutRef,
+          pageUrl: visibilityTimeoutObserved.page.url,
+          snapshotHash: visibilityTimeoutObserved.page.snapshotHash!,
+        },
+        timeoutMs: 300,
+      });
+      expect(visibilityTimedOut.ok).toBe(false);
+      expect(visibilityTimedOut.error?.code).toBe("wait_timeout");
+      await page.evaluate(() => { document.getElementById("target")!.style.visibility = ""; });
+
+      // Replacing the original detaches it; the observed ref must never succeed.
       const beforeReplace = await browser.observe({ sessionId: session.id });
       const ref3 = refOf(beforeReplace);
       expect(ref3).toBeTruthy();
