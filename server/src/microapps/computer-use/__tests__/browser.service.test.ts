@@ -69,6 +69,33 @@ const buttonRef = (observed: { observation?: { snapshot?: string } }) =>
   observed.observation?.snapshot?.match(/button "Go" ref=(e[0-9a-f]{32})/)?.[1]!;
 
 describe("BrowserService", () => {
+  it("serializes concurrent snapshots before replacing ElementHandle bindings", async () => {
+    const { service, session, page } = await createHarness();
+    const original = page.evaluateHandle.getMockImplementation()!;
+    let entered = 0;
+    let signalFirst!: () => void;
+    let releaseFirst!: () => void;
+    const firstEntered = new Promise<void>((resolve) => { signalFirst = resolve; });
+    const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    page.evaluateHandle.mockImplementation(async () => {
+      entered++;
+      if (entered === 1) { signalFirst(); await gate; }
+      return original();
+    });
+    const first = service.observe({ sessionId: session.id });
+    await firstEntered;
+    const second = service.observe({ sessionId: session.id });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(entered).toBe(1);
+    releaseFirst();
+    const [a, b] = await Promise.all([first, second]);
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    expect(a.page.snapshotHash).toBe(b.page.snapshotHash);
+    expect(entered).toBe(2);
+    expect(session.refs.size).toBe(2);
+  });
+
   it("observes refs, hash and screenshot artifacts", async () => {
     const { service, session } = await createHarness();
     const result = await service.observe({ sessionId: session.id, includeScreenshot: true });
