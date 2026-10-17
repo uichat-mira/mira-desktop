@@ -402,10 +402,18 @@ export class BrowserService {
           // Test the original backend-held node, never a re-derived clone. The
           // same node becoming visible satisfies the wait; a detached node is
           // an explicit stale error rather than a silent success.
-          const visibility = await withinDeadline(() => visibleTarget!.evaluate((node) => ({
-            connected: node.isConnected,
-            visible: node.isConnected && Boolean(node.getClientRects().length),
-          })).catch(() => ({ connected: false, visible: false })));
+          const visibility = await withinDeadline(() => visibleTarget!.evaluate((node) => {
+            const connected = node.isConnected;
+            if (!connected) return { connected: false, visible: false };
+            const style = node.ownerDocument?.defaultView?.getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return {
+              connected: true,
+              visible: style?.visibility !== "hidden" &&
+                style?.display !== "none" &&
+                Boolean(rect.width && rect.height),
+            };
+          }).catch(() => ({ connected: false, visible: false })));
           if (!visibility.connected) {
             return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The observed element was replaced; take a fresh snapshot.", true);
           }
