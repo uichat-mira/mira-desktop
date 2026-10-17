@@ -17,7 +17,20 @@ const executableCandidates = (() => {
   return fs.readdirSync(cache).filter((p) => /^chromium-\d+$/.test(p)).sort().reverse().map((revision) =>
     path.join(cache, revision, "chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"));
 })();
-const executablePath = [chromium.executablePath(), ...executableCandidates].find((file) => fs.existsSync(file));
+// GitHub-hosted Linux/Windows runners may have Chrome installed without a
+// Playwright-managed browser bundle. Exercise the actual browser when present.
+const installedBrowsers = [
+  process.env.MIRA_BROWSER_TEST_EXECUTABLE,
+  chromium.executablePath(),
+  ...executableCandidates,
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+];
+const executablePath = installedBrowsers.find((file): file is string => Boolean(file && fs.existsSync(file)));
 
 describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", () => {
   it("rejects reused refs after DOM replacement and emits real Screenshot Artifact", async () => {
