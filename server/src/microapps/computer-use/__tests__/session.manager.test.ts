@@ -46,4 +46,40 @@ describe("BrowserSessionManager", () => {
       vi.useRealTimers();
     }
   });
+
+  it("does not terminate in-flight work when the idle timer fires and closes resources once", async () => {
+    vi.useFakeTimers();
+    try {
+      const browserClose = vi.fn(async () => undefined);
+      const contextClose = vi.fn(async () => undefined);
+      const manager = new BrowserSessionManager({
+        runtime: readyRuntime,
+        launcher: {
+          launch: vi.fn(async () => ({
+            newContext: vi.fn(async () => ({
+              newPage: vi.fn(async () => ({ goto: vi.fn(async () => undefined), url: vi.fn(() => "https://example.com"), close: vi.fn(async () => undefined) })),
+              close: contextClose,
+            })),
+            close: browserClose,
+          })),
+        },
+      });
+      const created = await manager.create({ allowedDomains: ["example.com"], sessionTimeoutMs: 10 });
+      const session = manager.get(created.id)!;
+
+      session.info.status = "busy";
+      await vi.advanceTimersByTimeAsync(11);
+      expect(browserClose).not.toHaveBeenCalled();
+      expect(contextClose).not.toHaveBeenCalled();
+      expect(manager.get(created.id)).toBeDefined();
+
+      session.info.status = "ready";
+      await vi.advanceTimersByTimeAsync(11);
+      expect(manager.get(created.id)).toBeUndefined();
+      expect(contextClose).toHaveBeenCalledOnce();
+      expect(browserClose).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

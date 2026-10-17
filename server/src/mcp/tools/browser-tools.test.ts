@@ -2,6 +2,19 @@ import { describe, expect, test, vi } from "vitest";
 import { createComputerUseBrowserTools } from "./browser-tools.tool.js";
 import { clearInvocations, executeInvocation } from "../core/invocations.js";
 import { clearRegistry, registerTool } from "../core/registry.js";
+import { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
+
+const readyRuntime = { resolveRuntime: () => ({ status: "ready" as const, strategy: "managed" as const, runtime: { source: "managed" as const, channel: "chromium" as const, executablePath: "C:/chrome.exe", version: "1", installedAt: "now" }, inspectedCandidates: [] }) };
+
+const createLauncher = (browserClose: () => Promise<void> = async () => undefined) => ({
+  launch: vi.fn(async () => ({
+    newContext: vi.fn(async () => ({
+      newPage: vi.fn(async () => ({ goto: vi.fn(async () => undefined), url: vi.fn(() => "https://example.com"), close: vi.fn(async () => undefined) })),
+      close: vi.fn(async () => undefined),
+    })),
+    close: vi.fn(browserClose),
+  })),
+});
 
 const browser = {
   observe: vi.fn(async (input) => ({ ok: true, sessionId: input.sessionId, invocationId: "browser-observe", page: { url: "https://example.com", title: "Example", snapshotHash: "hash-1" }, artifacts: [] })),
@@ -44,7 +57,7 @@ describe("Computer Use browser MCP tools", () => {
       threadId: "agent-thread-1",
     });
 
-    expect(sessionManager.create).toHaveBeenCalledWith({ allowedDomains: ["example.com"], initialUrl: "https://example.com/", headless: true });
+    expect(sessionManager.create).toHaveBeenCalledWith({ allowedDomains: ["example.com"], initialUrl: "https://example.com/", headless: true, sessionTimeoutMs: 300_000 });
     expect(browser.observe).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "browser-1" }));
     expect(browser.assert).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "browser-1" }));
     expect(observed.args).toMatchObject({ sessionId: "browser-1" });
@@ -75,5 +88,53 @@ describe("Computer Use browser MCP tools", () => {
     clearRegistry();
     registerTool(tools.find((tool) => tool.definition.id === "browser_assert")!);
     await expect(executeInvocation({ toolId: "browser_assert", args: { sessionId: "s", assertion: { kind: "title" } } })).rejects.toThrow(/schema variant/);
+  });
+
+  test("binds agent-created sessions to a finite idle timeout, reuses live sessions and drops expired bindings", async () => {
+    vi.useFakeTimers();
+    try {
+      clearRegistry();
+      clearInvocations();
+      const browserClose = vi.fn(async () => undefined);
+      const manager = new BrowserSessionManager({ runtime: readyRuntime, launcher: createLauncher(browserClose) });
+      const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager, sessionIdleTimeoutMs: 10 });
+      tools.forEach(registerTool);
+
+      const first = await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "thread-a" });
+      const firstSessionId = (first.args as { sessionId: string }).sessionId;
+      expect(manager.get(firstSessionId)?.info.config.sessionTimeoutMs).toBe(10);
+
+      const reuse = await executeInvocation({ toolId: "browser_observe", args: {}, threadId: "thread-a" });
+      expect((reuse.args as { sessionId: string }).sessionId).toBe(firstSessionId);
+      expect(manager.get(firstSessionId)).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(11);
+      expect(manager.get(firstSessionId)).toBeUndefined();
+      expect(browserClose).toHaveBeenCalledOnce();
+
+      const recreated = await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "thread-a" });
+      expect((recreated.args as { sessionId: string }).sessionId).not.toBe(firstSessionId);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("keeps sessions from different threads separate so ending one does not close another", async () => {
+    clearRegistry();
+    clearInvocations();
+    const manager = new BrowserSessionManager({ runtime: readyRuntime, launcher: createLauncher() });
+    const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager, sessionIdleTimeoutMs: 60_000 });
+    tools.forEach(registerTool);
+
+    const first = await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "thread-a" });
+    const second = await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "thread-b" });
+    const firstSessionId = (first.args as { sessionId: string }).sessionId;
+    const secondSessionId = (second.args as { sessionId: string }).sessionId;
+    expect(firstSessionId).not.toBe(secondSessionId);
+
+    await manager.stop(firstSessionId);
+    expect(manager.get(firstSessionId)).toBeUndefined();
+    expect(manager.get(secondSessionId)?.info.status).toBe("ready");
+    await manager.closeAll();
   });
 });

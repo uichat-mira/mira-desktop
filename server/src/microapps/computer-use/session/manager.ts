@@ -105,8 +105,11 @@ export class BrowserSessionManager {
     if (!timeoutMs || timeoutMs <= 0) return;
     if (session.timeoutHandle) clearTimeout(session.timeoutHandle);
     session.timeoutHandle = setTimeout(() => {
-      if (!this.sessions.has(session.info.id)) return;
-      if (this.now() - session.lastUsedAt < timeoutMs) {
+      session.timeoutHandle = undefined;
+      if (this.sessions.get(session.info.id) !== session) return;
+      // In-flight work keeps the session alive even when its idle timer fires,
+      // so a long action is never terminated mid-flight.
+      if (session.info.status === "busy" || this.now() - session.lastUsedAt < timeoutMs) {
         this.scheduleTimeout(session);
         return;
       }
@@ -120,8 +123,10 @@ export class BrowserSessionManager {
   }
 
   private async closeSession(session: ManagedBrowserSession) {
+    if (session.info.status === "stopped") return;
     session.info.status = "stopped";
     if (session.timeoutHandle) clearTimeout(session.timeoutHandle);
+    session.timeoutHandle = undefined;
     await session.context.close().catch(() => undefined);
     await session.browser.close().catch(() => undefined);
     this.sessions.delete(session.info.id);
