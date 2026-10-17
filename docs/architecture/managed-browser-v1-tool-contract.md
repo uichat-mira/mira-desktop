@@ -174,6 +174,16 @@ browser Capability（元信息：交互网页，Managed/Mira-owned）
 | `browser_computer_use` Profile | `browser` 一级 Capability + Managed Runtime 描述 | #364 / #365 |
 | `browser_attached_*` | **不动**；触界增强能力作为未来独立 MCP 工作 | 后续独立决策 |
 
+### 5.1 正式前端投影：扩展 → 能力（维护者明确纠正，2026-10-17）
+
+- **正式产品入口**：`/extensions/capabilities`，实现于 `desktop/src/features/Extensions/Capabilities/index.tsx`、`components/CapabilitiesSidebar.tsx`、`hooks/useCapabilities.ts`。这里是 Browser Capability 的产品展示和验收操作入口；用户应先看到**Browser 能力 / Mira-owned Managed Browser / Ready-Unavailable**，再按需下钻查看具体工具与运行证据。沿用该页面已有的 Capability 分组、测试案例、Tool 调用反馈，不新造平行 Browser 工作台。
+- **旧版兼容入口**：`/settings/tools` 的 `desktop/src/features/Settings/pages/Tools/**` 属于历史 Tool Workbench，**本期不安排新功能或 UI 改造**。现有 `/extensions/tools` 已重定向 `/extensions/capabilities`；不逆向迁回旧入口。
+- **Browser 分组及 Readiness**：现有 `CapabilitiesSidebar` 依赖后端 `workbench.groupId` / Capability Profile 的 presentation metadata；后续由 #364 在 Harness/Profile 真相源头投影 `browser` 分组，不准在前端新增硬编码工具 ID → Browser 归属映射；Readiness 不得使用 UI 自造的“可用”状态。触界当前独立呈现，本阶段不迁移其 MCP/Session。
+- **面向用户的 Browser Setup**：若需入口展示 Playwright 是否已安装、为何不可用以及经过授权的安装/修复动作，必须复用既有 Computer Use runtime API/Status，而不是在前端假定“工具存在=Browser Ready”；此类前端任务与 #364 的数据契约另行小卡验收。
+- **Chat 反馈**：Agent 真实执行时，应沿用既有 Chat Tool invocation / Approval / Evidence / Artifact，提供 Browser 页面目标、动作进展、审批原因、失败恢复建议与截图查看；不以调试 JSON 或 `browser_*` 工具名串替代用户反馈。
+- **Computer Use Studio**：`/settings/micro-apps/computer-use-studio` 现有调试器可继续供内部/工程验证，但**不是新 Browser Capability 的一等产品入口**；迁移或退役它属于独立决策，不能顺手在 #364 改造。
+- 这部分是**前端投影设计边界**，不代表 UI 已实现。当前 #357 仍然只允许文档修改；新前端卡必须按组织治理单独获得创建/实施授权。
+
 ## 6. 明确延期，不得报作 v1 完成
 
 | 事项 | 原因 / 边界 |
