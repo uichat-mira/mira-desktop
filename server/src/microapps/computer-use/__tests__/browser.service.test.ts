@@ -35,7 +35,10 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
           visibleText: currentText,
         })),
         getProperty: vi.fn(async () => ({
-          getProperties: vi.fn(async () => new Map(handles.map((handle, i) => [String(i), handle]))),
+          getProperties: vi.fn(async () => new Map(handles.map((handle, i) => [String(i), {
+            getProperty: vi.fn(async () => handle),
+            dispose: vi.fn(async () => undefined),
+          }]))),
           dispose: vi.fn(async () => undefined),
         })),
         dispose: vi.fn(async () => undefined),
