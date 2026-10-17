@@ -57,6 +57,33 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       expect(same.page.snapshotHash).toBe(snapshotHash);
       expect(same.observation?.snapshot).toContain(`ref=${ref}`);
       const current = manager.get(sessionId)!;
+      // Force the precise race: state() captures the OLD element, then the page
+      // replaces it before the saved Playwright ElementHandle clicks.
+      // A selector-based implementation would click the clone instead.
+      const racePage = current.page as typeof current.page & {
+        evaluateHandle: (fn: () => unknown) => Promise<unknown>;
+      };
+      const originalEvaluateHandle = racePage.evaluateHandle.bind(racePage);
+      let replaceAfterCapture = true;
+      racePage.evaluateHandle = async (fn) => {
+        const collection = await originalEvaluateHandle(fn);
+        if (replaceAfterCapture) {
+          replaceAfterCapture = false;
+          await current.page.evaluate(() => {
+            const old = document.getElementById("replace")!;
+            const clone = old.cloneNode(true);
+            clone.addEventListener("click", () => document.body.setAttribute("data-wrong-click", "yes"));
+            old.replaceWith(clone);
+          });
+        }
+        return collection;
+      };
+      const racingClick = await browser.act({ sessionId, pageUrl: url, snapshotHash, action: { kind: "click", ref } });
+      racePage.evaluateHandle = originalEvaluateHandle;
+      expect(racingClick.ok).toBe(false);
+      expect(racingClick.error?.code).toBe("stale_snapshot");
+      expect(await current.page.evaluate(() => document.body.hasAttribute("data-wrong-click"))).toBe(false);
+      // A second replacement before an action must also be rejected.
       await current.page.evaluate(() => {
         const prior = document.getElementById("replace")!;
         const clone = prior.cloneNode(true);
