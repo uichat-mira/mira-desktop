@@ -12,6 +12,9 @@ import type {
 } from "@/microapps/computer-use/browser/types.js";
 import type { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
 
+// Agent-created sessions must not live indefinitely; callers can override this finite idle bound.
+const AGENT_BROWSER_SESSION_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+
 const browserResultSchema = {
   type: "object",
   required: ["ok", "sessionId", "invocationId", "page", "artifacts"],
@@ -100,10 +103,14 @@ const requireObject = <T extends object>(value: unknown, name: string): T => {
 
 export const createComputerUseBrowserTools = (
   browser: BrowserService,
-  options: { sessionManager?: BrowserSessionManager } = {},
+  options: { sessionManager?: BrowserSessionManager; sessionIdleTimeoutMs?: number } = {},
 ): ToolImplementation[] => {
   const sessionsByContext = new Map<string, string>();
   const sessionManager = options.sessionManager;
+  const requestedIdleTimeoutMs = options.sessionIdleTimeoutMs;
+  const sessionIdleTimeoutMs = typeof requestedIdleTimeoutMs === "number" && Number.isFinite(requestedIdleTimeoutMs) && requestedIdleTimeoutMs > 0
+    ? requestedIdleTimeoutMs
+    : AGENT_BROWSER_SESSION_IDLE_TIMEOUT_MS;
   const resolveSessionId = async (context: ToolInvocationContext, args: Record<string, unknown>) => {
     const explicitSessionId = typeof args.sessionId === "string" ? args.sessionId : undefined;
     if (explicitSessionId) {
@@ -132,6 +139,7 @@ export const createComputerUseBrowserTools = (
       allowedDomains: [parsed.hostname],
       initialUrl: parsed.toString(),
       headless: true,
+      sessionTimeoutMs: sessionIdleTimeoutMs,
     });
     if (created.status !== "ready") {
       throw mcpBadRequest(created.error?.message ?? "Computer Use browser session could not be created.");

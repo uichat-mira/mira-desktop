@@ -46,4 +46,35 @@ describe("BrowserSessionManager", () => {
       vi.useRealTimers();
     }
   });
+
+  it("defers idle cleanup while an operation lease is held and closes once after release", async () => {
+    vi.useFakeTimers();
+    try {
+      const browserClose = vi.fn(async () => undefined);
+      const manager = new BrowserSessionManager({ runtime: readyRuntime, launcher: launcher(browserClose) });
+      const created = await manager.create({ allowedDomains: ["example.com"], sessionTimeoutMs: 10 });
+      const session = manager.get(created.id)!;
+      manager.beginOperation(session);
+      await vi.advanceTimersByTimeAsync(11);
+      expect(manager.get(created.id)).toBeDefined();
+      expect(browserClose).not.toHaveBeenCalled();
+      manager.endOperation(session);
+      await vi.advanceTimersByTimeAsync(11);
+      expect(browserClose).toHaveBeenCalledOnce();
+      expect(manager.get(created.id)).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps sessions from different threads separate when one is stopped", async () => {
+    const manager = new BrowserSessionManager({ runtime: readyRuntime, launcher: launcher() });
+    const first = await manager.create({ allowedDomains: ["example.com"], sessionTimeoutMs: 1000 });
+    const second = await manager.create({ allowedDomains: ["example.com"], sessionTimeoutMs: 1000 });
+    expect(first.id).not.toBe(second.id);
+    await manager.stop(first.id);
+    expect(manager.get(first.id)).toBeUndefined();
+    expect(manager.get(second.id)?.info.status).toBe("ready");
+    await manager.closeAll();
+  });
 });

@@ -6,7 +6,7 @@ import { BrowserSessionManager } from "../session/manager.js";
 
 const root = path.join(path.basename(process.cwd()) === "server" ? path.resolve(process.cwd(), "..") : process.cwd(), ".test-artifact", "computer-use", "browser-tests");
 
-const createHarness = async (visibleText = "Example Domain", config: { actionTimeoutMs?: number } = {}) => {
+const createHarness = async (visibleText = "Example Domain", config: { actionTimeoutMs?: number; sessionTimeoutMs?: number } = {}) => {
   let currentUrl = "https://example.com/";
   let currentText = visibleText;
   const page = {
@@ -18,13 +18,15 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
     title: vi.fn(async () => "Example Domain"),
     evaluate: vi.fn(async () => ({ snapshot: 'heading "Example Domain" ref=e1\nbutton "Go" ref=e2', visibleText: currentText, refs: [{ ref: "e1", selector: '[data-cu-ref="e1"]' }, { ref: "e2", selector: '[data-cu-ref="e2"]' }] })),
   };
+  const browserClose = vi.fn(async () => undefined);
+  const contextClose = vi.fn(async () => undefined);
   const manager = new BrowserSessionManager({
     runtime: { resolveRuntime: () => ({ status: "ready" as const, strategy: "managed" as const, runtime: { source: "managed" as const, channel: "chromium" as const, executablePath: "C:/chrome.exe", version: "1", installedAt: "now" }, inspectedCandidates: [] }) },
     artifactRoot: root,
-    launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), close: vi.fn(async () => undefined) })), close: vi.fn(async () => undefined) })) },
+    launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), close: contextClose })), close: browserClose })) },
   });
   const session = await manager.create({ allowedDomains: ["example.com"], ...config });
-  return { manager, service: new BrowserService(manager), session, page };
+  return { manager, service: new BrowserService(manager), session, page, browserClose, contextClose };
 };
 
 const pathLib = path;
@@ -106,5 +108,77 @@ describe("BrowserService", () => {
     finishUnderlying();
     await second;
     expect(callCount).toBe(2);
+  });
+
+  it("keeps a real in-flight observe alive past idle expiry and closes only once it settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, service, session, page, browserClose, contextClose } = await createHarness("Example Domain", { sessionTimeoutMs: 10 });
+      let resolveTitle!: (value: string) => void;
+      const titleGate = new Promise<string>((resolve) => { resolveTitle = resolve; });
+      page.title.mockImplementation(() => titleGate);
+      const pending = service.observe({ sessionId: session.id });
+      await vi.advanceTimersByTimeAsync(11);
+      expect(manager.get(session.id)).toBeDefined();
+      expect(browserClose).not.toHaveBeenCalled();
+      expect(contextClose).not.toHaveBeenCalled();
+      resolveTitle("Example Domain");
+      const result = await pending;
+      expect(result.ok).toBe(true);
+      await vi.advanceTimersByTimeAsync(11);
+      expect(browserClose).toHaveBeenCalledOnce();
+      expect(contextClose).toHaveBeenCalledOnce();
+      expect(manager.get(session.id)).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(11);
+      expect(browserClose).toHaveBeenCalledOnce();
+      expect(contextClose).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a real in-flight observe screenshot alive past idle expiry", async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, service, session, page, browserClose } = await createHarness("Example Domain", { sessionTimeoutMs: 10 });
+      let resolveScreenshot!: () => void;
+      const screenshotGate = new Promise<void>((resolve) => { resolveScreenshot = resolve; });
+      page.screenshot.mockImplementation(() => screenshotGate);
+      const pending = service.observe({ sessionId: session.id, includeScreenshot: true });
+      await vi.advanceTimersByTimeAsync(11);
+      expect(manager.get(session.id)).toBeDefined();
+      expect(browserClose).not.toHaveBeenCalled();
+      resolveScreenshot();
+      const result = await pending;
+      expect(result.ok).toBe(true);
+      await vi.advanceTimersByTimeAsync(11);
+      expect(browserClose).toHaveBeenCalledOnce();
+      expect(manager.get(session.id)).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a real in-flight assert alive past idle expiry and closes after release", async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, service, session, page, browserClose } = await createHarness("Example Domain", { sessionTimeoutMs: 10 });
+      let resolveTitle!: (value: string) => void;
+      const titleGate = new Promise<string>((resolve) => { resolveTitle = resolve; });
+      page.title.mockImplementation(() => titleGate);
+      const pending = service.assert({ sessionId: session.id, assertion: { kind: "title", expected: "Example Domain" } });
+      await vi.advanceTimersByTimeAsync(11);
+      expect(manager.get(session.id)).toBeDefined();
+      expect(browserClose).not.toHaveBeenCalled();
+      resolveTitle("Example Domain");
+      const result = await pending;
+      expect(result.ok).toBe(true);
+      expect(result.assertion?.passed).toBe(true);
+      await vi.advanceTimersByTimeAsync(11);
+      expect(browserClose).toHaveBeenCalledOnce();
+      expect(manager.get(session.id)).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -22,6 +22,7 @@ export type ManagedBrowserSession = {
   artifactRoot: string;
   lastUsedAt: number;
   timeoutHandle?: ReturnType<typeof setTimeout>;
+  activeOperations: number;
 };
 
 export type BrowserSessionManagerOptions = {
@@ -82,7 +83,7 @@ export class BrowserSessionManager {
         const pageWithViewport = page as BrowserPage & { setViewportSize?: (size: { width: number; height: number }) => Promise<unknown> };
         await pageWithViewport.setViewportSize?.(config.viewport);
       }
-      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, refs: new Map(), artifactRoot: sessionRoot, lastUsedAt: this.now() };
+      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, refs: new Map(), artifactRoot: sessionRoot, lastUsedAt: this.now(), activeOperations: 0 };
       this.sessions.set(id, session);
       this.scheduleTimeout(session);
       if (config.initialUrl) {
@@ -106,6 +107,10 @@ export class BrowserSessionManager {
     if (session.timeoutHandle) clearTimeout(session.timeoutHandle);
     session.timeoutHandle = setTimeout(() => {
       if (!this.sessions.has(session.info.id)) return;
+      if (session.activeOperations > 0) {
+        this.scheduleTimeout(session);
+        return;
+      }
       if (this.now() - session.lastUsedAt < timeoutMs) {
         this.scheduleTimeout(session);
         return;
@@ -119,7 +124,17 @@ export class BrowserSessionManager {
     this.scheduleTimeout(session);
   }
 
+  beginOperation(session: ManagedBrowserSession) {
+    session.activeOperations += 1;
+  }
+
+  endOperation(session: ManagedBrowserSession) {
+    if (session.activeOperations > 0) session.activeOperations -= 1;
+    if (session.info.status !== "stopped") this.touch(session);
+  }
+
   private async closeSession(session: ManagedBrowserSession) {
+    if (session.info.status === "stopped") return;
     session.info.status = "stopped";
     if (session.timeoutHandle) clearTimeout(session.timeoutHandle);
     await session.context.close().catch(() => undefined);
