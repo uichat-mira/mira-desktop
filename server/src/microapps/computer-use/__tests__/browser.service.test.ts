@@ -6,58 +6,77 @@ import { BrowserSessionManager } from "../session/manager.js";
 
 const root = path.join(path.basename(process.cwd()) === "server" ? path.resolve(process.cwd(), "..") : process.cwd(), ".test-artifact", "computer-use", "browser-tests");
 
+type FakeNode = {
+  role: string;
+  name: string;
+  ref: string;
+  isConnected: boolean;
+  visible: boolean;
+  value?: string;
+};
+
 const createHarness = async (visibleText = "Example Domain", config: { actionTimeoutMs?: number; sessionTimeoutMs?: number } = {}) => {
   let currentUrl = "https://example.com/";
   let currentText = visibleText;
-  const nodes = [
-    { role: "heading", name: "Example Domain", ref: null as string | null, isConnected: true,
-      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
-    { role: "button", name: "Go", ref: null as string | null, isConnected: true,
-      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
+  let latestSnapshotRefs = new Map<string, FakeNode>();
+  const nodes: FakeNode[] = [
+    { role: "heading", name: "Example Domain", ref: "e1", isConnected: true, visible: true },
+    { role: "button", name: "Go", ref: "e2", isConnected: true, visible: true },
   ];
+  const resolveRef = (ref: string) => {
+    const node = latestSnapshotRefs.get(ref);
+    return node?.isConnected ? node : undefined;
+  };
   const page = {
-    evaluateHandle: vi.fn(async () => {
-      const handles = nodes.map((node) => ({
-        node,
-        evaluate: vi.fn(async (fn: (node: typeof node, arg?: unknown) => unknown, arg?: unknown) =>
-          fn(node, arg && typeof arg === "object" && "node" in arg ? (arg as { node: unknown }).node : arg)),
-        click: vi.fn(async (options?: { timeout?: number }) =>
-          page.click('[data-cu-ref="' + node.ref + '"]', options)),
-        type: vi.fn(async (text: string, options?: { timeout?: number }) =>
-          page.type('[data-cu-ref="' + node.ref + '"]', text, options)),
-        selectOption: vi.fn(async () => undefined),
-        press: vi.fn(async () => undefined),
-        dispose: vi.fn(async () => undefined),
-      }));
-      return {
-        evaluate: vi.fn(async () => ({
-          rows: nodes.map((node) => ({ hint: node.ref, role: node.role, name: node.name })),
-          visibleText: currentText,
-        })),
-        getProperty: vi.fn(async () => ({
-          getProperties: vi.fn(async () => new Map(handles.map((handle, i) => [String(i), {
-            getProperty: vi.fn(async () => handle),
-            dispose: vi.fn(async () => undefined),
-          }]))),
-          dispose: vi.fn(async () => undefined),
-        })),
-        dispose: vi.fn(async () => undefined),
-      };
-    }),
     goto: vi.fn(async (url: string) => { currentUrl = url; }),
-    click: vi.fn(async () => undefined),
-    type: vi.fn(async (_selector: string, text: string) => { currentText = text; }),
+    click: vi.fn(async (_ref: string, _options?: { timeout?: number }) => undefined),
+    type: vi.fn(async (_ref: string, text: string, _options?: { timeout?: number }) => { currentText = text; }),
+    selectOption: vi.fn(async () => undefined),
+    press: vi.fn(async () => undefined),
     screenshot: vi.fn(async ({ path: target }: { path: string }) => { fs.mkdirSync(pathLib.dirname(target), { recursive: true }); fs.writeFileSync(target, "png"); }),
     url: vi.fn(() => currentUrl),
     title: vi.fn(async () => "Example Domain"),
-    evaluate: vi.fn(async () => ({ snapshot: 'heading "Example Domain" ref=e1\nbutton "Go" ref=e2', visibleText: currentText, refs: [{ ref: "e1", selector: '[data-cu-ref="e1"]' }, { ref: buttonRef(observed), selector: '[data-cu-ref="e2"]' }] })),
+    evaluate: vi.fn(async (_fn: unknown, arg?: unknown) => {
+      if (arg && typeof arg === "object" && ("x" in arg || "y" in arg)) return undefined;
+      return currentText;
+    }),
+    ariaSnapshot: vi.fn(async () => {
+      const visible = nodes.filter((node) => node.isConnected && node.visible);
+      latestSnapshotRefs = new Map(visible.map((node) => [node.ref, node]));
+      return visible.map((node) => `- ${node.role} "${node.name}" [ref=${node.ref}]`).join("\n");
+    }),
+    getByRef: vi.fn((ref: string) => ({
+      count: vi.fn(async () => resolveRef(ref) ? 1 : 0),
+      isVisible: vi.fn(async () => Boolean(resolveRef(ref)?.visible)),
+      inputValue: vi.fn(async () => {
+        const node = resolveRef(ref);
+        if (!node) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        return node.value ?? "";
+      }),
+      click: vi.fn(async (options?: { timeout?: number }) => {
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        return page.click(ref, options);
+      }),
+      type: vi.fn(async (text: string, options?: { timeout?: number }) => {
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        return page.type(ref, text, options);
+      }),
+      selectOption: vi.fn(async (value: string, options?: { timeout?: number }) => {
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        return page.selectOption(ref, value, options);
+      }),
+      press: vi.fn(async (key: string, options?: { timeout?: number }) => {
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        return page.press(ref, key, options);
+      }),
+    })),
   };
   const browserClose = vi.fn(async () => undefined);
   const contextClose = vi.fn(async () => undefined);
   const manager = new BrowserSessionManager({
     runtime: { resolveRuntime: () => ({ status: "ready" as const, strategy: "managed" as const, runtime: { source: "managed" as const, channel: "chromium" as const, executablePath: "C:/chrome.exe", version: "1", installedAt: "now" }, inspectedCandidates: [] }) },
     artifactRoot: root,
-    launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), close: contextClose })), close: browserClose })) },
+    launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), close: contextClose })), close: browserClose })) } as never,
   });
   const session = await manager.create({ allowedDomains: ["example.com"], ...config });
   return { manager, service: new BrowserService(manager), session, page, nodes, browserClose, contextClose };
@@ -66,18 +85,19 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
 const pathLib = path;
 
 const buttonRef = (observed: { observation?: { snapshot?: string } }) =>
-  observed.observation?.snapshot?.match(/button "Go" ref=(e[0-9a-f]{32})/)?.[1]!;
+  observed.observation?.snapshot?.match(/button "Go" \[ref=(e\d+)\]/)?.[1]!;
 
 describe("BrowserService", () => {
-  it("does not dispose action handles when an earlier observation resumes", async () => {
+  it("serializes an observation and a ref action against one native snapshot map", async () => {
     const { service, session, page } = await createHarness();
     const first = await service.observe({ sessionId: session.id });
     const ref = buttonRef(first);
     let started!: () => void;
-    let resume!: (title: string) => void;
+    let resume!: () => void;
     const entered = new Promise<void>((resolve) => { started = resolve; });
-    const gate = new Promise<string>((resolve) => { resume = resolve; });
-    page.title.mockImplementationOnce(async () => { started(); return gate; });
+    const gate = new Promise<void>((resolve) => { resume = resolve; });
+    const originalSnapshot = page.ariaSnapshot.getMockImplementation()!;
+    page.ariaSnapshot.mockImplementationOnce(async () => { started(); await gate; return originalSnapshot(); });
     const observing = service.observe({ sessionId: session.id });
     await entered;
     const clicking = service.act({
@@ -86,22 +106,22 @@ describe("BrowserService", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(page.click).not.toHaveBeenCalled();
-    resume("Example Domain");
+    resume();
     const [observed, acted] = await Promise.all([observing, clicking]);
     expect(observed.ok).toBe(true);
     expect(acted.ok).toBe(true);
     expect(page.click).toHaveBeenCalledOnce();
   });
 
-  it("serializes concurrent snapshots before replacing ElementHandle bindings", async () => {
-    const { service, session, page, manager } = await createHarness();
-    const original = page.evaluateHandle.getMockImplementation()!;
+  it("serializes concurrent snapshots before replacing Playwright's latest AI ref map", async () => {
+    const { service, session, page } = await createHarness();
+    const original = page.ariaSnapshot.getMockImplementation()!;
     let entered = 0;
     let signalFirst!: () => void;
     let releaseFirst!: () => void;
     const firstEntered = new Promise<void>((resolve) => { signalFirst = resolve; });
     const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
-    page.evaluateHandle.mockImplementation(async () => {
+    page.ariaSnapshot.mockImplementation(async () => {
       entered++;
       if (entered === 1) { signalFirst(); await gate; }
       return original();
@@ -117,14 +137,14 @@ describe("BrowserService", () => {
     expect(b.ok).toBe(true);
     expect(a.page.snapshotHash).toBe(b.page.snapshotHash);
     expect(entered).toBe(2);
-    expect(manager.get(session.id)?.refs.size).toBe(2);
+    expect(page.ariaSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it("observes refs, hash and screenshot artifacts", async () => {
     const { service, session } = await createHarness();
     const result = await service.observe({ sessionId: session.id, includeScreenshot: true });
     expect(result.ok).toBe(true);
-    expect(result.observation?.snapshot).toMatch(/heading "Example Domain" ref=e[0-9a-f]{32}/);
+    expect(result.observation?.snapshot).toMatch(/heading "Example Domain" \[ref=e1\]/);
     expect(result.page.snapshotHash).toMatch(/^[a-f0-9]{64}$/);
     expect(result.artifacts[0]?.uri).toContain(path.join(".test-artifact", "computer-use", "browser-tests"));
     expect(fs.existsSync(result.artifacts[0]!.uri)).toBe(true);
@@ -235,16 +255,46 @@ describe("BrowserService", () => {
     expect(unknownRef.error?.code).toBe("ref_not_found");
   });
 
-  it("does not accept a replaced DOM node for a visible wait even with the same ref hint", async () => {
+  it("does not accept a replacement DOM node for a visible wait", async () => {
     const { service, session, nodes } = await createHarness();
     const observed = await service.observe({ sessionId: session.id });
     const ref = buttonRef(observed);
-    // A clone that carries the same data-cu-ref hint is still a different DOM
-    // object; the runtime-held ElementHandle identity must reject it.
-    nodes[1] = { ...nodes[1]!, ref };
+    const original = nodes[1]!;
+    original.isConnected = false;
+    nodes[1] = { ...original, ref: "e3", isConnected: true };
     const result = await service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 5 });
     expect(result.ok).toBe(false);
-    expect(["stale_snapshot", "ref_not_found"]).toContain(result.error?.code);
+    expect(result.error?.code).toBe("stale_snapshot");
+  });
+
+  it("waits for the same hidden target to become visible without taking an intermediate snapshot", async () => {
+    const { service, session, nodes, page } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(observed);
+    nodes[1]!.visible = false;
+    const snapshotsBeforeWait = page.ariaSnapshot.mock.calls.length;
+    setTimeout(() => { nodes[1]!.visible = true; }, 10);
+    const result = await service.wait({
+      sessionId: session.id,
+      condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! },
+      timeoutMs: 100,
+    });
+    expect(result.ok).toBe(true);
+    expect(page.ariaSnapshot.mock.calls.length).toBe(snapshotsBeforeWait + 1);
+  });
+
+  it("times out while the original ref remains hidden", async () => {
+    const { service, session, nodes } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(observed);
+    nodes[1]!.visible = false;
+    const result = await service.wait({
+      sessionId: session.id,
+      condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! },
+      timeoutMs: 10,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("wait_timeout");
   });
 
   it("returns structured assertion failures and wait timeouts", async () => {
@@ -262,7 +312,7 @@ describe("BrowserService", () => {
     const observed = await service.observe({ sessionId: session.id });
     page.click.mockImplementation(() => new Promise(() => undefined));
     const result = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: buttonRef(observed) } });
-    expect(page.click).toHaveBeenCalledWith('[data-cu-ref="' + buttonRef(observed) + '"]', { timeout: 5 });
+    expect(page.click).toHaveBeenCalledWith(buttonRef(observed), { timeout: 5 });
     expect(result.error?.code).toBe("action_timeout");
     expect(result.page.snapshotHash).toMatch(/^[a-f0-9]{64}$/);
   });
