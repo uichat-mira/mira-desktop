@@ -135,6 +135,7 @@ import {
   migrateLegacyMicroAppBindings,
 } from "@/microapps/legacy-sync.js";
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability.js";
+import { createManagedBrowserRuntimeReadinessResolver } from "@/harness/managed-browser-readiness.js";
 import { getToolImplementation } from "@/harness/registry.js";
 import { registerTool } from "@/harness/registry.js";
 import { computerUseRepository, createPersistentComputerUseTaskStore, createPersistentComputerUseEvidenceStore } from "@/db/repositories/computer-use/repository.js";
@@ -254,8 +255,10 @@ const computerUseBrowserSessions = new BrowserSessionManager({
   artifactRoot: path.join(computerUseArtifactRoot, "browser"),
 });
 const computerUseBrowserService = new BrowserService(computerUseBrowserSessions);
+const resolveComputerUseBrowserReadiness =
+  createManagedBrowserRuntimeReadinessResolver(computerUseRuntimeManager);
 for (const tool of createComputerUseBrowserTools(computerUseBrowserService, { sessionManager: computerUseBrowserSessions })) {
-  registerTool(tool);
+  registerTool(tool, { resolveReadiness: resolveComputerUseBrowserReadiness });
 }
 const nowIso = () => new Date().toISOString();
 
