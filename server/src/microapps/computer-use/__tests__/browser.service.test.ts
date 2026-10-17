@@ -94,7 +94,7 @@ describe("BrowserService", () => {
   });
 
   it("serializes concurrent snapshots before replacing ElementHandle bindings", async () => {
-    const { service, session, page } = await createHarness();
+    const { service, session, page, manager } = await createHarness();
     const original = page.evaluateHandle.getMockImplementation()!;
     let entered = 0;
     let signalFirst!: () => void;
@@ -117,7 +117,7 @@ describe("BrowserService", () => {
     expect(b.ok).toBe(true);
     expect(a.page.snapshotHash).toBe(b.page.snapshotHash);
     expect(entered).toBe(2);
-    expect(session.refs.size).toBe(2);
+    expect(manager.get(session.id)?.refs.size).toBe(2);
   });
 
   it("observes refs, hash and screenshot artifacts", async () => {
