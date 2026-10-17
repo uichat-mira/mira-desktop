@@ -350,6 +350,53 @@ describe("Computer Use browser MCP tools", () => {
     expect(stop).toHaveBeenCalledTimes(1);
   });
 
+  test("a thrown first navigation also cleans the bootstrap session before a valid retry", async () => {
+    clearRegistry();
+    clearInvocations();
+    let sequence = 0;
+    const live = new Map<string, { info: { status: "ready" } }>();
+    const create = vi.fn(async () => {
+      const id = `throw-recover-${++sequence}`;
+      live.set(id, { info: { status: "ready" as const } });
+      return { id, status: "ready" as const };
+    });
+    const stop = vi.fn(async (id: string) => {
+      const existed = live.delete(id);
+      return existed ? { id, status: "stopped" as const } : null;
+    });
+    const get = vi.fn((id: string) => live.get(id));
+    const navigate = vi.fn(async (input: { sessionId: string; url: string }) => {
+      if (input.url.startsWith("mailto:")) throw new Error("synthetic navigation rejection");
+      return { ok: true, sessionId: input.sessionId, invocationId: "nav", page: { url: input.url, title: "Destination" }, artifacts: [] };
+    });
+    createComputerUseBrowserTools({ ...browser, navigate } as never, { sessionManager: { create, get, stop } as never }).forEach(registerTool);
+
+    const rejectedArgs = { url: "mailto:alice@example.com" };
+    const rejectedPending = await executeInvocation({ toolId: "browser_navigate", threadId: "throw-recover-thread", args: rejectedArgs });
+    const rejected = await executeInvocation({
+      toolId: "browser_navigate",
+      threadId: "throw-recover-thread",
+      args: rejectedArgs,
+      approvedInvocations: [{ toolId: "browser_navigate", inputHash: rejectedPending.inputHash! }],
+    });
+    expect(rejected.status).toBe("failed");
+    expect(stop).toHaveBeenCalledWith("throw-recover-1");
+    expect(live.size).toBe(0);
+
+    const okArgs = { url: "https://example.com/" };
+    const okPending = await executeInvocation({ toolId: "browser_navigate", threadId: "throw-recover-thread", args: okArgs });
+    const recovered = await executeInvocation({
+      toolId: "browser_navigate",
+      threadId: "throw-recover-thread",
+      args: okArgs,
+      approvedInvocations: [{ toolId: "browser_navigate", inputHash: okPending.inputHash! }],
+    });
+    expect(recovered.status).toBe("completed");
+    expect(recovered.result).toMatchObject({ ok: true, sessionId: "throw-recover-2" });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
   test("a failed navigation never disposes an already bound session", async () => {
     clearRegistry();
     clearInvocations();
