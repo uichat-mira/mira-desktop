@@ -9,14 +9,45 @@ const root = path.join(path.basename(process.cwd()) === "server" ? path.resolve(
 const createHarness = async (visibleText = "Example Domain", config: { actionTimeoutMs?: number; sessionTimeoutMs?: number } = {}) => {
   let currentUrl = "https://example.com/";
   let currentText = visibleText;
+  const nodes = [
+    { role: "heading", name: "Example Domain", ref: null as string | null, isConnected: true,
+      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
+    { role: "button", name: "Go", ref: null as string | null, isConnected: true,
+      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
+  ];
   const page = {
+    evaluateHandle: vi.fn(async () => {
+      const handles = nodes.map((node) => ({
+        node,
+        evaluate: vi.fn(async (fn: (node: typeof node, arg?: unknown) => unknown, arg?: unknown) =>
+          fn(node, arg && typeof arg === "object" && "node" in arg ? (arg as { node: unknown }).node : arg)),
+        click: vi.fn(async (options?: { timeout?: number }) =>
+          page.click('[data-cu-ref="' + node.ref + '"]', options)),
+        type: vi.fn(async (text: string, options?: { timeout?: number }) =>
+          page.type('[data-cu-ref="' + node.ref + '"]', text, options)),
+        selectOption: vi.fn(async () => undefined),
+        press: vi.fn(async () => undefined),
+        dispose: vi.fn(async () => undefined),
+      }));
+      return {
+        evaluate: vi.fn(async () => ({
+          rows: nodes.map((node) => ({ hint: node.ref, role: node.role, name: node.name })),
+          visibleText: currentText,
+        })),
+        getProperty: vi.fn(async () => ({
+          getProperties: vi.fn(async () => new Map(handles.map((handle, i) => [String(i), handle]))),
+          dispose: vi.fn(async () => undefined),
+        })),
+        dispose: vi.fn(async () => undefined),
+      };
+    }),
     goto: vi.fn(async (url: string) => { currentUrl = url; }),
     click: vi.fn(async () => undefined),
     type: vi.fn(async (_selector: string, text: string) => { currentText = text; }),
     screenshot: vi.fn(async ({ path: target }: { path: string }) => { fs.mkdirSync(pathLib.dirname(target), { recursive: true }); fs.writeFileSync(target, "png"); }),
     url: vi.fn(() => currentUrl),
     title: vi.fn(async () => "Example Domain"),
-    evaluate: vi.fn(async () => ({ snapshot: 'heading "Example Domain" ref=e1\nbutton "Go" ref=e2', visibleText: currentText, refs: [{ ref: "e1", selector: '[data-cu-ref="e1"]' }, { ref: "e2", selector: '[data-cu-ref="e2"]' }] })),
+    evaluate: vi.fn(async () => ({ snapshot: 'heading "Example Domain" ref=e1\nbutton "Go" ref=e2', visibleText: currentText, refs: [{ ref: "e1", selector: '[data-cu-ref="e1"]' }, { ref: buttonRef(observed), selector: '[data-cu-ref="e2"]' }] })),
   };
   const browserClose = vi.fn(async () => undefined);
   const contextClose = vi.fn(async () => undefined);
@@ -31,12 +62,15 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
 
 const pathLib = path;
 
+const buttonRef = (observed: { observation?: { snapshot?: string } }) =>
+  observed.observation?.snapshot?.match(/button "Go" ref=(e[0-9a-f]{32})/)?.[1]!;
+
 describe("BrowserService", () => {
   it("observes refs, hash and screenshot artifacts", async () => {
     const { service, session } = await createHarness();
     const result = await service.observe({ sessionId: session.id, includeScreenshot: true });
     expect(result.ok).toBe(true);
-    expect(result.observation?.snapshot).toContain("ref=e1");
+    expect(result.observation?.snapshot).toMatch(/heading "Example Domain" ref=e[0-9a-f]{32}/);
     expect(result.page.snapshotHash).toMatch(/^[a-f0-9]{64}$/);
     expect(result.artifacts[0]?.uri).toContain(path.join(".test-artifact", "computer-use", "browser-tests"));
     expect(fs.existsSync(result.artifacts[0]!.uri)).toBe(true);
@@ -47,7 +81,7 @@ describe("BrowserService", () => {
   it("rejects stale refs, unsafe navigation and invalid refs", async () => {
     const { service, session } = await createHarness();
     const observed = await service.observe({ sessionId: session.id });
-    const stale = await service.act({ sessionId: session.id, pageUrl: "https://example.com/", snapshotHash: "stale", action: { kind: "click", ref: "e2" } });
+    const stale = await service.act({ sessionId: session.id, pageUrl: "https://example.com/", snapshotHash: "stale", action: { kind: "click", ref: buttonRef(observed) } });
     expect(stale.error?.code).toBe("stale_snapshot");
     const invalidRef = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: "missing" } });
     expect(invalidRef.error?.code).toBe("ref_not_found");
@@ -69,8 +103,8 @@ describe("BrowserService", () => {
     const { service, session, page } = await createHarness("Example Domain", { actionTimeoutMs: 5 });
     const observed = await service.observe({ sessionId: session.id });
     page.click.mockImplementation(() => new Promise(() => undefined));
-    const result = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: "e2" } });
-    expect(page.click).toHaveBeenCalledWith('[data-cu-ref="e2"]', { timeout: 5 });
+    const result = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: buttonRef(observed) } });
+    expect(page.click).toHaveBeenCalledWith('[data-cu-ref="' + buttonRef(observed) + '"]', { timeout: 5 });
     expect(result.error?.code).toBe("action_timeout");
     expect(result.page.snapshotHash).toMatch(/^[a-f0-9]{64}$/);
   });
@@ -84,8 +118,8 @@ describe("BrowserService", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       events.push("first-end");
     });
-    const first = service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: "e2" } });
-    const second = service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: "e2" } });
+    const first = service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: buttonRef(observed) } });
+    const second = service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: buttonRef(observed) } });
     await Promise.all([first, second]);
     expect(events).toEqual(["first-start", "first-end", "first-start", "first-end"]);
   });
@@ -100,9 +134,9 @@ describe("BrowserService", () => {
       if (callCount === 1) return new Promise<void>((resolve) => { finishUnderlying = resolve; });
       return Promise.resolve();
     });
-    const first = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: "e2" } });
+    const first = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: buttonRef(observed) } });
     expect(first.error?.code).toBe("action_timeout");
-    const second = service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: "e2" } });
+    const second = service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "click", ref: buttonRef(observed) } });
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(callCount).toBe(1);
     finishUnderlying();
