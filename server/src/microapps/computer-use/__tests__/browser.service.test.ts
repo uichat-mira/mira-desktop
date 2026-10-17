@@ -69,6 +69,30 @@ const buttonRef = (observed: { observation?: { snapshot?: string } }) =>
   observed.observation?.snapshot?.match(/button "Go" ref=(e[0-9a-f]{32})/)?.[1]!;
 
 describe("BrowserService", () => {
+  it("does not dispose action handles when an earlier observation resumes", async () => {
+    const { service, session, page } = await createHarness();
+    const first = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(first);
+    let started!: () => void;
+    let resume!: (title: string) => void;
+    const entered = new Promise<void>((resolve) => { started = resolve; });
+    const gate = new Promise<string>((resolve) => { resume = resolve; });
+    page.title.mockImplementationOnce(async () => { started(); return gate; });
+    const observing = service.observe({ sessionId: session.id });
+    await entered;
+    const clicking = service.act({
+      sessionId: session.id, pageUrl: first.page.url,
+      snapshotHash: first.page.snapshotHash!, action: { kind: "click", ref },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.click).not.toHaveBeenCalled();
+    resume("Example Domain");
+    const [observed, acted] = await Promise.all([observing, clicking]);
+    expect(observed.ok).toBe(true);
+    expect(acted.ok).toBe(true);
+    expect(page.click).toHaveBeenCalledOnce();
+  });
+
   it("serializes concurrent snapshots before replacing ElementHandle bindings", async () => {
     const { service, session, page } = await createHarness();
     const original = page.evaluateHandle.getMockImplementation()!;
