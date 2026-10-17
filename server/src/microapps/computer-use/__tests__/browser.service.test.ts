@@ -11,9 +11,11 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
   let currentText = visibleText;
   const nodes = [
     { role: "heading", name: "Example Domain", ref: null as string | null, isConnected: true,
-      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
+      setAttribute(_key: string, value: string) { this.ref = value; },
+      getClientRects: () => [1], getBoundingClientRect: () => ({ width: 1, height: 1 }) },
     { role: "button", name: "Go", ref: null as string | null, isConnected: true,
-      setAttribute(_key: string, value: string) { this.ref = value; }, getClientRects: () => [1] },
+      setAttribute(_key: string, value: string) { this.ref = value; },
+      getClientRects: () => [1], getBoundingClientRect: () => ({ width: 1, height: 1 }) },
   ];
   const page = {
     evaluateHandle: vi.fn(async () => {
@@ -132,6 +134,33 @@ describe("BrowserService", () => {
     expect(truncated.observation?.snapshot).toHaveLength(5);
   });
 
+  it("binds a ref to the same source URL returned with its snapshot", async () => {
+    const { service, session, page } = await createHarness();
+    page.title.mockImplementationOnce(async () => {
+      await page.goto("https://example.com/transient");
+      return "Example Domain";
+    });
+    const observed = await service.observe({ sessionId: session.id });
+    expect(observed.page.url).toBe("https://example.com/");
+    const ref = buttonRef(observed);
+    expect(ref).toBeTruthy();
+
+    // Restore the original URL without taking another observation. The exact
+    // returned pageUrl + snapshotHash + ref must still identify one generation.
+    await page.goto("https://example.com/");
+    const waited = await service.wait({
+      sessionId: session.id,
+      condition: {
+        kind: "visible",
+        ref,
+        pageUrl: observed.page.url,
+        snapshotHash: observed.page.snapshotHash!,
+      },
+      timeoutMs: 100,
+    });
+    expect(waited.ok).toBe(true);
+  });
+
   it("rejects stale refs, unsafe navigation and invalid refs", async () => {
     const { service, session } = await createHarness();
     const observed = await service.observe({ sessionId: session.id });
@@ -240,11 +269,70 @@ describe("BrowserService", () => {
     const observed = await service.observe({ sessionId: session.id });
     const ref = buttonRef(observed);
     // A clone that carries the same data-cu-ref hint is still a different DOM
-    // object; the runtime-held ElementHandle identity must reject it.
-    nodes[1] = { ...nodes[1]!, ref };
+    // object. Replacing the original detaches it from the live document, so the
+    // runtime-held ElementHandle identity must reject the stale ref.
+    const original = nodes[1]!;
+    original.isConnected = false;
+    nodes[1] = { ...original, ref, isConnected: true };
     const result = await service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 5 });
     expect(result.ok).toBe(false);
     expect(["stale_snapshot", "ref_not_found"]).toContain(result.error?.code);
+  });
+
+  it("waits through a temporary hide of the original node and succeeds when it returns", async () => {
+    const { service, session, nodes, page } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(observed);
+    const button = nodes[1]!;
+    let hidden = false;
+    button.getBoundingClientRect = () => ({ width: hidden ? 0 : 1, height: hidden ? 0 : 1 });
+    const originalEvaluateHandle = page.evaluateHandle.getMockImplementation()!;
+    page.evaluateHandle.mockImplementation(async () => {
+      const collection = await originalEvaluateHandle();
+      const rowsFor = collection.evaluate;
+      // A hidden node is excluded from a real observation capture; emulate that
+      // so the original backend-owned ElementHandle is exercised, not re-derived.
+      Object.assign(collection, {
+        evaluate: async () => {
+          const data = await rowsFor();
+          return {
+            rows: hidden ? data.rows.filter((row) => row.name !== "Go") : data.rows,
+            visibleText: data.visibleText,
+          };
+        },
+      });
+      return collection;
+    });
+
+    hidden = true;
+    const pending = service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 500 });
+    setTimeout(() => { hidden = false; }, 30);
+    const restored = await pending;
+    expect(restored.ok).toBe(true);
+  });
+
+  it("returns wait_timeout while the observed node stays hidden instead of a premature stale error", async () => {
+    const { service, session, nodes, page } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(observed);
+    const button = nodes[1]!;
+    button.getBoundingClientRect = () => ({ width: 0, height: 0 });
+    const originalEvaluateHandle = page.evaluateHandle.getMockImplementation()!;
+    page.evaluateHandle.mockImplementation(async () => {
+      const collection = await originalEvaluateHandle();
+      const rowsFor = collection.evaluate;
+      Object.assign(collection, {
+        evaluate: async () => {
+          const data = await rowsFor();
+          return { rows: data.rows.filter((row) => row.name !== "Go"), visibleText: data.visibleText };
+        },
+      });
+      return collection;
+    });
+
+    const timedOut = await service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 30 });
+    expect(timedOut.ok).toBe(false);
+    expect(timedOut.error?.code).toBe("wait_timeout");
   });
 
   it("returns structured assertion failures and wait timeouts", async () => {

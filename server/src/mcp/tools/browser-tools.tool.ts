@@ -382,6 +382,7 @@ export const createComputerUseBrowserTools = (
       }
       const bound = requireBoundSession(context);
       let sessionId: string;
+      let bootstrappedSession = false;
       if (bound) {
         sessionId = bound;
       } else {
@@ -398,9 +399,28 @@ export const createComputerUseBrowserTools = (
         }
         if (context.threadId) sessionsByContext.set(context.threadId, created.id);
         sessionId = created.id;
+        bootstrappedSession = true;
       }
       (context.args as Record<string, unknown>).sessionId = sessionId;
-      const result = await browser.navigate({ sessionId, url });
+      const cleanupFailedBootstrap = async () => {
+        if (!bootstrappedSession) return;
+        // A first navigation that never bootstrapped must not leave a poisoned
+        // thread binding or an orphaned, never-used session behind. Disposing
+        // here lets the next approved valid URL bootstrap normally; a session
+        // that was already live is never torn down by a failed navigation.
+        if (context.threadId && sessionsByContext.get(context.threadId) === sessionId) {
+          sessionsByContext.delete(context.threadId);
+        }
+        await sessionManager?.stop(sessionId);
+      };
+      let result: BrowserToolResult;
+      try {
+        result = await browser.navigate({ sessionId, url });
+      } catch (cause) {
+        await cleanupFailedBootstrap();
+        throw cause;
+      }
+      if (result.ok === false) await cleanupFailedBootstrap();
       emitBrowserArtifacts(context, result);
       return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
     },

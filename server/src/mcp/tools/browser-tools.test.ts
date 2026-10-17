@@ -298,7 +298,7 @@ describe("Computer Use browser MCP tools", () => {
     clearInvocations();
     const navigate = vi.fn(async (input: { sessionId: string; url: string }) => ({ ok: false, sessionId: input.sessionId, invocationId: "nav", page: { url: "", title: "" }, artifacts: [], error: { code: "navigation_blocked", message: "Navigation domain is not allowed: evil.com", retryable: true } }));
     const blocked = { ...browser, navigate };
-    const manager = { create: vi.fn(async () => ({ id: "blocked-session", status: "ready" as const })), get: vi.fn(() => ({ info: { status: "ready" as const } })) };
+    const manager = { create: vi.fn(async () => ({ id: "blocked-session", status: "ready" as const })), get: vi.fn(() => ({ info: { status: "ready" as const } })), stop: vi.fn(async () => null) };
     const tools = createComputerUseBrowserTools(blocked as never, { sessionManager: manager as never });
     tools.forEach(registerTool);
 
@@ -308,6 +308,113 @@ describe("Computer Use browser MCP tools", () => {
     expect(result.status).toBe("completed");
     expect(result.result).toMatchObject({ ok: false, error: { code: "navigation_blocked" } });
     expect(navigate).toHaveBeenCalledWith({ sessionId: "blocked-session", url: "https://evil.com/steal" });
+    // The first navigation never bootstrapped, so its session must be disposed.
+    expect(manager.stop).toHaveBeenCalledWith("blocked-session");
+  });
+
+  test("a blocked first navigation does not poison the thread and a later valid navigation bootstraps", async () => {
+    clearRegistry();
+    clearInvocations();
+    const live = new Map<string, { info: { status: "ready" } }>();
+    const create = vi.fn(async () => {
+      const id = `recover-${live.size + 1}`;
+      live.set(id, { info: { status: "ready" as const } });
+      return { id, status: "ready" as const };
+    });
+    const stop = vi.fn(async (id: string) => {
+      const existed = live.delete(id);
+      return existed ? { id, status: "stopped" as const } : null;
+    });
+    const get = vi.fn((id: string) => live.get(id));
+    const navigate = vi.fn(async (input: { sessionId: string; url: string }) => {
+      if (input.url.startsWith("mailto:") || input.url.startsWith("tel:")) {
+        return { ok: false, sessionId: input.sessionId, invocationId: "nav", page: { url: "", title: "" }, artifacts: [], error: { code: "navigation_blocked", message: "URL scheme is not allowed.", retryable: true } };
+      }
+      return { ok: true, sessionId: input.sessionId, invocationId: "nav", page: { url: input.url, title: "Destination" }, artifacts: [] };
+    });
+    const tools = createComputerUseBrowserTools({ ...browser, navigate } as never, { sessionManager: { create, get, stop } as never });
+    tools.forEach(registerTool);
+
+    const blockedArgs = { url: "mailto:alice@example.com" };
+    const blockedPending = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-thread", args: blockedArgs });
+    const blocked = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-thread", args: blockedArgs, approvedInvocations: [{ toolId: "browser_navigate", inputHash: blockedPending.inputHash! }] });
+    expect(blocked.result).toMatchObject({ ok: false, error: { code: "navigation_blocked" } });
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(live.size).toBe(0);
+
+    const okArgs = { url: "https://example.com/" };
+    const okPending = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-thread", args: okArgs });
+    const recovered = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-thread", args: okArgs, approvedInvocations: [{ toolId: "browser_navigate", inputHash: okPending.inputHash! }] });
+    expect(recovered.result).toMatchObject({ ok: true });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  test("a thrown first navigation also cleans the bootstrap session before a valid retry", async () => {
+    clearRegistry();
+    clearInvocations();
+    let sequence = 0;
+    const live = new Map<string, { info: { status: "ready" } }>();
+    const create = vi.fn(async () => {
+      const id = `throw-recover-${++sequence}`;
+      live.set(id, { info: { status: "ready" as const } });
+      return { id, status: "ready" as const };
+    });
+    const stop = vi.fn(async (id: string) => {
+      const existed = live.delete(id);
+      return existed ? { id, status: "stopped" as const } : null;
+    });
+    const get = vi.fn((id: string) => live.get(id));
+    const navigate = vi.fn(async (input: { sessionId: string; url: string }) => {
+      if (input.url.startsWith("mailto:")) throw new Error("synthetic navigation rejection");
+      return { ok: true, sessionId: input.sessionId, invocationId: "nav", page: { url: input.url, title: "Destination" }, artifacts: [] };
+    });
+    createComputerUseBrowserTools({ ...browser, navigate } as never, { sessionManager: { create, get, stop } as never }).forEach(registerTool);
+
+    const rejectedArgs = { url: "mailto:alice@example.com" };
+    const rejectedPending = await executeInvocation({ toolId: "browser_navigate", threadId: "throw-recover-thread", args: rejectedArgs });
+    const rejected = await executeInvocation({
+      toolId: "browser_navigate",
+      threadId: "throw-recover-thread",
+      args: rejectedArgs,
+      approvedInvocations: [{ toolId: "browser_navigate", inputHash: rejectedPending.inputHash! }],
+    });
+    expect(rejected.status).toBe("failed");
+    expect(stop).toHaveBeenCalledWith("throw-recover-1");
+    expect(live.size).toBe(0);
+
+    const okArgs = { url: "https://example.com/" };
+    const okPending = await executeInvocation({ toolId: "browser_navigate", threadId: "throw-recover-thread", args: okArgs });
+    const recovered = await executeInvocation({
+      toolId: "browser_navigate",
+      threadId: "throw-recover-thread",
+      args: okArgs,
+      approvedInvocations: [{ toolId: "browser_navigate", inputHash: okPending.inputHash! }],
+    });
+    expect(recovered.status).toBe("completed");
+    expect(recovered.result).toMatchObject({ ok: true, sessionId: "throw-recover-2" });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  test("a failed navigation never disposes an already bound session", async () => {
+    clearRegistry();
+    clearInvocations();
+    const stop = vi.fn(async () => null);
+    const manager = {
+      create: vi.fn(async () => ({ id: "existing", status: "ready" as const })),
+      get: vi.fn((id: string) => id === "existing" ? { info: { status: "ready" as const } } : undefined),
+      stop,
+    };
+    const navigate = vi.fn(async (input: { sessionId: string; url: string }) => ({ ok: false, sessionId: input.sessionId, invocationId: "nav", page: { url: "", title: "" }, artifacts: [], error: { code: "navigation_blocked", message: "blocked", retryable: true } }));
+    const tools = createComputerUseBrowserTools({ ...browser, navigate } as never, { sessionManager: manager as never });
+    tools.forEach(registerTool);
+
+    await executeInvocation({ toolId: "browser_observe", threadId: "keep-thread", args: { url: "https://example.com" } });
+    const args = { url: "https://evil.com/steal" };
+    const pending = await executeInvocation({ toolId: "browser_navigate", threadId: "keep-thread", args });
+    await executeInvocation({ toolId: "browser_navigate", threadId: "keep-thread", args, approvedInvocations: [{ toolId: "browser_navigate", inputHash: pending.inputHash! }] });
+    expect(stop).not.toHaveBeenCalled();
   });
 
   test("browser_wait_for rejects a missing session and forwards approved conditions", async () => {
