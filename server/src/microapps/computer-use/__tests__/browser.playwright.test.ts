@@ -196,4 +196,72 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       fs.rmSync(file, { force: true });
     }
   }, 30000);
+
+  it("accepts the original node reappearing after a temporary hide and rejects detachment", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const file = path.join(root, `hide-fixture-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(file, `<!doctype html><html><head><title>Managed Browser Hide</title></head>
+<body><button id="target">Confirm</button></body></html>`);
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    try {
+      const session = await manager.create({ allowedDomains: [], initialUrl: pathToFileURL(file).href, headless: true, sessionTimeoutMs: 5000 });
+      expect(session.status).toBe("ready");
+      const observed = await browser.observe({ sessionId: session.id });
+      const ref = observed.observation?.snapshot?.match(/button "Confirm" ref=(e[0-9a-f]{32})/)?.[1]!;
+      expect(ref).toBeTruthy();
+      const page = manager.get(session.id)!.page;
+      const refOf = (result: { observation?: { snapshot?: string } }) =>
+        result.observation?.snapshot?.match(/button "Confirm" ref=(e[0-9a-f]{32})/)?.[1]!;
+
+      // Hide the original node, then restore the same DOM object before the deadline.
+      await page.evaluate(() => {
+        const el = document.getElementById("target")!;
+        el.style.display = "none";
+        setTimeout(() => { el.style.display = ""; }, 150);
+      });
+      const restored = await browser.wait({
+        sessionId: session.id,
+        condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! },
+        timeoutMs: 5000,
+      });
+      expect(restored.ok).toBe(true);
+
+      // A node that stays hidden must time out, not report a premature stale ref.
+      const reObserved = await browser.observe({ sessionId: session.id });
+      const ref2 = refOf(reObserved);
+      expect(ref2).toBeTruthy();
+      await page.evaluate(() => { document.getElementById("target")!.style.display = "none"; });
+      const timedOut = await browser.wait({
+        sessionId: session.id,
+        condition: { kind: "visible", ref: ref2, pageUrl: reObserved.page.url, snapshotHash: reObserved.page.snapshotHash! },
+        timeoutMs: 300,
+      });
+      expect(timedOut.ok).toBe(false);
+      expect(timedOut.error?.code).toBe("wait_timeout");
+
+      // Replacing the original detaches it; the observed ref must never succeed.
+      await page.evaluate(() => { document.getElementById("target")!.style.display = ""; });
+      const beforeReplace = await browser.observe({ sessionId: session.id });
+      const ref3 = refOf(beforeReplace);
+      expect(ref3).toBeTruthy();
+      await page.evaluate(() => {
+        const el = document.getElementById("target")!;
+        el.replaceWith(el.cloneNode(true));
+      });
+      const replaced = await browser.wait({
+        sessionId: session.id,
+        condition: { kind: "visible", ref: ref3, pageUrl: beforeReplace.page.url, snapshotHash: beforeReplace.page.snapshotHash! },
+        timeoutMs: 300,
+      });
+      expect(replaced.ok).toBe(false);
+      expect(["stale_snapshot", "ref_not_found"]).toContain(replaced.error?.code);
+    } finally {
+      await manager.closeAll();
+      fs.rmSync(file, { force: true });
+    }
+  }, 30000);
 });

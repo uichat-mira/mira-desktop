@@ -43,7 +43,7 @@ const elementBindings = new WeakMap<ManagedBrowserSession, Map<string, SafeEleme
 const boundElement = (session: ManagedBrowserSession, ref: string) =>
   elementBindings.get(session)?.get(ref);
 
-const observePageCapture = async (session: ManagedBrowserSession, maxChars = 12000) => {
+const observePageCapture = async (session: ManagedBrowserSession, maxChars = 12000, preserve?: ReadonlySet<SafeElementHandle>) => {
   const page = session.page as typeof session.page & {
     evaluateHandle?: (fn: () => unknown) => Promise<CollectionHandle>;
   };
@@ -125,7 +125,13 @@ const observePageCapture = async (session: ManagedBrowserSession, maxChars = 120
   elementBindings.set(session, next);
   session.refs.clear();
   for (const ref of next.keys()) session.refs.set(ref, "[data-cu-ref=" + JSON.stringify(ref) + "]");
-  for (const handle of previous.values()) await handle.dispose().catch(() => undefined);
+  // A caller may deliberately hold the original ElementHandle of a ref it is
+  // testing (for example a visible wait). That handle must outlive this
+  // observation even when its node is absent from the current snapshot.
+  for (const handle of previous.values()) {
+    if (preserve?.has(handle)) continue;
+    await handle.dispose().catch(() => undefined);
+  }
   const snapshot = lines.join("\n");
   const truncated = snapshot.length > maxChars || visibleText.length > maxChars;
   const fingerprint = crypto.createHash("sha256").update(snapshot).update("\0").update(visibleText).digest("hex");
@@ -137,7 +143,7 @@ const observePageCapture = async (session: ManagedBrowserSession, maxChars = 120
 // binding map is not. Serialize this part per session so parallel reads cannot
 // dispose one another's handles or return an already-obsolete ref map.
 const observationQueues = new WeakMap<ManagedBrowserSession, Promise<void>>();
-const observePage = async (session: ManagedBrowserSession, maxChars = 12000) => {
+const observePage = async (session: ManagedBrowserSession, maxChars = 12000, preserve?: ReadonlySet<SafeElementHandle>) => {
   const previous = observationQueues.get(session) ?? Promise.resolve();
   let release!: () => void;
   const turn = new Promise<void>((resolve) => { release = resolve; });
@@ -145,7 +151,7 @@ const observePage = async (session: ManagedBrowserSession, maxChars = 12000) => 
   observationQueues.set(session, queued);
   await previous.catch(() => undefined);
   try {
-    return await observePageCapture(session, maxChars);
+    return await observePageCapture(session, maxChars, preserve);
   } finally {
     release();
     if (observationQueues.get(session) === queued) observationQueues.delete(session);
@@ -158,10 +164,10 @@ const makeArtifact = async (session: ManagedBrowserSession, invocationId: string
   return { id: invocationId, kind: "screenshot", title: "Browser screenshot", uri: target };
 };
 
-const state = async (session: ManagedBrowserSession, maxChars = 12000) => {
+const state = async (session: ManagedBrowserSession, maxChars = 12000, preserve?: ReadonlySet<SafeElementHandle>) => {
   const url = session.page.url();
   const title = await pageTitle(session.page);
-  const observation = await observePage(session, maxChars);
+  const observation = await observePage(session, maxChars, preserve);
   return { url, title, snapshotHash: observation.fingerprint, observation };
 };
 
@@ -339,6 +345,7 @@ export class BrowserService {
     const releaseOperation = await this.acquireSessionOperation(session);
     let pendingOperation: Promise<unknown> | undefined;
     let lastObserved: Awaited<ReturnType<typeof state>> | undefined;
+    let visibleTarget: SafeElementHandle | undefined;
     try {
       if (session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
       session.info.status = "busy";
@@ -353,7 +360,8 @@ export class BrowserService {
           : Promise.reject(new BrowserActionTimeoutError(Promise.resolve()));
       };
       const observe = async () => {
-        const next = await withinDeadline(() => state(session));
+        const preserve = visibleTarget ? new Set<SafeElementHandle>([visibleTarget]) : undefined;
+        const next = await withinDeadline(() => state(session, undefined, preserve));
         lastObserved = next;
         return next;
       };
@@ -362,13 +370,25 @@ export class BrowserService {
         : { url: session.page.url(), title: "" };
       const condition = input.condition;
       if (condition.kind === "visible") {
-        // The original observed node, URL and snapshot generation must agree.
-        const current = await observe();
-        if (current.url !== condition.pageUrl || current.snapshotHash !== condition.snapshotHash) {
-          return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The page or snapshot changed; observe again before waiting on a ref.", true);
-        }
-        if (!boundElement(session, condition.ref)) {
+        // Resolve the backend-held ElementHandle before any observation can
+        // replace or dispose the binding. A ref never observed fails outright.
+        visibleTarget = boundElement(session, condition.ref);
+        if (!visibleTarget) {
           return failure(input.sessionId, invocationId, resultPage(), "ref_not_found", "Snapshot ref is not available: " + condition.ref, true);
+        }
+        const current = await observe();
+        // A currently listed ref proves the page generation contract. A node
+        // that is temporarily absent (for example hidden) must still be the
+        // same connected DOM object, never a detached or replaced one.
+        if (boundElement(session, condition.ref)) {
+          if (current.url !== condition.pageUrl || current.snapshotHash !== condition.snapshotHash) {
+            return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The page or snapshot changed; observe again before waiting on a ref.", true);
+          }
+        } else {
+          const connected = await withinDeadline(() => visibleTarget!.evaluate((node) => node.isConnected).catch(() => false));
+          if (!connected || current.url !== condition.pageUrl) {
+            return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The observed element was replaced; take a fresh snapshot.", true);
+          }
         }
       }
       while (Date.now() < deadline) {
@@ -379,10 +399,17 @@ export class BrowserService {
           // The v1 contract specifies an exact destination, not a prefix.
           matched = next.url === condition.value;
         } else {
-          const target = boundElement(session, condition.ref);
-          if (!target) return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The observed element was replaced; take a fresh snapshot.", true);
-          matched = Boolean(await withinDeadline(() => target.evaluate((node) =>
-            node.isConnected && Boolean(node.getClientRects().length)).catch(() => false)));
+          // Test the original backend-held node, never a re-derived clone. The
+          // same node becoming visible satisfies the wait; a detached node is
+          // an explicit stale error rather than a silent success.
+          const visibility = await withinDeadline(() => visibleTarget!.evaluate((node) => ({
+            connected: node.isConnected,
+            visible: node.isConnected && Boolean(node.getClientRects().length),
+          })).catch(() => ({ connected: false, visible: false })));
+          if (!visibility.connected) {
+            return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The observed element was replaced; take a fresh snapshot.", true);
+          }
+          matched = visibility.visible;
         }
         if (matched) {
           return {
@@ -407,6 +434,14 @@ export class BrowserService {
       return failure(input.sessionId, invocationId, page, pendingOperation ? "wait_timeout" : "wait_failed", message, true);
     } finally {
       const finish = () => {
+        // The original target is held outside the binding map while a visible
+        // wait tests it. Dispose it once the observation generation no longer
+        // tracks it, so long sessions do not leak Playwright handles.
+        if (visibleTarget) {
+          const bindings = elementBindings.get(session);
+          const stillBound = bindings ? Array.from(bindings.values()).includes(visibleTarget) : false;
+          if (!stillBound) void visibleTarget.dispose().catch(() => undefined);
+        }
         if (session.info.status === "busy") session.info.status = "ready";
         releaseOperation();
         this.sessions.endOperation(session);

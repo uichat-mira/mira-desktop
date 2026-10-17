@@ -240,11 +240,70 @@ describe("BrowserService", () => {
     const observed = await service.observe({ sessionId: session.id });
     const ref = buttonRef(observed);
     // A clone that carries the same data-cu-ref hint is still a different DOM
-    // object; the runtime-held ElementHandle identity must reject it.
-    nodes[1] = { ...nodes[1]!, ref };
+    // object. Replacing the original detaches it from the live document, so the
+    // runtime-held ElementHandle identity must reject the stale ref.
+    const original = nodes[1]!;
+    original.isConnected = false;
+    nodes[1] = { ...original, ref, isConnected: true };
     const result = await service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 5 });
     expect(result.ok).toBe(false);
     expect(["stale_snapshot", "ref_not_found"]).toContain(result.error?.code);
+  });
+
+  it("waits through a temporary hide of the original node and succeeds when it returns", async () => {
+    const { service, session, nodes, page } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(observed);
+    const button = nodes[1]!;
+    let hidden = false;
+    button.getClientRects = () => (hidden ? [] : [1]);
+    const originalEvaluateHandle = page.evaluateHandle.getMockImplementation()!;
+    page.evaluateHandle.mockImplementation(async () => {
+      const collection = await originalEvaluateHandle();
+      const rowsFor = collection.evaluate;
+      // A hidden node is excluded from a real observation capture; emulate that
+      // so the original backend-owned ElementHandle is exercised, not re-derived.
+      Object.assign(collection, {
+        evaluate: async () => {
+          const data = await rowsFor();
+          return {
+            rows: hidden ? data.rows.filter((row) => row.name !== "Go") : data.rows,
+            visibleText: data.visibleText,
+          };
+        },
+      });
+      return collection;
+    });
+
+    hidden = true;
+    const pending = service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 500 });
+    setTimeout(() => { hidden = false; }, 30);
+    const restored = await pending;
+    expect(restored.ok).toBe(true);
+  });
+
+  it("returns wait_timeout while the observed node stays hidden instead of a premature stale error", async () => {
+    const { service, session, nodes, page } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(observed);
+    const button = nodes[1]!;
+    button.getClientRects = () => [];
+    const originalEvaluateHandle = page.evaluateHandle.getMockImplementation()!;
+    page.evaluateHandle.mockImplementation(async () => {
+      const collection = await originalEvaluateHandle();
+      const rowsFor = collection.evaluate;
+      Object.assign(collection, {
+        evaluate: async () => {
+          const data = await rowsFor();
+          return { rows: data.rows.filter((row) => row.name !== "Go"), visibleText: data.visibleText };
+        },
+      });
+      return collection;
+    });
+
+    const timedOut = await service.wait({ sessionId: session.id, condition: { kind: "visible", ref, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash! }, timeoutMs: 30 });
+    expect(timedOut.ok).toBe(false);
+    expect(timedOut.error?.code).toBe("wait_timeout");
   });
 
   it("returns structured assertion failures and wait timeouts", async () => {
