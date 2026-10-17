@@ -21,14 +21,14 @@ related:
 
 **一个 `browser` Capability，原生 Managed Playwright Runtime，多个语义明确的原子 Tool；沿用二期 Harness 渐进式披露与权限管线。** 不建立 Browser 专用 Planner；不为统一命名迁移触界；不把浏览器操作塞进 `web_search/web_fetch`。
 
-`
+```
 用户意图 -> browser Capability (Mira-owned Managed Browser)
             -> 现有 Runtime Readiness / Agent Capability View
             -> 小型工具元数据 -> 按需展开单个 Tool schema
             -> Normalize -> Policy -> Approval -> Harness Invocation
             -> BrowserService / SessionManager / Playwright
             -> Tool Result / Artifact / Evidence
-`
+```
 
 - **Capability** = 可操作交互网页；**Tool** = 单个具体动作；**Runtime** = Playwright 会话/页面；**MCP** = 可选对接协议，**不是** Managed Browser 的必经路径。
 - **Managed session** 由 Mira 创建、限定、复用、超时回收；它不是用户正在使用的 Chrome，也不继承触界的页面、Cookie 或登录态。请求“我当前 Chrome 的网页”必须走明确的 Connected 能力，不能自动切换为 Managed。
@@ -142,14 +142,14 @@ type BrowserToolResult = {
 
 目标暴露链为：
 
-`
+```
 browser Capability（元信息：交互网页，Managed/Mira-owned）
   -> Runtime Readiness 先过滤不可用 Tool
   -> 当前 Agent scope 的 compact Tool metadata
   -> 确定性 exact / structural / lexical；模糊时再 Resolver
   -> 只将所选具体 Tool schema 披露给模型
   -> 现有 Policy / Approval / Harness
-`
+```
 
 - 直接复用 `server/src/harness/capability-view.ts`、`capability-disclosure.ts`、`candidates-core/resolver.ts` 和现有注册机制，**不**将 10 个完整 Schema 无条件注入所有 Planner turn。
 - 已知 Tool 允许直接 materialize schema，不强制 Tool Search。披露预算沿用 #301 的 **默认 8**；常规 Tool 调用不消耗披露预算。不同 Agent scope 的能力边界按二期契约执行。
