@@ -60,8 +60,8 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       const before = await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} });
       expect(before.status).toBe("completed");
       const observed = await browser.observe({ sessionId });
-      expect(observed.observation?.snapshot).toMatch(/textbox "Recipient Name" [ref=e\d+\]/);
-      expect(observed.observation?.snapshot).toMatch(/button "Confirm" [ref=e\d+\]/);
+      expect(observed.observation?.snapshot).toMatch(/textbox "Recipient Name" \[ref=e\d+\]/);
+      expect(observed.observation?.snapshot).toMatch(/button "Confirm" \[ref=e\d+\]/);
       expect(observed.observation?.snapshot).toMatch(/link "Details"/);
       expect(observed.observation?.snapshot).toMatch(/combobox "Shipping"/);
       const ref = observed.observation?.snapshot?.match(/button "Confirm" \[ref=(e\d+)\]/)?.[1]!;

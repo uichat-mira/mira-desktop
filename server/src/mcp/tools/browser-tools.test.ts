@@ -298,7 +298,8 @@ describe("Computer Use browser MCP tools", () => {
     clearInvocations();
     const navigate = vi.fn(async (input: { sessionId: string; url: string }) => ({ ok: false, sessionId: input.sessionId, invocationId: "nav", page: { url: "", title: "" }, artifacts: [], error: { code: "navigation_blocked", message: "Navigation domain is not allowed: evil.com", retryable: true } }));
     const blocked = { ...browser, navigate };
-    const manager = { create: vi.fn(async () => ({ id: "blocked-session", status: "ready" as const })), get: vi.fn(() => ({ info: { status: "ready" as const } })) };
+    const stop = vi.fn(async () => ({ id: "blocked-session", status: "stopped" as const }));
+    const manager = { create: vi.fn(async () => ({ id: "blocked-session", status: "ready" as const })), get: vi.fn(() => ({ info: { status: "ready" as const } })), stop };
     const tools = createComputerUseBrowserTools(blocked as never, { sessionManager: manager as never });
     tools.forEach(registerTool);
 
@@ -308,6 +309,7 @@ describe("Computer Use browser MCP tools", () => {
     expect(result.status).toBe("completed");
     expect(result.result).toMatchObject({ ok: false, error: { code: "navigation_blocked" } });
     expect(navigate).toHaveBeenCalledWith({ sessionId: "blocked-session", url: "https://evil.com/steal" });
+    expect(stop).toHaveBeenCalledWith("blocked-session");
   });
 
 
