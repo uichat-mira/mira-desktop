@@ -443,7 +443,7 @@ export class BrowserService {
       if (assertion.kind === "url") passed = current.url === assertion.expected;
       if (assertion.kind === "text") passed = current.observation.visibleText.includes(assertion.expected);
       const result: BrowserToolResult = { ok: passed, sessionId: input.sessionId, invocationId, page: { url: current.url, title: current.title, snapshotHash: current.snapshotHash }, observation: { snapshot: current.observation.snapshot, visibleText: current.observation.visibleText, truncated: current.observation.truncated }, assertion: { kind: assertion.kind, passed }, artifacts: [] };
-      if (!passed) result.error = { code: "assertion_failed", message: \`Browser assertion failed: \${assertion.kind}.\`, retryable: false } as BrowserToolError;
+      if (!passed) result.error = { code: "assertion_failed", message: `Browser assertion failed: ${assertion.kind}.`, retryable: false } as BrowserToolError;
       return result;
     } finally {
       releaseOperation();
