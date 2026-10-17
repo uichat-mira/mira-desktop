@@ -39,9 +39,16 @@ type CollectionHandle = {
   dispose(): Promise<void>;
 };
 
-const elementBindings = new WeakMap<ManagedBrowserSession, Map<string, SafeElementHandle>>();
-const boundElement = (session: ManagedBrowserSession, ref: string) =>
+type ElementBinding = {
+  handle: SafeElementHandle;
+  pageUrl: string;
+  snapshotHash: string;
+};
+const elementBindings = new WeakMap<ManagedBrowserSession, Map<string, ElementBinding>>();
+const boundElementBinding = (session: ManagedBrowserSession, ref: string) =>
   elementBindings.get(session)?.get(ref);
+const boundElement = (session: ManagedBrowserSession, ref: string) =>
+  boundElementBinding(session, ref)?.handle;
 
 const observePageCapture = async (session: ManagedBrowserSession, maxChars = 12000, preserve?: ReadonlySet<SafeElementHandle>) => {
   const page = session.page as typeof session.page & {
@@ -80,8 +87,8 @@ const observePageCapture = async (session: ManagedBrowserSession, maxChars = 120
       visibleText: (document.body?.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 100000),
     };
   });
-  const previous = elementBindings.get(session) ?? new Map<string, SafeElementHandle>();
-  const next = new Map<string, SafeElementHandle>();
+  const previous = elementBindings.get(session) ?? new Map<string, ElementBinding>();
+  const next = new Map<string, ElementBinding>();
   const lines: string[] = [];
   let visibleText = "";
   let members: CollectionHandle | undefined;
@@ -105,22 +112,30 @@ const observePageCapture = async (session: ManagedBrowserSession, maxChars = 120
       // same remote DOM object. A page can forge attributes but not JSHandles.
       if (hint && previous.has(hint) && !next.has(hint)) {
         const original = previous.get(hint)!;
-        if (await handle.evaluate((node, prior) => node === (prior as unknown as Element), original).catch(() => false)) {
+        if (await handle.evaluate((node, prior) => node === (prior as unknown as Element), original.handle).catch(() => false)) {
           ref = hint;
         }
       }
       if (!ref) ref = "e" + crypto.randomBytes(16).toString("hex");
-      next.set(ref, handle);
+      next.set(ref, { handle, pageUrl: "", snapshotHash: "" });
       // This attribute is only an untrusted hint on the next observation.
       await handle.evaluate((node, id) => { node.setAttribute("data-cu-ref", id); }, ref);
       lines.push(row.role + ' "' + row.name.replace(/"/g, "'") + '" ref=' + ref);
     }
   } catch (cause) {
-    for (const handle of next.values()) await handle.dispose().catch(() => undefined);
+    for (const binding of next.values()) await binding.handle.dispose().catch(() => undefined);
     throw cause;
   } finally {
     await members?.dispose().catch(() => undefined);
     await collection.dispose().catch(() => undefined);
+  }
+  const snapshot = lines.join("\n");
+  const truncated = snapshot.length > maxChars || visibleText.length > maxChars;
+  const fingerprint = crypto.createHash("sha256").update(snapshot).update("\0").update(visibleText).digest("hex");
+  const pageUrl = session.page.url();
+  for (const binding of next.values()) {
+    binding.pageUrl = pageUrl;
+    binding.snapshotHash = fingerprint;
   }
   elementBindings.set(session, next);
   session.refs.clear();
@@ -128,13 +143,10 @@ const observePageCapture = async (session: ManagedBrowserSession, maxChars = 120
   // A caller may deliberately hold the original ElementHandle of a ref it is
   // testing (for example a visible wait). That handle must outlive this
   // observation even when its node is absent from the current snapshot.
-  for (const handle of previous.values()) {
-    if (preserve?.has(handle)) continue;
-    await handle.dispose().catch(() => undefined);
+  for (const binding of previous.values()) {
+    if (preserve?.has(binding.handle)) continue;
+    await binding.handle.dispose().catch(() => undefined);
   }
-  const snapshot = lines.join("\n");
-  const truncated = snapshot.length > maxChars || visibleText.length > maxChars;
-  const fingerprint = crypto.createHash("sha256").update(snapshot).update("\0").update(visibleText).digest("hex");
   return { snapshot: snapshot.slice(0, maxChars), visibleText: visibleText.slice(0, maxChars), truncated, fingerprint };
 };
 
@@ -372,23 +384,22 @@ export class BrowserService {
       if (condition.kind === "visible") {
         // Resolve the backend-held ElementHandle before any observation can
         // replace or dispose the binding. A ref never observed fails outright.
-        visibleTarget = boundElement(session, condition.ref);
-        if (!visibleTarget) {
+        const sourceBinding = boundElementBinding(session, condition.ref);
+        visibleTarget = sourceBinding?.handle;
+        if (!sourceBinding || !visibleTarget) {
           return failure(input.sessionId, invocationId, resultPage(), "ref_not_found", "Snapshot ref is not available: " + condition.ref, true);
         }
+        // Validate the caller against the exact observation generation that
+        // minted/reused this ref before a hidden-node observation can remove it
+        // from the current snapshot. Future visibility changes may legitimately
+        // change the live snapshot hash, but they must not change provenance.
+        if (sourceBinding.pageUrl !== condition.pageUrl || sourceBinding.snapshotHash !== condition.snapshotHash) {
+          return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The page or snapshot changed; observe again before waiting on a ref.", true);
+        }
         const current = await observe();
-        // A currently listed ref proves the page generation contract. A node
-        // that is temporarily absent (for example hidden) must still be the
-        // same connected DOM object, never a detached or replaced one.
-        if (boundElement(session, condition.ref)) {
-          if (current.url !== condition.pageUrl || current.snapshotHash !== condition.snapshotHash) {
-            return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The page or snapshot changed; observe again before waiting on a ref.", true);
-          }
-        } else {
-          const connected = await withinDeadline(() => visibleTarget!.evaluate((node) => node.isConnected).catch(() => false));
-          if (!connected || current.url !== condition.pageUrl) {
-            return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The observed element was replaced; take a fresh snapshot.", true);
-          }
+        const connected = await withinDeadline(() => visibleTarget!.evaluate((node) => node.isConnected).catch(() => false));
+        if (!connected || current.url !== condition.pageUrl) {
+          return failure(input.sessionId, invocationId, resultPage(), "stale_snapshot", "The observed element was replaced; take a fresh snapshot.", true);
         }
       }
       while (Date.now() < deadline) {
@@ -447,7 +458,7 @@ export class BrowserService {
         // tracks it, so long sessions do not leak Playwright handles.
         if (visibleTarget) {
           const bindings = elementBindings.get(session);
-          const stillBound = bindings ? Array.from(bindings.values()).includes(visibleTarget) : false;
+          const stillBound = bindings ? Array.from(bindings.values()).some((binding) => binding.handle === visibleTarget) : false;
           if (!stillBound) void visibleTarget.dispose().catch(() => undefined);
         }
         if (session.info.status === "busy") session.info.status = "ready";
