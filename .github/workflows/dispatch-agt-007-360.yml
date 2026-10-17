@@ -15,10 +15,12 @@ permissions:
 
 jobs:
   worker:
-    uses: uichat-mira/.github/.github/workflows/mira-free-external-worker.yml@3602168185c405dbb29e37e0aeb88f5521107594
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@01ae59aec896a1262a399ae0cde7d67db5dd5ac0
     with:
       issue_number: 360
       base_branch: dev
+      free_mode: true
+      provider: opencode
       model: mimo-v2.6-flash-free
       verification_command: |
         corepack enable
