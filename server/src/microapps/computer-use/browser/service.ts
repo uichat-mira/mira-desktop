@@ -43,7 +43,7 @@ const elementBindings = new WeakMap<ManagedBrowserSession, Map<string, SafeEleme
 const boundElement = (session: ManagedBrowserSession, ref: string) =>
   elementBindings.get(session)?.get(ref);
 
-const observePage = async (session: ManagedBrowserSession, maxChars = 12000) => {
+const observePageCapture = async (session: ManagedBrowserSession, maxChars = 12000) => {
   const page = session.page as typeof session.page & {
     evaluateHandle?: (fn: () => unknown) => Promise<CollectionHandle>;
   };
@@ -130,6 +130,26 @@ const observePage = async (session: ManagedBrowserSession, maxChars = 12000) => 
   const truncated = snapshot.length > maxChars || visibleText.length > maxChars;
   const fingerprint = crypto.createHash("sha256").update(snapshot).update("\0").update(visibleText).digest("hex");
   return { snapshot: snapshot.slice(0, maxChars), visibleText: visibleText.slice(0, maxChars), truncated, fingerprint };
+};
+
+
+// Snapshot capture is read-only, but replacing the server-side ElementHandle
+// binding map is not. Serialize this part per session so parallel reads cannot
+// dispose one another's handles or return an already-obsolete ref map.
+const observationQueues = new WeakMap<ManagedBrowserSession, Promise<void>>();
+const observePage = async (session: ManagedBrowserSession, maxChars = 12000) => {
+  const previous = observationQueues.get(session) ?? Promise.resolve();
+  let release!: () => void;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  const queued = previous.catch(() => undefined).then(() => turn);
+  observationQueues.set(session, queued);
+  await previous.catch(() => undefined);
+  try {
+    return await observePageCapture(session, maxChars);
+  } finally {
+    release();
+    if (observationQueues.get(session) === queued) observationQueues.delete(session);
+  }
 };
 
 const makeArtifact = async (session: ManagedBrowserSession, invocationId: string): Promise<BrowserArtifact> => {
