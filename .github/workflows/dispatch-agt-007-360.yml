@@ -1,6 +1,6 @@
-name: "Dispatch AGT-007 Free Worker #360"
+name: "Dispatch AGT-007 Paid Worker #360"
 
-# One bounded, GitHub-native dispatch; no default-branch mutation.
+# One bounded GitHub-native dispatch; code delivery remains on dev via Draft PR.
 on:
   push:
     branches:
@@ -15,14 +15,16 @@ permissions:
 
 jobs:
   worker:
-    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@01ae59aec896a1262a399ae0cde7d67db5dd5ac0
+    # Same pinned paid Worker route as the repository's approved prod caller.
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@621bc797562ee2ba92e77e215deb68833113231e
     with:
       issue_number: 360
       base_branch: dev
-      free_mode: true
-      provider: opencode
-      model: mimo-v2.6-flash-free
+      provider: opencode-go
+      model: deepseek-v4.1-flash
       verification_command: |
         corepack enable
         pnpm install --frozen-lockfile
         pnpm check
+    secrets:
+      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
