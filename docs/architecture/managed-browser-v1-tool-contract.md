@@ -63,8 +63,8 @@ related:
 | P0 | `browser_press_key` | 对观察到的输入/可操作控件发送键或组合键；不是 fill | `pageUrl, snapshotHash, ref, key` | 实际按键执行/作用后的页面状态 | 现有 `act.press`；[#362](https://github.com/uichat-mira/mira-desktop/issues/362) | 是（Enter 可能提交） |
 | P0 | `browser_select_option` | 选择原生 `<select>` 项；不拿 fill 模拟 | `pageUrl, snapshotHash, ref, value` | 实际选中值；目标不是 select 时清晰失败 | 现有 `act.select`；#362 | 是 |
 | P0 | `browser_scroll` | **移动当前页面视口**；不是导航、也不是等待 | `pageUrl, snapshotHash, x?: number, y?: number`（有限数值，至少有一个非零偏移） | 可观察视口变化/结果；无法滚动要如实说明 | 现有 `act.scroll`；#362 | 是（可能触发懒加载） |
-| P0 | `browser_wait_for` | 等待**将来**的网页条件成立；不是当前状态断言 | `condition: {kind: "text", value} \| {kind: "url", value} \| {kind: "visible", ref}, timeoutMs?` | 条件满足才 `ok=true`；过期必须明确 `timeout` | 现有 `act.wait` 轮询文本/ref，目标条件需补齐；#360 | **是（v1 保守门槛）**：沿用当前 `browser_act.wait` 的审批要求；后续免审批提案需单独签核 |
-| P0 | `browser_assert` | **现在**对标题、URL、文字、元素可见性、输入值作严格断言；不是等将来 | `assertion: {kind, expected?/ref?}`（沿用现有联合约束） | `assertion.passed`；失败是显式失败，不是“执行成功” | **已存在** `browser_assert`；#365 验收 | 否 |
+| P0 | `browser_wait_for` | 等待**将来**的网页条件成立；不是当前状态断言 | `condition: {kind: "text", value} \| {kind: "url", value} \| {kind: "visible", ref, pageUrl, snapshotHash}, timeoutMs?`；visible 必须验证 Runtime 持有的稳定元素身份 | 条件满足才 `ok=true`；过期必须明确 `timeout` | 现有 `act.wait` 轮询文本/ref，目标条件需补齐；#360 | **是（v1 保守门槛）**：沿用当前 `browser_act.wait` 的审批要求；后续免审批提案需单独签核 |
+| P0 | `browser_assert` | **现在**对标题、URL、文字、元素可见性、输入值作严格断言；不是等将来 | `assertion: {kind, expected?/ref?}`（保留现有 ID/联合；visible/value 的 ref 必须匹配 Runtime 绑定的最新观察身份） | `assertion.passed`；失败是显式失败，不是“执行成功” | **已存在** `browser_assert`；#365 验收 | 否 |
 | P1 | `browser_tabs_list` | 需要理解**当前 Managed 会话**有哪些标签页 | 无业务参数 | 同会话 tab ID/URL/标题/选中项；不得列触界 Chrome 标签 | 目前仅单页引用；[#363](https://github.com/uichat-mira/mira-desktop/issues/363) | 否 |
 | P1 | `browser_tab_select` | 在**同一 Managed 会话内部**明确切换 tab | `tabId`（由 list 获得） | 选中 tab 身份和新页面观察，旧 refs 失效 | 需要 SessionManager 多页面建模；#363 | **是（v1 保守门槛）**：待实现时必须复用同一 Harness 审批管线 |
 
@@ -96,9 +96,9 @@ related:
 ### 4.2 观察 → 交互 → 再观察
 
 - 最小可执行元素身份由 **当前会话+当前 tab（如果支持）+页面 URL+最新 snapshotHash+ref** 共同界定；Tool schema 只要求 Agent 提供其可见的 `pageUrl / snapshotHash / ref`，其余由 Runtime 验证，**不能仅靠快照文本相同就认定 DOM 节点相同**。
-- 元素 ref 是**临时引用**，不是稳定 CSS selector 或永久 ID。点击、填值、按键、选择前必须检验该 ref 未变成另一个 DOM 节点。失效返回 `stale_snapshot / ref_not_found` 类可恢复错误，并指导重新 snapshot。
+- 元素 ref 是**临时引用**，不是稳定 CSS selector 或永久 ID。**所有使用 ref 的操作均需验证原始观察身份**：`click/fill/press/select`，以及 `wait_for.visible` 和 `assert.visible/value`。对新 `wait_for.visible`，模型侧至少带 `pageUrl + snapshotHash + ref`，Runtime 还必须绑定当前 session/tab、观察代次和**稳定目标 token/节点身份**；`pageUrl + snapshotHash` 本身仍不足以证明节点未替换。旧 `browser_assert` 保留 Tool ID/入参联合时，也必须在 Runtime 中校验 ref 与最新有效观察的绑定；不能仅靠数字编号重用 `e3`。若 ref 已失效或被另一个 DOM 节点取代，必须返回明确失败，不得断言成功或完成等待。#359 负责此类身份验证，#360 验证 wait 条件。
 - `navigate`、`click` 可能改变页面或 tab；返回真实最新页面状态。随后如要再动作，必须依据新的观察和有效 ref，不准继续用旧 ref 批处理。
-- `wait_for` 是可中断、有上限的条件等待，**条件不提供或超时不算成功**；`assert` 是即时断言，不是轮询，也不应成为每次浏览动作的强制尾巴。
+- `wait_for` 是可中断、有上限的条件等待，**条件不提供或超时不算成功**；`wait_for.visible(ref)` 只支持来自有效观察的既有元素身份，不能拿旧 ref 等待尚未观察到的新元素（后者应先按文本/URL 条件等待再重新 snapshot）。`assert` 是即时断言，不是轮询，也不应成为每次浏览动作的强制尾巴。
 - `snapshot` 不等于 `extract`：前者为下一步 Agent 交互提供页面证据，后者按用户字段要求提取表格/结构化记录。后者本期未交付，不得使用“observe”伪装结构化提取。
 - `screenshot` 是图像证据（Artifact），不是让 Agent 猜 DOM ref；图片处理遵循现有 Tool Result / Artifact 安全边界。
 
@@ -119,7 +119,7 @@ type BrowserToolResult = {
 };
 ```
 
-目标契约要求区分以下可诊断语义，**不宣称当前实现已经有这些全部 error code**：
+目标契约要求区分以下可诊断语义，**不宣称当前实现已经有这些全部 error code**。请先区分 **BrowserToolResult（工具已执行后的业务/Runtime 结果）** 与 **Harness Invocation（执行前的资格、Policy 和 Approval 结果）**：
 
 | 失败语义 | 最小行为 | Agent 下一步 |
 | --- | --- | --- |
@@ -128,10 +128,17 @@ type BrowserToolResult = {
 | `stale_snapshot` / `ref_not_found` | 交互前发现页面/元素不匹配，不产生目标动作 | 重新 snapshot 再决定 |
 | `invalid_target` / `unsupported_operation` | 控件类型不支持，或请求了未实现模式 | 换可支持的手段或清晰报告 |
 | `action_timeout` / `wait_timeout` | `ok=false`；不隐瞒潜在迟到副作用 | 重新观察真实页面，再决定是否重试 |
-| `approval_denied` / `policy_denied` | 未经授权的动作不得执行 | 终止该动作，不绕行其他工具 |
 | `assertion_failed` | 断言未通过，不能当作已完成 | 如实汇报证据差异 |
 
-兼容迁移时优先复用现有错误码；确需更名/细化须给出映射表和回归测试。无论成功失败，Evidence 不应捏造“页面已经改变”。禁止将私密浏览器数据、原始凭据、截图二进制直接塞进普通日志/模型可见 metadata。
+**Harness 预执行/审批结果不属于 `BrowserToolResult.error.code`：** 
+
+| Harness 状态 / 失败类别 | 现有权威层与语义 | Agent / UI 下一步 |
+| --- | --- | --- |
+| Runtime Readiness 不可用 | Harness Availability Gate 可阻止工具暴露或执行，因此**可能不存在任何 BrowserToolResult** | 呈现不可用原因，不伪造工具结果 |
+| `policy_denied` | Harness/Tool Invocation 的 `failureCode` 等元信息，而非 BrowserService 的 `error.code` | 不执行动作；向用户解释策略拒绝 |
+| 审批拒绝 | Harness Approval resolution 导致 Invocation 取消/拒绝；当前调用可呈 `cancelled`，不要求 BrowserService 返回 `approval_denied` | 不执行动作；显示真实审批决定 |
+
+兼容迁移时优先复用现有错误码和 Harness Invocation 字段；确需更名/细化须给出映射表和回归测试。无论成功失败，Evidence 不应捏造“页面已经改变”。禁止将私密浏览器数据、原始凭据、截图二进制直接塞进普通日志/模型可见 metadata。
 
 ### 4.4 权限：与工具粒度绑定，而非按 Browser 全部放行
 
