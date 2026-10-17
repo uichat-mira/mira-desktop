@@ -134,6 +134,33 @@ describe("BrowserService", () => {
     expect(truncated.observation?.snapshot).toHaveLength(5);
   });
 
+  it("binds a ref to the same source URL returned with its snapshot", async () => {
+    const { service, session, page } = await createHarness();
+    page.title.mockImplementationOnce(async () => {
+      await page.goto("https://example.com/transient");
+      return "Example Domain";
+    });
+    const observed = await service.observe({ sessionId: session.id });
+    expect(observed.page.url).toBe("https://example.com/");
+    const ref = buttonRef(observed);
+    expect(ref).toBeTruthy();
+
+    // Restore the original URL without taking another observation. The exact
+    // returned pageUrl + snapshotHash + ref must still identify one generation.
+    await page.goto("https://example.com/");
+    const waited = await service.wait({
+      sessionId: session.id,
+      condition: {
+        kind: "visible",
+        ref,
+        pageUrl: observed.page.url,
+        snapshotHash: observed.page.snapshotHash!,
+      },
+      timeoutMs: 100,
+    });
+    expect(waited.ok).toBe(true);
+  });
+
   it("rejects stale refs, unsafe navigation and invalid refs", async () => {
     const { service, session } = await createHarness();
     const observed = await service.observe({ sessionId: session.id });
