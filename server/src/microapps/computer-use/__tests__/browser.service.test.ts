@@ -18,6 +18,8 @@ type FakeNode = {
 const createHarness = async (visibleText = "Example Domain", config: { actionTimeoutMs?: number; sessionTimeoutMs?: number } = {}) => {
   let currentUrl = "https://example.com/";
   let currentText = visibleText;
+  let scrollX = 0;
+  let scrollY = 0;
   let latestSnapshotRefs = new Map<string, FakeNode>();
   const nodes: FakeNode[] = [
     { role: "heading", name: "Example Domain", ref: "e1", isConnected: true, visible: true },
@@ -44,7 +46,13 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
     url: vi.fn(() => currentUrl),
     title: vi.fn(async () => "Example Domain"),
     evaluate: vi.fn(async (_fn: unknown, arg?: unknown) => {
-      if (arg && typeof arg === "object" && ("x" in arg || "y" in arg)) return undefined;
+      if (arg && typeof arg === "object" && ("x" in arg || "y" in arg)) {
+        const delta = arg as { x?: number; y?: number };
+        scrollX += delta.x ?? 0;
+        scrollY += delta.y ?? 0;
+        return undefined;
+      }
+      if (typeof _fn === "function" && String(_fn).includes("window.scrollX")) return { x: scrollX, y: scrollY };
       return currentText;
     }),
     ariaSnapshot: vi.fn(async () => {
@@ -256,6 +264,12 @@ describe("BrowserService", () => {
     page.evaluate.mockClear();
     const scrolled = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "scroll", x: 0, y: 400 } });
     expect(scrolled.ok).toBe(true);
+    expect(scrolled.scroll).toEqual({
+      requested: { x: 0, y: 400 },
+      before: { x: 0, y: 0 },
+      after: { x: 0, y: 400 },
+      moved: true,
+    });
     expect(page.evaluate).toHaveBeenCalledWith(expect.any(Function), { x: 0, y: 400 });
 
     page.evaluate.mockClear();
