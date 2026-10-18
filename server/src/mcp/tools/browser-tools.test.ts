@@ -298,7 +298,8 @@ describe("Computer Use browser MCP tools", () => {
     clearInvocations();
     const navigate = vi.fn(async (input: { sessionId: string; url: string }) => ({ ok: false, sessionId: input.sessionId, invocationId: "nav", page: { url: "", title: "" }, artifacts: [], error: { code: "navigation_blocked", message: "Navigation domain is not allowed: evil.com", retryable: true } }));
     const blocked = { ...browser, navigate };
-    const manager = { create: vi.fn(async () => ({ id: "blocked-session", status: "ready" as const })), get: vi.fn(() => ({ info: { status: "ready" as const } })) };
+    const stop = vi.fn(async () => ({ id: "blocked-session", status: "stopped" as const }));
+    const manager = { create: vi.fn(async () => ({ id: "blocked-session", status: "ready" as const })), get: vi.fn(() => ({ info: { status: "ready" as const } })), stop };
     const tools = createComputerUseBrowserTools(blocked as never, { sessionManager: manager as never });
     tools.forEach(registerTool);
 
@@ -308,6 +309,106 @@ describe("Computer Use browser MCP tools", () => {
     expect(result.status).toBe("completed");
     expect(result.result).toMatchObject({ ok: false, error: { code: "navigation_blocked" } });
     expect(navigate).toHaveBeenCalledWith({ sessionId: "blocked-session", url: "https://evil.com/steal" });
+    expect(stop).toHaveBeenCalledWith("blocked-session");
+  });
+
+
+  test("cleans a freshly bootstrapped session after a structured first-navigation failure and recovers", async () => {
+    clearRegistry();
+    clearInvocations();
+    let nextId = 0;
+    const live = new Map<string, { info: { status: "ready" } }>();
+    const create = vi.fn(async () => {
+      const id = `bootstrap-${++nextId}`;
+      live.set(id, { info: { status: "ready" as const } });
+      return { id, status: "ready" as const };
+    });
+    const stop = vi.fn(async (id: string) => {
+      live.delete(id);
+      return { id, status: "stopped" as const };
+    });
+    const navigate = vi.fn()
+      .mockResolvedValueOnce({ ok: false, sessionId: "bootstrap-1", invocationId: "nav-1", page: { url: "", title: "" }, artifacts: [], error: { code: "navigation_blocked", message: "blocked", retryable: true } })
+      .mockResolvedValueOnce({ ok: true, sessionId: "bootstrap-2", invocationId: "nav-2", page: { url: "https://example.com/ok", title: "OK" }, artifacts: [] });
+    const manager = { create, get: vi.fn((id: string) => live.get(id)), stop };
+    createComputerUseBrowserTools({ ...browser, navigate } as never, { sessionManager: manager as never }).forEach(registerTool);
+
+    const firstArgs = { url: "https://example.com/blocked" };
+    const firstPending = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-structured", args: firstArgs });
+    const first = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-structured", args: firstArgs, approvedInvocations: [{ toolId: "browser_navigate", inputHash: firstPending.inputHash! }] });
+    expect(first.result).toMatchObject({ ok: false, error: { code: "navigation_blocked" } });
+    expect(stop).toHaveBeenCalledWith("bootstrap-1");
+
+    const retryArgs = { url: "https://example.com/ok" };
+    const retryPending = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-structured", args: retryArgs });
+    const retry = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-structured", args: retryArgs, approvedInvocations: [{ toolId: "browser_navigate", inputHash: retryPending.inputHash! }] });
+    expect(retry.result).toMatchObject({ ok: true });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(navigate).toHaveBeenLastCalledWith({ sessionId: "bootstrap-2", url: "https://example.com/ok" });
+  });
+
+  test("cleans a freshly bootstrapped session when first navigation throws and recovers", async () => {
+    clearRegistry();
+    clearInvocations();
+    let nextId = 0;
+    const live = new Map<string, { info: { status: "ready" } }>();
+    const create = vi.fn(async () => {
+      const id = `throw-bootstrap-${++nextId}`;
+      live.set(id, { info: { status: "ready" as const } });
+      return { id, status: "ready" as const };
+    });
+    const stop = vi.fn(async (id: string) => {
+      live.delete(id);
+      return { id, status: "stopped" as const };
+    });
+    const navigate = vi.fn()
+      .mockRejectedValueOnce(new Error("synthetic navigation rejection"))
+      .mockResolvedValueOnce({ ok: true, sessionId: "throw-bootstrap-2", invocationId: "nav-2", page: { url: "https://example.com/ok", title: "OK" }, artifacts: [] });
+    const manager = { create, get: vi.fn((id: string) => live.get(id)), stop };
+    createComputerUseBrowserTools({ ...browser, navigate } as never, { sessionManager: manager as never }).forEach(registerTool);
+
+    const firstArgs = { url: "https://example.com/fail" };
+    const firstPending = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-throw", args: firstArgs });
+    const first = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-throw", args: firstArgs, approvedInvocations: [{ toolId: "browser_navigate", inputHash: firstPending.inputHash! }] });
+    expect(first.status).toBe("failed");
+    expect(stop).toHaveBeenCalledWith("throw-bootstrap-1");
+
+    const retryArgs = { url: "https://example.com/ok" };
+    const retryPending = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-throw", args: retryArgs });
+    const retry = await executeInvocation({ toolId: "browser_navigate", threadId: "recover-throw", args: retryArgs, approvedInvocations: [{ toolId: "browser_navigate", inputHash: retryPending.inputHash! }] });
+    expect(retry.result).toMatchObject({ ok: true });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  test("preserves an existing healthy session after a later blocked navigation", async () => {
+    clearRegistry();
+    clearInvocations();
+    const live = new Map<string, { info: { status: "ready" } }>();
+    const create = vi.fn(async () => {
+      live.set("healthy-session", { info: { status: "ready" as const } });
+      return { id: "healthy-session", status: "ready" as const };
+    });
+    const stop = vi.fn(async (id: string) => {
+      live.delete(id);
+      return { id, status: "stopped" as const };
+    });
+    const navigate = vi.fn()
+      .mockResolvedValueOnce({ ok: true, sessionId: "healthy-session", invocationId: "nav-1", page: { url: "https://example.com/", title: "OK" }, artifacts: [] })
+      .mockResolvedValueOnce({ ok: false, sessionId: "healthy-session", invocationId: "nav-2", page: { url: "https://example.com/", title: "OK" }, artifacts: [], error: { code: "navigation_blocked", message: "blocked", retryable: true } });
+    const manager = { create, get: vi.fn((id: string) => live.get(id)), stop };
+    createComputerUseBrowserTools({ ...browser, navigate } as never, { sessionManager: manager as never }).forEach(registerTool);
+
+    const firstArgs = { url: "https://example.com/" };
+    const firstPending = await executeInvocation({ toolId: "browser_navigate", threadId: "healthy-thread", args: firstArgs });
+    await executeInvocation({ toolId: "browser_navigate", threadId: "healthy-thread", args: firstArgs, approvedInvocations: [{ toolId: "browser_navigate", inputHash: firstPending.inputHash! }] });
+
+    const blockedArgs = { url: "https://evil.example/blocked" };
+    const blockedPending = await executeInvocation({ toolId: "browser_navigate", threadId: "healthy-thread", args: blockedArgs });
+    const blocked = await executeInvocation({ toolId: "browser_navigate", threadId: "healthy-thread", args: blockedArgs, approvedInvocations: [{ toolId: "browser_navigate", inputHash: blockedPending.inputHash! }] });
+    expect(blocked.result).toMatchObject({ ok: false, error: { code: "navigation_blocked" } });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+    expect(live.has("healthy-session")).toBe(true);
   });
 
   test("browser_wait_for rejects a missing session and forwards approved conditions", async () => {

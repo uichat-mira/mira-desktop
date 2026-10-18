@@ -95,9 +95,11 @@ related:
 
 ### 4.2 观察 → 交互 → 再观察
 
-- 最小可执行元素身份由 **当前会话+当前 tab（如果支持）+页面 URL+最新 snapshotHash+ref** 共同界定；Tool schema 只要求 Agent 提供其可见的 `pageUrl / snapshotHash / ref`，其余由 Runtime 验证，**不能仅靠快照文本相同就认定 DOM 节点相同**。
-- 元素 ref 是**临时引用**，不是稳定 CSS selector 或永久 ID。**所有使用 ref 的操作均需验证原始观察身份**：`click/fill/press/select`，以及 `wait_for.visible` 和 `assert.visible/value`。对新 `wait_for.visible`，模型侧至少带 `pageUrl + snapshotHash + ref`，Runtime 还必须绑定当前 session/tab、观察代次和**稳定目标 token/节点身份**；`pageUrl + snapshotHash` 本身仍不足以证明节点未替换。旧 `browser_assert` 保留 Tool ID/入参联合时，也必须在 Runtime 中校验 ref 与最新有效观察的绑定；不能仅靠数字编号重用 `e3`。若 ref 已失效或被另一个 DOM 节点取代，必须返回明确失败，不得断言成功或完成等待。#359 负责此类身份验证，#360 验证 wait 条件。
-- `navigate`、`click` 可能改变页面或 tab；返回真实最新页面状态。随后如要再动作，必须依据新的观察和有效 ref，不准继续用旧 ref 批处理。
+- Managed Browser 的元素 ref 以 **Playwright AI aria snapshot** 为唯一 DOM 身份来源。Runtime 使用 `page.ariaSnapshot({ mode: "ai" })` 生成 `[ref=e2]` / `[ref=f1e3]` 等临时引用，并只通过 `page.getByRef(ref)` 解析目标。Playwright 的 ref 解析针对该元素所在 frame 的**最新一次 AI snapshot**；被替换/卸载的原节点不会把旧 ref 转移给外观相同的 clone。
+- `pageUrl` 与 `snapshotHash` 继续属于观察和审批证据：Agent 使用最新结果中的冻结参数发起动作，Runtime 验证它们仍对应当前接受的观察；但 **`snapshotHash` 只是 snapshot/text 的内容指纹，不是 DOM 节点身份或观察代次本身**。不能因为 hash 相同就认定两个 DOM 节点相同，也不再维护第二套 ElementHandle/ref 身份表来补强 hash。
+- 元素 ref 是**临时引用**，不是稳定 CSS selector 或永久 ID。新的 AI snapshot 会刷新 Playwright 的 ref 映射；Playwright 1.64 在主 frame 进入新 document 时还会重新编号 frame sequence，使后续 AI ref 带新的 `f<seq>` 前缀，旧 injected-document 的 `aria-ref` 映射不会解析到新 document。因此 `click/type/press/select`、`assert.visible/value` 等 ref 操作必须使用 Runtime 当前接受的最新观察，并由 `getByRef()` 解析。若 ref 从未出现在该观察中，返回 `ref_not_found`；若已观察的原节点后来 detached/replaced/navigation 失效，返回 `stale_snapshot`，不得重绑到 selector、文本相似节点或 clone。
+- `wait_for.visible(ref)` 有一个刻意的例外流程：先用 `pageUrl + snapshotHash + ref` 验证调用针对当前接受的观察，然后在等待期间**保持这份 Playwright AI snapshot 的 ref 映射不变，不重复采集 AI snapshot**。这样，同一个已观察节点可以暂时变成 `display:none` / `visibility:hidden` 后再次可见并满足等待；如果原节点 detached/replaced，`getByRef(ref)` 不再解析到它，等待立即以 stale 失败。等待成功后才重新 snapshot 并返回新的页面观察。
+- `navigate`、`click` 可能改变页面或 tab；返回真实最新页面状态。随后如要再动作，必须依据新的观察和有效 ref，不准继续用旧 ref 批处理。URL/navigation 变化也会使基于旧观察的 visible wait stale。
 - `wait_for` 是可中断、有上限的条件等待，**条件不提供或超时不算成功**；`wait_for.visible(ref)` 只支持来自有效观察的既有元素身份，不能拿旧 ref 等待尚未观察到的新元素（后者应先按文本/URL 条件等待再重新 snapshot）。`assert` 是即时断言，不是轮询，也不应成为每次浏览动作的强制尾巴。
 - `snapshot` 不等于 `extract`：前者为下一步 Agent 交互提供页面证据，后者按用户字段要求提取表格/结构化记录。后者本期未交付，不得使用“observe”伪装结构化提取。
 - `screenshot` 是图像证据（Artifact），不是让 Agent 猜 DOM ref；图片处理遵循现有 Tool Result / Artifact 安全边界。
