@@ -201,7 +201,7 @@ export class BrowserService {
           actionTimeoutMs,
         );
         await withTimeout(
-          () => session.page.evaluate(({ x, y }) => window.scrollBy(x, y), requested),
+          () => session.page.evaluate(({ x, y }) => window.scrollBy({ left: x, top: y, behavior: "instant" }), requested),
           actionTimeoutMs,
         );
         const after = await withTimeout(
