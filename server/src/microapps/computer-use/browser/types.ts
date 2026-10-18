@@ -94,6 +94,12 @@ export type BrowserToolResult = {
     truncated?: boolean;
   };
   assertion?: { kind: BrowserAssertion["kind"]; passed: boolean };
+  scroll?: {
+    requested: { x: number; y: number };
+    before: { x: number; y: number };
+    after: { x: number; y: number };
+    moved: boolean;
+  };
   artifacts: BrowserArtifact[];
   error?: BrowserToolError;
 };

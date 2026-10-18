@@ -15,7 +15,7 @@ const browser = {
 describe("Computer Use browser MCP tools", () => {
   test("exposes legacy tools and the atomic navigation/observation tools", () => {
     const tools = createComputerUseBrowserTools(browser as never);
-    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_observe", "browser_act", "browser_assert", "browser_navigate", "browser_wait_for", "browser_snapshot", "browser_screenshot", "browser_click", "browser_fill"]);
+    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_observe", "browser_act", "browser_assert", "browser_navigate", "browser_wait_for", "browser_snapshot", "browser_screenshot", "browser_click", "browser_fill", "browser_press_key", "browser_select_option", "browser_scroll"]);
     expect(tools.every((tool) => tool.definition.inputSchema.additionalProperties === false)).toBe(true);
     expect(tools.find((tool) => tool.definition.id === "browser_act")?.definition.capabilities.requiresApproval).toBe(true);
     expect(tools.find((tool) => tool.definition.id === "browser_observe")?.definition.description).toContain("page.title");
@@ -98,6 +98,104 @@ describe("Computer Use browser MCP tools", () => {
     clearRegistry();
     registerTool(tools.find((tool) => tool.definition.id === "browser_click")!);
     await expect(executeInvocation({ toolId: "browser_click", args: { pageUrl: "https://example.com/", snapshotHash: "h" } })).rejects.toThrow(/required/);
+  });
+
+  test("press, select and scroll facades are separate approval-gated tools with strict schemas", () => {
+    const tools = createComputerUseBrowserTools(browser as never);
+    const press = tools.find((tool) => tool.definition.id === "browser_press_key")!.definition;
+    expect(press.capabilities).toMatchObject({ sideEffect: "network", requiresApproval: true, networkAccess: true });
+    expect(press.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: ["pageUrl", "snapshotHash", "ref", "key"] });
+    expect(press.inputSchemaByExposure?.agent_intent).toMatchObject({ required: ["pageUrl", "snapshotHash", "ref", "key"], additionalProperties: false });
+    expect(press.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
+    expect((press.inputSchema.properties as Record<string, unknown>)).toHaveProperty("sessionId");
+
+    const select = tools.find((tool) => tool.definition.id === "browser_select_option")!.definition;
+    expect(select.capabilities).toMatchObject({ sideEffect: "network", requiresApproval: true, networkAccess: true });
+    expect(select.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: ["pageUrl", "snapshotHash", "ref", "value"] });
+    expect(select.inputSchemaByExposure?.agent_intent).toMatchObject({ required: ["pageUrl", "snapshotHash", "ref", "value"], additionalProperties: false });
+    expect(select.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
+
+    const scroll = tools.find((tool) => tool.definition.id === "browser_scroll")!.definition;
+    expect(scroll.capabilities).toMatchObject({ sideEffect: "network", requiresApproval: true, networkAccess: true });
+    expect(scroll.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: ["pageUrl", "snapshotHash"] });
+    const scrollProps = scroll.inputSchema.properties as Record<string, { type?: string }>;
+    expect(scrollProps.x).toMatchObject({ type: "number" });
+    expect(scrollProps.y).toMatchObject({ type: "number" });
+    expect(scroll.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
+
+    // The atomic facades are distinct IDs but the legacy act union keeps its own
+    // press/select/scroll variants until the migration card retires them.
+    const actAction = (tools.find((tool) => tool.definition.id === "browser_act")!.definition.inputSchema.properties as { action: { oneOf: Array<{ properties: { kind: { enum: string[] } } }> } }).action;
+    expect(actAction.oneOf.map((variant) => variant.properties.kind.enum[0])).toEqual(expect.arrayContaining(["press", "select", "scroll"]));
+  });
+
+  test("press, select and scroll require approval before any browser action executes", async () => {
+    clearRegistry(); clearInvocations();
+    browser.act.mockClear();
+    const manager = { create: vi.fn(async () => ({ id: "action-session", status: "ready" as const })), get: vi.fn((id: string) => id === "action-session" ? { info: { status: "ready" as const } } : undefined) };
+    const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
+    tools.forEach(registerTool);
+    await executeInvocation({ toolId: "browser_observe", threadId: "press-thread", args: { url: "https://example.com" } });
+
+    const pressArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e2", key: "Enter" };
+    const pressPending = await executeInvocation({ toolId: "browser_press_key", threadId: "press-thread", args: pressArgs });
+    expect(pressPending.status).toBe("awaiting_approval");
+    expect(browser.act).not.toHaveBeenCalled();
+    const pressed = await executeInvocation({ toolId: "browser_press_key", threadId: "press-thread", args: pressArgs, approvedInvocations: [{ toolId: "browser_press_key", inputHash: pressPending.inputHash! }] });
+    expect(pressed.status).toBe("completed");
+    expect(browser.act).toHaveBeenLastCalledWith({ sessionId: "action-session", pageUrl: "https://example.com/", snapshotHash: "hash-1", action: { kind: "press", ref: "e2", key: "Enter" } });
+
+    const selectArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e3", value: "Standard" };
+    const selectPending = await executeInvocation({ toolId: "browser_select_option", threadId: "press-thread", args: selectArgs });
+    expect(selectPending.status).toBe("awaiting_approval");
+    const selected = await executeInvocation({ toolId: "browser_select_option", threadId: "press-thread", args: selectArgs, approvedInvocations: [{ toolId: "browser_select_option", inputHash: selectPending.inputHash! }] });
+    expect(selected.status).toBe("completed");
+    expect(browser.act).toHaveBeenLastCalledWith({ sessionId: "action-session", pageUrl: "https://example.com/", snapshotHash: "hash-1", action: { kind: "select", ref: "e3", value: "Standard" } });
+
+    const scrollArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", x: 0, y: 400 };
+    const scrollPending = await executeInvocation({ toolId: "browser_scroll", threadId: "press-thread", args: scrollArgs });
+    expect(scrollPending.status).toBe("awaiting_approval");
+    const scrolled = await executeInvocation({ toolId: "browser_scroll", threadId: "press-thread", args: scrollArgs, approvedInvocations: [{ toolId: "browser_scroll", inputHash: scrollPending.inputHash! }] });
+    expect(scrolled.status).toBe("completed");
+    expect(browser.act).toHaveBeenLastCalledWith({ sessionId: "action-session", pageUrl: "https://example.com/", snapshotHash: "hash-1", action: { kind: "scroll", x: 0, y: 400 } });
+
+    const zeroArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", x: 0, y: 0 };
+    const zeroPending = await executeInvocation({ toolId: "browser_scroll", threadId: "press-thread", args: zeroArgs });
+    expect(zeroPending.status).toBe("awaiting_approval");
+    const zero = await executeInvocation({ toolId: "browser_scroll", threadId: "press-thread", args: zeroArgs, approvedInvocations: [{ toolId: "browser_scroll", inputHash: zeroPending.inputHash! }] });
+    expect(zero.status).toBe("failed");
+    expect(zero.error?.message).toMatch(/non-zero/);
+  });
+
+  test("press, select and scroll report session_unavailable without a bound session and enforce required args", async () => {
+    clearRegistry(); clearInvocations();
+    browser.act.mockClear();
+    const manager = { create: vi.fn(async () => ({ id: "unused", status: "ready" as const })), get: vi.fn(() => undefined) };
+    const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
+    tools.forEach(registerTool);
+
+    for (const [toolId, args] of [
+      ["browser_press_key", { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e1", key: "Enter" }],
+      ["browser_select_option", { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e1", value: "Standard" }],
+      ["browser_scroll", { pageUrl: "https://example.com/", snapshotHash: "hash-1", y: 100 }],
+    ] as const) {
+      const pending = await executeInvocation({ toolId, threadId: "no-session", args });
+      expect(pending.status).toBe("awaiting_approval");
+      const result = await executeInvocation({ toolId, threadId: "no-session", args, approvedInvocations: [{ toolId, inputHash: pending.inputHash! }] });
+      expect(result.status).toBe("completed");
+      expect(result.result).toMatchObject({ ok: false, error: { code: "session_unavailable" } });
+    }
+    expect(browser.act).not.toHaveBeenCalled();
+
+    clearRegistry();
+    registerTool(tools.find((tool) => tool.definition.id === "browser_press_key")!);
+    await expect(executeInvocation({ toolId: "browser_press_key", args: { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e1" } })).rejects.toThrow(/required/);
+    clearRegistry();
+    registerTool(tools.find((tool) => tool.definition.id === "browser_select_option")!);
+    await expect(executeInvocation({ toolId: "browser_select_option", args: { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e1" } })).rejects.toThrow(/required/);
+    clearRegistry();
+    registerTool(tools.find((tool) => tool.definition.id === "browser_scroll")!);
+    await expect(executeInvocation({ toolId: "browser_scroll", args: { pageUrl: "https://example.com/" } })).rejects.toThrow(/required/);
   });
 
   test("navigation and wait facades are separate approval-gated tools with strict schemas", () => {

@@ -62,6 +62,11 @@ const refFailure = (message: string) =>
 const invalidTargetFailure = (message: string) =>
   /not an? <input>|not an input|not a textarea|not editable|not fillable|cannot be filled|does not have a text|readonly|not a form control/i.test(message);
 
+// selectOption() only accepts a native <select> with an existing option; a
+// different control or an unknown option is an invalid target, not a runtime fault.
+const invalidSelectFailure = (message: string) =>
+  /not a <select>|not a select|did not find some options|no option|option .*not found/i.test(message);
+
 const makeArtifact = async (session: ManagedBrowserSession, invocationId: string): Promise<BrowserArtifact> => {
   const target = path.join(session.artifactRoot, `${invocationId}.png`);
   await session.page.screenshot({ path: target, fullPage: true });
@@ -170,6 +175,7 @@ export class BrowserService {
     const releaseOperation = await this.acquireSessionOperation(session);
     let pendingOperation: Promise<unknown> | undefined;
     let validatedPage: BrowserToolResult["page"] | undefined;
+    let scrollEvidence: BrowserToolResult["scroll"] | undefined;
     try {
       if (session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
       session.info.status = "busy";
@@ -189,7 +195,25 @@ export class BrowserService {
       if (action.kind === "navigate") {
         await this.sessions.navigate(session, action.url);
       } else if (action.kind === "scroll") {
-        await withTimeout(() => session.page.evaluate(({ x, y }) => window.scrollBy(x ?? 0, y ?? 0), { x: action.x ?? 0, y: action.y ?? 0 }), actionTimeoutMs);
+        const requested = { x: action.x ?? 0, y: action.y ?? 0 };
+        const before = await withTimeout(
+          () => session.page.evaluate(() => ({ x: window.scrollX, y: window.scrollY })),
+          actionTimeoutMs,
+        );
+        await withTimeout(
+          () => session.page.evaluate(({ x, y }) => window.scrollBy({ left: x, top: y, behavior: "instant" }), requested),
+          actionTimeoutMs,
+        );
+        const after = await withTimeout(
+          () => session.page.evaluate(() => ({ x: window.scrollX, y: window.scrollY })),
+          actionTimeoutMs,
+        );
+        scrollEvidence = {
+          requested,
+          before,
+          after,
+          moved: before.x !== after.x || before.y !== after.y,
+        };
       } else if (action.kind === "wait") {
         const target = action.ref
           ? latest.refs.has(action.ref) ? session.page.getByRef(action.ref) : undefined
@@ -243,14 +267,14 @@ export class BrowserService {
       }
 
       const next = await state(session);
-      return { ok: true, sessionId: input.sessionId, invocationId, page: { url: next.url, title: next.title, snapshotHash: next.snapshotHash }, observation: { snapshot: next.observation.snapshot, visibleText: next.observation.visibleText, truncated: next.observation.truncated }, artifacts: [] };
+      return { ok: true, sessionId: input.sessionId, invocationId, page: { url: next.url, title: next.title, snapshotHash: next.snapshotHash }, observation: { snapshot: next.observation.snapshot, visibleText: next.observation.visibleText, truncated: next.observation.truncated }, ...(scrollEvidence ? { scroll: scrollEvidence } : {}), artifacts: [] };
     } catch (cause) {
       if (cause instanceof BrowserActionTimeoutError) pendingOperation = cause.operation;
       const message = cause instanceof Error ? cause.message : String(cause);
       const recovered = pendingOperation ? undefined : await state(session).catch(() => undefined);
       const errorPage = recovered ? { url: recovered.url, title: recovered.title, snapshotHash: recovered.snapshotHash }
         : validatedPage ?? { url: session.page.url(), title: "" };
-      return failure(input.sessionId, invocationId, errorPage, refFailure(message) ? "stale_snapshot" : message.includes("timed out") ? "action_timeout" : input.action.kind === "fill" && invalidTargetFailure(message) ? "invalid_target" : "action_failed", message, true);
+      return failure(input.sessionId, invocationId, errorPage, refFailure(message) ? "stale_snapshot" : message.includes("timed out") ? "action_timeout" : input.action.kind === "fill" && invalidTargetFailure(message) ? "invalid_target" : input.action.kind === "select" && invalidSelectFailure(message) ? "invalid_target" : "action_failed", message, true);
     } finally {
       const finish = () => {
         if (session.info.status === "busy") session.info.status = "ready";
