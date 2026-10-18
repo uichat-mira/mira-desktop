@@ -439,8 +439,22 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       expect(await page.evaluate(() => window.scrollY)).toBe(0);
       const scrolled = await executeInvocation({ toolId: "browser_scroll", threadId, args: scrollArgs, approvedInvocations: [approve("browser_scroll", scrollArgs)] });
       expect(scrolled.status).toBe("completed");
-      expect(scrolled.result).toMatchObject({ ok: true });
+      expect(scrolled.result).toMatchObject({
+        ok: true,
+        scroll: { requested: { x: 0, y: 800 }, before: { x: 0, y: 0 }, moved: true },
+      });
       expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+      // At the document boundary, the Tool must report a truthful no-op rather
+      // than returning an indistinguishable generic success.
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const atBottom = await snapshotResult(threadId);
+      const noOpArgs = { pageUrl: atBottom.page.url, snapshotHash: atBottom.page.snapshotHash, x: 0, y: 800 };
+      const noOpPending = await executeInvocation({ toolId: "browser_scroll", threadId, args: noOpArgs });
+      expect(noOpPending.status).toBe("awaiting_approval");
+      const noOp = await executeInvocation({ toolId: "browser_scroll", threadId, args: noOpArgs, approvedInvocations: [approve("browser_scroll", noOpArgs)] });
+      expect(noOp.status).toBe("completed");
+      expect(noOp.result).toMatchObject({ ok: true, scroll: { requested: { x: 0, y: 800 }, moved: false } });
     } finally {
       await manager.closeAll();
       clearRegistry(); clearInvocations();
