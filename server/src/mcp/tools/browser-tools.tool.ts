@@ -100,6 +100,27 @@ const agentWaitSchema = {
   required: ["condition"],
   properties: { condition: { ...conditionSchema }, timeoutMs: { type: "integer", minimum: 1 } },
 } as const;
+const agentClickSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["pageUrl", "snapshotHash", "ref"],
+  properties: {
+    pageUrl: { type: "string", minLength: 1 },
+    snapshotHash: { type: "string", minLength: 1 },
+    ref: { type: "string", minLength: 1 },
+  },
+} as const;
+const agentFillSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["pageUrl", "snapshotHash", "ref", "value"],
+  properties: {
+    pageUrl: { type: "string", minLength: 1 },
+    snapshotHash: { type: "string", minLength: 1 },
+    ref: { type: "string", minLength: 1 },
+    value: { type: "string" },
+  },
+} as const;
 
 const emitBrowserArtifacts = (
   context: ToolInvocationContext,
@@ -455,5 +476,98 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  return [observe, act, assert, navigate, wait, snapshot, screenshot];
+  const click: ToolImplementation = {
+    definition: {
+      id: "browser_click",
+      title: "Browser Click",
+      description: "Click exactly the element identified by ref from the latest accepted observation (pageUrl + snapshotHash). Element identity is resolved by Playwright getByRef() against the latest AI snapshot, so a stale, missing or replaced ref is rejected before any click. Do not guess selectors or coordinates. Navigate first; the tool manages sessionId internally, requires approval, and returns the resulting page state.",
+      domain: "browser_action",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["pageUrl", "snapshotHash", "ref"],
+        properties: {
+          sessionId,
+          pageUrl: { type: "string", minLength: 1 },
+          snapshotHash: { type: "string", minLength: 1 },
+          ref: { type: "string", minLength: 1 },
+        },
+      },
+      inputSchemaByExposure: { agent_intent: agentClickSchema },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "click"],
+      capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ pageUrl?: string; snapshotHash?: string; ref?: string }>(context.args, "args");
+      const bound = requireBoundSession(context);
+      let result: BrowserToolResult;
+      if (!bound) {
+        result = unavailable(context);
+      } else {
+        if (typeof args.pageUrl !== "string" || typeof args.snapshotHash !== "string" || typeof args.ref !== "string") {
+          throw mcpBadRequest("pageUrl, snapshotHash and ref are required");
+        }
+        result = await browser.act({
+          sessionId: bound,
+          pageUrl: args.pageUrl,
+          snapshotHash: args.snapshotHash,
+          action: { kind: "click", ref: args.ref },
+        });
+      }
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  const fill: ToolImplementation = {
+    definition: {
+      id: "browser_fill",
+      title: "Browser Fill",
+      description: "Set an input/textarea element identified by ref from the latest accepted observation (pageUrl + snapshotHash) to an exact value. This replaces the previous value in one action (unlike character-by-character typing) and never re-targets a different element: the ref is resolved by Playwright getByRef() against the latest AI snapshot, so a stale, missing or replaced ref is rejected before writing. A non-fillable target fails explicitly. Navigate and observe first; the tool manages sessionId internally and requires approval.",
+      domain: "browser_action",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["pageUrl", "snapshotHash", "ref", "value"],
+        properties: {
+          sessionId,
+          pageUrl: { type: "string", minLength: 1 },
+          snapshotHash: { type: "string", minLength: 1 },
+          ref: { type: "string", minLength: 1 },
+          value: { type: "string" },
+        },
+      },
+      inputSchemaByExposure: { agent_intent: agentFillSchema },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "fill"],
+      capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ pageUrl?: string; snapshotHash?: string; ref?: string; value?: string }>(context.args, "args");
+      const bound = requireBoundSession(context);
+      let result: BrowserToolResult;
+      if (!bound) {
+        result = unavailable(context);
+      } else {
+        if (typeof args.pageUrl !== "string" || typeof args.snapshotHash !== "string" || typeof args.ref !== "string" || typeof args.value !== "string") {
+          throw mcpBadRequest("pageUrl, snapshotHash, ref and value are required");
+        }
+        result = await browser.act({
+          sessionId: bound,
+          pageUrl: args.pageUrl,
+          snapshotHash: args.snapshotHash,
+          action: { kind: "fill", ref: args.ref, value: args.value },
+        });
+      }
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  return [observe, act, assert, navigate, wait, snapshot, screenshot, click, fill];
 };

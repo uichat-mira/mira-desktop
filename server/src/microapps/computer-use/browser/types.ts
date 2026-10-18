@@ -22,6 +22,7 @@ export type BrowserInspectInput = {
 export type BrowserAction =
   | { kind: "navigate"; url: string }
   | { kind: "click"; ref: string }
+  | { kind: "fill"; ref: string; value: string }
   | { kind: "type"; ref: string; text: string }
   | { kind: "select"; ref: string; value: string }
   | { kind: "press"; ref: string; key: string }
