@@ -233,6 +233,82 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
     }
   }, 30000);
 
+  it("clicks an observed button and fills an input to an exact value, rejecting stale refs, invalid targets and absent approval", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const file = path.join(root, `click-fill-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(file, `<!doctype html><html><head><title>Click Fill Fixture</title></head>
+<body>
+  <button id="confirm" onclick="document.getElementById('status').textContent = 'Confirmed'">Confirm</button>
+  <div id="status">idle</div>
+  <label for="name">Recipient Name</label><input id="name" placeholder="Customer" value="Alice">
+</body></html>`);
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    const fileUrl = pathToFileURL(file).href;
+    const approve = (toolId: string, args: Record<string, unknown>) => ({ toolId, inputHash: createInvocationInputHash(args) });
+    try {
+      clearRegistry(); clearInvocations();
+      const tools = createComputerUseBrowserTools(browser, { sessionManager: manager });
+      for (const tool of tools) registerTool(tool);
+      const threadId = `click-fill-${crypto.randomUUID()}`;
+
+      const boot = await executeInvocation({ toolId: "browser_observe", threadId, args: { url: fileUrl } });
+      expect(boot.status).toBe("completed");
+      const sessionId = boot.args.sessionId as string;
+      const page = manager.get(sessionId)!.page;
+
+      const snapshot = await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} });
+      const snapshotResult = snapshot.result as { page: { url: string; snapshotHash: string }; observation?: { snapshot?: string } };
+      const buttonRef = snapshotResult.observation?.snapshot?.match(/button "Confirm" \[ref=(e\d+)\]/)?.[1]!;
+      const inputRef = snapshotResult.observation?.snapshot?.match(/textbox "Recipient Name" \[ref=(e\d+)\]/)?.[1]!;
+      expect(buttonRef).toBeTruthy();
+      expect(inputRef).toBeTruthy();
+
+      // Click requires approval and must not run before it is granted.
+      const clickArgs = { pageUrl: snapshotResult.page.url, snapshotHash: snapshotResult.page.snapshotHash, ref: buttonRef };
+      const clickPending = await executeInvocation({ toolId: "browser_click", threadId, args: clickArgs });
+      expect(clickPending.status).toBe("awaiting_approval");
+      expect(await page.evaluate(() => document.getElementById("status")!.textContent)).toBe("idle");
+      const clicked = await executeInvocation({ toolId: "browser_click", threadId, args: clickArgs, approvedInvocations: [approve("browser_click", clickArgs)] });
+      expect(clicked.status).toBe("completed");
+      expect(clicked.result).toMatchObject({ ok: true });
+      expect(await page.evaluate(() => document.getElementById("status")!.textContent)).toBe("Confirmed");
+
+      // Fill replaces the exact value instead of appending to it.
+      const afterClick = (await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} })).result as { page: { url: string; snapshotHash: string }; observation?: { snapshot?: string } };
+      const freshInputRef = afterClick.observation?.snapshot?.match(/textbox "Recipient Name" \[ref=(e\d+)\]/)?.[1]!;
+      const fillArgs = { pageUrl: afterClick.page.url, snapshotHash: afterClick.page.snapshotHash, ref: freshInputRef, value: "Blueberry" };
+      const fillPending = await executeInvocation({ toolId: "browser_fill", threadId, args: fillArgs });
+      expect(fillPending.status).toBe("awaiting_approval");
+      expect(await page.evaluate(() => (document.getElementById("name") as HTMLInputElement).value)).toBe("Alice");
+      const filled = await executeInvocation({ toolId: "browser_fill", threadId, args: fillArgs, approvedInvocations: [approve("browser_fill", fillArgs)] });
+      expect(filled.status).toBe("completed");
+      expect(filled.result).toMatchObject({ ok: true });
+      expect(await page.evaluate(() => (document.getElementById("name") as HTMLInputElement).value)).toBe("Blueberry");
+
+      // A stale snapshot identity cannot be used to fill another element.
+      const staleFillArgs = { pageUrl: afterClick.page.url, snapshotHash: "stale-hash", ref: freshInputRef, value: "Mallory" };
+      const staleFill = await executeInvocation({ toolId: "browser_fill", threadId, args: staleFillArgs, approvedInvocations: [approve("browser_fill", staleFillArgs)] });
+      expect(staleFill.result).toMatchObject({ ok: false, error: { code: "stale_snapshot" } });
+      expect(await page.evaluate(() => (document.getElementById("name") as HTMLInputElement).value)).toBe("Blueberry");
+
+      // An observed non-fillable target fails truthfully instead of being re-targeted.
+      const current = (await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} })).result as { page: { url: string; snapshotHash: string }; observation?: { snapshot?: string } };
+      const currentButtonRef = current.observation?.snapshot?.match(/button "Confirm" \[ref=(e\d+)\]/)?.[1]!;
+      const invalidArgs = { pageUrl: current.page.url, snapshotHash: current.page.snapshotHash, ref: currentButtonRef, value: "x" };
+      const invalid = await executeInvocation({ toolId: "browser_fill", threadId, args: invalidArgs, approvedInvocations: [approve("browser_fill", invalidArgs)] });
+      expect(invalid.result).toMatchObject({ ok: false, error: { code: "invalid_target" } });
+    } finally {
+      await manager.closeAll();
+      clearRegistry(); clearInvocations();
+      fs.rmSync(file, { force: true });
+    }
+  }, 30000);
+
+
   it("keeps a native ref bound to the same hidden node and invalidates it on navigation", async () => {
     fs.mkdirSync(root, { recursive: true });
     const file = path.join(root, `visibility-fixture-${crypto.randomUUID()}.html`);

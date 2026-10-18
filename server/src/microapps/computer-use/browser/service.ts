@@ -57,6 +57,11 @@ const validateObservation = (
 const refFailure = (message: string) =>
   /ref .*not found|not found .*snapshot|does not match any element|element is not attached|element is detached|not connected|was detached|node is detached/i.test(message);
 
+// Playwright fill() only accepts input/textarea/contenteditable targets; a
+// non-fillable observed element is an invalid target, not a generic runtime fault.
+const invalidTargetFailure = (message: string) =>
+  /not an? <input>|not an input|not a textarea|not editable|not fillable|cannot be filled|does not have a text|readonly|not a form control/i.test(message);
+
 const makeArtifact = async (session: ManagedBrowserSession, invocationId: string): Promise<BrowserArtifact> => {
   const target = path.join(session.artifactRoot, `${invocationId}.png`);
   await session.page.screenshot({ path: target, fullPage: true });
@@ -231,6 +236,7 @@ export class BrowserService {
           return failure(input.sessionId, invocationId, validatedPage, "stale_snapshot", "The observed element was replaced or detached; take a fresh snapshot.", true);
         }
         if (action.kind === "click") await withTimeout(() => target.click({ timeout: actionTimeoutMs }), actionTimeoutMs);
+        if (action.kind === "fill") await withTimeout(() => target.fill(action.value, { timeout: actionTimeoutMs }), actionTimeoutMs);
         if (action.kind === "type") await withTimeout(() => target.type(action.text, { timeout: actionTimeoutMs }), actionTimeoutMs);
         if (action.kind === "select") await withTimeout(() => target.selectOption(action.value, { timeout: actionTimeoutMs }), actionTimeoutMs);
         if (action.kind === "press") await withTimeout(() => target.press(action.key, { timeout: actionTimeoutMs }), actionTimeoutMs);
@@ -244,7 +250,7 @@ export class BrowserService {
       const recovered = pendingOperation ? undefined : await state(session).catch(() => undefined);
       const errorPage = recovered ? { url: recovered.url, title: recovered.title, snapshotHash: recovered.snapshotHash }
         : validatedPage ?? { url: session.page.url(), title: "" };
-      return failure(input.sessionId, invocationId, errorPage, refFailure(message) ? "stale_snapshot" : message.includes("timed out") ? "action_timeout" : "action_failed", message, true);
+      return failure(input.sessionId, invocationId, errorPage, refFailure(message) ? "stale_snapshot" : message.includes("timed out") ? "action_timeout" : input.action.kind === "fill" && invalidTargetFailure(message) ? "invalid_target" : "action_failed", message, true);
     } finally {
       const finish = () => {
         if (session.info.status === "busy") session.info.status = "ready";

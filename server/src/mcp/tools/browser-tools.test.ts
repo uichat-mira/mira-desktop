@@ -15,7 +15,7 @@ const browser = {
 describe("Computer Use browser MCP tools", () => {
   test("exposes legacy tools and the atomic navigation/observation tools", () => {
     const tools = createComputerUseBrowserTools(browser as never);
-    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_observe", "browser_act", "browser_assert", "browser_navigate", "browser_wait_for", "browser_snapshot", "browser_screenshot"]);
+    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_observe", "browser_act", "browser_assert", "browser_navigate", "browser_wait_for", "browser_snapshot", "browser_screenshot", "browser_click", "browser_fill"]);
     expect(tools.every((tool) => tool.definition.inputSchema.additionalProperties === false)).toBe(true);
     expect(tools.find((tool) => tool.definition.id === "browser_act")?.definition.capabilities.requiresApproval).toBe(true);
     expect(tools.find((tool) => tool.definition.id === "browser_observe")?.definition.description).toContain("page.title");
@@ -26,6 +26,78 @@ describe("Computer Use browser MCP tools", () => {
     expect(tools.find((tool) => tool.definition.id === "browser_act")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
     expect(tools.find((tool) => tool.definition.id === "browser_navigate")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
     expect(tools.find((tool) => tool.definition.id === "browser_wait_for")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
+    expect(tools.find((tool) => tool.definition.id === "browser_click")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
+    expect(tools.find((tool) => tool.definition.id === "browser_fill")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
+  });
+
+  test("click and fill facades are separate approval-gated tools with strict schemas", () => {
+    const tools = createComputerUseBrowserTools(browser as never);
+    const click = tools.find((tool) => tool.definition.id === "browser_click")!.definition;
+    expect(click.capabilities).toMatchObject({ sideEffect: "network", requiresApproval: true, networkAccess: true });
+    expect(click.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: ["pageUrl", "snapshotHash", "ref"] });
+    expect(click.inputSchemaByExposure?.agent_intent).toMatchObject({ required: ["pageUrl", "snapshotHash", "ref"], additionalProperties: false });
+    expect((click.inputSchema.properties as Record<string, unknown>)).toHaveProperty("sessionId");
+    const fill = tools.find((tool) => tool.definition.id === "browser_fill")!.definition;
+    expect(fill.capabilities).toMatchObject({ sideEffect: "network", requiresApproval: true, networkAccess: true });
+    expect(fill.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: ["pageUrl", "snapshotHash", "ref", "value"] });
+    expect(fill.inputSchemaByExposure?.agent_intent).toMatchObject({ required: ["pageUrl", "snapshotHash", "ref", "value"], additionalProperties: false });
+    // browser_fill is not an alias of browser_act.type: the union only reaches fill
+    // through the new atomic facade, and the legacy act schema stays type-based.
+    const actAction = (tools.find((tool) => tool.definition.id === "browser_act")!.definition.inputSchema.properties as { action: { oneOf: Array<{ properties: { kind: { enum: string[] } } }> } }).action;
+    expect(actAction.oneOf.map((variant) => variant.properties.kind.enum[0])).not.toContain("fill");
+  });
+
+  test("click and fill require approval before any browser action executes", async () => {
+    clearRegistry(); clearInvocations();
+    browser.act.mockClear();
+    const create = vi.fn(async () => ({ id: "action-session", status: "ready" as const }));
+    const manager = { create, get: vi.fn((id: string) => id === "action-session" ? { info: { status: "ready" as const } } : undefined) };
+    const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
+    tools.forEach(registerTool);
+    await executeInvocation({ toolId: "browser_observe", threadId: "action-thread", args: { url: "https://example.com" } });
+
+    const clickArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e2" };
+    const clickPending = await executeInvocation({ toolId: "browser_click", threadId: "action-thread", args: clickArgs });
+    expect(clickPending.status).toBe("awaiting_approval");
+    expect(browser.act).not.toHaveBeenCalled();
+    const clicked = await executeInvocation({ toolId: "browser_click", threadId: "action-thread", args: clickArgs, approvedInvocations: [{ toolId: "browser_click", inputHash: clickPending.inputHash! }] });
+    expect(clicked.status).toBe("completed");
+    expect(browser.act).toHaveBeenLastCalledWith({ sessionId: "action-session", pageUrl: "https://example.com/", snapshotHash: "hash-1", action: { kind: "click", ref: "e2" } });
+
+    const fillArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e3", value: "Apple" };
+    const fillPending = await executeInvocation({ toolId: "browser_fill", threadId: "action-thread", args: fillArgs });
+    expect(fillPending.status).toBe("awaiting_approval");
+    const filled = await executeInvocation({ toolId: "browser_fill", threadId: "action-thread", args: fillArgs, approvedInvocations: [{ toolId: "browser_fill", inputHash: fillPending.inputHash! }] });
+    expect(filled.status).toBe("completed");
+    expect(browser.act).toHaveBeenLastCalledWith({ sessionId: "action-session", pageUrl: "https://example.com/", snapshotHash: "hash-1", action: { kind: "fill", ref: "e3", value: "Apple" } });
+  });
+
+  test("click and fill report session_unavailable without a bound session and enforce schema variants", async () => {
+    clearRegistry(); clearInvocations();
+    browser.act.mockClear();
+    const create = vi.fn(async () => ({ id: "unused", status: "ready" as const }));
+    const manager = { create, get: vi.fn(() => undefined) };
+    const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
+    tools.forEach(registerTool);
+
+    const clickArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e1" };
+    const clickPending = await executeInvocation({ toolId: "browser_click", threadId: "no-session", args: clickArgs });
+    const click = await executeInvocation({ toolId: "browser_click", threadId: "no-session", args: clickArgs, approvedInvocations: [{ toolId: "browser_click", inputHash: clickPending.inputHash! }] });
+    expect(click.status).toBe("completed");
+    expect(click.result).toMatchObject({ ok: false, error: { code: "session_unavailable" } });
+
+    const fillArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e1", value: "x" };
+    const fillPending = await executeInvocation({ toolId: "browser_fill", threadId: "no-session", args: fillArgs });
+    const fill = await executeInvocation({ toolId: "browser_fill", threadId: "no-session", args: fillArgs, approvedInvocations: [{ toolId: "browser_fill", inputHash: fillPending.inputHash! }] });
+    expect(fill.result).toMatchObject({ ok: false, error: { code: "session_unavailable" } });
+    expect(browser.act).not.toHaveBeenCalled();
+
+    clearRegistry();
+    registerTool(tools.find((tool) => tool.definition.id === "browser_fill")!);
+    await expect(executeInvocation({ toolId: "browser_fill", args: { pageUrl: "https://example.com/", snapshotHash: "h", ref: "e1" } })).rejects.toThrow(/required/);
+    clearRegistry();
+    registerTool(tools.find((tool) => tool.definition.id === "browser_click")!);
+    await expect(executeInvocation({ toolId: "browser_click", args: { pageUrl: "https://example.com/", snapshotHash: "h" } })).rejects.toThrow(/required/);
   });
 
   test("navigation and wait facades are separate approval-gated tools with strict schemas", () => {
@@ -43,6 +115,7 @@ describe("Computer Use browser MCP tools", () => {
 
   test("snapshot and screenshot require a live bound session and reject unsupported screenshot mode", async () => {
     clearRegistry(); clearInvocations();
+    browser.observe.mockClear();
     const get = vi.fn((_id: string) => ({ info: { status: "ready" as const } }));
     const manager = { get, create: vi.fn(async () => ({ id: "browser-test", status: "ready" as const })) };
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });

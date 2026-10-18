@@ -20,6 +20,7 @@ export type ComputerUseExecutionResult = {
 
 export type PlaywrightLocatorLike = {
   click(options?: { timeout?: number }): Promise<unknown>;
+  fill(value: string, options?: { timeout?: number }): Promise<unknown>;
   type(text: string, options?: { timeout?: number }): Promise<unknown>;
   selectOption(value: string, options?: { timeout?: number }): Promise<unknown>;
   press(key: string, options?: { timeout?: number }): Promise<unknown>;

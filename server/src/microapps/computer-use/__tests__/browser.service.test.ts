@@ -22,6 +22,7 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
   const nodes: FakeNode[] = [
     { role: "heading", name: "Example Domain", ref: "e1", isConnected: true, visible: true },
     { role: "button", name: "Go", ref: "e2", isConnected: true, visible: true },
+    { role: "textbox", name: "Recipient Name", ref: "e3", isConnected: true, visible: true, value: "Alice" },
   ];
   const resolveRef = (ref: string) => {
     const node = latestSnapshotRefs.get(ref);
@@ -61,6 +62,12 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
         if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
         return page.type(ref, text, options);
       }),
+      fill: vi.fn(async (value: string, _options?: { timeout?: number }) => {
+        const node = resolveRef(ref);
+        if (!node) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        if (node.role !== "textbox") throw new Error("Element is not an <input>, <textarea> or [contenteditable]");
+        node.value = value;
+      }),
       selectOption: vi.fn(async (value: string, options?: { timeout?: number }) => {
         if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
         return page.selectOption(ref, value, options);
@@ -86,6 +93,9 @@ const pathLib = path;
 
 const buttonRef = (observed: { observation?: { snapshot?: string } }) =>
   observed.observation?.snapshot?.match(/button "Go" \[ref=(e\d+)\]/)?.[1]!;
+
+const inputRef = (observed: { observation?: { snapshot?: string } }) =>
+  observed.observation?.snapshot?.match(/textbox "Recipient Name" \[ref=(e\d+)\]/)?.[1]!;
 
 describe("BrowserService", () => {
   it("serializes an observation and a ref action against one native snapshot map", async () => {
@@ -161,6 +171,41 @@ describe("BrowserService", () => {
     expect(invalidRef.error?.code).toBe("ref_not_found");
     const unsafe = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "navigate", url: "https://not-example.com/" } });
     expect(unsafe.error?.code).toBe("action_failed");
+  });
+
+  it("fills an observed input to the exact value, replacing instead of appending", async () => {
+    const { service, session, nodes } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = inputRef(observed);
+    const input = nodes.find((node) => node.ref === ref)!;
+    expect(input.value).toBe("Alice");
+    const result = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "fill", ref, value: "Blueberry" } });
+    expect(result.ok).toBe(true);
+    expect(input.value).toBe("Blueberry");
+    expect(input.value).not.toContain("Alice");
+    const assertion = await service.assert({ sessionId: session.id, assertion: { kind: "value", ref, expected: "Blueberry" } });
+    expect(assertion.ok).toBe(true);
+    expect(assertion.assertion).toEqual({ kind: "value", passed: true });
+  });
+
+  it("rejects a stale or missing ref before filling", async () => {
+    const { service, session } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = inputRef(observed);
+    const stale = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: "stale-hash", action: { kind: "fill", ref, value: "x" } });
+    expect(stale.ok).toBe(false);
+    expect(stale.error?.code).toBe("stale_snapshot");
+    const missing = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "fill", ref: "e-missing", value: "x" } });
+    expect(missing.ok).toBe(false);
+    expect(missing.error?.code).toBe("ref_not_found");
+  });
+
+  it("reports a non-fillable observed target as invalid_target", async () => {
+    const { service, session } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const result = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "fill", ref: buttonRef(observed), value: "x" } });
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("invalid_target");
   });
 
   it("navigates an allowed URL and reports the resulting page", async () => {
