@@ -369,7 +369,7 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
   it("presses a key, selects a native option and scrolls the viewport while refusing an invalid select target", async () => {
     fs.mkdirSync(root, { recursive: true });
     const file = path.join(root, `press-select-scroll-${crypto.randomUUID()}.html`);
-    fs.writeFileSync(file, `<!doctype html><html><head><title>Press Select Scroll Fixture</title></head>
+    fs.writeFileSync(file, `<!doctype html><html style="scroll-behavior: smooth"><head><title>Press Select Scroll Fixture</title></head>
 <body style="height: 3000px">
   <label for="q">Search</label><input id="q" value="hello">
   <label for="shipping">Shipping</label>
@@ -447,7 +447,7 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
 
       // At the document boundary, the Tool must report a truthful no-op rather
       // than returning an indistinguishable generic success.
-      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }));
       const atBottom = await snapshotResult(threadId);
       const noOpArgs = { pageUrl: atBottom.page.url, snapshotHash: atBottom.page.snapshotHash, x: 0, y: 800 };
       const noOpPending = await executeInvocation({ toolId: "browser_scroll", threadId, args: noOpArgs });
