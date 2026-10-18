@@ -16,6 +16,13 @@ import type { BrowserSessionManager } from "@/microapps/computer-use/session/man
 // Agent-created sessions must not live indefinitely; callers can override this finite idle bound.
 const AGENT_BROWSER_SESSION_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 
+const browserScrollPointSchema = {
+  type: "object",
+  required: ["x", "y"],
+  additionalProperties: false,
+  properties: { x: { type: "number" }, y: { type: "number" } },
+} as const;
+
 const browserResultSchema = {
   type: "object",
   required: ["ok", "sessionId", "invocationId", "page", "artifacts"],
@@ -27,6 +34,7 @@ const browserResultSchema = {
     page: { type: "object", required: ["url", "title"], additionalProperties: false, properties: { url: { type: "string" }, title: { type: "string" }, snapshotHash: { type: "string" } } },
     observation: { type: "object", additionalProperties: false, properties: { snapshot: { type: "string" }, visibleText: { type: "string" }, truncated: { type: "boolean" } } },
     assertion: { type: "object", required: ["kind", "passed"], additionalProperties: false, properties: { kind: { type: "string", enum: ["title", "url", "text", "visible", "value"] }, passed: { type: "boolean" } } },
+    scroll: { type: "object", required: ["requested", "before", "after", "moved"], additionalProperties: false, properties: { requested: browserScrollPointSchema, before: browserScrollPointSchema, after: browserScrollPointSchema, moved: { type: "boolean" } } },
     artifacts: { type: "array", items: { type: "object", required: ["id", "kind", "title", "uri"], additionalProperties: false, properties: { id: { type: "string" }, kind: { type: "string", enum: ["screenshot", "json"] }, title: { type: "string" }, uri: { type: "string" } } } },
     error: { type: "object", required: ["code", "message", "retryable"], additionalProperties: false, properties: { code: { type: "string" }, message: { type: "string" }, retryable: { type: "boolean" } } },
   },
