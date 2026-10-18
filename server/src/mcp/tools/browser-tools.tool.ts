@@ -121,6 +121,39 @@ const agentFillSchema = {
     value: { type: "string" },
   },
 } as const;
+const agentPressKeySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["pageUrl", "snapshotHash", "ref", "key"],
+  properties: {
+    pageUrl: { type: "string", minLength: 1 },
+    snapshotHash: { type: "string", minLength: 1 },
+    ref: { type: "string", minLength: 1 },
+    key: { type: "string", minLength: 1 },
+  },
+} as const;
+const agentSelectOptionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["pageUrl", "snapshotHash", "ref", "value"],
+  properties: {
+    pageUrl: { type: "string", minLength: 1 },
+    snapshotHash: { type: "string", minLength: 1 },
+    ref: { type: "string", minLength: 1 },
+    value: { type: "string" },
+  },
+} as const;
+const agentScrollSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["pageUrl", "snapshotHash"],
+  properties: {
+    pageUrl: { type: "string", minLength: 1 },
+    snapshotHash: { type: "string", minLength: 1 },
+    x: { type: "number" },
+    y: { type: "number" },
+  },
+} as const;
 
 const emitBrowserArtifacts = (
   context: ToolInvocationContext,
@@ -569,5 +602,151 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  return [observe, act, assert, navigate, wait, snapshot, screenshot, click, fill];
+  const pressKey: ToolImplementation = {
+    definition: {
+      id: "browser_press_key",
+      title: "Browser Press Key",
+      description: "Send one keyboard key or key combination (Playwright key notation, for example Enter, Escape, Tab or Control+A) to the observed control identified by ref from the latest accepted observation (pageUrl + snapshotHash). This is a discrete key action, not text entry: use browser_fill to set a field value. The ref is resolved by Playwright getByRef() against the latest AI snapshot, so a stale, missing or replaced ref is rejected before any key is sent. Navigate and observe first; the tool manages sessionId internally and requires approval because a key such as Enter may submit a form.",
+      domain: "browser_action",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["pageUrl", "snapshotHash", "ref", "key"],
+        properties: {
+          sessionId,
+          pageUrl: { type: "string", minLength: 1 },
+          snapshotHash: { type: "string", minLength: 1 },
+          ref: { type: "string", minLength: 1 },
+          key: { type: "string", minLength: 1 },
+        },
+      },
+      inputSchemaByExposure: { agent_intent: agentPressKeySchema },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "press"],
+      capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ pageUrl?: string; snapshotHash?: string; ref?: string; key?: string }>(context.args, "args");
+      const bound = requireBoundSession(context);
+      let result: BrowserToolResult;
+      if (!bound) {
+        result = unavailable(context);
+      } else {
+        if (typeof args.pageUrl !== "string" || typeof args.snapshotHash !== "string" || typeof args.ref !== "string" || typeof args.key !== "string") {
+          throw mcpBadRequest("pageUrl, snapshotHash, ref and key are required");
+        }
+        result = await browser.act({
+          sessionId: bound,
+          pageUrl: args.pageUrl,
+          snapshotHash: args.snapshotHash,
+          action: { kind: "press", ref: args.ref, key: args.key },
+        });
+      }
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  const selectOption: ToolImplementation = {
+    definition: {
+      id: "browser_select_option",
+      title: "Browser Select Option",
+      description: "Select an option in a native HTML <select> control identified by ref from the latest accepted observation (pageUrl + snapshotHash). This is real option selection, not fill or typing simulation. The ref is resolved by Playwright getByRef() against the latest AI snapshot, so a stale, missing or replaced ref is rejected before selecting, and a target that is not a <select> or an option that does not exist fails explicitly. Navigate and observe first; the tool manages sessionId internally and requires approval.",
+      domain: "browser_action",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["pageUrl", "snapshotHash", "ref", "value"],
+        properties: {
+          sessionId,
+          pageUrl: { type: "string", minLength: 1 },
+          snapshotHash: { type: "string", minLength: 1 },
+          ref: { type: "string", minLength: 1 },
+          value: { type: "string" },
+        },
+      },
+      inputSchemaByExposure: { agent_intent: agentSelectOptionSchema },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "select"],
+      capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ pageUrl?: string; snapshotHash?: string; ref?: string; value?: string }>(context.args, "args");
+      const bound = requireBoundSession(context);
+      let result: BrowserToolResult;
+      if (!bound) {
+        result = unavailable(context);
+      } else {
+        if (typeof args.pageUrl !== "string" || typeof args.snapshotHash !== "string" || typeof args.ref !== "string" || typeof args.value !== "string") {
+          throw mcpBadRequest("pageUrl, snapshotHash, ref and value are required");
+        }
+        result = await browser.act({
+          sessionId: bound,
+          pageUrl: args.pageUrl,
+          snapshotHash: args.snapshotHash,
+          action: { kind: "select", ref: args.ref, value: args.value },
+        });
+      }
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  const scroll: ToolImplementation = {
+    definition: {
+      id: "browser_scroll",
+      title: "Browser Scroll",
+      description: "Move the current Managed Browser viewport by a bounded offset using pageUrl and snapshotHash from the latest accepted observation. Provide at least one non-zero finite offset as x and/or y in CSS pixels; this scrolls the page, it does not navigate or wait. A stale observation is rejected instead of scrolling a changed page, and the result reports the truthful resulting page state. Requires approval because scrolling may trigger lazy loading.",
+      domain: "browser_action",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["pageUrl", "snapshotHash"],
+        properties: {
+          sessionId,
+          pageUrl: { type: "string", minLength: 1 },
+          snapshotHash: { type: "string", minLength: 1 },
+          x: { type: "number" },
+          y: { type: "number" },
+        },
+      },
+      inputSchemaByExposure: { agent_intent: agentScrollSchema },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "scroll"],
+      capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ pageUrl?: string; snapshotHash?: string; x?: number; y?: number }>(context.args, "args");
+      const bound = requireBoundSession(context);
+      let result: BrowserToolResult;
+      if (!bound) {
+        result = unavailable(context);
+      } else {
+        if (typeof args.pageUrl !== "string" || typeof args.snapshotHash !== "string") {
+          throw mcpBadRequest("pageUrl and snapshotHash are required");
+        }
+        const x = typeof args.x === "number" ? args.x : 0;
+        const y = typeof args.y === "number" ? args.y : 0;
+        if (!Number.isFinite(x) || !Number.isFinite(y) || (x === 0 && y === 0)) {
+          throw mcpBadRequest("browser_scroll requires at least one non-zero finite x or y offset");
+        }
+        result = await browser.act({
+          sessionId: bound,
+          pageUrl: args.pageUrl,
+          snapshotHash: args.snapshotHash,
+          action: { kind: "scroll", x, y },
+        });
+      }
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  return [observe, act, assert, navigate, wait, snapshot, screenshot, click, fill, pressKey, selectOption, scroll];
 };

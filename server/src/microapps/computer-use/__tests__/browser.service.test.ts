@@ -23,6 +23,7 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
     { role: "heading", name: "Example Domain", ref: "e1", isConnected: true, visible: true },
     { role: "button", name: "Go", ref: "e2", isConnected: true, visible: true },
     { role: "textbox", name: "Recipient Name", ref: "e3", isConnected: true, visible: true, value: "Alice" },
+    { role: "combobox", name: "Shipping", ref: "e4", isConnected: true, visible: true, value: "Standard" },
   ];
   const resolveRef = (ref: string) => {
     const node = latestSnapshotRefs.get(ref);
@@ -32,7 +33,12 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
     goto: vi.fn(async (url: string) => { currentUrl = url; }),
     click: vi.fn(async (_ref: string, _options?: { timeout?: number }) => undefined),
     type: vi.fn(async (_ref: string, text: string, _options?: { timeout?: number }) => { currentText = text; }),
-    selectOption: vi.fn(async () => undefined),
+    selectOption: vi.fn(async (ref: string, value: string) => {
+      const node = resolveRef(ref);
+      if (!node) throw new Error(`Ref ${ref} not found in current page snapshot`);
+      if (node.role !== "combobox") throw new Error("Element is not a <select> element");
+      node.value = value;
+    }),
     press: vi.fn(async () => undefined),
     screenshot: vi.fn(async ({ path: target }: { path: string }) => { fs.mkdirSync(pathLib.dirname(target), { recursive: true }); fs.writeFileSync(target, "png"); }),
     url: vi.fn(() => currentUrl),
@@ -96,6 +102,9 @@ const buttonRef = (observed: { observation?: { snapshot?: string } }) =>
 
 const inputRef = (observed: { observation?: { snapshot?: string } }) =>
   observed.observation?.snapshot?.match(/textbox "Recipient Name" \[ref=(e\d+)\]/)?.[1]!;
+
+const selectRef = (observed: { observation?: { snapshot?: string } }) =>
+  observed.observation?.snapshot?.match(/combobox "Shipping" \[ref=(e\d+)\]/)?.[1]!;
 
 describe("BrowserService", () => {
   it("serializes an observation and a ref action against one native snapshot map", async () => {
@@ -206,6 +215,54 @@ describe("BrowserService", () => {
     const result = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "fill", ref: buttonRef(observed), value: "x" } });
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe("invalid_target");
+  });
+
+  it("presses a key on the observed control and rejects stale or missing refs", async () => {
+    const { service, session, page } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = buttonRef(observed);
+    const pressed = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "press", ref, key: "Enter" } });
+    expect(pressed.ok).toBe(true);
+    expect(page.press).toHaveBeenCalledWith(ref, "Enter", { timeout: 30000 });
+
+    const stale = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: "stale-hash", action: { kind: "press", ref, key: "Enter" } });
+    expect(stale.ok).toBe(false);
+    expect(stale.error?.code).toBe("stale_snapshot");
+    const missing = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "press", ref: "e-missing", key: "Enter" } });
+    expect(missing.ok).toBe(false);
+    expect(missing.error?.code).toBe("ref_not_found");
+  });
+
+  it("selects an option on the observed select and reports invalid targets", async () => {
+    const { service, session, nodes } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    const ref = selectRef(observed);
+    const select = nodes.find((node) => node.ref === ref)!;
+    expect(select.value).toBe("Standard");
+    const selected = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "select", ref, value: "Express" } });
+    expect(selected.ok).toBe(true);
+    expect(select.value).toBe("Express");
+    const assertion = await service.assert({ sessionId: session.id, assertion: { kind: "value", ref, expected: "Express" } });
+    expect(assertion.ok).toBe(true);
+
+    const invalid = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "select", ref: buttonRef(observed), value: "Express" } });
+    expect(invalid.ok).toBe(false);
+    expect(invalid.error?.code).toBe("invalid_target");
+  });
+
+  it("scrolls the viewport by the requested offset and rejects a stale observation", async () => {
+    const { service, session, page } = await createHarness();
+    const observed = await service.observe({ sessionId: session.id });
+    page.evaluate.mockClear();
+    const scrolled = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "scroll", x: 0, y: 400 } });
+    expect(scrolled.ok).toBe(true);
+    expect(page.evaluate).toHaveBeenCalledWith(expect.any(Function), { x: 0, y: 400 });
+
+    page.evaluate.mockClear();
+    const stale = await service.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: "stale-hash", action: { kind: "scroll", x: 0, y: 400 } });
+    expect(stale.ok).toBe(false);
+    expect(stale.error?.code).toBe("stale_snapshot");
+    expect(page.evaluate).not.toHaveBeenCalled();
   });
 
   it("navigates an allowed URL and reports the resulting page", async () => {

@@ -366,4 +366,84 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
     }
   }, 30000);
 
+  it("presses a key, selects a native option and scrolls the viewport while refusing an invalid select target", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const file = path.join(root, `press-select-scroll-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(file, `<!doctype html><html><head><title>Press Select Scroll Fixture</title></head>
+<body style="height: 3000px">
+  <label for="q">Search</label><input id="q" value="hello">
+  <label for="shipping">Shipping</label>
+  <select id="shipping"><option value="standard">Standard</option><option value="express">Express</option></select>
+  <div id="status">idle</div>
+  <script>document.getElementById("q").addEventListener("keydown", function (event) { if (event.key === "Enter") { document.getElementById("status").textContent = "enter-pressed"; } });</script>
+</body></html>`);
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    const fileUrl = pathToFileURL(file).href;
+    const approve = (toolId: string, args: Record<string, unknown>) => ({ toolId, inputHash: createInvocationInputHash(args) });
+    const snapshotResult = async (threadId: string) => (await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} })).result as { page: { url: string; snapshotHash: string }; observation?: { snapshot?: string } };
+    try {
+      clearRegistry(); clearInvocations();
+      const tools = createComputerUseBrowserTools(browser, { sessionManager: manager });
+      for (const tool of tools) registerTool(tool);
+      const threadId = `press-select-scroll-${crypto.randomUUID()}`;
+
+      const boot = await executeInvocation({ toolId: "browser_observe", threadId, args: { url: fileUrl } });
+      expect(boot.status).toBe("completed");
+      const sessionId = boot.args.sessionId as string;
+      const page = manager.get(sessionId)!.page;
+
+      const before = await snapshotResult(threadId);
+      const inputRef = before.observation?.snapshot?.match(/textbox "Search" \[ref=(e\d+)\]/)?.[1]!;
+      expect(inputRef).toBeTruthy();
+
+      // Press requires approval and only then delivers the key.
+      const pressArgs = { pageUrl: before.page.url, snapshotHash: before.page.snapshotHash, ref: inputRef, key: "Enter" };
+      const pressPending = await executeInvocation({ toolId: "browser_press_key", threadId, args: pressArgs });
+      expect(pressPending.status).toBe("awaiting_approval");
+      expect(await page.evaluate(() => document.getElementById("status")!.textContent)).toBe("idle");
+      const pressed = await executeInvocation({ toolId: "browser_press_key", threadId, args: pressArgs, approvedInvocations: [approve("browser_press_key", pressArgs)] });
+      expect(pressed.status).toBe("completed");
+      expect(pressed.result).toMatchObject({ ok: true });
+      expect(await page.evaluate(() => document.getElementById("status")!.textContent)).toBe("enter-pressed");
+
+      // Select a real native option.
+      const afterPress = await snapshotResult(threadId);
+      const selectRef = afterPress.observation?.snapshot?.match(/combobox "Shipping" \[ref=(e\d+)\]/)?.[1]!;
+      expect(selectRef).toBeTruthy();
+      const selectArgs = { pageUrl: afterPress.page.url, snapshotHash: afterPress.page.snapshotHash, ref: selectRef, value: "express" };
+      const selectPending = await executeInvocation({ toolId: "browser_select_option", threadId, args: selectArgs });
+      expect(selectPending.status).toBe("awaiting_approval");
+      const selected = await executeInvocation({ toolId: "browser_select_option", threadId, args: selectArgs, approvedInvocations: [approve("browser_select_option", selectArgs)] });
+      expect(selected.status).toBe("completed");
+      expect(selected.result).toMatchObject({ ok: true });
+      expect(await page.evaluate(() => (document.getElementById("shipping") as HTMLSelectElement).value)).toBe("express");
+
+      // A non-select target fails explicitly instead of selecting something else.
+      const afterSelect = await snapshotResult(threadId);
+      const nonSelectRef = afterSelect.observation?.snapshot?.match(/textbox "Search" \[ref=(e\d+)\]/)?.[1]!;
+      const invalidSelectArgs = { pageUrl: afterSelect.page.url, snapshotHash: afterSelect.page.snapshotHash, ref: nonSelectRef, value: "express" };
+      const invalid = await executeInvocation({ toolId: "browser_select_option", threadId, args: invalidSelectArgs, approvedInvocations: [approve("browser_select_option", invalidSelectArgs)] });
+      expect(invalid.result).toMatchObject({ ok: false, error: { code: "invalid_target" } });
+
+      // Scroll moves the viewport by the requested offset.
+      const beforeScroll = await snapshotResult(threadId);
+      const scrollArgs = { pageUrl: beforeScroll.page.url, snapshotHash: beforeScroll.page.snapshotHash, x: 0, y: 800 };
+      const scrollPending = await executeInvocation({ toolId: "browser_scroll", threadId, args: scrollArgs });
+      expect(scrollPending.status).toBe("awaiting_approval");
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      const scrolled = await executeInvocation({ toolId: "browser_scroll", threadId, args: scrollArgs, approvedInvocations: [approve("browser_scroll", scrollArgs)] });
+      expect(scrolled.status).toBe("completed");
+      expect(scrolled.result).toMatchObject({ ok: true });
+      expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    } finally {
+      await manager.closeAll();
+      clearRegistry(); clearInvocations();
+      fs.rmSync(file, { force: true });
+    }
+  }, 30000);
+
 });

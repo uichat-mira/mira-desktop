@@ -62,6 +62,11 @@ const refFailure = (message: string) =>
 const invalidTargetFailure = (message: string) =>
   /not an? <input>|not an input|not a textarea|not editable|not fillable|cannot be filled|does not have a text|readonly|not a form control/i.test(message);
 
+// selectOption() only accepts a native <select> with an existing option; a
+// different control or an unknown option is an invalid target, not a runtime fault.
+const invalidSelectFailure = (message: string) =>
+  /not a <select>|not a select|did not find some options|no option|option .*not found/i.test(message);
+
 const makeArtifact = async (session: ManagedBrowserSession, invocationId: string): Promise<BrowserArtifact> => {
   const target = path.join(session.artifactRoot, `${invocationId}.png`);
   await session.page.screenshot({ path: target, fullPage: true });
@@ -250,7 +255,7 @@ export class BrowserService {
       const recovered = pendingOperation ? undefined : await state(session).catch(() => undefined);
       const errorPage = recovered ? { url: recovered.url, title: recovered.title, snapshotHash: recovered.snapshotHash }
         : validatedPage ?? { url: session.page.url(), title: "" };
-      return failure(input.sessionId, invocationId, errorPage, refFailure(message) ? "stale_snapshot" : message.includes("timed out") ? "action_timeout" : input.action.kind === "fill" && invalidTargetFailure(message) ? "invalid_target" : "action_failed", message, true);
+      return failure(input.sessionId, invocationId, errorPage, refFailure(message) ? "stale_snapshot" : message.includes("timed out") ? "action_timeout" : input.action.kind === "fill" && invalidTargetFailure(message) ? "invalid_target" : input.action.kind === "select" && invalidSelectFailure(message) ? "invalid_target" : "action_failed", message, true);
     } finally {
       const finish = () => {
         if (session.info.status === "busy") session.info.status = "ready";
