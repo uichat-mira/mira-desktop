@@ -374,6 +374,7 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
   <label for="q">Search</label><input id="q" value="hello">
   <label for="shipping">Shipping</label>
   <select id="shipping"><option value="standard">Standard</option><option value="express">Express</option></select>
+  <button id="not-select">Not Select</button>
   <div id="status">idle</div>
   <script>document.getElementById("q").addEventListener("keydown", function (event) { if (event.key === "Enter") { document.getElementById("status").textContent = "enter-pressed"; } });</script>
 </body></html>`);
@@ -397,7 +398,7 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       const page = manager.get(sessionId)!.page;
 
       const before = await snapshotResult(threadId);
-      const inputRef = before.observation?.snapshot?.match(/textbox "Search" \[ref=(e\d+)\]/)?.[1]!;
+      const inputRef = before.observation?.snapshot?.match(/textbox "Search"[^\n]*\[ref=([^\]]+)\]/)?.[1]!;
       expect(inputRef).toBeTruthy();
 
       // Press requires approval and only then delivers the key.
@@ -412,7 +413,7 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
 
       // Select a real native option.
       const afterPress = await snapshotResult(threadId);
-      const selectRef = afterPress.observation?.snapshot?.match(/combobox "Shipping" \[ref=(e\d+)\]/)?.[1]!;
+      const selectRef = afterPress.observation?.snapshot?.match(/combobox "Shipping"[^\n]*\[ref=([^\]]+)\]/)?.[1]!;
       expect(selectRef).toBeTruthy();
       const selectArgs = { pageUrl: afterPress.page.url, snapshotHash: afterPress.page.snapshotHash, ref: selectRef, value: "express" };
       const selectPending = await executeInvocation({ toolId: "browser_select_option", threadId, args: selectArgs });
@@ -424,7 +425,8 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
 
       // A non-select target fails explicitly instead of selecting something else.
       const afterSelect = await snapshotResult(threadId);
-      const nonSelectRef = afterSelect.observation?.snapshot?.match(/textbox "Search" \[ref=(e\d+)\]/)?.[1]!;
+      const nonSelectRef = afterSelect.observation?.snapshot?.match(/button "Not Select"[^\n]*\[ref=([^\]]+)\]/)?.[1]!;
+      expect(nonSelectRef).toBeTruthy();
       const invalidSelectArgs = { pageUrl: afterSelect.page.url, snapshotHash: afterSelect.page.snapshotHash, ref: nonSelectRef, value: "express" };
       const invalid = await executeInvocation({ toolId: "browser_select_option", threadId, args: invalidSelectArgs, approvedInvocations: [approve("browser_select_option", invalidSelectArgs)] });
       expect(invalid.result).toMatchObject({ ok: false, error: { code: "invalid_target" } });
