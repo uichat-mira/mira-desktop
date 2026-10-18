@@ -115,6 +115,7 @@ describe("Computer Use browser MCP tools", () => {
 
   test("snapshot and screenshot require a live bound session and reject unsupported screenshot mode", async () => {
     clearRegistry(); clearInvocations();
+    browser.observe.mockClear();
     const get = vi.fn((_id: string) => ({ info: { status: "ready" as const } }));
     const manager = { get, create: vi.fn(async () => ({ id: "browser-test", status: "ready" as const })) };
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
