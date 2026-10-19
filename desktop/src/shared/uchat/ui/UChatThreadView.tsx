@@ -1051,7 +1051,11 @@ function UChatMessageRow({
             />
 
             {toolTraceEntries.length > 0 && !hasExecutionTrace ? (
-              <UChatToolTrace entries={toolTraceEntries} />
+              <UChatToolTrace
+                entries={toolTraceEntries}
+                resolveAttachmentSource={resolveAttachmentSource}
+                onPreviewImage={(src) => onPreviewImage({ src })}
+              />
             ) : null}
           </UChatAssistantBubbleShell>
 
