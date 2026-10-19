@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isExpectedAgt012FinalBrowserState } from "../agt012-smoke-evidence.js";
+import { isAgt012SmokeAutoApprovableTool, isExpectedAgt012FinalBrowserState } from "../agt012-smoke-evidence.js";
 
 const expectedUrl = "http://127.0.0.1:43123/success?name=Mira";
 
@@ -52,5 +52,37 @@ describe("AGT-012 real-model smoke browser-state evidence", () => {
         visibleText: undefined,
       }),
     ).toBe(false);
+  });
+});
+
+describe("AGT-012 real-model smoke approval boundary", () => {
+  it("allows only the atomic Managed Browser Tool IDs", () => {
+    for (const toolId of [
+      "browser_assert",
+      "browser_navigate",
+      "browser_wait_for",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_fill",
+      "browser_press_key",
+      "browser_select_option",
+      "browser_scroll",
+    ]) {
+      expect(isAgt012SmokeAutoApprovableTool(toolId)).toBe(true);
+    }
+  });
+
+  it("refuses legacy, Attached Browser, and unrelated Tools", () => {
+    for (const toolId of [
+      "browser_observe",
+      "browser_act",
+      "browser_attached_click",
+      "read_open",
+      "terminal_execute",
+      "unknown_tool",
+    ]) {
+      expect(isAgt012SmokeAutoApprovableTool(toolId)).toBe(false);
+    }
   });
 });
