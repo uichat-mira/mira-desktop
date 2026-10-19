@@ -206,7 +206,11 @@ export const withWorkbenchMetadata = (
     if (!profile.workbench) {
       continue;
     }
-    for (const toolId of profile.supportingToolIds) {
+    // Product/workbench ownership is intentionally broader than the schema
+    // disclosure set for a Profile that declares `ownedToolIds`: every Managed
+    // Browser Tool belongs to the `browser` workbench group even though only the
+    // selected concrete Tool schema is disclosed at runtime.
+    for (const toolId of profile.ownedToolIds ?? profile.supportingToolIds) {
       explicitOwnership.set(toolId, {
         groupId: profile.id,
         presentation: {

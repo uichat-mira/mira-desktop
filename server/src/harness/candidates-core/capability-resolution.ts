@@ -192,7 +192,9 @@ export const buildCapabilityResolutionDocuments = (
     domain: profile.domain,
     tags: [...profile.tags],
     toolIds: [...profile.supportingToolIds],
-    aliases: [profile.id, ...profile.supportingToolIds],
+    // Compatibility aliases resolve a legacy capability id to this one canonical
+    // Capability instead of creating a second independent Tool family.
+    aliases: [profile.id, ...(profile.aliases ?? []), ...profile.supportingToolIds],
   }));
 
 const canonicalKeysOf = (
