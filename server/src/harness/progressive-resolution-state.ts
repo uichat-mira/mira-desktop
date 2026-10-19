@@ -266,7 +266,17 @@ export const resolveAndDiscloseCapability = (
 export const createCapabilityToolIdResolver = (
   profiles: readonly HarnessCapabilityProfile[],
 ): ((capabilityId: string) => readonly string[]) => {
-  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const profileById = new Map<string, HarnessCapabilityProfile>();
+  for (const profile of profiles) {
+    profileById.set(profile.id, profile);
+  }
+  // Compatibility aliases map to the same profile, but a canonical profile id
+  // always wins over another profile that lists it as an alias.
+  for (const profile of profiles) {
+    for (const alias of profile.aliases ?? []) {
+      if (!profileById.has(alias)) profileById.set(alias, profile);
+    }
+  }
   return (capabilityId: string) => {
     const profile = profileById.get(capabilityId);
     return profile ? profile.supportingToolIds : [capabilityId];

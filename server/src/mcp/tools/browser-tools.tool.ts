@@ -263,7 +263,7 @@ export const createComputerUseBrowserTools = (
         },
       },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "snapshot"],
+      tags: ["computer-use", "browser", "snapshot", "observe", "inspect", "页面", "观察"],
       capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
     },
     execute: async (context) => {
@@ -287,7 +287,7 @@ export const createComputerUseBrowserTools = (
         properties: { fullPage: { type: "boolean" } },
       },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "screenshot"],
+      tags: ["computer-use", "browser", "screenshot", "截图", "截屏"],
       capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
     },
     execute: async (context) => {
@@ -324,7 +324,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentObserveSchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "observe"],
+      tags: ["computer-use", "browser", "observe", "观察页面"],
       capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
     },
     execute: async (context) => {
@@ -360,7 +360,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentActSchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "act"],
+      tags: ["computer-use", "browser", "act", "action", "动作"],
       capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
     },
     execute: async (context) => {
@@ -393,7 +393,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentAssertSchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "assert"],
+      tags: ["computer-use", "browser", "assert", "断言"],
       capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
     },
     execute: async (context) => {
@@ -424,7 +424,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentNavigateSchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "navigate"],
+      tags: ["computer-use", "browser", "navigate", "open", "visit", "打开", "访问"],
       capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
     },
     execute: async (context) => {
@@ -503,7 +503,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentWaitSchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "wait"],
+      tags: ["computer-use", "browser", "wait", "等待"],
       capabilities: { sideEffect: "none", requiresApproval: true, networkAccess: true },
     },
     execute: async (context) => {
@@ -538,7 +538,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentClickSchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "click"],
+      tags: ["computer-use", "browser", "click", "点击"],
       capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
     },
     execute: async (context) => {
@@ -585,7 +585,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentFillSchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "fill"],
+      tags: ["computer-use", "browser", "fill", "填写", "输入"],
       capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
     },
     execute: async (context) => {
@@ -632,7 +632,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentPressKeySchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "press"],
+      tags: ["computer-use", "browser", "press", "key", "按键", "回车"],
       capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
     },
     execute: async (context) => {
@@ -679,7 +679,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentSelectOptionSchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "select"],
+      tags: ["computer-use", "browser", "select", "option", "下拉", "选择"],
       capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
     },
     execute: async (context) => {
@@ -726,7 +726,7 @@ export const createComputerUseBrowserTools = (
       },
       inputSchemaByExposure: { agent_intent: agentScrollSchema },
       outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "scroll"],
+      tags: ["computer-use", "browser", "scroll", "滚动"],
       capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
     },
     execute: async (context) => {

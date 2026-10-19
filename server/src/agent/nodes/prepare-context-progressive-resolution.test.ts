@@ -18,7 +18,7 @@ import { buildPlannerStructuredOutputJsonSchema } from "../planner/structured-ou
 import { prepareContextNode } from "./prepare-context.js";
 import type { AgentNodeState } from "../node-runtime.js";
 
-type ToolDomain = "read" | "edit" | "web_search" | "terminal";
+type ToolDomain = "read" | "edit" | "web_search" | "terminal" | "browser_action";
 
 const makeToolDefinition = (
   toolId: string,
@@ -654,5 +654,58 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
       "read",
     ]);
     assert.equal(payload.toolExposure.exposedTools.includes("tool_1"), false);
+  });
+
+  it("materializes only the selected concrete Managed Browser Tool for the `browser` capability", async () => {
+    const browserTools = [
+      makeToolDefinition("browser_navigate", "browser_action"),
+      makeToolDefinition("browser_snapshot", "browser_action"),
+      makeToolDefinition("browser_screenshot", "browser_action"),
+      makeToolDefinition("browser_click", "browser_action"),
+    ];
+    const definitions = [
+      ...browserTools,
+      ...Array.from({ length: 16 }, (_, index) =>
+        makeToolDefinition(`tool_${index + 1}`),
+      ),
+    ];
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    mockMatcher({
+      exposed: definitions,
+      eligibleToolIds: definitions.map((definition) => definition.id),
+      resolution: makeResolution({
+        selectedCapabilityId: "browser",
+        candidates: ["browser"],
+      }),
+    });
+
+    const patch = await prepareContextNode(
+      createState({
+        messages: [
+          {
+            role: "user",
+            content: "capture a screenshot of the page",
+            parts: [{ type: "text", text: "capture a screenshot of the page" }],
+          },
+        ],
+      }),
+    );
+
+    // The `browser` capability is concrete-selection: only the task-relevant
+    // atomic Tool schema is materialized, not the whole Managed Browser catalog.
+    assert.deepEqual(schemaExposedToolIds(patch), ["browser_screenshot"]);
+    assert.deepEqual(patch.toolExposure?.exposedTools, ["browser_screenshot"]);
+    assert.equal(
+      patch.toolExposure?.exposedTools?.includes("browser_navigate"),
+      false,
+    );
+    assert.equal(
+      patch.toolExposure?.exposedTools?.includes("browser_click"),
+      false,
+    );
+    assert.deepEqual(patch.progressiveResolution?.budget, {
+      limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+      consumed: 1,
+    });
   });
 });
