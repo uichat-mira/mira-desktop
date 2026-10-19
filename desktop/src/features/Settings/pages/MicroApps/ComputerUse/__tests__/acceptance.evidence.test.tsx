@@ -10,9 +10,8 @@ vi.mock("../useComputerUseDebuggerState", () => ({
   useComputerUseDebuggerState: () => ({
     config: { runtime: "managed", url: "https://example.com", allowedDomains: ["example.com"], limits: { timeoutMs: 30000, maxSnapshotChars: 12000 }, approvalPolicy: "write_actions" },
     setConfig: vi.fn(),
-    status: { runtime: { status: "ready" }, model: { status: "unavailable", message: "No provider" } },
+    status: { runtime: { status: "ready" } },
     runtime: { status: "ready" },
-    model: { status: "unavailable", message: "No provider" },
     session: { sessionId: "acceptance-session", status: "ready", config: {}, browser: { url: "https://example.com/", title: "Example Domain", snapshot: "button ref=e1", visibleText: "Example Domain", screenshotArtifact: "https://example.com/image.png", snapshotHash: "hash-1" }, invocations: [{ invocationId: "invocation-1", tool: "browser_observe", args: { sessionId: "acceptance-session" }, status: "succeeded", artifactIds: ["artifact-1"], createdAt: "2026-07-14T00:00:00.000Z" }], evidence: { entries: [{ kind: "observation" }], artifacts: [{ id: "artifact-1" }] }, result: { status: "succeeded" } },
     busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
   }),

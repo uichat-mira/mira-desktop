@@ -9,7 +9,6 @@ import swaggerUi from "@fastify/swagger-ui";
 import fs from "node:fs/promises";
 import path from "node:path";
 import fsSync from "node:fs";
-import crypto from "node:crypto";
 import {
   type ComputerUseRuntimeState,
 } from "@/microapps/computer-use/index.js";
@@ -107,7 +106,6 @@ import { managedMediaCleanupService } from "@/services/managed-media-cleanup.ser
 import { microAppCapabilityBindingsRepository } from "@/db/repositories/micro-app-capability-bindings.repository.js";
 import { ttsRefAudiosRepository } from "@/db/repositories/tts-ref-audios.repository.js";
 import { ttsRefAudioBindingsRepository } from "@/db/repositories/tts-ref-audio-bindings.repository.js";
-import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 import { initializeVectorStore } from "@/db";
 import CONFIG from "@/config";
 import { isAuthExemptPath, OPENAPI_PUBLIC_TAGS } from "@/config/public-api.js";
@@ -290,14 +288,6 @@ const computerUseDebuggerService = createComputerUseDebuggerService({
   sessions: computerUseBrowserSessions,
   browser: computerUseBrowserService,
   runtimeStatus: () => toComputerUseRuntimeState(nowIso()),
-  modelStatus: () => {
-    try {
-      const provider = resolveAgentTaskProvider("default");
-      return { status: "connected" as const, message: `AgentTaskModel: ${provider.providerCode} / ${provider.model}` };
-    } catch (error) {
-      return { status: "unavailable" as const, message: error instanceof Error ? error.message : "AgentTaskModel is not configured." };
-    }
-  },
 });
 
 const computerUseRuntimeService = {

@@ -1,6 +1,6 @@
 # Computer Use 前台使用说明
 
-Computer Use 通过受控浏览器完成可观察、可审批、可回放的网页操作。它适合验证页面状态、执行受控导航和交互，并为每次调用保留 invocation、trace、artifact 与 evidence。
+Computer Use 通过受控浏览器完成可观察、可审批、可回放的网页操作。当前 Studio 仅保留 Manual Debug；模型驱动的 Managed Browser 任务统一由主 Agent / Generic Child 的原子 Browser Tool 路径执行。它适合验证页面状态、执行受控导航和交互，并为每次调用保留 invocation、trace、artifact 与 evidence。
 
 ## 能力
 
@@ -9,14 +9,12 @@ Computer Use 通过受控浏览器完成可观察、可审批、可回放的网�
 - 执行导航、点击、输入、选择、按键、滚动和等待
 - 对标题、URL、文本、可见性和值进行断言
 - 查看工具调用、审批、错误和证据结果
-- 通过 AgentTaskModel 运行真实浏览器工具循环
 
 ## 环境配置
 
 1. 确认浏览器运行时状态为“运行时已就绪”。优先使用 Managed Chromium。
 2. 设置初始 URL，并在“允许的域名”中填写任务所需的域名。
 3. 选择审批策略。写入动作建议使用“写入动作”，由用户确认后继续执行。
-4. 使用模型任务前，确认 AgentTaskModel 已连接。模型不可用时仍可进行手动调试。
 
 ## 使用方法
 

@@ -13,7 +13,7 @@ const session = {
 };
 
 const debuggerService: ComputerUseDebuggerService = {
-  getStatus: () => ({ runtime: { status: "ready", checkedAt: "2026-07-14T00:00:00.000Z" }, model: { status: "unavailable", message: "No provider", checkedAt: "2026-07-14T00:00:00.000Z" } }),
+  getStatus: () => ({ runtime: { status: "ready", checkedAt: "2026-07-14T00:00:00.000Z" } }),
   create: async () => session,
   get: () => session,
   observe: async () => session,
@@ -37,7 +37,8 @@ describe("Computer Use debugger routes", () => {
     const server = await app();
     const status = await server.inject({ method: "GET", url: "/microapps/computer-use/debugger/status" });
     expect(status.statusCode).toBe(200);
-    expect(status.json().data.model.status).toBe("unavailable");
+    expect(status.json().data.runtime.status).toBe("ready");
+    expect(status.json().data).not.toHaveProperty("model");
 
     const created = await server.inject({ method: "POST", url: "/microapps/computer-use/sessions", payload: session.config });
     expect(created.statusCode).toBe(200);

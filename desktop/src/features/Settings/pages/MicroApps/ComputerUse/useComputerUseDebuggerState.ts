@@ -2,12 +2,11 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   approveComputerUseSession, assertComputerUseSession, createComputerUseSession, executeComputerUseAction, getComputerUseDebuggerStatus, installComputerUseRuntime, observeComputerUseSession, rejectComputerUseSession, stopComputerUseSession,
-  type ComputerUseActionInput, type ComputerUseDebuggerStatus, type ComputerUseModelState, type ComputerUseSession, type ComputerUseSessionConfig, type ComputerUseAssertionInput,
+  type ComputerUseActionInput, type ComputerUseDebuggerStatus, type ComputerUseSession, type ComputerUseSessionConfig, type ComputerUseAssertionInput,
 } from "@/shared/api/computerUse";
 
 const initialConfig: ComputerUseSessionConfig = { runtime: "managed", url: "https://example.com", allowedDomains: ["example.com"], limits: { timeoutMs: 30000, maxSnapshotChars: 12000 }, approvalPolicy: "write_actions" };
-const unavailableModel: ComputerUseModelState = { status: "unavailable", message: "Manual Debug remains available.", checkedAt: new Date(0).toISOString() };
-const unavailableStatus: ComputerUseDebuggerStatus = { runtime: { status: "not_installed", message: "Browser runtime status is not available.", checkedAt: new Date(0).toISOString() }, model: unavailableModel };
+const unavailableStatus: ComputerUseDebuggerStatus = { runtime: { status: "not_installed", message: "Browser runtime status is not available.", checkedAt: new Date(0).toISOString() } };
 const defaultApi: ComputerUseDebuggerApi = {};
 
 export type ComputerUseDebuggerApi = Partial<Pick<typeof import("@/shared/api/computerUse"), "getComputerUseDebuggerStatus" | "installComputerUseRuntime" | "createComputerUseSession" | "observeComputerUseSession" | "executeComputerUseAction" | "assertComputerUseSession" | "approveComputerUseSession" | "rejectComputerUseSession" | "stopComputerUseSession">>;

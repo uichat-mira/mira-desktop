@@ -25,7 +25,7 @@ const debuggerState = vi.hoisted(() => ({ current: undefined as Record<string, u
 vi.mock("../useComputerUseDebuggerState", () => ({
   useComputerUseDebuggerState: () => debuggerState.current ?? ({
     config: { runtime: "managed", url: "https://example.com", allowedDomains: ["example.com"], limits: { timeoutMs: 30000, maxSnapshotChars: 12000 }, approvalPolicy: "write_actions" },
-    setConfig: vi.fn(), status: { runtime: { status: "ready" }, model: { status: "unavailable", message: "T120 is unavailable" } }, runtime: { status: "ready" }, model: { status: "unavailable", message: "T120 is unavailable" }, session: undefined, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
+    setConfig: vi.fn(), status: { runtime: { status: "ready" } }, runtime: { status: "ready" }, session: undefined, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
   }),
 }));
 
@@ -33,7 +33,7 @@ describe("Computer Use Debugger", () => {
   it("renders browser state and complete execution feedback", () => {
     debuggerState.current = {
       config: { runtime: "managed", url: "https://example.com", allowedDomains: ["example.com"], limits: { timeoutMs: 30000, maxSnapshotChars: 12000 }, approvalPolicy: "write_actions" },
-      setConfig: vi.fn(), status: { runtime: { status: "ready" }, model: { status: "unavailable", message: "T120 is unavailable" } }, runtime: { status: "ready" }, model: { status: "unavailable", message: "T120 is unavailable" }, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
+      setConfig: vi.fn(), status: { runtime: { status: "ready" } }, runtime: { status: "ready" }, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
       session: { sessionId: "session-1", status: "ready", config: {} as never, browser: { url: "https://example.com", title: "Example", snapshot: "ref=button-1", visibleText: "Visible heading", screenshotArtifact: "artifact-screenshot-1", snapshotHash: "hash-1" }, approval: { status: "pending", approvalId: "approval-1", reason: "Write action" }, invocations: [{ invocationId: "invocation-1", tool: "browser_act", args: { action: "click", ref: "button-1" }, status: "failed", artifactIds: ["artifact-screenshot-1"], error: { code: "REF_STALE", message: "The ref is stale" }, createdAt: "2026-07-14T00:00:00.000Z" }], evidence: { entries: [{ kind: "observation", message: "Observed page" }], artifacts: [{ id: "artifact-screenshot-1", kind: "screenshot" }] }, result: { status: "failed", summary: "Assertion failed" } },
     };
     render(<ComputerUseDebuggerPage />);

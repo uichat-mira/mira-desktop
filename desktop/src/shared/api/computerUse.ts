@@ -9,7 +9,6 @@ export function resolveComputerUseArtifactUrl(uri: string): string {
 }
 
 export type ComputerUseRuntimeStatus = "ready" | "not_installed" | "downloading" | "broken";
-export type ComputerUseModelStatus = "connected" | "unavailable";
 export type ComputerUseSessionStatus = "empty" | "ready" | "failed" | "stopped";
 export type ComputerUseInvocationStatus =
   | "idle"
@@ -39,16 +38,8 @@ export interface ComputerUseRuntimeState {
   };
 }
 
-export interface ComputerUseModelState {
-  status: ComputerUseModelStatus;
-  provider?: string;
-  message: string;
-  checkedAt: string;
-}
-
 export interface ComputerUseDebuggerStatus {
   runtime: ComputerUseRuntimeState;
-  model: ComputerUseModelState;
 }
 
 export interface ComputerUseSessionConfig {

@@ -205,7 +205,7 @@ const debuggerSession = {
 };
 
 const createDebuggerService = (): ComputerUseDebuggerService => ({
-  getStatus: () => ({ runtime: { status: "ready", checkedAt: "2026-07-14T00:00:00.000Z" }, model: { status: "unavailable", message: "No provider", checkedAt: "2026-07-14T00:00:00.000Z" } }),
+  getStatus: () => ({ runtime: { status: "ready", checkedAt: "2026-07-14T00:00:00.000Z" } }),
   create: async () => debuggerSession,
   get: () => debuggerSession,
   observe: async () => debuggerSession,
@@ -366,7 +366,7 @@ test("retired dedicated computer use task/model routes are not registered", asyn
       url: request.url,
       headers: {
         authorization: `Bearer ${token}`,
-        "content-type": "application/json",
+        ...(request.payload ? { "content-type": "application/json" } : {}),
       },
       payload: request.payload,
     });
