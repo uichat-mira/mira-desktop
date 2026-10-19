@@ -97,24 +97,30 @@ const toStrictGenerationSchema = (
 };
 
 const buildToolArgsSchema = (toolExposure: AgentToolExposureState): JsonSchema => {
-  if (toolExposure.exposedTools.length === 0) {
+  if (toolExposure.toolMeta.length === 0) {
     return { type: "null" };
   }
 
+  const schemaVariants = toolExposure.toolMeta
+    .filter((tool) => tool.inputSchema)
+    .map((tool) => toStrictGenerationSchema(tool.inputSchema, true));
+  const hasMetadataOnlyTools = toolExposure.toolMeta.some(
+    (tool) => !tool.inputSchema,
+  );
+
   return {
     anyOf: [
-      ...toolExposure.exposedTools.map((toolId) => {
-        const meta = toolExposure.toolMeta.find((item) => item.toolId === toolId);
-        return toStrictGenerationSchema(
-          meta?.inputSchema ?? {
-            type: "object",
-            properties: {},
-            required: [],
-            additionalProperties: false,
-          },
-          true,
-        );
-      }),
+      ...schemaVariants,
+      ...(hasMetadataOnlyTools
+        ? [
+            {
+              type: "object",
+              properties: {},
+              required: [],
+              additionalProperties: false,
+            },
+          ]
+        : []),
       { type: "null" },
     ],
   };
@@ -133,10 +139,13 @@ export const buildPlannerStructuredOutputJsonSchema = (
     query: nullableSchema({ type: "string" }),
     skillId: nullableSchema({ type: "string" }),
     toolId:
-      toolExposure.exposedTools.length > 0
+      toolExposure.toolMeta.length > 0
         ? {
             anyOf: [
-              { type: "string", enum: toolExposure.exposedTools },
+              {
+                type: "string",
+                enum: toolExposure.toolMeta.map((tool) => tool.toolId),
+              },
               { type: "null" },
             ],
           }

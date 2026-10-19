@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import {
+  clearHarnessRegistry,
+  registerTool,
+} from "@/harness/registry";
+import type { ToolImplementation } from "@/mcp/core/definitions";
 import { createAgentGoal } from "../nodes/goal-plan";
 import {
   createPiAgentLoop,
   type PiAgentLoopNodes,
 } from "../pi-loop";
 import { generateNode } from "../nodes/generate";
+import { toolSchemaDisclosureNode } from "../nodes/tool-schema-disclosure";
 import type {
   AgentGraphInput,
   AgentNextAction,
@@ -137,6 +143,10 @@ const createFakeNodes = (input: {
             errorSourceNodeId: "nextActionPlanner",
           };
     },
+
+    discloseToolSchema: async () => ({
+      toolSchemaDisclosure: undefined,
+    }),
 
     normalizeToolCall: async (state) => {
       input.calls.push("normalize");
@@ -558,4 +568,142 @@ test("Pi runtime ask_user path returns the Planner question without tool executi
   assert.equal(output.pendingToolCall, undefined);
   assert.equal(output.evidence.toolExecutions.length, 0);
   assert.deepEqual(calls, ["prepare", "planner", "generate", "evaluate"]);
+});
+
+test("Pi runtime can disclose a second Tool schema mid-run before executing it", async () => {
+  clearHarnessRegistry();
+
+  const createRuntimeTool = (toolId: string): ToolImplementation => ({
+    definition: {
+      id: toolId,
+      title: toolId,
+      description: "Pi-loop progressive disclosure test tool " + toolId,
+      domain: "read",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+        additionalProperties: false,
+      },
+      tags: ["test", toolId],
+      capabilities: {
+        sideEffect: "none",
+        requiresApproval: false,
+      },
+    },
+    execute: async () => ({ result: { ok: true } }),
+  });
+
+  registerTool(createRuntimeTool("tool_a"));
+  registerTool(createRuntimeTool("tool_b"));
+
+  try {
+    const calls: string[] = [];
+    const nodes = createFakeNodes({
+      calls,
+      plannerActions: [
+        {
+          type: "use_tool",
+          toolId: "tool_a",
+          args: { path: "first.txt" },
+          reason: "Run the already-disclosed first Tool.",
+        },
+        {
+          type: "use_tool",
+          toolId: "tool_b",
+          args: {},
+          reason: "Evidence now shows Tool B is required; request its schema.",
+        },
+        {
+          type: "use_tool",
+          toolId: "tool_b",
+          args: { path: "second.txt" },
+          reason: "Run Tool B with its newly disclosed schema.",
+        },
+        {
+          type: "answer",
+          reason: "Both required Tool executions are covered.",
+          completionProof: [
+            {
+              criterion: "complete both Tool actions",
+              evidenceRefs: ["tool:0", "tool:1"],
+            },
+          ],
+          unresolvedGaps: [],
+        },
+      ],
+    });
+
+    nodes.discloseToolSchema = toolSchemaDisclosureNode;
+    nodes.prepareContext = async () => {
+      calls.push("prepare");
+      return {
+        toolExposure: {
+          exposedTools: ["tool_a"],
+          eligibleTools: ["tool_a", "tool_b"],
+          toolMeta: [
+            {
+              toolId: "tool_a",
+              title: "tool_a",
+              description: "Already-disclosed first Tool",
+              inputSchema: createRuntimeTool("tool_a").definition.inputSchema,
+              domain: "read",
+              source: "internal",
+              capabilities: {
+                sideEffect: "none",
+                requiresApproval: false,
+              },
+            },
+            {
+              toolId: "tool_b",
+              title: "tool_b",
+              description: "Metadata-only second Tool",
+              domain: "read",
+              source: "internal",
+              capabilities: {
+                sideEffect: "none",
+                requiresApproval: false,
+              },
+            },
+          ],
+        },
+      };
+    };
+
+    const loop = createPiAgentLoop(nodes);
+    const output = await loop.run(createInput());
+
+    assert.equal(output.status, "completed");
+    assert.deepEqual(
+      output.evidence.toolExecutions.map((execution) => execution.toolId),
+      ["tool_a", "tool_b"],
+    );
+    assert.equal(output.progressiveResolution?.budget.consumed, 1);
+    assert.equal(output.progressiveResolution?.disclosure.tool_b, "schema");
+
+    // The metadata-only request itself must not be normalized or executed.
+    assert.equal(calls.filter((call) => call === "normalize").length, 2);
+    assert.equal(calls.filter((call) => call === "tool").length, 2);
+    assert.deepEqual(calls, [
+      "prepare",
+      "planner",
+      "normalize",
+      "policy",
+      "tool",
+      "evidence",
+      "planner",
+      "planner",
+      "normalize",
+      "policy",
+      "tool",
+      "evidence",
+      "planner",
+      "generate",
+      "evaluate",
+    ]);
+  } finally {
+    clearHarnessRegistry();
+  }
 });

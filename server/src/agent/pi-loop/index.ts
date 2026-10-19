@@ -6,6 +6,7 @@ import {
   genericTaskSubAgentNode,
   nextActionPlannerNode,
   normalizeAndFreezeToolCall,
+  toolSchemaDisclosureNode,
   pauseForApproval,
   policyNode,
   prepareContextNode,
@@ -53,6 +54,7 @@ export interface PiAgentLoopSemantics {
   prepareContext: PiAgentLoopStepHandler;
   planner: PiAgentLoopStepHandler;
   delegateTask?: PiAgentLoopStepHandler;
+  discloseToolSchema?: PiAgentLoopStepHandler;
   normalizeAndFreeze: PiAgentLoopStepHandler;
   evaluatePolicy: PiAgentLoopStepHandler;
   pauseForApproval: PiAgentLoopStepHandler;
@@ -72,6 +74,7 @@ export interface PiAgentLoopNodes {
   prepareContext: PiAgentLoopNodeHandler;
   planner: PiAgentLoopNodeHandler;
   delegateTask?: PiAgentLoopNodeHandler;
+  discloseToolSchema?: PiAgentLoopNodeHandler;
   normalizeToolCall: PiAgentLoopNodeHandler;
   policy: PiAgentLoopNodeHandler;
   approval: PiAgentLoopNodeHandler;
@@ -87,6 +90,7 @@ const defaultSemantics: PiAgentLoopSemantics = {
   prepareContext: prepareContextNode,
   planner: nextActionPlannerNode,
   delegateTask: genericTaskSubAgentNode,
+  discloseToolSchema: toolSchemaDisclosureNode,
   normalizeAndFreeze: normalizeAndFreezeToolCall,
   evaluatePolicy: policyNode,
   pauseForApproval,
@@ -109,6 +113,8 @@ const resolveSemantics = (
     return {
       ...runtime,
       delegateTask: runtime.delegateTask ?? genericTaskSubAgentNode,
+      discloseToolSchema:
+        runtime.discloseToolSchema ?? toolSchemaDisclosureNode,
     };
   }
 
@@ -116,6 +122,7 @@ const resolveSemantics = (
     prepareContext: runtime.prepareContext,
     planner: runtime.planner,
     delegateTask: runtime.delegateTask ?? genericTaskSubAgentNode,
+    discloseToolSchema: runtime.discloseToolSchema ?? toolSchemaDisclosureNode,
     normalizeAndFreeze: runtime.normalizeToolCall,
     evaluatePolicy: runtime.policy,
     pauseForApproval: runtime.approval,
@@ -448,6 +455,20 @@ const createPiAgentLoopRunner = (steps: PiAgentLoopSemantics) => {
                 if (delegatedResult) {
                   return delegatedResult;
                 }
+                continue;
+              }
+
+              await runStep({
+                traceNodeName: "toolSchemaDisclosure",
+                handler: steps.discloseToolSchema ?? toolSchemaDisclosureNode,
+                state,
+                emit,
+              });
+
+              if (state.errorMessage) {
+                return finishRunWithError(state, emit);
+              }
+              if (state.toolSchemaDisclosure?.status === "disclosed") {
                 continue;
               }
 

@@ -1,7 +1,7 @@
 ---
 status: current
 owner: runtime
-last_verified: 2026-10-06
+last_verified: 2026-10-19
 layer: wiki
 module: Tool
 feature: ToolRuntime
@@ -36,8 +36,15 @@ built-in registry + dynamic capability registration
        > 20：Progressive Resolution 按 exact / structural / lexical（genuine ambiguity 才一次 semantic）排序
   -> 仅被选中 capability 的 Tool 披露 full schema 进入 Planner exposure
        每披露一个新 schema 消耗 1 步 Progressive Resolution budget（默认 8）
-       metadata-only Tool 保持 discoverable，不作为 callable Planner Tool
-  -> Main Planner 或受控 Child 选择 concrete tool
+       metadata-only Tool 保持 discoverable，但尚不可作为 concrete invocation
+  -> Main Planner 看到 scoped compact metadata + 已披露 schema
+       schema Tool 可直接提出 concrete use_tool
+       metadata-only Tool 可用精确 toolId 请求 schema detail；该请求不执行 Tool
+  -> metadata-only detail request 由 Agent Runtime 在 Normalize 前拦截
+       重新核对 registry / authority / readiness
+       只披露该 Tool schema，首次披露消耗 1 步 budget，然后 bounded replan
+       不创建 pendingToolCall，不进入 Policy / Approval / Harness Invocation
+  -> Main Planner 用已披露 schema 重新提出 concrete tool + args
   -> Normalize 冻结 pendingToolCall
   -> Policy / Approval
   -> Harness Invocation
@@ -507,9 +514,13 @@ ranking infrastructure 失败时，按 registry 顺序确定性暴露前 20。
 
 ## 12. Concrete Invocation 合同
 
-普通 Main Agent concrete tool 必须经过：
+普通 Main Agent concrete invocation 必须经过：
 
-1. Planner 输出已暴露的 `toolId + args`；
+在这条 invocation 链之前有一个严格分界：如果 Planner 选择的是当前仅有 compact metadata、尚未披露 schema 的 Tool，这个 `use_tool` 只被解释为 **schema detail request**。Agent Runtime 会在 Normalize 之前拦截它，核对当前 authority/readiness，按 Progressive Resolution budget 披露该 exact Tool 的 schema，并要求 Planner bounded replan。这个请求本身不会被冻结为 `pendingToolCall`，不会进入 Policy / Approval，也不会执行 Tool。
+
+真正执行时：
+
+1. Planner 输出已经披露 schema 的 `toolId + args`；
 2. Normalize 归一化 workspace 参数；
 3. schema validation；
 4. 冻结 `pendingToolCall`；

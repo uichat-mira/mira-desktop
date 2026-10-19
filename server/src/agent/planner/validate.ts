@@ -21,13 +21,13 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 
 const normalizeDirectToolAction = (
   parseResult: PlannerOutputParseResult,
-  exposedTools: string[],
+  plannerVisibleToolIds: string[],
 ): AgentNextAction | null => {
   const rawDecision = parseResult.rawDecision;
   const directToolId =
     typeof rawDecision?.type === "string" ? rawDecision.type.trim() : "";
 
-  if (!directToolId || !exposedTools.includes(directToolId)) {
+  if (!directToolId || !plannerVisibleToolIds.includes(directToolId)) {
     return null;
   }
 
@@ -56,7 +56,7 @@ const normalizeDirectToolAction = (
 
 export const validateNextAction = (
   input: PlannerValidationInput,
-  exposedTools: string[],
+  plannerVisibleToolIds: string[],
 ): {
   action: AgentNextAction;
   parseErrorReason?: string;
@@ -67,7 +67,7 @@ export const validateNextAction = (
   if (!parseResult.action) {
     const normalizedDirectToolAction = normalizeDirectToolAction(
       parseResult,
-      exposedTools,
+      plannerVisibleToolIds,
     );
 
     if (normalizedDirectToolAction) {
@@ -91,7 +91,7 @@ export const validateNextAction = (
 
   if (
     parseResult.action.type === "use_tool" &&
-    !exposedTools.includes(parseResult.action.toolId)
+    !plannerVisibleToolIds.includes(parseResult.action.toolId)
   ) {
     return {
       action: toNextActionFallback(
