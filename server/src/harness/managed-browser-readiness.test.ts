@@ -17,10 +17,27 @@ import {
 } from "./registry.js";
 import { resolveToolRuntimeReadiness } from "./runtime-readiness.js";
 
-const MANAGED_BROWSER_TOOL_IDS = [
+const LEGACY_STUDIO_BROWSER_TOOL_IDS = [
   "browser_observe",
   "browser_act",
+] as const;
+
+const AGENT_MANAGED_BROWSER_TOOL_IDS = [
   "browser_assert",
+  "browser_navigate",
+  "browser_wait_for",
+  "browser_snapshot",
+  "browser_screenshot",
+  "browser_click",
+  "browser_fill",
+  "browser_press_key",
+  "browser_select_option",
+  "browser_scroll",
+] as const;
+
+const MANAGED_BROWSER_TOOL_IDS = [
+  ...LEGACY_STUDIO_BROWSER_TOOL_IDS,
+  ...AGENT_MANAGED_BROWSER_TOOL_IDS,
 ] as const;
 
 const browser = {
@@ -81,8 +98,11 @@ describe("Managed Browser Harness runtime readiness", () => {
       query: "请打开网页读取页面标题",
     });
     expect(exposure.exposedToolIds).toEqual(
-      expect.arrayContaining([...MANAGED_BROWSER_TOOL_IDS]),
+      expect.arrayContaining([...AGENT_MANAGED_BROWSER_TOOL_IDS]),
     );
+    for (const toolId of LEGACY_STUDIO_BROWSER_TOOL_IDS) {
+      expect(exposure.exposedToolIds).not.toContain(toolId);
+    }
 
     const view = projectAgentCapabilityView({
       scope: createMainAgentCapabilityScope({ scopeId: "main" }),
@@ -187,9 +207,15 @@ describe("Managed Browser Harness runtime readiness", () => {
       source: "agent_intent",
       query: "请打开网页读取页面标题",
     });
-    for (const toolId of MANAGED_BROWSER_TOOL_IDS) {
+    for (const toolId of AGENT_MANAGED_BROWSER_TOOL_IDS) {
       expect(exposure.exposedToolIds).not.toContain(toolId);
       expect(exposure.blockedCapabilityReasons[toolId]).toBe(unavailableReason);
+    }
+    for (const toolId of LEGACY_STUDIO_BROWSER_TOOL_IDS) {
+      expect(exposure.exposedToolIds).not.toContain(toolId);
+      expect(exposure.blockedCapabilityReasons[toolId]).toContain(
+        "Computer Use Studio/Debugger compatibility",
+      );
     }
 
     const view = projectAgentCapabilityView({

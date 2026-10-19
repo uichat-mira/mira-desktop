@@ -105,6 +105,24 @@ describe("browser-intent Harness candidate exposure", () => {
       }),
     );
     for (const id of [
+      "browser_navigate",
+      "browser_snapshot",
+      "browser_fill",
+      "browser_click",
+      "browser_wait_for",
+    ]) {
+      registerTool(
+        createTool({
+          id,
+          domain: "browser_action",
+          tags: ["browser", "managed-browser", "playwright"],
+          sideEffect: id === "browser_snapshot" ? "none" : "network",
+          requiresApproval: !["browser_snapshot"].includes(id),
+          networkAccess: true,
+        }),
+      );
+    }
+    for (const id of [
       "browser_attached_look",
       "browser_attached_browse",
       "browser_attached_act",
@@ -175,13 +193,18 @@ describe("browser-intent Harness candidate exposure", () => {
 
     expect(result.toolExposure.exposedToolIds).toEqual(
       expect.arrayContaining([
-        "browser_observe",
-        "browser_act",
+        "browser_navigate",
+        "browser_snapshot",
+        "browser_fill",
+        "browser_click",
+        "browser_wait_for",
         "browser_assert",
         "write",
         "terminal",
       ]),
     );
+    expect(result.toolExposure.exposedToolIds).not.toContain("browser_observe");
+    expect(result.toolExposure.exposedToolIds).not.toContain("browser_act");
     expect(result.toolExposure.reason).not.toContain(
       "Browser intent is isolated to the Computer Use browser tool set.",
     );
