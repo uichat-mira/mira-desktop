@@ -5,7 +5,10 @@ import { afterAll, beforeAll, test, vi } from "vitest";
 import i18n from "@/shared/i18n";
 import type { ChatToolTraceEntry } from "../core";
 import { UChatToolTrace } from "./UChatToolTrace";
-import { formatBrowserUrlForDisplay } from "./browserToolTrace";
+import {
+  formatBrowserUrlForDisplay,
+  visibleChatToolTraceEntries,
+} from "./browserToolTrace";
 
 beforeAll(async () => {
   await i18n.changeLanguage("en-US");
@@ -344,6 +347,43 @@ test("a Browser screenshot with an authorized preview URL opens the existing ima
   );
 });
 
+test("Browser trace remains available alongside canonical execution-node events", () => {
+  const entries: ChatToolTraceEntry[] = [
+    { toolName: "web_search", status: "succeeded" },
+    { toolName: "browser_snapshot", status: "succeeded" },
+    { toolName: "browser_attached_look", status: "succeeded" },
+    { toolName: "browser_click", status: "failed" },
+  ];
+  assert.deepEqual(
+    visibleChatToolTraceEntries(entries, true).map((entry) => entry.toolName),
+    ["browser_snapshot", "browser_click"],
+  );
+  assert.deepEqual(visibleChatToolTraceEntries(entries, false), entries);
+});
+
+test("arbitrary remote and data screenshot URIs never become image preview sources", () => {
+  const { container } = render(
+    <UChatToolTrace entries={[{
+      toolCallId: "browser-remote-screenshot",
+      toolName: "browser_screenshot",
+      status: "succeeded",
+      output: {
+        ok: true,
+        artifacts: [
+          { id: "remote", kind: "screenshot", uri: "https://untrusted.invalid/x.png" },
+          { id: "inline", kind: "screenshot", uri: "data:image/png;base64,AAAA" },
+          { id: "local", kind: "screenshot", uri: "file:///tmp/x.png" },
+        ],
+      },
+    }]} />,
+  );
+
+  assert.equal(container.querySelector("img"), null);
+  fireEvent.click(screen.getByRole("button", { name: "Show details" }));
+  assert.equal(container.querySelector("img"), null);
+  assert.equal(screen.getAllByText("Screenshot preview unavailable").length >= 1, true);
+});
+
 test("formatBrowserUrlForDisplay strips credentials, query tokens and fragments", () => {
   assert.equal(
     formatBrowserUrlForDisplay(
@@ -352,4 +392,5 @@ test("formatBrowserUrlForDisplay strips credentials, query tokens and fragments"
     "https://example.com/private",
   );
   assert.equal(formatBrowserUrlForDisplay("file:///tmp/private.txt"), "");
+  assert.equal(formatBrowserUrlForDisplay("unparseable-user:pass@domain?token=secret"), "");
 });
