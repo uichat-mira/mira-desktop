@@ -5,7 +5,7 @@ import CollapsiblePanel from "@/shared/ui/CollapsiblePanel";
 import type { ExternalMcpServerRecord } from "@/shared/api/tools";
 import { resolveGithubMirrorUrl } from "@/shared/github";
 
-type McpInstalledServersPanelProps = {
+export type McpInstalledServersPanelProps = {
   servers: ExternalMcpServerRecord[];
   pendingServerId: string | null;
   labels: {
@@ -117,7 +117,7 @@ export default function McpInstalledServersPanel({
                       <div className="mt-1 break-all text-xs text-text-tertiary">{server.id}</div>
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
                       <Button
                         variant="outline"
                         size="sm"

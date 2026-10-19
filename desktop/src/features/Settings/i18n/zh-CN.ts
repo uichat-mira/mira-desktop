@@ -1449,7 +1449,7 @@ const settingsPending = {
         "管理 MCP 市场、第三方 MCP server，以及后续内置 MCP 包。",
       tabs: {
         marketplace: "市场",
-        installed: "已安装",
+        installed: "我的连接器",
       },
       marketplace: {
         description:
@@ -1515,10 +1515,10 @@ const settingsPending = {
           "这里展示已经进入本地 runtime 的 third-party MCP server、连接状态和 discover 结果。",
         emptyTitle: "还没有已安装的 MCP Server",
         emptyDescription:
-          "从左侧市场选择支持 `streamable-http` 或 `stdio` 的 server 安装后，这里会显示生命周期状态。",
+          "在“市场”接入支持 streamable-http 或 stdio 的服务后，即可在这里管理。",
         refresh: "刷新",
         search: "筛选",
-        searchPlaceholder: "筛选名称、描述、Endpoint 或能力 ID",
+        searchPlaceholder: "搜索连接器名称、描述或能力 ID",
         configure: "配置",
         connect: "连接",
         discover: "Discover",
@@ -1550,15 +1550,15 @@ const settingsPending = {
         intro:
           "这里帮你快速走完一次完整的 MCP 使用流程：找、装、配、连、发现能力，再确认当前边界。",
         searchHint:
-          "市场搜索需要回车触发；输入后按 Enter 才会请求官方 registry，上游响应慢时也不会边打字边卡住。",
+          "点击搜索图标输入关键词，按 Enter 提交；切换视图保留关键词。全部和外部视图同时搜索市场，内置和已接入视图只筛选本地列表。",
         sections: {
           search: {
             title: "先找市场",
-            body: "切到“市场”页，输入名称、标题或描述关键词后按回车搜索。结果来自官方 MCP registry。",
+            body: "在“全部”或“外部”视图浏览市场条目，点击整张卡片查看详情。外部视图可通过筛选菜单选择分类和接入方式。",
           },
           install: {
             title: "再安装",
-            body: "现在支持安装 `streamable-http` 和 `stdio` 两类 server。安装前会做第三方免责确认，安装后会进入本地已安装列表。",
+            body: "支持接入 `streamable-http` 和 `stdio` 两类 server。在详情中点击接入，成功后打开管理抽屉，当前视图和搜索条件保持不变。",
           },
           config: {
             title: "配置参数",
@@ -1574,7 +1574,7 @@ const settingsPending = {
           },
           inspect: {
             title: "查看结果",
-            body: "已安装列表里可以看到 projected ID、远端 serverInfo、能力摘要、错误信息和当前协议状态。",
+            body: "已接入卡片展示真实连接状态和独立的 Agent 使用权限；管理抽屉中可查看 projected ID、远端 serverInfo、能力明细和错误。",
           },
           boundary: {
             title: "连接 Agent 模式",

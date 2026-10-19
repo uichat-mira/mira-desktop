@@ -135,7 +135,7 @@ describe("Capability view helpers", () => {
       source: "external",
       sourceInfo: {
         label: "External MCP · Demo MCP",
-        settingsPath: "/settings/mcp",
+        settingsPath: "/extensions/connectors",
       },
       runtimeReadiness: {
         state: "unavailable",

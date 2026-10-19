@@ -7,11 +7,15 @@ import ExternalLink from "@/shared/ui/ExternalLink";
 
 type McpMarketplaceDetailsDrawerProps = {
   server: McpMarketplaceServer | null;
+  installed: boolean;
+  canInstall: boolean;
+  onManage: (id: string) => void;
   labels: {
     close: string;
     details: string;
     description: string;
     install: string;
+    manage: string;
     unsupported: string;
     identity: string;
     version: string;
@@ -50,6 +54,9 @@ const detailRowClassName =
 
 export default function McpMarketplaceDetailsDrawer({
   server,
+  installed,
+  canInstall,
+  onManage,
   labels,
   onClose,
   onInstall,
@@ -78,11 +85,11 @@ export default function McpMarketplaceDetailsDrawer({
         server ? (
           <Button
             variant="primary"
-            onClick={() => onInstall(server)}
-            disabled={!installable}
+            onClick={() => installed ? onManage(server.id) : onInstall(server)}
+            disabled={!installed && (!installable || !canInstall)}
           >
             <Download className="h-4 w-4" />
-            {installable ? labels.install : labels.unsupported}
+            {installed ? labels.manage : installable ? labels.install : labels.unsupported}
           </Button>
         ) : null
       }

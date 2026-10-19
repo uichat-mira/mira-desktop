@@ -39,7 +39,7 @@ UIChat Mira 怎样消费第三方 MCP server，以及市场目录怎样更新。
 - 想把 MCP marketplace server 接进本项目
 - 想明确第三方 MCP server 的运行边界应该落在 renderer 还是 backend
 - 想知道 Tool、MCP、marketplace、external server、builtin MCP 这些产品概念怎么区分
-- 准备给 Settings -> MCP 扩市场、安装、连接、调试能力
+- 准备给 扩展 -> 连接器 扩市场、安装、连接、调试能力
 
 ## 当前事实
 
@@ -161,17 +161,27 @@ POST /mcp/marketplace/sync
 
 renderer 的刷新按钮表示“请求更新市场”，不是直接绕过本地目录请求 Registry。同步期间页面继续读取并展示本地目录。
 
+## 连接器页面入口（2026-10-19）
+
+- 主入口：`/extensions/connectors`，默认“已接入”，通过 `?view=installed|internal|external|custom` 保存四个互斥视图。旧 `?tab=marketplace` 定位“外部”；`view=builtin` 和 `view=all` 兼容为“内部”和“已接入”。
+- 旧 `/extensions/mcp` 跳转已接入；旧 `/settings/mcp` 跳转外部，设置侧栏不再重复展示入口。
+- 内部卡片只导航到七个现有功能页面，不维护统一授权或运行状态；GitHub、Notion 等专用集成仍由各自页面管理。
+- 已接入视图使用后端真实安装记录，以卡片和管理抽屉承接现有配置、连接、发现与 Agent Access。连接状态不等于 Agent 已获使用权限；市场之外的安装记录仍保留。
+- 外部视图只显示未接入市场项，按 server ID 排除已接入记录。搜索回车提交，关键词跨视图保留；分类、Transport 与可接入筛选只在外部视图生效。首次读取安装列表失败时显示错误和重试，暂不展示市场项为可接入。刷新失败保留同一查询的已加载结果，分页继续使用加载更多。
+- 自定义视图只生成当前页面会话内的 MCP 配置草稿，支持本地 command/args/env 和云端 HTTP(S) url/headers JSON。草稿可编辑和移除，不写浏览器存储、后端或 MCP runtime。
+- 市场接入成功切换到“已接入”并打开管理抽屉。本次 UI 不改变 backend API、数据库、审批或调用合同。
+
 ## 当前怎么用
 
 当前阶段，这里的 MCP 不是聊天自动调工具系统，而是一个 external MCP server 接入工作台。
 
 它的实际使用主线是：
 
-1. 打开 `Settings -> MCP`
-2. 在 `市场` 里浏览第三方 MCP server
+1. 打开 `扩展 -> 连接器`
+2. 在 `外部` 视图浏览尚未接入的第三方 MCP server，整卡打开详情；在 `自定义` 视图录入会话草稿
 3. 选择支持 `streamable-http` 或 `stdio` 的 server，执行安装
 4. backend 保存 external MCP server record
-5. 切到 `已安装`
+5. 接入成功后自动打开目标管理抽屉；也可在 `已接入` 中点击整卡进入管理
 6. 对目标 server 执行 `连接`
 7. 对目标 server 执行 `Discover`
 8. backend 把远端 MCP protocol tools 投影为本地 harness capability
@@ -193,7 +203,7 @@ renderer 的刷新按钮表示“请求更新市场”，不是直接绕过本�
 - projected capability 注册
 - 手动 invocation
 - 前端展示已安装 server、连接状态、Discover 结果与 projected capability id
-- Agent Access 需要用户在 Settings -> MCP 中单独开启，不随安装、Connect 或 Discover 自动开启
+- Agent Access 需要用户在 扩展 -> 连接器 中单独开启，不随安装、Connect 或 Discover 自动开启
 
 ### 当前还没打通
 
@@ -235,7 +245,7 @@ Evidence 记录 projected capability id、external server id、远端 tool 名�
 因此 UI 上也要分开：
 
 - Settings -> Tools：内部核心 Tool 工作台
-- Settings -> MCP：MCP 市场、第三方 MCP server、未来非核心内置 MCP 包
+- 扩展 -> 连接器：MCP 市场、第三方 MCP server、未来非核心内置 MCP 包
 
 ## 核心定位
 
@@ -277,7 +287,7 @@ renderer 不该做：
 
 后续由 app 自带、但不属于内部核心 Tool 的非核心内置 MCP 包。
 
-它归 Settings -> MCP 管理，不归 Settings -> Tools 管理。
+它归 扩展 -> 连接器 管理，不归 Settings -> Tools 管理。
 
 ### `external-mcp`
 
@@ -679,7 +689,7 @@ MVP 不一定马上做完整 per-tool approval，但至少要有 third-party ser
 建议：
 
 - 内部核心 Tool 不走 MCP 安装免责声明
-- app 自带但非核心的内置 MCP 包归 Settings -> MCP 管理，按 MCP 产品策略决定是否需要额外提示
+- app 自带但非核心的内置 MCP 包归 扩展 -> 连接器 管理，按 MCP 产品策略决定是否需要额外提示
 - user-installed / user-connected third-party server 必须接受一次免责声明
 - invocation-time approval 先预留策略接口
 - disclaimer acceptance 必须可持久化、可审计
@@ -719,7 +729,7 @@ type ExternalMcpDisclaimerAcceptance = {
 
 ## UI 放置建议
 
-第一阶段放在 `Settings -> MCP`，不要挂在 `Settings -> Tools` 下面。
+页面入口放在 `扩展 -> 连接器`，不要挂在 `Settings -> Tools` 下面。
 
 建议视图：
 
@@ -737,7 +747,7 @@ type ExternalMcpDisclaimerAcceptance = {
 - `Settings -> Tools`
   - 按五大内置域分组：`read`、`edit`、`web_search`、`terminal`、`browser_action`
   - 只承载内部核心 Tool 工作台
-- `Settings -> MCP`
+- `扩展 -> 连接器`
   - 关注 MCP server 浏览、风险审查、安装前评估
   - 后续承载已连接 MCP server、非核心内置 MCP 包、discovered capability 与 projected id
 

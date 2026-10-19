@@ -248,7 +248,7 @@ describe("CapabilitiesPage", () => {
       sourceInfo: {
         kind: "external_mcp" as const,
         label: "External MCP · GitHub",
-        settingsPath: "/settings/mcp",
+        settingsPath: "/extensions/connectors",
       },
       externalServerId: "github",
     };
@@ -331,7 +331,7 @@ describe("CapabilitiesPage", () => {
       sourceInfo: {
         kind: "external_mcp" as const,
         label: "External MCP · GitHub",
-        settingsPath: "/settings/mcp",
+        settingsPath: "/extensions/connectors",
       },
       externalServerId: "github",
     };

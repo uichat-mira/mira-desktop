@@ -64,13 +64,13 @@ export function toExternalCapabilityTools(
   return servers.flatMap((server) => {
     const runtimeReadiness: CapabilityReadiness =
       !server.enabled
-        ? unavailable("External MCP 已停用。", "/settings/mcp")
+        ? unavailable("External MCP 已停用。", "/extensions/connectors")
         : server.status !== "connected"
           ? unavailable(
               server.lastError
                 ? `External MCP 不可用：${server.lastError}`
                 : "External MCP 尚未连接。",
-              "/settings/mcp",
+              "/extensions/connectors",
             )
           : { state: "ready", reason: "External MCP 已连接并可进入真实 Harness。" };
 
@@ -88,7 +88,7 @@ export function toExternalCapabilityTools(
         kind: "external_mcp",
         label: `External MCP · ${server.displayName}`,
         detail: tool.name,
-        settingsPath: "/settings/mcp",
+        settingsPath: "/extensions/connectors",
       },
       runtimeReadiness,
       externalServerId: server.id,
