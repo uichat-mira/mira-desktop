@@ -18,7 +18,12 @@ import { buildPlannerStructuredOutputJsonSchema } from "../planner/structured-ou
 import { prepareContextNode } from "./prepare-context.js";
 import type { AgentNodeState } from "../node-runtime.js";
 
-type ToolDomain = "read" | "edit" | "web_search" | "terminal";
+type ToolDomain =
+  | "read"
+  | "edit"
+  | "web_search"
+  | "browser_action"
+  | "terminal";
 
 const makeToolDefinition = (
   toolId: string,
@@ -356,6 +361,47 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
     assert.deepEqual(
       selectedEvents.map((event) => event.capabilityId),
       ["workspace_edit"],
+    );
+  });
+
+  it("maps a legacy browser toolkit alias to the canonical group without duplicate groups", async () => {
+    const definitions = [
+      makeToolDefinition("browser_navigate", "browser_action"),
+      makeToolDefinition("browser_click", "browser_action"),
+    ];
+    const toolIds = definitions.map((definition) => definition.id);
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    mockMatcher({
+      exposed: definitions,
+      eligibleToolIds: toolIds,
+      resolution: makeResolution({
+        selectedCapabilityId: "browser",
+        candidates: ["browser"],
+      }),
+    });
+
+    const patch = await prepareContextNode(
+      createState({
+        requestedToolGroupIds: ["browser_computer_use", "browser"],
+      }),
+    );
+
+    assert.deepEqual(patch.toolExposure?.requestedToolGroups, [
+      {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Playwright / Managed Browser 浏览器自动化工具。",
+        toolIds,
+        exposedToolIds: toolIds,
+        status: "available",
+      },
+    ]);
+    // The grouped Browser capability owns the atomic Tools, but its initial
+    // disclosure stage does not inject the whole catalog.
+    assert.deepEqual(patch.toolExposure?.exposedTools, []);
+    assert.deepEqual(
+      (patch.toolExposure?.toolMeta ?? []).map((tool) => tool.toolId),
+      toolIds,
     );
   });
 

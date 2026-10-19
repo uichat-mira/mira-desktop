@@ -50,7 +50,7 @@ describe("withWorkbenchMetadata", () => {
     expect(projected.every((tool) => tool.domain === "browser_action")).toBe(true);
     expect(
       projected
-        .filter((tool) => tool.workbench?.groupId === "browser_computer_use")
+        .filter((tool) => tool.workbench?.groupId === "browser")
         .map((tool) => tool.id),
     ).toEqual(["browser_observe", "browser_act", "browser_assert"]);
     expect(
@@ -64,6 +64,7 @@ describe("withWorkbenchMetadata", () => {
       "browser_attached_transfer",
     ]);
     expect(projected.find((tool) => tool.id === "browser_observe")?.workbench).toMatchObject({
+      groupId: "browser",
       groupLabel: "智控",
       groupOrder: 50,
     });
@@ -107,7 +108,7 @@ describe("withWorkbenchMetadata", () => {
         [createBrowserTool("browser_act")],
         ownershipDefinitions,
       )[0]?.workbench?.groupId,
-    ).toBe("browser_computer_use");
+    ).toBe("browser");
   });
 
   it("keeps Tool Lab acceptance cases out of the ordinary Settings workbench", () => {

@@ -9,6 +9,8 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   tags: string[];
   preferredToolId?: string;
   supportingToolIds: string[];
+  disclosureToolIds?: string[];
+  aliases?: string[];
   actionProfileId?: string;
   actionProfileTitle?: string;
   actionProfileDescription?: string;
@@ -60,13 +62,79 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     supportingToolIds: ["web_search", "web_fetch"],
   },
   {
-    id: "browser_computer_use",
-    title: "Browser Computer Use",
+    id: "browser",
+    title: "Browser",
     description: "Inspect and operate an isolated Playwright automation session in a Mira-managed browser, returning structured page evidence.",
     domain: "browser_action",
-    tags: ["browser", "managed-browser", "mira-managed-browser", "isolated-session", "automation-session", "playwright", "website", "webpage", "page", "open", "visit", "navigate", "title", "inspect", "computer-use", "网页", "页面", "打开", "访问"],
-    preferredToolId: "browser_observe",
-    supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
+    tags: [
+      "browser",
+      "managed-browser",
+      "mira-managed-browser",
+      "isolated-session",
+      "automation-session",
+      "playwright",
+      "website",
+      "webpage",
+      "page",
+      "open",
+      "visit",
+      "navigate",
+      "title",
+      "inspect",
+      "computer-use",
+      "snapshot",
+      "screenshot",
+      "click",
+      "fill",
+      "type",
+      "press",
+      "select",
+      "scroll",
+      "wait",
+      "assert",
+      "网页",
+      "页面",
+      "标题",
+      "读取",
+      "内容",
+      "观察",
+      "登录",
+      "按钮",
+      "表单",
+      "打开",
+      "访问",
+      "点击",
+      "填写",
+      "输入",
+      "按键",
+      "选择",
+      "滚动",
+      "等待",
+      "断言",
+      "截图",
+    ],
+    supportingToolIds: [
+      "browser_navigate",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_fill",
+      "browser_press_key",
+      "browser_select_option",
+      "browser_scroll",
+      "browser_wait_for",
+      "browser_assert",
+      "browser_observe",
+      "browser_act",
+    ],
+    // Native Managed Browser ownership is complete above, but the initial
+    // disclosure stage stays empty: a grouped selection must not eagerly inject
+    // the whole Browser catalog. AGT-017 generic mid-run disclosure materializes
+    // the concrete Tool schema the Planner actually requests.
+    disclosureToolIds: [],
+    // Compatibility only until AGT-012/#365 completes accepted cutover. This is
+    // the pre-AGT-011 profile/workbench identity, not a second capability.
+    aliases: ["browser_computer_use"],
     workbench: {
       label: "智控",
       description: "Playwright / Managed Browser 浏览器自动化工具。",
@@ -172,6 +240,26 @@ const createFallbackProfile = (
   supportingToolIds: [definition.id],
 });
 
+/**
+ * Index profiles by canonical id and declared compatibility aliases.
+ *
+ * Canonical ids always win over an alias with the same key. Callers that only
+ * need identity resolution should use this instead of maintaining a second
+ * Browser-specific lookup.
+ */
+export const createHarnessCapabilityProfileKeyIndex = (
+  profiles: readonly HarnessCapabilityProfile[],
+): ReadonlyMap<string, HarnessCapabilityProfile> => {
+  const index = new Map<string, HarnessCapabilityProfile>();
+  for (const profile of profiles) {
+    for (const alias of profile.aliases ?? []) {
+      if (!index.has(alias)) index.set(alias, profile);
+    }
+    index.set(profile.id, profile);
+  }
+  return index;
+};
+
 export const resolveHarnessCapabilityProfiles = (
   definitions: ToolDefinition[],
 ): HarnessCapabilityProfile[] => {
@@ -198,6 +286,14 @@ export const resolveHarnessCapabilityProfiles = (
       tags: blueprint.tags,
       ...(blueprint.preferredToolId ? { preferredToolId: blueprint.preferredToolId } : {}),
       supportingToolIds: matchedToolIds,
+      ...(blueprint.disclosureToolIds
+        ? {
+            disclosureToolIds: blueprint.disclosureToolIds.filter((toolId) =>
+              matchedToolIds.includes(toolId),
+            ),
+          }
+        : {}),
+      ...(blueprint.aliases ? { aliases: blueprint.aliases } : {}),
       ...(blueprint.workbench ? { workbench: blueprint.workbench } : {}),
       ...(blueprint.actionProfileId
         ? {
