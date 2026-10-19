@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { chromium } from "playwright-core";
+import { chromium, type Page } from "playwright-core";
 import { describe, expect, it } from "vitest";
 import { BrowserService } from "../browser/service.js";
 import { BrowserSessionManager } from "../session/manager.js";
@@ -241,7 +241,7 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       expect(created.status).toBe("ready");
       const session = manager.get(created.id)!;
       const originalPage = session.page;
-      const popup = await session.context.newPage();
+      const popup = (await session.context.newPage()) as Page;
       await popup.goto(allowedUrl, { waitUntil: "domcontentloaded" });
       const listed = await browser.listTabs({ sessionId: created.id });
       const tabId = listed.tabs?.find((tab) => tab.url === allowedUrl && !tab.selected)?.id;
