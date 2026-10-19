@@ -12,6 +12,9 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   actionProfileId?: string;
   actionProfileTitle?: string;
   actionProfileDescription?: string;
+  schemaSelection?: HarnessCapabilityProfile["schemaSelection"];
+  taskSelection?: HarnessCapabilityProfile["taskSelection"];
+  aliases?: string[];
   workbench?: HarnessCapabilityProfile["workbench"];
 }> = [
   {
@@ -60,14 +63,53 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     supportingToolIds: ["web_search", "web_fetch"],
   },
   {
-    id: "browser_computer_use",
-    title: "Browser Computer Use",
+    id: "browser",
+    title: "Browser",
     description: "Inspect and operate an isolated Playwright automation session in a Mira-managed browser, returning structured page evidence.",
     domain: "browser_action",
     tags: ["browser", "managed-browser", "mira-managed-browser", "isolated-session", "automation-session", "playwright", "website", "webpage", "page", "open", "visit", "navigate", "title", "inspect", "computer-use", "网页", "页面", "打开", "访问"],
-    preferredToolId: "browser_observe",
-    supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
+    // The atomic Managed Browser Tools are the schema disclosure unit; the
+    // first-level `browser` capability stays the product/readiness identity.
+    // task_relevant selection narrows disclosure to the matched concrete Tool so
+    // the whole atomic catalog is never eagerly materialized.
+    supportingToolIds: [
+      "browser_navigate",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_wait_for",
+      "browser_click",
+      "browser_fill",
+      "browser_press_key",
+      "browser_select_option",
+      "browser_scroll",
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+    ],
+    schemaSelection: "task_relevant",
+    taskSelection: {
+      defaultToolId: "browser_navigate",
+      toolAliases: {
+        browser_navigate: ["navigate", "open", "visit", "url", "goto", "打开", "访问", "前往", "导航", "打开网页", "访问网页", "打开网址", "网址", "打开链接", "跳转"],
+        browser_snapshot: ["snapshot", "observe", "inspect", "dom", "structure", "快照", "结构", "元素", "控件", "页面结构", "观察页面"],
+        browser_screenshot: ["screenshot", "capture", "image", "截图", "截屏", "屏幕", "画面"],
+        browser_wait_for: ["wait", "等待", "等到", "等待出现", "等待加载"],
+        browser_click: ["click", "tap", "点击", "点一下", "单击", "按钮"],
+        browser_fill: ["fill", "input", "set", "填写", "填入", "输入", "填表"],
+        browser_press_key: ["press", "key", "keyboard", "按键", "回车", "键盘", "按回车"],
+        browser_select_option: ["select", "option", "dropdown", "下拉", "选择", "选项", "下拉框"],
+        browser_scroll: ["scroll", "滚动", "下滑", "上滑", "翻页"],
+        browser_observe: ["observe", "look", "观察", "查看页面"],
+        browser_act: ["act", "action", "操作"],
+        browser_assert: ["assert", "verify", "check", "断言", "校验", "验证", "确认标题"],
+      },
+    },
+    // Compatibility: existing workbench/product consumers still key the Managed
+    // Browser product group by `browser_computer_use`. Remove this override when
+    // AGT-012 / #365 completes the explicit legacy cutover.
+    aliases: ["browser_computer_use"],
     workbench: {
+      groupId: "browser_computer_use",
       label: "智控",
       description: "Playwright / Managed Browser 浏览器自动化工具。",
       order: 50,
@@ -199,6 +241,9 @@ export const resolveHarnessCapabilityProfiles = (
       ...(blueprint.preferredToolId ? { preferredToolId: blueprint.preferredToolId } : {}),
       supportingToolIds: matchedToolIds,
       ...(blueprint.workbench ? { workbench: blueprint.workbench } : {}),
+      ...(blueprint.schemaSelection ? { schemaSelection: blueprint.schemaSelection } : {}),
+      ...(blueprint.taskSelection ? { taskSelection: blueprint.taskSelection } : {}),
+      ...(blueprint.aliases ? { aliases: blueprint.aliases } : {}),
       ...(blueprint.actionProfileId
         ? {
             actionProfileId: blueprint.actionProfileId,

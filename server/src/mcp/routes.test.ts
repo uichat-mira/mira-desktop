@@ -301,7 +301,20 @@ describe("mcp routes", () => {
         .map((tool) => tool.id)
         .sort(),
     ).toEqual(
-      ["browser_act", "browser_assert", "browser_observe"],
+      [
+        "browser_act",
+        "browser_assert",
+        "browser_click",
+        "browser_fill",
+        "browser_navigate",
+        "browser_observe",
+        "browser_press_key",
+        "browser_scroll",
+        "browser_screenshot",
+        "browser_select_option",
+        "browser_snapshot",
+        "browser_wait_for",
+      ],
     );
     expect(
       browserTools

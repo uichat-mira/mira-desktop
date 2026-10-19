@@ -208,7 +208,11 @@ export const withWorkbenchMetadata = (
     }
     for (const toolId of profile.supportingToolIds) {
       explicitOwnership.set(toolId, {
-        groupId: profile.id,
+        // A capability can keep a stable product group id while its long-term
+        // capability/profile identity changes (for example the Managed Browser
+        // `browser` profile keeping the `browser_computer_use` workbench group
+        // until the AGT-012 / #365 cutover).
+        groupId: profile.workbench.groupId ?? profile.id,
         presentation: {
           groupLabel: profile.workbench.label,
           groupDescription: profile.workbench.description,

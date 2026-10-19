@@ -92,6 +92,13 @@ export interface CapabilityResolutionResult {
   readonly path: CapabilityResolutionPath;
   readonly selectedCapabilityId: string | null;
   readonly candidates: readonly CapabilityResolutionCandidate[];
+  /**
+   * Concrete Tool ids selected for schema disclosure when the selected
+   * capability opts into task-relevant narrowing. Absent for grouped profiles,
+   * where the selected capability's supporting Tools remain the disclosure
+   * unit. It narrows disclosure only and never grants execution authority.
+   */
+  readonly selectedToolIds?: readonly string[];
   readonly trace: CapabilityResolutionTrace;
 }
 
@@ -192,7 +199,11 @@ export const buildCapabilityResolutionDocuments = (
     domain: profile.domain,
     tags: [...profile.tags],
     toolIds: [...profile.supportingToolIds],
-    aliases: [profile.id, ...profile.supportingToolIds],
+    aliases: [
+      profile.id,
+      ...(profile.aliases ?? []),
+      ...profile.supportingToolIds,
+    ],
   }));
 
 const canonicalKeysOf = (
