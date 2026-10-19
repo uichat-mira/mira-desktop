@@ -86,20 +86,23 @@ export const formatBrowserUrlForDisplay = (value: string): string => {
     parsed.hash = "";
     return parsed.toString();
   } catch {
-    return trimmed.replace(/[?#].*$/, "").slice(0, 300);
+    // Invalid destinations may contain credentials or query tokens.
+    // Do not echo unparseable input in the collapsed summary.
+    return "";
   }
 };
 
 export const redactUrlQueries = (value: string): string =>
   value.replace(/https?:\/\/[^\s"'<>]+/g, (match) => {
     const safe = formatBrowserUrlForDisplay(match);
-    return safe || match;
+    return safe || "[URL omitted]";
   });
 
 const isAuthorizedScreenshotPreviewSource = (value: string): boolean =>
-  value.startsWith("/attachments/") ||
-  /^https?:\/\//i.test(value) ||
-  /^data:image\//i.test(value);
+  // This Chat client only has a trusted attachment resolver for this route.
+  // Arbitrary http(s) or data: URIs are not proof of authorization; loading
+  // them as <img> would create an unrequested third-party request.
+  /^\/attachments\/[A-Za-z0-9/_-]+(?:\.[A-Za-z0-9]+)?$/.test(value);
 
 const readArtifacts = (
   output: Record<string, unknown> | null,
