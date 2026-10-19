@@ -18,13 +18,13 @@ vi.mock("../useComputerUseDebuggerState", () => ({
   }),
 }));
 
-it("T122 evidence UI exposes results and keeps Model Run unavailable", () => {
+it("T122 evidence UI exposes results and has no standalone Model Run", () => {
   render(<ComputerUseDebuggerPage />);
   expect(screen.getAllByText("Example Domain").length).toBeGreaterThan(0);
   expect(screen.getByText(/invocation-1/)).toBeInTheDocument();
   expect(screen.getAllByText(/artifact-1/).length).toBeGreaterThan(0);
   expect(screen.getByRole("img")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "settings.microApps.computerUseDebugger.modelRun.run" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "settings.microApps.computerUseDebugger.modelRun.run" })).not.toBeInTheDocument();
   fs.mkdirSync(path.resolve(process.cwd(), "..", ".test-artifact", "computer-use-acceptance", "desktop"), { recursive: true });
-  fs.writeFileSync(path.resolve(process.cwd(), "..", ".test-artifact", "computer-use-acceptance", "desktop", "ui-evidence.json"), JSON.stringify({ model: "unavailable", invocationId: "invocation-1", artifactId: "artifact-1" }, null, 2));
+  fs.writeFileSync(path.resolve(process.cwd(), "..", ".test-artifact", "computer-use-acceptance", "desktop", "ui-evidence.json"), JSON.stringify({ invocationId: "invocation-1", artifactId: "artifact-1" }, null, 2));
 });

@@ -9,6 +9,7 @@ import ComputerUseGuideDrawer from "./ComputerUseGuideDrawer";
 
 const actionNames = ["navigate", "click", "type", "select", "press", "scroll", "wait"];
 const assertionNames = ["title", "url", "text", "visible", "value"];
+const tr = (key: string) => `settings.microApps.computerUseDebugger.${key}`;
 
 export default function ComputerUseDebuggerPage({ api }: { api?: ComputerUseDebuggerApi }) {
   const { t } = useTranslation();
@@ -23,7 +24,6 @@ export default function ComputerUseDebuggerPage({ api }: { api?: ComputerUseDebu
   const [activeTab, setActiveTab] = useState<"playwright">("playwright");
   const browser = state.session?.browser;
   const config = state.config;
-  const modelUnavailable = state.model.status === "unavailable";
   const rawJson = useMemo(() => JSON.stringify(state.session ?? state.status, null, 2), [state.session, state.status]);
   const runtimeCandidates = state.runtime.details?.inspectedCandidates ?? [];
   const hasManagedRuntime = runtimeCandidates.some((candidate) => candidate.source === "managed");
@@ -45,13 +45,13 @@ export default function ComputerUseDebuggerPage({ api }: { api?: ComputerUseDebu
 
     Modal.confirm({
       title: hasManagedRuntime
-        ? t("settings.microApps.computerUseDebugger.runtimeCard.reinstallTitle")
-        : t("settings.microApps.computerUseDebugger.runtimeCard.systemBrowserTitle"),
+        ? t(tr("runtimeCard.reinstallTitle"))
+        : t(tr("runtimeCard.systemBrowserTitle")),
       description: hasManagedRuntime
-        ? t("settings.microApps.computerUseDebugger.runtimeCard.reinstallDescription")
-        : t("settings.microApps.computerUseDebugger.runtimeCard.systemBrowserDescription"),
-      confirmText: t("settings.microApps.computerUseDebugger.runtimeCard.confirmDownload"),
-      cancelText: t("settings.microApps.computerUseDebugger.runtimeCard.cancel"),
+        ? t(tr("runtimeCard.reinstallDescription"))
+        : t(tr("runtimeCard.systemBrowserDescription")),
+      confirmText: t(tr("runtimeCard.confirmDownload")),
+      cancelText: t(tr("runtimeCard.cancel")),
       tone: "warning",
       onConfirm: async () => {
         await state.installRuntime(true);
@@ -61,56 +61,101 @@ export default function ComputerUseDebuggerPage({ api }: { api?: ComputerUseDebu
 
   return (
     <MicroAppPageLayout
-      miniTitle={t("settings.microApps.computerUseDebugger.page.miniTitle")}
-      title={t("settings.microApps.computerUseDebugger.page.title")}
-      description={t("settings.microApps.computerUseDebugger.page.description")}
+      miniTitle={t(tr("page.miniTitle"))}
+      title={t(tr("page.title"))}
+      description={t(tr("page.description"))}
       contentClassName="gap-4 pt-6"
-      slot={<div className="flex flex-wrap items-center justify-end gap-2"><Badge variant={state.runtime.status === "ready" ? "success" : "warning"}>{t(`settings.microApps.computerUseDebugger.runtime.${state.runtime.status}`)}</Badge><Badge variant={modelUnavailable ? "muted" : "success"}>{modelUnavailable ? t("settings.microApps.computerUseDebugger.model.unavailable") : t("settings.microApps.computerUseDebugger.model.connected")}</Badge><Button size="xs" variant="ghost" onClick={() => setGuideOpen(true)}><HelpCircle className="h-4 w-4" />{t("settings.microApps.computerUseDebugger.actions.openGuide")}</Button></div>}
+      slot={<div className="flex flex-wrap items-center justify-end gap-2"><Badge variant={state.runtime.status === "ready" ? "success" : "warning"}>{t(tr(`runtime.${state.runtime.status}`))}</Badge><Button size="xs" variant="ghost" onClick={() => setGuideOpen(true)}><HelpCircle className="h-4 w-4" />{t(tr("actions.openGuide"))}</Button></div>}
     >
-      <ComputerUseGuideDrawer open={guideOpen} onClose={() => setGuideOpen(false)} labels={t("settings.microApps.computerUseDebugger.guide", { returnObjects: true }) as never} />
-      {modelUnavailable && <Alert variant="info" title={t("settings.microApps.computerUseDebugger.model.unavailableTitle")}>{state.model.message}</Alert>}
-      {state.error && <Alert variant="danger" title={t("settings.microApps.computerUseDebugger.errors.title")}>{state.error}</Alert>}
+      <ComputerUseGuideDrawer open={guideOpen} onClose={() => setGuideOpen(false)} labels={t(tr("guide"), { returnObjects: true }) as never} />
+      {state.error && <Alert variant="danger" title={t(tr("errors.title"))}>{state.error}</Alert>}
       <NavigationCardTabs
-        tabs={[{ value: "playwright", label: t("settings.microApps.computerUseDebugger.tabs.playwright") }]}
+        tabs={[{ value: "playwright", label: t(tr("tabs.playwright")) }]}
         value={activeTab}
         onChange={setActiveTab}
       />
       <Card className="space-y-4" padding="md">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <SectionTitle icon={<Download className="h-4 w-4" />} title={t("settings.microApps.computerUseDebugger.runtimeCard.title")} />
-            <p className="mt-1 text-sm text-text-secondary">{t("settings.microApps.computerUseDebugger.runtimeCard.description")}</p>
+            <SectionTitle icon={<Download className="h-4 w-4" />} title={t(tr("runtimeCard.title"))} />
+            <p className="mt-1 text-sm text-text-secondary">{t(tr("runtimeCard.description"))}</p>
           </div>
           <Button size="sm" variant="primary" onClick={requestRuntimeInstall} disabled={state.busy}>
             <Download className="h-4 w-4" />
-            {t("settings.microApps.computerUseDebugger.actions.installRuntime")}
+            {t(tr("actions.installRuntime"))}
           </Button>
         </div>
         <div className="grid gap-3 text-sm md:grid-cols-3">
-          <RuntimeFact label={t("settings.microApps.computerUseDebugger.runtimeCard.status")} value={t(`settings.microApps.computerUseDebugger.runtime.${state.runtime.status}`)} tone={state.runtime.status === "ready" ? "success" : "warning"} />
-          <RuntimeFact label={t("settings.microApps.computerUseDebugger.runtimeCard.managed")} value={hasManagedRuntime ? t("settings.microApps.computerUseDebugger.runtimeCard.detected") : t("settings.microApps.computerUseDebugger.runtimeCard.notDetected")} tone={hasManagedRuntime ? "success" : "muted"} />
-          <RuntimeFact label={t("settings.microApps.computerUseDebugger.runtimeCard.system")} value={hasSystemBrowser ? t("settings.microApps.computerUseDebugger.runtimeCard.detected") : t("settings.microApps.computerUseDebugger.runtimeCard.notDetected")} tone={hasSystemBrowser ? "success" : "muted"} />
+          <RuntimeFact label={t(tr("runtimeCard.status"))} value={t(tr(`runtime.${state.runtime.status}`))} tone={state.runtime.status === "ready" ? "success" : "warning"} />
+          <RuntimeFact label={t(tr("runtimeCard.managed"))} value={hasManagedRuntime ? t(tr("runtimeCard.detected")) : t(tr("runtimeCard.notDetected"))} tone={hasManagedRuntime ? "success" : "muted"} />
+          <RuntimeFact label={t(tr("runtimeCard.system"))} value={hasSystemBrowser ? t(tr("runtimeCard.detected")) : t(tr("runtimeCard.notDetected"))} tone={hasSystemBrowser ? "success" : "muted"} />
         </div>
         <div className="rounded-ui-control border border-border bg-surface-secondary/40 px-3 py-2 text-xs text-text-tertiary">
-          <span className="font-medium text-text-secondary">{t("settings.microApps.computerUseDebugger.runtimeCard.path")}: </span>
-          <span className="break-all font-mono">{state.runtime.details?.executablePath ?? t("settings.microApps.computerUseDebugger.runtimeCard.pathEmpty")}</span>
+          <span className="font-medium text-text-secondary">{t(tr("runtimeCard.path"))}: </span>
+          <span className="break-all font-mono">{state.runtime.details?.executablePath ?? t(tr("runtimeCard.pathEmpty"))}</span>
         </div>
       </Card>
       <div className="grid min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)_360px]">
         <Card className="space-y-4" padding="md">
-          <SectionTitle icon={<Activity className="h-4 w-4" />} title={t("settings.microApps.computerUseDebugger.runConfig.title")} />
-          <Select label={t("settings.microApps.computerUseDebugger.runConfig.runtime")} value={config.runtime} onChange={(v) => state.setConfig({ runtime: v as "managed" | "system" })} options={[{ value: "managed", label: t("settings.microApps.computerUseDebugger.runtimeOptions.managed") }, { value: "system", label: t("settings.microApps.computerUseDebugger.runtimeOptions.system") }]} />
-          <TextInput label={t("settings.microApps.computerUseDebugger.runConfig.url")} value={config.url} onChange={(v) => state.setConfig({ url: v })} placeholder={t("settings.microApps.computerUseDebugger.placeholders.url")} />
-          <TextInput label={t("settings.microApps.computerUseDebugger.runConfig.allowedDomains")} value={config.allowedDomains.join(", ")} onChange={(v) => state.setConfig({ allowedDomains: v.split(",").map((item) => item.trim()).filter(Boolean) })} placeholder={t("settings.microApps.computerUseDebugger.placeholders.domain")} />
-          <div className="grid grid-cols-2 gap-2 text-body-small text-text-secondary"><span>{t("settings.microApps.computerUseDebugger.runConfig.timeout")}: {config.limits.timeoutMs} ms</span><span>{t("settings.microApps.computerUseDebugger.runConfig.snapshot")}: {config.limits.maxSnapshotChars}</span></div>
-          <Select label={t("settings.microApps.computerUseDebugger.runConfig.approvalPolicy")} value={config.approvalPolicy} onChange={(v) => state.setConfig({ approvalPolicy: v as typeof config.approvalPolicy })} options={[{ value: "always", label: t("settings.microApps.computerUseDebugger.approvalOptions.always") }, { value: "write_actions", label: t("settings.microApps.computerUseDebugger.approvalOptions.writeActions") }, { value: "never", label: t("settings.microApps.computerUseDebugger.approvalOptions.never") }]} />
-          <div className="flex flex-wrap gap-2 border-t border-border pt-3"><Button size="sm" variant="primary" onClick={() => void state.newSession()}><Plus className="h-4 w-4" />{t("settings.microApps.computerUseDebugger.actions.newSession")}</Button><Button size="sm" variant="outline" onClick={() => state.reset()}><RotateCcw className="h-4 w-4" />{t("settings.microApps.computerUseDebugger.actions.reset")}</Button></div>
+          <SectionTitle icon={<Activity className="h-4 w-4" />} title={t(tr("runConfig.title"))} />
+          <Select label={t(tr("runConfig.runtime"))} value={config.runtime} onChange={(v) => state.setConfig({ runtime: v as "managed" | "system" })} options={[{ value: "managed", label: t(tr("runtimeOptions.managed")) }, { value: "system", label: t(tr("runtimeOptions.system")) }]} />
+          <TextInput label={t(tr("runConfig.url"))} value={config.url} onChange={(v) => state.setConfig({ url: v })} placeholder={t(tr("placeholders.url"))} />
+          <TextInput label={t(tr("runConfig.allowedDomains"))} value={config.allowedDomains.join(", ")} onChange={(v) => state.setConfig({ allowedDomains: v.split(",").map((item) => item.trim()).filter(Boolean) })} placeholder={t(tr("placeholders.domain"))} />
+          <div className="grid grid-cols-2 gap-2 text-body-small text-text-secondary"><span>{t(tr("runConfig.timeout"))}: {config.limits.timeoutMs} ms</span><span>{t(tr("runConfig.snapshot"))}: {config.limits.maxSnapshotChars}</span></div>
+          <Select label={t(tr("runConfig.approvalPolicy"))} value={config.approvalPolicy} onChange={(v) => state.setConfig({ approvalPolicy: v as typeof config.approvalPolicy })} options={[{ value: "always", label: t(tr("approvalOptions.always")) }, { value: "write_actions", label: t(tr("approvalOptions.writeActions")) }, { value: "never", label: t(tr("approvalOptions.never")) }]} />
+          <div className="flex flex-wrap gap-2 border-t border-border pt-3"><Button size="sm" variant="primary" onClick={() => void state.newSession()}><Plus className="h-4 w-4" />{t(tr("actions.newSession"))}</Button><Button size="sm" variant="outline" onClick={() => state.reset()}><RotateCcw className="h-4 w-4" />{t(tr("actions.reset"))}</Button></div>
         </Card>
         <div className="space-y-4">
-          <Card className="space-y-3"><SectionTitle icon={<Eye className="h-4 w-4" />} title={t("settings.microApps.computerUseDebugger.browserState.title")} /><div className="grid gap-2 text-body-small"><Field label={t("settings.microApps.computerUseDebugger.browserState.urlLabel")} value={browser?.url} empty={t("settings.microApps.computerUseDebugger.common.emptyValue")} /><Field label={t("settings.microApps.computerUseDebugger.browserState.titleLabel")} value={browser?.title} empty={t("settings.microApps.computerUseDebugger.common.emptyValue")} /><Field label={t("settings.microApps.computerUseDebugger.browserState.snapshotHashLabel")} value={browser?.snapshotHash} empty={t("settings.microApps.computerUseDebugger.common.emptyValue")} /></div><pre className="max-h-48 overflow-auto rounded-ui-control bg-surface-secondary p-3 font-mono text-xs text-text-secondary">{browser?.snapshot || t("settings.microApps.computerUseDebugger.browserState.empty")}</pre><FeedbackBlock title={t("settings.microApps.computerUseDebugger.browserState.visibleText")} value={browser?.visibleText || t("settings.microApps.computerUseDebugger.common.emptyValue")} />{browser?.screenshotArtifact ? <div><div className="text-caption uppercase text-text-tertiary">{t("settings.microApps.computerUseDebugger.browserState.screenshot")}</div><img src={resolveComputerUseArtifactUrl(browser.screenshotArtifact)} alt={t("settings.microApps.computerUseDebugger.browserState.screenshot")} className="mt-1 max-h-48 w-full object-contain" /></div> : null}<div className="flex gap-2"><Button size="sm" variant="secondary" disabled={!state.session || state.busy} onClick={() => void state.observe()}><Eye className="h-4 w-4" />{t("settings.microApps.computerUseDebugger.actions.inspect")}</Button><Button size="sm" variant="danger-ghost" disabled={!state.session || state.busy} onClick={() => void state.stop()}><CircleStop className="h-4 w-4" />{t("settings.microApps.computerUseDebugger.actions.stop")}</Button></div></Card>
-          <Card className="space-y-3"><SectionTitle icon={<Play className="h-4 w-4" />} title={t("settings.microApps.computerUseDebugger.manual.title")} /><div className="grid gap-2 md:grid-cols-[150px_1fr_1fr_auto]"><Select label={t("settings.microApps.computerUseDebugger.manual.action")} value={action} onChange={setAction} options={actionNames.map((item) => ({ value: item, label: t("settings.microApps.computerUseDebugger.actionOptions." + item) }))} /><TextInput label={t("settings.microApps.computerUseDebugger.manual.ref")} value={ref} onChange={setRef} placeholder={t("settings.microApps.computerUseDebugger.placeholders.ref")} /><TextInput label={t("settings.microApps.computerUseDebugger.manual.value")} value={value} onChange={setValue} placeholder={t("settings.microApps.computerUseDebugger.placeholders.value")} /><Button className="self-end h-10" size="sm" variant="primary" disabled={!state.session || !browser?.url || !browser?.snapshotHash || state.busy} onClick={runAction}>{t("settings.microApps.computerUseDebugger.actions.execute")}</Button></div><div className="grid gap-2 md:grid-cols-[150px_1fr_auto]"><Select label={t("settings.microApps.computerUseDebugger.manual.assertion")} value={assertion} onChange={setAssertion} options={assertionNames.map((item) => ({ value: item, label: t("settings.microApps.computerUseDebugger.assertionOptions." + item) }))} /><TextInput label={t("settings.microApps.computerUseDebugger.manual.expected")} value={expected} onChange={setExpected} placeholder={t("settings.microApps.computerUseDebugger.placeholders.expected")} /><Button className="self-end h-10" size="sm" variant="secondary" disabled={!state.session || state.busy} onClick={() => void state.assertState(buildAssertionInput(assertion, ref, expected))}>{t("settings.microApps.computerUseDebugger.actions.assert")}</Button></div></Card>
+          <Card className="space-y-3">
+            <SectionTitle icon={<Eye className="h-4 w-4" />} title={t(tr("browserState.title"))} />
+            <div className="grid gap-2 text-body-small">
+              <Field label={t(tr("browserState.urlLabel"))} value={browser?.url} empty={t(tr("common.emptyValue"))} />
+              <Field label={t(tr("browserState.titleLabel"))} value={browser?.title} empty={t(tr("common.emptyValue"))} />
+              <Field label={t(tr("browserState.snapshotHashLabel"))} value={browser?.snapshotHash} empty={t(tr("common.emptyValue"))} />
+            </div>
+            <pre className="max-h-48 overflow-auto rounded-ui-control bg-surface-secondary p-3 font-mono text-xs text-text-secondary">{browser?.snapshot || t(tr("browserState.empty"))}</pre>
+            <FeedbackBlock title={t(tr("browserState.visibleText"))} value={browser?.visibleText || t(tr("common.emptyValue"))} />
+            {browser?.screenshotArtifact ? <div><div className="text-caption uppercase text-text-tertiary">{t(tr("browserState.screenshot"))}</div><img src={resolveComputerUseArtifactUrl(browser.screenshotArtifact)} alt={t(tr("browserState.screenshot"))} className="mt-1 max-h-48 w-full object-contain" /></div> : null}
+            <div className="flex gap-2"><Button size="sm" variant="secondary" disabled={!state.session || state.busy} onClick={() => void state.observe()}><Eye className="h-4 w-4" />{t(tr("actions.inspect"))}</Button><Button size="sm" variant="danger-ghost" disabled={!state.session || state.busy} onClick={() => void state.stop()}><CircleStop className="h-4 w-4" />{t(tr("actions.stop"))}</Button></div>
+          </Card>
+          <Card className="space-y-3">
+            <SectionTitle icon={<Play className="h-4 w-4" />} title={t(tr("manual.title"))} />
+            <div className="grid gap-2 md:grid-cols-[150px_1fr_1fr_auto]"><Select label={t(tr("manual.action"))} value={action} onChange={setAction} options={actionNames.map((item) => ({ value: item, label: t(tr("actionOptions." + item)) }))} /><TextInput label={t(tr("manual.ref"))} value={ref} onChange={setRef} placeholder={t(tr("placeholders.ref"))} /><TextInput label={t(tr("manual.value"))} value={value} onChange={setValue} placeholder={t(tr("placeholders.value"))} /><Button className="self-end h-10" size="sm" variant="primary" disabled={!state.session || !browser?.url || !browser?.snapshotHash || state.busy} onClick={runAction}>{t(tr("actions.execute"))}</Button></div>
+            <div className="grid gap-2 md:grid-cols-[150px_1fr_auto]"><Select label={t(tr("manual.assertion"))} value={assertion} onChange={setAssertion} options={assertionNames.map((item) => ({ value: item, label: t(tr("assertionOptions." + item)) }))} /><TextInput label={t(tr("manual.expected"))} value={expected} onChange={setExpected} placeholder={t(tr("placeholders.expected"))} /><Button className="self-end h-10" size="sm" variant="secondary" disabled={!state.session || state.busy} onClick={() => void state.assertState(buildAssertionInput(assertion, ref, expected))}>{t(tr("actions.assert"))}</Button></div>
+          </Card>
         </div>
-          <Card className="flex min-h-[420px] flex-col gap-3"><div className="flex items-center justify-between"><SectionTitle title={t("settings.microApps.computerUseDebugger.feedback.title")} /><div className="flex gap-1"><Button size="xs" variant={tab === "feedback" ? "secondary" : "ghost"} onClick={() => setTab("feedback")}>{t("settings.microApps.computerUseDebugger.feedback.events")}</Button><Button size="xs" variant={tab === "json" ? "secondary" : "ghost"} onClick={() => setTab("json")}>{t("settings.microApps.computerUseDebugger.feedback.json")}</Button></div></div>{tab === "json" ? <pre className="min-h-0 flex-1 overflow-auto rounded-ui-control bg-surface-secondary p-3 font-mono text-xs text-text-secondary">{rawJson}</pre> : <div className="min-h-0 flex-1 space-y-3 overflow-auto">{state.session?.approval ? <div><FeedbackBlock title={t("settings.microApps.computerUseDebugger.feedback.approval")} value={state.session.approval} />{state.session.approval.status === "pending" ? <div className="flex gap-2"><Button size="sm" variant="primary" onClick={() => void state.approve()} disabled={state.busy}>{t("settings.microApps.computerUseDebugger.actions.approve")}</Button><Button size="sm" variant="danger-ghost" onClick={() => void state.reject()} disabled={state.busy}>{t("settings.microApps.computerUseDebugger.actions.reject")}</Button></div> : null}</div> : null}{state.session?.invocations.length ? state.session.invocations.map((item) => <div key={item.invocationId} className="border-b border-border pb-3 text-body-small"><div className="flex justify-between"><strong className="text-text-primary">{item.tool}</strong><Badge variant={item.status === "failed" ? "danger" : item.status === "succeeded" ? "success" : item.status === "awaiting_approval" ? "warning" : "neutral"}>{t("settings.microApps.computerUseDebugger.status." + item.status)}</Badge></div><div className="font-mono text-xs text-text-tertiary">{item.invocationId}</div><FeedbackBlock title={t("settings.microApps.computerUseDebugger.feedback.toolArgs")} value={item.args} />{item.artifactIds?.length ? <FeedbackBlock title={t("settings.microApps.computerUseDebugger.feedback.artifacts")} value={item.artifactIds} /> : null}{item.error && <div className="text-danger-text">{item.error.code}: {item.error.message}</div>}</div>) : <div className="flex h-full items-center justify-center text-body-small text-text-tertiary">{t("settings.microApps.computerUseDebugger.feedback.empty")}</div>}{state.session?.evidence ? <FeedbackBlock title={t("settings.microApps.computerUseDebugger.feedback.evidence")} value={state.session.evidence} /> : null}{state.session?.result ? <FeedbackBlock title={t("settings.microApps.computerUseDebugger.feedback.result")} value={state.session.result} /> : null}{state.modelRun ? <FeedbackBlock title={t("settings.microApps.computerUseDebugger.modelRun.result")} value={state.modelRun} /> : null}</div>}<div className="border-t border-border pt-3"><div className="mb-2 text-caption uppercase text-text-tertiary">{t("settings.microApps.computerUseDebugger.modelRun.title")}</div><div className="mb-2 text-body-small text-text-secondary">{state.model.message}</div><Button className="w-full" variant="secondary" onClick={() => void state.runModel()} disabled={modelUnavailable || !state.session || state.busy}>{t("settings.microApps.computerUseDebugger.modelRun.run")}</Button></div></Card>
+        <Card className="flex min-h-[420px] flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <SectionTitle title={t(tr("feedback.title"))} />
+            <div className="flex gap-1">
+              <Button size="xs" variant={tab === "feedback" ? "secondary" : "ghost"} onClick={() => setTab("feedback")}>{t(tr("feedback.events"))}</Button>
+              <Button size="xs" variant={tab === "json" ? "secondary" : "ghost"} onClick={() => setTab("json")}>{t(tr("feedback.json"))}</Button>
+            </div>
+          </div>
+          {tab === "json" ? (
+            <pre className="min-h-0 flex-1 overflow-auto rounded-ui-control bg-surface-secondary p-3 font-mono text-xs text-text-secondary">{rawJson}</pre>
+          ) : (
+            <div className="min-h-0 flex-1 space-y-3 overflow-auto">
+              {state.session?.approval ? (
+                <div>
+                  <FeedbackBlock title={t(tr("feedback.approval"))} value={state.session.approval} />
+                  {state.session.approval.status === "pending" ? <div className="flex gap-2"><Button size="sm" variant="primary" onClick={() => void state.approve()} disabled={state.busy}>{t(tr("actions.approve"))}</Button><Button size="sm" variant="danger-ghost" onClick={() => void state.reject()} disabled={state.busy}>{t(tr("actions.reject"))}</Button></div> : null}
+                </div>
+              ) : null}
+              {state.session?.invocations.length ? state.session.invocations.map((item) => (
+                <div key={item.invocationId} className="border-b border-border pb-3 text-body-small">
+                  <div className="flex justify-between"><strong className="text-text-primary">{item.tool}</strong><Badge variant={item.status === "failed" ? "danger" : item.status === "succeeded" ? "success" : item.status === "awaiting_approval" ? "warning" : "neutral"}>{t(tr("status." + item.status))}</Badge></div>
+                  <div className="font-mono text-xs text-text-tertiary">{item.invocationId}</div>
+                  <FeedbackBlock title={t(tr("feedback.toolArgs"))} value={item.args} />
+                  {item.artifactIds?.length ? <FeedbackBlock title={t(tr("feedback.artifacts"))} value={item.artifactIds} /> : null}
+                  {item.error ? <FeedbackBlock title={t(tr("feedback.result"))} value={`${item.error.code}: ${item.error.message}`} /> : null}
+                </div>
+              )) : <div className="text-body-small text-text-secondary">{t(tr("feedback.empty"))}</div>}
+              {state.session?.evidence ? <FeedbackBlock title={t(tr("feedback.evidence"))} value={state.session.evidence} /> : null}
+              {state.session?.result ? <FeedbackBlock title={t(tr("feedback.result"))} value={state.session.result} /> : null}
+            </div>
+          )}
+        </Card>
       </div>
     </MicroAppPageLayout>
   );

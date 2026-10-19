@@ -1,23 +1,3 @@
-export type ComputerUseAction =
-  | { kind: "navigate"; url: string; waitUntil?: "load" | "domcontentloaded" | "networkidle" }
-  | { kind: "click"; selector: string }
-  | { kind: "type"; selector: string; text: string; delayMs?: number }
-  | { kind: "scroll"; x?: number; y?: number }
-  | { kind: "wait_for"; selector?: string; timeoutMs?: number; state?: "attached" | "visible" | "hidden"; loadState?: "load" | "domcontentloaded" | "networkidle" }
-  | { kind: "capture"; artifactPath: string }
-  | { kind: "finish"; summary?: string };
-
-export type ComputerUseExecutionResult = {
-  steps: Array<{
-    action: ComputerUseAction["kind"];
-    status: "completed";
-    detail: string;
-  }>;
-  captures: string[];
-  finalUrl: string;
-  finishSummary?: string;
-};
-
 export type PlaywrightLocatorLike = {
   click(options?: { timeout?: number }): Promise<unknown>;
   fill(value: string, options?: { timeout?: number }): Promise<unknown>;
@@ -68,11 +48,4 @@ export type PlaywrightChromiumLauncherLike = {
     executablePath?: string;
     headless?: boolean;
   }): Promise<PlaywrightBrowserLike>;
-};
-
-export type ComputerUseExecutorOptions = {
-  launcher?: PlaywrightChromiumLauncherLike;
-  executablePath?: string;
-  headless?: boolean;
-  artifactRoot: string;
 };

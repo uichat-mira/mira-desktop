@@ -643,20 +643,6 @@ export const microAppCapabilityBindings = sqliteTable(
   }),
 );
 
-export const computerUseTasks = sqliteTable(
-  "computer_use_tasks",
-  {
-    id: text("id").primaryKey(),
-    payloadJson: text("payload_json").notNull(),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (table) => ({ updatedAtIdx: index("idx_computer_use_tasks_updated_at").on(table.updatedAt) }),
-);
-
-export type ComputerUseTaskRow = typeof computerUseTasks.$inferSelect;
-export type NewComputerUseTaskRow = typeof computerUseTasks.$inferInsert;
-
 export const computerUseInvocations = sqliteTable(
   "computer_use_invocations",
   {

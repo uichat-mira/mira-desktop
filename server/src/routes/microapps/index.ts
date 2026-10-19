@@ -8,9 +8,7 @@ import type { createNewsHubService } from "@/microapps/news-hub/index.js";
 import type { TtsService } from "@/microapps/tts/index.js";
 import type { CodeGraphStudioService } from "@/microapps/codegraph/index.js";
 import type {
-  ComputerUseGoalInput,
   ComputerUseRuntimeState,
-  ComputerUseTask,
 } from "@/microapps/computer-use/index.js";
 import {
   ImageGenerationJobNotFoundError,
@@ -98,20 +96,6 @@ export type ComfyUiStudioRouteService = {
   ): ComfyUiFlow;
 };
 
-export type ComputerUseRouteService = {
-  createPlan(input: ComputerUseGoalInput): Promise<ComputerUseTask>;
-  getTask(taskId: string): Promise<ComputerUseTask | null>;
-  startTask(taskId: string): Promise<ComputerUseTask>;
-  resolveApproval(input: {
-    taskId: string;
-    approvalId: string;
-    decision: "approved" | "rejected";
-    resolvedBy?: string;
-    resolutionNote?: string;
-  }): Promise<ComputerUseTask>;
-  cancelTask(taskId: string, reason?: string): Promise<ComputerUseTask>;
-};
-
 export type ComputerUseRuntimeRouteService = {
   getRuntimeState(): Promise<ComputerUseRuntimeState>;
   installRuntime(request?: { force?: boolean }): Promise<ComputerUseRuntimeState>;
@@ -123,7 +107,6 @@ export type NewsHubRouteService = ReturnType<typeof createNewsHubService>;
 type MicroappsRouteOptions = {
   imageGenerationService?: ImageGenerationRouteService;
   comfyUiStudioService?: ComfyUiStudioRouteService;
-  computerUseService?: ComputerUseRouteService;
   computerUseRuntimeService?: ComputerUseRuntimeRouteService;
   computerUseDebuggerService?: ComputerUseDebuggerService;
   codeGraphStudioService?: CodeGraphStudioService;
@@ -254,7 +237,6 @@ const microappsRoute: FastifyPluginAsync<MicroappsRouteOptions> = async (
 
   const imageGenerationService = options.imageGenerationService;
   const comfyUiStudioService = options.comfyUiStudioService;
-  const computerUseService = options.computerUseService;
   const computerUseRuntimeService = options.computerUseRuntimeService;
   const computerUseDebuggerService = options.computerUseDebuggerService;
   const codeGraphStudioService = options.codeGraphStudioService;
@@ -269,11 +251,6 @@ const microappsRoute: FastifyPluginAsync<MicroappsRouteOptions> = async (
   if (!comfyUiStudioService) {
     throw new Error(
       "microappsRoute requires comfyUiStudioService to be injected from the server composition root.",
-    );
-  }
-  if (!computerUseService) {
-    throw new Error(
-      "microappsRoute requires computerUseService to be injected from the server composition root.",
     );
   }
   if (!computerUseRuntimeService) {
@@ -611,7 +588,6 @@ const microappsRoute: FastifyPluginAsync<MicroappsRouteOptions> = async (
 
   await app.register(officeSuiteRoutes);
   await app.register(computerUseRoutes, {
-    computerUseService,
     computerUseRuntimeService,
     computerUseDebuggerService,
   });

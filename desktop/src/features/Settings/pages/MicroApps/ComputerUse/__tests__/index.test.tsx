@@ -46,13 +46,13 @@ describe("Computer Use Debugger", () => {
     debuggerState.current = undefined;
   });
 
-  it("shows structured debugger sections and an explicit T120 unavailable state", () => {
+  it("shows structured debugger sections without a standalone Model Run", () => {
     render(<ComputerUseDebuggerPage />);
     expect(screen.getByText("settings.microApps.computerUseDebugger.runConfig.title")).toBeInTheDocument();
     expect(screen.getByText("settings.microApps.computerUseDebugger.browserState.title")).toBeInTheDocument();
     expect(screen.getByText("settings.microApps.computerUseDebugger.feedback.title")).toBeInTheDocument();
-    expect(screen.getByText("settings.microApps.computerUseDebugger.model.unavailable")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "settings.microApps.computerUseDebugger.modelRun.run" })).toBeDisabled();
+    expect(screen.queryByText("settings.microApps.computerUseDebugger.model.unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "settings.microApps.computerUseDebugger.modelRun.run" })).not.toBeInTheDocument();
     expect(screen.queryByText("Goal")).not.toBeInTheDocument();
     expect(screen.queryByText("Create Plan")).not.toBeInTheDocument();
   });

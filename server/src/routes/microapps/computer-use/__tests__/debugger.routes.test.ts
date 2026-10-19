@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import Fastify from "fastify";
-import computerUseRoutes, { type ComputerUseRouteService, type ComputerUseRuntimeRouteService } from "../index.js";
+import computerUseRoutes, { type ComputerUseRuntimeRouteService } from "../index.js";
 import type { ComputerUseDebuggerService } from "../debugger-service.js";
 
 const session = {
@@ -27,9 +27,8 @@ const debuggerService: ComputerUseDebuggerService = {
 
 const app = async () => {
   const server = Fastify();
-  const computerUseService = {} as ComputerUseRouteService;
   const computerUseRuntimeService = {} as ComputerUseRuntimeRouteService;
-  await server.register(computerUseRoutes, { computerUseService, computerUseRuntimeService, computerUseDebuggerService: debuggerService });
+  await server.register(computerUseRoutes, { computerUseRuntimeService, computerUseDebuggerService: debuggerService });
   return server;
 };
 

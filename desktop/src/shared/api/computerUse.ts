@@ -51,15 +51,6 @@ export interface ComputerUseDebuggerStatus {
   model: ComputerUseModelState;
 }
 
-export interface ComputerUseTaskRun {
-  taskId: string;
-  status: string;
-  result?: Record<string, unknown>;
-  pendingApproval?: Record<string, unknown>;
-  evidence?: { entries: Array<Record<string, unknown>>; artifacts: Array<Record<string, unknown>> };
-  error?: { code?: string; message?: string };
-}
-
 export interface ComputerUseSessionConfig {
   runtime: "managed" | "system";
   url: string;
@@ -115,13 +106,6 @@ export async function getComputerUseDebuggerStatus(): Promise<ComputerUseDebugge
 
 export async function installComputerUseRuntime(force = false): Promise<void> {
   await post(`${BASE}/runtime/install`, { force });
-}
-
-export async function runComputerUseTask(input: {
-  goal: string;
-  siteScope: string[];
-}): Promise<ComputerUseTaskRun> {
-  return post<ComputerUseTaskRun>(`${BASE}/tasks`, { ...input, autoStart: true });
 }
 
 export async function createComputerUseSession(
