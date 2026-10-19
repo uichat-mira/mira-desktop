@@ -15,7 +15,9 @@ import { isExpectedAgt012FinalBrowserState } from "@/microapps/computer-use/agt0
 import { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
 import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 
-const workspaceRoot = path.resolve(process.cwd(), "..");
+const workspaceRoot = path.basename(process.cwd()) === "server"
+  ? path.resolve(process.cwd(), "..")
+  : process.cwd();
 const evidenceRoot = path.join(
   workspaceRoot,
   ".test-artifact",
@@ -65,7 +67,7 @@ if (!executablePath) {
 const requests: string[] = [];
 const fixtureServer = http.createServer((request, response) => {
   const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
-  requests.push(requestUrl.pathname);
+  requests.push(requestUrl.pathname + requestUrl.search);
 
   if (requestUrl.pathname === "/login") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -183,9 +185,23 @@ const attempts: Array<{
   errorMessage?: string;
 }> = [];
 
+const AUTO_APPROVABLE_BROWSER_TOOL_IDS = new Set([
+  "browser_assert",
+  "browser_navigate",
+  "browser_wait_for",
+  "browser_snapshot",
+  "browser_screenshot",
+  "browser_click",
+  "browser_fill",
+  "browser_press_key",
+  "browser_select_option",
+  "browser_scroll",
+]);
+
 let input: AgentGraphInput = baseInput;
 let output: AgentGraphOutput | undefined;
 let stoppedForLegacySelection = false;
+let stoppedForUnexpectedTool: string | undefined;
 
 try {
   for (let resumeCount = 0; resumeCount < 20; resumeCount += 1) {
@@ -207,6 +223,10 @@ try {
 
     if (pending.toolId === "browser_observe" || pending.toolId === "browser_act") {
       stoppedForLegacySelection = true;
+      break;
+    }
+    if (!AUTO_APPROVABLE_BROWSER_TOOL_IDS.has(pending.toolId)) {
+      stoppedForUnexpectedTool = pending.toolId;
       break;
     }
 
@@ -299,11 +319,12 @@ try {
   });
   const passed =
     !stoppedForLegacySelection &&
+    !stoppedForUnexpectedTool &&
     output.status === "completed" &&
     legacyExecutions.length === 0 &&
     legacyDiscoverableToolIds.length === 0 &&
     attachedExecutions.length === 0 &&
-    requests.includes("/success") &&
+    requests.includes("/success?name=Mira") &&
     browserStatePassed;
 
   const evidence = {
@@ -312,6 +333,7 @@ try {
     prompt,
     passed,
     stoppedForLegacySelection,
+    stoppedForUnexpectedTool,
     output: {
       status: output.status,
       answer: output.answer,
@@ -370,6 +392,7 @@ try {
       passed: browserStatePassed,
     },
     stoppedForLegacySelection,
+    stoppedForUnexpectedTool,
     errorMessage: output.errorMessage,
   }, null, 2));
 
