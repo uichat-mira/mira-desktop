@@ -39,7 +39,7 @@ type DebuggerSession = {
 };
 
 export type ComputerUseDebuggerService = {
-  getStatus(): { runtime: Record<string, unknown>; model: { status: "connected" | "unavailable"; message: string; checkedAt: string } };
+  getStatus(): { runtime: Record<string, unknown> };
   create(config: ComputerUseDebuggerSessionConfig): Promise<DebuggerSession>;
   get(sessionId: string): DebuggerSession | null;
   observe(sessionId: string): Promise<DebuggerSession>;
@@ -70,7 +70,6 @@ export const createComputerUseDebuggerService = (input: {
   sessions: BrowserSessionManager;
   browser: BrowserService;
   runtimeStatus: () => Record<string, unknown>;
-  modelStatus?: () => { status: "connected" | "unavailable"; message: string };
 }): ComputerUseDebuggerService => {
   const records = new Map<string, DebuggerSession>();
   const getRecord = (id: string) => records.get(id);
@@ -95,7 +94,7 @@ export const createComputerUseDebuggerService = (input: {
   const invoke = async (record: DebuggerSession, tool: Invocation["tool"], args: Record<string, unknown>, approvedInvocations?: Array<{ toolId: string; inputHash: string }>) => apply(record, tool, args, await executeInvocation({ toolId: tool, args, approvedInvocations, threadId: record.sessionId, turnId: `debugger-${tool}` }));
 
   return {
-    getStatus() { const model = input.modelStatus?.() ?? { status: "unavailable" as const, message: "No Computer Use model provider is configured." }; return { runtime: input.runtimeStatus(), model: { ...model, checkedAt: now() } }; },
+    getStatus() { return { runtime: input.runtimeStatus() }; },
     async create(config) {
       const created = await input.sessions.create({ channel: config.runtime === "system" ? "chrome" : "chromium", allowedDomains: config.allowedDomains, initialUrl: config.url, headless: true, actionTimeoutMs: config.limits.timeoutMs, sessionTimeoutMs: config.limits.timeoutMs * 4 });
       const record: DebuggerSession = { sessionId: created.id, config, status: created.status === "ready" ? "ready" : "failed", browser: {}, invocations: [], evidence: { entries: [], artifacts: [] }, error: created.error };

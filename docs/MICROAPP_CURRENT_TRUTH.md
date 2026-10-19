@@ -157,7 +157,7 @@ Integration API 当前也只公开 `knowledge_query` 的列表、启停、Access
 | --- | --- | --- |
 | `news_hub` | 有来源配置、抓取、TTL、去重、本地持久化、列表与搜索；可通过 `news_search` 进入 Harness | 未实现 |
 | `image_generation` | 有 Provider 配置、持久任务、实时进度、Artifact、OpenAI-compatible 与 ComfyUI Studio | 未实现 |
-| `computer_use` | 有 managed browser runtime、持久任务与 Evidence、模型执行器、审批和 Browser tools | 未实现 |
+| `computer_use` | 有 managed browser runtime、结构化 Browser tools、审批和桌面手动调试会话 | 未实现 |
 | `tts` | 有 Windows、Piper、GPT-SoVITS、API Provider、参考音频与合成 Artifact | 未实现 |
 | `codegraph` | 有 CodeGraph Studio；Agent 通过 `codebase_explore` wrapper 使用受控能力 | 不承接外部调用 |
 | `evolving_knowledge` | 有可选 service 与桌面 Studio，仍处于实验和演进阶段 | 不承接外部调用 |
@@ -196,8 +196,7 @@ Integration API 当前也只公开 `knowledge_query` 的列表、启停、Access
 - managed browser runtime 解析与安装（配置按平台分发：win32 → win64 包、darwin/arm64 → mac-arm64 包；其余平台显式无托管配置，不得伪装支持）；
 - darwin 系统浏览器探测（`/Applications` 下的 Chrome / Edge）；
 - Browser session 与结构化 browser tools；
-- 持久任务、计划、Evidence 和 Artifact；
-- `ComputerUseModelExecutor`；
+- 手动调试会话的观察、动作、断言、审批、拒绝、停止与 Artifact；
 - 高风险动作审批；
 - 调试器与桌面 Studio；
 - Agent 可按真实 availability 使用 Managed Browser tools。
@@ -207,7 +206,8 @@ Integration API 当前也只公开 `knowledge_query` 的列表、启停、Access
 - 核心执行面是受控浏览器，不是宿主桌面任意遥控；
 - 浏览器 Runtime 未安装时不能伪装 ready；托管记录与本平台布局不一致时判无效（不得返回 ready-managed）；
 - darwin x64 / linux 没有托管包配置，只能依赖系统浏览器，`installManagedRuntime` 会明确报错；
-- Studio task 与 Main Agent tool execution 是相邻但不同的执行入口；
+- 独立的 Studio Model Run 与任务执行路径已退役，桌面仅保留手动调试会话入口；
+- `browser_observe` / `browser_act` 只保留给手动调试会话这一兼容消费方，不再进入 Agent intent；
 - `computer_use` definition 的统一 external invoke 仍未实现。
 
 ### TTS Studio

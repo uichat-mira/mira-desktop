@@ -9,7 +9,6 @@ export function resolveComputerUseArtifactUrl(uri: string): string {
 }
 
 export type ComputerUseRuntimeStatus = "ready" | "not_installed" | "downloading" | "broken";
-export type ComputerUseModelStatus = "connected" | "unavailable";
 export type ComputerUseSessionStatus = "empty" | "ready" | "failed" | "stopped";
 export type ComputerUseInvocationStatus =
   | "idle"
@@ -39,25 +38,8 @@ export interface ComputerUseRuntimeState {
   };
 }
 
-export interface ComputerUseModelState {
-  status: ComputerUseModelStatus;
-  provider?: string;
-  message: string;
-  checkedAt: string;
-}
-
 export interface ComputerUseDebuggerStatus {
   runtime: ComputerUseRuntimeState;
-  model: ComputerUseModelState;
-}
-
-export interface ComputerUseTaskRun {
-  taskId: string;
-  status: string;
-  result?: Record<string, unknown>;
-  pendingApproval?: Record<string, unknown>;
-  evidence?: { entries: Array<Record<string, unknown>>; artifacts: Array<Record<string, unknown>> };
-  error?: { code?: string; message?: string };
 }
 
 export interface ComputerUseSessionConfig {
@@ -115,13 +97,6 @@ export async function getComputerUseDebuggerStatus(): Promise<ComputerUseDebugge
 
 export async function installComputerUseRuntime(force = false): Promise<void> {
   await post(`${BASE}/runtime/install`, { force });
-}
-
-export async function runComputerUseTask(input: {
-  goal: string;
-  siteScope: string[];
-}): Promise<ComputerUseTaskRun> {
-  return post<ComputerUseTaskRun>(`${BASE}/tasks`, { ...input, autoStart: true });
 }
 
 export async function createComputerUseSession(

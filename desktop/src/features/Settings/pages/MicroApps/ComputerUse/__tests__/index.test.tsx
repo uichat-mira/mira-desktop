@@ -25,7 +25,7 @@ const debuggerState = vi.hoisted(() => ({ current: undefined as Record<string, u
 vi.mock("../useComputerUseDebuggerState", () => ({
   useComputerUseDebuggerState: () => debuggerState.current ?? ({
     config: { runtime: "managed", url: "https://example.com", allowedDomains: ["example.com"], limits: { timeoutMs: 30000, maxSnapshotChars: 12000 }, approvalPolicy: "write_actions" },
-    setConfig: vi.fn(), status: { runtime: { status: "ready" }, model: { status: "unavailable", message: "T120 is unavailable" } }, runtime: { status: "ready" }, model: { status: "unavailable", message: "T120 is unavailable" }, session: undefined, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
+    setConfig: vi.fn(), status: { runtime: { status: "ready" } }, runtime: { status: "ready" }, session: undefined, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
   }),
 }));
 
@@ -33,7 +33,7 @@ describe("Computer Use Debugger", () => {
   it("renders browser state and complete execution feedback", () => {
     debuggerState.current = {
       config: { runtime: "managed", url: "https://example.com", allowedDomains: ["example.com"], limits: { timeoutMs: 30000, maxSnapshotChars: 12000 }, approvalPolicy: "write_actions" },
-      setConfig: vi.fn(), status: { runtime: { status: "ready" }, model: { status: "unavailable", message: "T120 is unavailable" } }, runtime: { status: "ready" }, model: { status: "unavailable", message: "T120 is unavailable" }, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
+      setConfig: vi.fn(), status: { runtime: { status: "ready" } }, runtime: { status: "ready" }, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
       session: { sessionId: "session-1", status: "ready", config: {} as never, browser: { url: "https://example.com", title: "Example", snapshot: "ref=button-1", visibleText: "Visible heading", screenshotArtifact: "artifact-screenshot-1", snapshotHash: "hash-1" }, approval: { status: "pending", approvalId: "approval-1", reason: "Write action" }, invocations: [{ invocationId: "invocation-1", tool: "browser_act", args: { action: "click", ref: "button-1" }, status: "failed", artifactIds: ["artifact-screenshot-1"], error: { code: "REF_STALE", message: "The ref is stale" }, createdAt: "2026-07-14T00:00:00.000Z" }], evidence: { entries: [{ kind: "observation", message: "Observed page" }], artifacts: [{ id: "artifact-screenshot-1", kind: "screenshot" }] }, result: { status: "failed", summary: "Assertion failed" } },
     };
     render(<ComputerUseDebuggerPage />);
@@ -46,15 +46,30 @@ describe("Computer Use Debugger", () => {
     debuggerState.current = undefined;
   });
 
-  it("shows structured debugger sections and an explicit T120 unavailable state", () => {
+  it("shows structured debugger sections without a standalone Model Run", () => {
     render(<ComputerUseDebuggerPage />);
     expect(screen.getByText("settings.microApps.computerUseDebugger.runConfig.title")).toBeInTheDocument();
     expect(screen.getByText("settings.microApps.computerUseDebugger.browserState.title")).toBeInTheDocument();
     expect(screen.getByText("settings.microApps.computerUseDebugger.feedback.title")).toBeInTheDocument();
-    expect(screen.getByText("settings.microApps.computerUseDebugger.model.unavailable")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "settings.microApps.computerUseDebugger.modelRun.run" })).toBeDisabled();
+    expect(screen.queryByText("settings.microApps.computerUseDebugger.model.unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "settings.microApps.computerUseDebugger.modelRun.run" })).not.toBeInTheDocument();
     expect(screen.queryByText("Goal")).not.toBeInTheDocument();
     expect(screen.queryByText("Create Plan")).not.toBeInTheDocument();
+  });
+
+  it("switches execution feedback to raw session JSON without restoring Model Run", () => {
+    debuggerState.current = {
+      config: { runtime: "managed", url: "https://example.com", allowedDomains: ["example.com"], limits: { timeoutMs: 30000, maxSnapshotChars: 12000 }, approvalPolicy: "write_actions" },
+      setConfig: vi.fn(), status: { runtime: { status: "ready" } }, runtime: { status: "ready" }, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
+      session: { sessionId: "session-json", status: "ready", config: {} as never, browser: {}, invocations: [] },
+    };
+
+    render(<ComputerUseDebuggerPage />);
+    fireEvent.click(screen.getByRole("button", { name: "settings.microApps.computerUseDebugger.feedback.json" }));
+
+    expect(screen.getByText(/session-json/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "settings.microApps.computerUseDebugger.modelRun.run" })).not.toBeInTheDocument();
+    debuggerState.current = undefined;
   });
 
   it("maps manual fields to the browser action protocol", () => {

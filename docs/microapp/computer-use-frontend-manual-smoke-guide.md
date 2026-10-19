@@ -1,7 +1,7 @@
 ---
 status: current
 owner: microapp / chat / runtime / desktop
-last_verified: 2026-07-15
+last_verified: 2026-10-19
 layer: wiki
 module: MicroAPP
 feature: ComputerUse
@@ -25,7 +25,7 @@ related:
 - Runtime：优先选择 `Managed Chromium`
 - 记录 Network 请求、页面反馈、invocation ID、artifact ID 和截图证据
 
-如果测试需要真实模型，还必须配置真实 agent/task provider。没有 provider 时，Model Run 只能验证为不可用，真实模型用例记为 `SKIPPED`。
+本页的手动调试会话不需要模型；Main / Generic Agent 的 Managed Browser 能力由 Agent 主链承担，与本页手动调试入口相互独立。
 
 ## 二、Agent 前台绑定前置
 
@@ -90,14 +90,14 @@ Agent 前台绑定成功只证明线程获得了 workspace，不等于 Computer 
 Agent 前台绑定
   -> Agent 按钮可用
   -> 真实模型请求
-  -> browser_observe / browser_act / browser_assert
+  -> 原子 Managed Browser tools（browser_navigate / browser_snapshot / browser_fill / browser_click / browser_wait_for / browser_assert）
   -> 审批（如需要）
   -> observation / evidence / final result
 ```
 
 如果只看到 Agent 普通回答、没有 `browser_*` invocation，不能判定 Computer Use Agent 链路通过。
 
-当前版本若 Model Run 没有点击处理，或者 Agent 聊天没有触发 Computer Use tool，相关用例应记为 `FAIL`，并记录为前端入口或 Agent 接入缺陷；不能改记为 `SKIPPED`。只有真实 provider 未配置这一外部条件，才记为 `SKIPPED`。
+当前版本如果 Agent 聊天没有触发 Managed Browser tool，相关用例应记为 `FAIL`，并记录为 Agent 接入缺陷；不能改记为 `SKIPPED`。只有真实 provider 未配置这一外部条件，才记为 `SKIPPED`。
 
 ## 六、必须执行的失败场景
 
@@ -119,4 +119,4 @@ Agent 前台绑定
 .test-artifact/computer-use-acceptance/desktop/manual-blackbox/
 ```
 
-截图、Network 摘要和结果记录必须与用例 ID 对应。真实 provider 未配置时，`CU-FE-020` 的真实模型部分记录为 `SKIPPED`，不得写成通过。
+截图、Network 摘要和结果记录必须与用例 ID 对应。Agent 主链的真实模型 smoke 如果因 provider 未配置而无法执行，应明确记录为 `SKIPPED`；不得把 Studio 已退役的 Model Run 当作替代验收入口。
