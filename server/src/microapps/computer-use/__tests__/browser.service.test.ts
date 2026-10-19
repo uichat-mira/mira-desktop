@@ -230,7 +230,7 @@ describe("BrowserService", () => {
   });
 
   it("does not revive old action refs across identical A -> B -> A tabs", async () => {
-    const { service, session, page, pages } = await createHarness();
+    const { manager, service, session, page, pages } = await createHarness();
     const first = await service.observe({ sessionId: session.id });
     expect(first.ok).toBe(true);
     const ref = buttonRef(first);
@@ -298,7 +298,7 @@ describe("BrowserService", () => {
     )!;
     const denied = await service.selectTab({ sessionId: session.id, tabId: blockedTab.id });
     expect(denied.error?.code).toBe("navigation_blocked");
-    expect(session.page).toBe(page);
+    expect(manager.get(session.id)?.page).toBe(page);
     const afterDenial = await service.observe({ sessionId: session.id });
     expect(afterDenial.page.snapshotHash).toBe(refreshedA.page.snapshotHash);
     const currentA = await service.act({
