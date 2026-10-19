@@ -100,7 +100,7 @@ describe("browser capability projection", () => {
     ).toBe("web_search");
   });
 
-  it("resolves canonical, legacy alias, and ordinary-language browser intent without a Browser selector", async () => {
+  it("keeps the retired profile alias out of Agent capability-search metadata", async () => {
     const definitions = [
       ...allDefinitions(),
       // Unrelated profiles keep the deterministic lexical stage realistic.
@@ -111,9 +111,13 @@ describe("browser capability projection", () => {
     const profiles = resolveHarnessCapabilityProfiles(definitions);
     const documents = buildCapabilityResolutionDocuments(profiles);
 
+    const browserDocument = documents.find(
+      (document) => document.capabilityId === "browser",
+    );
+    expect(browserDocument?.aliases).not.toContain("browser_computer_use");
+
     for (const query of [
       "browser",
-      "browser_computer_use",
       "打开网页读取页面标题",
       "打开网页点击登录",
     ]) {
