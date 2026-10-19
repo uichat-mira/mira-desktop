@@ -439,7 +439,7 @@ describe("CapabilitiesPage", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Browser")).toBeInTheDocument();
+    expect(screen.getAllByText("Browser").length).toBeGreaterThan(0);
     expect(screen.getByText("No managed Chromium was found.")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
