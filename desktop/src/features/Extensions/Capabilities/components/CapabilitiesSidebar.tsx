@@ -4,6 +4,7 @@ import {
   CircleHelp,
   FilePenLine,
   Globe2,
+  MousePointer,
   SquareTerminal,
   Wrench,
   type LucideIcon,
@@ -36,6 +37,7 @@ const groupIcons: Record<string, LucideIcon> = {
   globe: Globe2,
   web_search: Globe2,
   terminal: SquareTerminal,
+  "mouse-pointer": MousePointer,
   external_mcp: Blocks,
 };
 
@@ -80,6 +82,7 @@ const nativeGroupTranslationKeys: Record<string, string> = {
   terminal: "terminal",
   web: "web",
   web_search: "web",
+  browser: "browser",
 };
 
 type CapabilityGroupTranslator = (key: string) => string;

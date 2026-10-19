@@ -81,6 +81,8 @@ describe("Capability acceptance cases", () => {
       "web-fetch-known-url",
       "web-fetch-blocked-private-destination",
       "web-fetch-blocked-invalid-scheme",
+      "browser-snapshot-observe",
+      "browser-click-approval",
     ]);
 
     expect(
@@ -439,6 +441,33 @@ describe("Capability acceptance cases", () => {
         (item) => item.id === "file-mutation-apply-patch-controlled-error",
       )?.expectedObservation,
     ).toContain("Failed");
+  });
+
+  it("registers bounded Managed Browser read-only and approval cases", () => {
+    const browserCases = nativeCapabilityAcceptanceCases.filter(
+      (item) => item.group === "Browser",
+    );
+
+    expect(browserCases.map((item) => item.id)).toEqual([
+      "browser-snapshot-observe",
+      "browser-click-approval",
+    ]);
+    expect(browserCases.map((item) => item.toolId)).toEqual([
+      "browser_snapshot",
+      "browser_click",
+    ]);
+    expect(browserCases.every((item) => item.workspace === "none")).toBe(true);
+    expect(browserCases.every((item) => item.fixture === undefined)).toBe(true);
+    expect(browserCases[0]?.args).toMatchObject({
+      includeVisibleText: true,
+      maxSnapshotChars: 4000,
+    });
+    expect(browserCases[1]?.args).toMatchObject({
+      pageUrl: "https://example.com/",
+      snapshotHash: "capability-browser-snapshot",
+      ref: "e1",
+    });
+    expect(browserCases[1]?.expectedObservation).toContain("Awaiting Approval");
   });
 
   it("registers only deterministic zero-input External MCP cases", () => {

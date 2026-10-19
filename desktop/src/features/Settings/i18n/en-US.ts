@@ -2418,6 +2418,11 @@ const settingsPending = {
             label: "Web",
             description: "Access public web information.",
           },
+          browser: {
+            label: "Browser",
+            description:
+              "Inspect and operate an isolated Playwright session managed by Mira.",
+          },
         },
         detailTabs: {
           input: "Input",
@@ -2490,6 +2495,8 @@ const settingsPending = {
         },
         readinessReasons: {
           webSearchUnavailable: "Web Search runtime readiness is unavailable.",
+          browserUnavailable:
+            "Managed Browser runtime readiness is unavailable.",
         },
         invocation: {
           idle: "Not run",

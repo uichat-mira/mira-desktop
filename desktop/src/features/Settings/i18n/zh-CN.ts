@@ -2377,6 +2377,10 @@ const settingsPending = {
             label: "网络",
             description: "访问公开 Web 信息。",
           },
+          browser: {
+            label: "浏览器",
+            description: "检查并操作由 Mira 管理的独立 Playwright 会话。",
+          },
         },
         detailTabs: {
           input: "输入",
@@ -2449,6 +2453,7 @@ const settingsPending = {
         },
         readinessReasons: {
           webSearchUnavailable: "Web Search 运行时状态不可用。",
+          browserUnavailable: "Managed Browser 运行时状态不可用。",
         },
         invocation: {
           idle: "Not run",
