@@ -15,7 +15,6 @@ import {
 import { ComputerUseRuntimeManager } from "@/microapps/computer-use/runtime/manager.js";
 import { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
 import { BrowserService } from "@/microapps/computer-use/browser/service.js";
-import { createComputerUseDebuggerService } from "@/routes/microapps/computer-use/debugger-service.js";
 import { createComputerUseBrowserTools } from "@/mcp/tools/browser-tools.tool.js";
 import {
   createComfyUiLocalAdapter,
@@ -284,12 +283,6 @@ const toComputerUseRuntimeState = (
   };
 };
 
-const computerUseDebuggerService = createComputerUseDebuggerService({
-  sessions: computerUseBrowserSessions,
-  browser: computerUseBrowserService,
-  runtimeStatus: () => toComputerUseRuntimeState(nowIso()),
-});
-
 const computerUseRuntimeService = {
   async getRuntimeState() {
     return toComputerUseRuntimeState(nowIso());
@@ -506,7 +499,6 @@ const setupRoutes = async () => {
     imageGenerationService,
     comfyUiStudioService,
     computerUseRuntimeService,
-    computerUseDebuggerService,
     codeGraphStudioService,
     mailCenterService,
     newsHubService,

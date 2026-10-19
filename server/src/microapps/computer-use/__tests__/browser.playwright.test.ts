@@ -54,7 +54,8 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       expect(listToolDefinitions().map((def) => def.id)).toContain("browser_snapshot");
       expect(listToolDefinitions().map((def) => def.id)).toContain("browser_screenshot");
       const threadId = `smoke-${crypto.randomUUID()}`;
-      const boot = await executeInvocation({ toolId: "browser_observe", threadId, args: { url: pathToFileURL(file).href } });
+      const bootArgs = { url: pathToFileURL(file).href };
+      const boot = await executeInvocation({ toolId: "browser_navigate", threadId, args: bootArgs, approvedInvocations: [{ toolId: "browser_navigate", inputHash: createInvocationInputHash(bootArgs) }] });
       expect(boot.status).toBe("completed");
       const sessionId = boot.args.sessionId as string;
       const before = await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} });
@@ -255,7 +256,8 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       for (const tool of tools) registerTool(tool);
       const threadId = `click-fill-${crypto.randomUUID()}`;
 
-      const boot = await executeInvocation({ toolId: "browser_observe", threadId, args: { url: fileUrl } });
+      const bootArgs = { url: fileUrl };
+      const boot = await executeInvocation({ toolId: "browser_navigate", threadId, args: bootArgs, approvedInvocations: [approve("browser_navigate", bootArgs)] });
       expect(boot.status).toBe("completed");
       const sessionId = boot.args.sessionId as string;
       const page = manager.get(sessionId)!.page;
@@ -392,7 +394,8 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       for (const tool of tools) registerTool(tool);
       const threadId = `press-select-scroll-${crypto.randomUUID()}`;
 
-      const boot = await executeInvocation({ toolId: "browser_observe", threadId, args: { url: fileUrl } });
+      const bootArgs = { url: fileUrl };
+      const boot = await executeInvocation({ toolId: "browser_navigate", threadId, args: bootArgs, approvedInvocations: [approve("browser_navigate", bootArgs)] });
       expect(boot.status).toBe("completed");
       const sessionId = boot.args.sessionId as string;
       const page = manager.get(sessionId)!.page;

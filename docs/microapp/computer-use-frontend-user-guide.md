@@ -1,30 +1,27 @@
 # Computer Use 前台使用说明
 
-Computer Use 通过受控浏览器完成可观察、可审批、可回放的网页操作。当前 Studio 仅保留 Manual Debug；模型驱动的 Managed Browser 任务统一由主 Agent / Generic Child 的原子 Browser Tool 路径执行。它适合验证页面状态、执行受控导航和交互，并为每次调用保留 invocation、trace、artifact 与 evidence。
+Computer Use Studio 现在是 Managed Browser 运行时的管理面：查看运行时状态、检测到的受管 Chromium / 系统浏览器、当前可执行文件，并安装或重新安装受管运行时。网页任务本身统一由主 Agent / Generic Child 的 `browser` 能力与原子 Browser Tool 路径执行；手动调试会话已退役。
 
 ## 能力
 
-- 创建受控浏览器 session
-- 获取页面结构、可见文本、快照 hash 和截图
-- 执行导航、点击、输入、选择、按键、滚动和等待
-- 对标题、URL、文本、可见性和值进行断言
-- 查看工具调用、审批、错误和证据结果
+- 查看 Managed Browser 运行时状态与当前浏览器环境
+- 检测受管 Chromium 与系统浏览器
+- 安装 / 重新安装受管浏览器运行时
+- 展示当前可执行文件路径
+- 网页交互由 Agent 的原子 Browser Tool 完成（browser_navigate / browser_snapshot / browser_click / browser_fill / browser_wait_for / browser_assert 等）
 
 ## 环境配置
 
 1. 确认浏览器运行时状态为“运行时已就绪”。优先使用 Managed Chromium。
-2. 设置初始 URL，并在“允许的域名”中填写任务所需的域名。
-3. 选择审批策略。写入动作建议使用“写入动作”，由用户确认后继续执行。
+2. 如未安装，点击“下载浏览器运行时”。
+3. 运行时就绪是在对话中让 Agent 执行网页任务的前提。
 
 ## 使用方法
 
-1. 点击“新建 Session”创建浏览器会话。
-2. 点击“检查”读取页面快照，并确认 URL、标题、可见文本和 ref。
-3. 在“手动调试”中选择动作并填写参数，点击“执行动作”。
-4. 对需要审批的动作点击“批准动作”或“拒绝动作”。
-5. 再次 Inspect 获取最新页面状态，使用“断言”验证结果。
-6. 在右侧“执行反馈”中查看 invocation、工具参数、状态、产物和证据。
-7. 任务结束后点击“停止”关闭 session。
+1. 在本页确认运行时状态与可执行文件路径。
+2. 在对话中让 Agent 打开目标网页并完成任务。
+3. 写入类原子 Browser Tool 会进入现有审批流程；批准后继续执行。
+4. 在对话链路的执行证据中查看 observation、审批与结果。
 
 ## 边界
 

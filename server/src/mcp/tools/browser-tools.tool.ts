@@ -5,9 +5,7 @@ import type {
 import { mcpBadRequest } from "../core/errors.js";
 import { BrowserService } from "@/microapps/computer-use/browser/service.js";
 import type {
-  BrowserActInput,
   BrowserAssertInput,
-  BrowserInspectInput,
   BrowserToolResult,
   BrowserWaitInput,
 } from "@/microapps/computer-use/browser/types.js";
@@ -41,17 +39,6 @@ const browserResultSchema = {
 } as const;
 
 const sessionId = { type: "string", minLength: 1 } as const;
-const actionSchema = {
-  oneOf: [
-    { type: "object", required: ["kind", "url"], additionalProperties: false, properties: { kind: { enum: ["navigate"] }, url: { type: "string", minLength: 1 } } },
-    { type: "object", required: ["kind", "ref"], additionalProperties: false, properties: { kind: { enum: ["click"] }, ref: { type: "string", minLength: 1 } } },
-    { type: "object", required: ["kind", "ref", "text"], additionalProperties: false, properties: { kind: { enum: ["type"] }, ref: { type: "string", minLength: 1 }, text: { type: "string" } } },
-    { type: "object", required: ["kind", "ref", "value"], additionalProperties: false, properties: { kind: { enum: ["select"] }, ref: { type: "string", minLength: 1 }, value: { type: "string" } } },
-    { type: "object", required: ["kind", "ref", "key"], additionalProperties: false, properties: { kind: { enum: ["press"] }, ref: { type: "string", minLength: 1 }, key: { type: "string", minLength: 1 } } },
-    { type: "object", required: ["kind"], additionalProperties: false, properties: { kind: { enum: ["scroll"] }, x: { type: "number" }, y: { type: "number" } } },
-    { type: "object", required: ["kind"], additionalProperties: false, properties: { kind: { enum: ["wait"] }, ref: { type: "string", minLength: 1 }, text: { type: "string" }, timeoutMs: { type: "integer", minimum: 1 } } },
-  ],
-} as const;
 
 const conditionSchema = {
   oneOf: [
@@ -69,27 +56,6 @@ const assertionSchema = {
   ],
 } as const;
 
-const agentObserveSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["url"],
-  properties: {
-    url: { type: "string", minLength: 1 },
-    includeScreenshot: { type: "boolean" },
-    includeVisibleText: { type: "boolean" },
-    maxSnapshotChars: { type: "integer", minimum: 100, maximum: 50000 },
-  },
-} as const;
-const agentActSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["pageUrl", "snapshotHash", "action"],
-  properties: {
-    pageUrl: { type: "string", minLength: 1 },
-    snapshotHash: { type: "string", minLength: 1 },
-    action: { ...actionSchema },
-  },
-} as const;
 const agentAssertSchema = {
   type: "object",
   additionalProperties: false,
@@ -194,46 +160,9 @@ export const createComputerUseBrowserTools = (
   const sessionIdleTimeoutMs = typeof requestedIdleTimeoutMs === "number" && Number.isFinite(requestedIdleTimeoutMs) && requestedIdleTimeoutMs > 0
     ? requestedIdleTimeoutMs
     : AGENT_BROWSER_SESSION_IDLE_TIMEOUT_MS;
-  const resolveSessionId = async (context: ToolInvocationContext, args: Record<string, unknown>) => {
-    const explicitSessionId = typeof args.sessionId === "string" ? args.sessionId : undefined;
-    if (explicitSessionId) {
-      if (context.threadId) sessionsByContext.set(context.threadId, explicitSessionId);
-      return explicitSessionId;
-    }
-
-    const contextKey = context.threadId;
-    const existingSessionId = contextKey ? sessionsByContext.get(contextKey) : undefined;
-    if (existingSessionId) {
-      const existing = sessionManager?.get(existingSessionId);
-      if (existing?.info.status === "ready" || existing?.info.status === "busy") return existingSessionId;
-      if (contextKey) sessionsByContext.delete(contextKey);
-    }
-
-    const url = typeof args.url === "string"
-      ? args.url
-      : typeof (args.action as Record<string, unknown> | undefined)?.url === "string"
-        ? String((args.action as Record<string, unknown>).url)
-        : undefined;
-    if (!sessionManager || !url) {
-      throw mcpBadRequest("Computer Use browser session is not bound; a target URL is required for the first browser observation.");
-    }
-    const parsed = new URL(url.includes("://") ? url : `https://${url}`);
-    const created = await sessionManager.create({
-      allowedDomains: [parsed.hostname],
-      initialUrl: parsed.toString(),
-      headless: true,
-      sessionTimeoutMs: sessionIdleTimeoutMs,
-    });
-    if (created.status !== "ready") {
-      throw mcpBadRequest(created.error?.message ?? "Computer Use browser session could not be created.");
-    }
-    if (contextKey) sessionsByContext.set(contextKey, created.id);
-    return created.id;
-  };
 
   // These facades only operate on an existing thread-bound Managed Browser session.
-  // Browser navigation/session creation is owned by the legacy observe bootstrap
-  // and, after the atomic migration, by browser_navigate (#360).
+  // Browser navigation/session creation is owned by browser_navigate (#360).
   const requireBoundSession = (context: ToolInvocationContext): string | undefined => {
     const key = context.threadId;
     const id = key ? sessionsByContext.get(key) : undefined;
@@ -302,76 +231,6 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  const observe: ToolImplementation = {
-    definition: {
-      id: "browser_observe",
-      title: "Browser Observe",
-      description: "Observe the current managed browser page. On the first call, provide the target url; the tool creates or reuses the browser session internally, so never ask the user for sessionId. The result includes page.url, page.title, page.snapshotHash, observation.snapshot, observation.visibleText, and screenshot artifacts when requested. Use this result as the source of truth before choosing browser_act or browser_assert.",
-      domain: "browser_action",
-      source: "internal",
-      mode: "sync",
-      inputSchema: {
-        type: "object",
-        additionalProperties: false,
-        required: [],
-        properties: {
-          sessionId,
-          url: { type: "string", minLength: 1 },
-          includeScreenshot: { type: "boolean" },
-          includeVisibleText: { type: "boolean" },
-          maxSnapshotChars: { type: "integer", minimum: 100, maximum: 50000 },
-        },
-      },
-      inputSchemaByExposure: { agent_intent: agentObserveSchema },
-      outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "observe", "inspect", "read", "page", "观察", "读取"],
-      capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
-    },
-    execute: async (context) => {
-      const args = requireObject<BrowserInspectInput & { url?: string }>(context.args, "args");
-      args.sessionId = await resolveSessionId(context, args);
-      delete args.url;
-      const result = await browser.observe(args);
-      emitBrowserArtifacts(context, result);
-      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
-    },
-  };
-
-  const act: ToolImplementation = {
-    definition: {
-      id: "browser_act",
-      title: "Browser Act",
-      description: "Perform exactly one structured action in the managed browser using pageUrl and snapshotHash from the latest accepted observation. Supported actions are navigate(url), click(ref), type(ref,text), select(ref,value), press(ref,key), scroll(x,y), and wait(ref?,text?,timeoutMs?). Element identity is resolved by Playwright getByRef() against the latest AI snapshot; snapshotHash is an observation/approval fingerprint, not a DOM-node identity. The tool manages sessionId internally, requires approval for write actions, and returns the updated page state and observation.",
-      domain: "browser_action",
-      source: "internal",
-      mode: "sync",
-      inputSchema: {
-        type: "object",
-        additionalProperties: false,
-        required: ["pageUrl", "snapshotHash", "action"],
-        properties: {
-          sessionId,
-          pageUrl: { type: "string", minLength: 1 },
-          snapshotHash: { type: "string", minLength: 1 },
-          action: {
-            ...actionSchema,
-          },
-        },
-      },
-      inputSchemaByExposure: { agent_intent: agentActSchema },
-      outputSchema: browserResultSchema,
-      tags: ["computer-use", "browser", "act", "action", "click", "type", "navigate", "操作", "点击", "输入"],
-      capabilities: { sideEffect: "network", requiresApproval: true, networkAccess: true },
-    },
-    execute: async (context) => {
-      const args = requireObject<BrowserActInput>(context.args, "args");
-      args.sessionId = await resolveSessionId(context, args as unknown as Record<string, unknown>);
-      const result = await browser.act(args);
-      emitBrowserArtifacts(context, result);
-      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
-    },
-  };
-
   const assert: ToolImplementation = {
     definition: {
       id: "browser_assert",
@@ -398,8 +257,10 @@ export const createComputerUseBrowserTools = (
     },
     execute: async (context) => {
       const args = requireObject<BrowserAssertInput>(context.args, "args");
-      args.sessionId = await resolveSessionId(context, args as unknown as Record<string, unknown>);
-      const result = await browser.assert(args);
+      const bound = requireBoundSession(context);
+      const result = bound
+        ? await browser.assert({ ...args, sessionId: bound })
+        : unavailable(context);
       emitBrowserArtifacts(context, result);
       return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
     },
@@ -756,5 +617,5 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  return [observe, act, assert, navigate, wait, snapshot, screenshot, click, fill, pressKey, selectOption, scroll];
+  return [assert, navigate, wait, snapshot, screenshot, click, fill, pressKey, selectOption, scroll];
 };

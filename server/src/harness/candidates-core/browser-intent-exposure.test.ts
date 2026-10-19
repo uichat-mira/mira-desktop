@@ -76,26 +76,6 @@ describe("browser-intent Harness candidate exposure", () => {
 
     registerTool(
       createTool({
-        id: "browser_observe",
-        domain: "browser_action",
-        tags: ["browser", "computer-use"],
-        sideEffect: "network",
-        requiresApproval: false,
-        networkAccess: true,
-      }),
-    );
-    registerTool(
-      createTool({
-        id: "browser_act",
-        domain: "browser_action",
-        tags: ["browser", "computer-use"],
-        sideEffect: "network",
-        requiresApproval: false,
-        networkAccess: true,
-      }),
-    );
-    registerTool(
-      createTool({
         id: "browser_assert",
         domain: "browser_action",
         tags: ["browser", "computer-use"],

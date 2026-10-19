@@ -228,7 +228,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
     );
   });
 
-  it("projects one canonical browser profile that owns atomic and legacy Tools", () => {
+  it("projects one canonical browser profile that owns the atomic Tools", () => {
     const atomicToolIds = [
       "browser_navigate",
       "browser_snapshot",
@@ -242,8 +242,6 @@ describe("resolveHarnessCapabilityProfiles", () => {
     ];
     const profiles = resolveHarnessCapabilityProfiles([
       ...atomicToolIds.map((toolId) => createDefinition(toolId)),
-      createDefinition("browser_observe"),
-      createDefinition("browser_act"),
       createDefinition("browser_assert"),
       createDefinition("browser_attached_look"),
       createDefinition("browser_attached_browse"),
@@ -264,7 +262,6 @@ describe("resolveHarnessCapabilityProfiles", () => {
         id: "browser",
         domain: "browser_action",
         source: "internal",
-        aliases: ["browser_computer_use"],
         disclosureToolIds: [],
         supportingToolIds: expect.arrayContaining([
           "browser_navigate",
@@ -276,8 +273,6 @@ describe("resolveHarnessCapabilityProfiles", () => {
           "browser_select_option",
           "browser_scroll",
           "browser_wait_for",
-          "browser_observe",
-          "browser_act",
           "browser_assert",
         ]),
         workbench: {
@@ -288,6 +283,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
         },
       }),
     );
+    expect(browser).not.toHaveProperty("aliases");
     expect(browser?.description).toMatch(/isolated Playwright.*Mira-managed/i);
     expect(browser?.tags).toEqual(
       expect.arrayContaining([
@@ -334,7 +330,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
       ]),
     );
     expect(attached?.supportingToolIds).not.toEqual(
-      expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]),
+      expect.arrayContaining(["browser_assert"]),
     );
     expect(browser?.supportingToolIds).not.toEqual(
       expect.arrayContaining(["browser_attached_look"]),

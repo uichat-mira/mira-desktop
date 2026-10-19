@@ -15,12 +15,12 @@ describe("Computer Use MCP acceptance", () => {
   it("preserves approval and rejects a changed snapshot", async () => {
     clearRegistry();
     clearInvocations();
-    const act = createComputerUseBrowserTools({ observe: vi.fn(), act: vi.fn(), assert: vi.fn() } as never).find((tool) => tool.definition.id === "browser_act")!;
-    registerTool(act);
-    const args = { sessionId: "session-1", pageUrl: "https://example.com/", snapshotHash: "hash-1", action: { kind: "click", ref: "e1" } };
-    const pending = await executeInvocation({ toolId: "browser_act", args });
+    const click = createComputerUseBrowserTools({ observe: vi.fn(), act: vi.fn(), assert: vi.fn() } as never).find((tool) => tool.definition.id === "browser_click")!;
+    registerTool(click);
+    const args = { sessionId: "session-1", pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e1" };
+    const pending = await executeInvocation({ toolId: "browser_click", args });
     expect(pending.status).toBe("awaiting_approval");
-    const changed = await executeInvocation({ toolId: "browser_act", args: { ...args, snapshotHash: "hash-2" }, approvedInvocations: [{ toolId: "browser_act", inputHash: "stale-hash" }] });
+    const changed = await executeInvocation({ toolId: "browser_click", args: { ...args, snapshotHash: "hash-2" }, approvedInvocations: [{ toolId: "browser_click", inputHash: "stale-hash" }] });
     expect(changed.status).toBe("awaiting_approval");
     writeEvidence("approval-boundary.json", { pending, changed });
   });

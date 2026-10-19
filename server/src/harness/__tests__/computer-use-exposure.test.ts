@@ -7,7 +7,7 @@ describe("Computer Use Harness exposure", () => {
   beforeEach(() => clearHarnessRegistry());
   afterEach(() => clearHarnessRegistry());
 
-  it("exposes only atomic Browser Tools to Agent intent while retaining legacy registrations", async () => {
+  it("exposes only atomic Browser Tools to Agent intent", async () => {
     const browser = { observe: async () => ({ ok: true }), act: async () => ({ ok: true }), assert: async () => ({ ok: true }) };
     createComputerUseBrowserTools(browser as never).forEach(registerTool);
 
@@ -35,9 +35,6 @@ describe("Computer Use Harness exposure", () => {
     expect(result.toolCandidates.map((candidate) => candidate.toolId)).not.toContain(
       "browser_act",
     );
-    expect(result.toolExposure.blockedCapabilityIds).toEqual(
-      expect.arrayContaining(["browser_observe", "browser_act"]),
-    );
   });
 
   it("keeps registered browser tools visible to chat_surface", async () => {
@@ -46,7 +43,7 @@ describe("Computer Use Harness exposure", () => {
 
     const result = await resolveHarnessToolCandidatesForTurn({ source: "chat_surface", query: "打开网页读取标题" });
 
-    expect(result.toolExposure.exposedToolIds).toEqual(expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]));
+    expect(result.toolExposure.exposedToolIds).toEqual(expect.arrayContaining(["browser_navigate", "browser_snapshot", "browser_assert"]));
   });
 
   it("keeps browser tools available for a browser-intent Agent turn", async () => {

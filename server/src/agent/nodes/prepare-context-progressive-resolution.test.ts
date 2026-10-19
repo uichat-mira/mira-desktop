@@ -364,7 +364,7 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
     );
   });
 
-  it("maps a legacy browser toolkit alias to the canonical group without leaking legacy Agent Tool ids", async () => {
+  it("maps the requested browser group to the canonical capability without leaking retired Tool ids", async () => {
     const atomicDefinitions = [
       makeToolDefinition("browser_navigate", "browser_action"),
       makeToolDefinition("browser_click", "browser_action"),
@@ -387,7 +387,7 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
 
     const patch = await prepareContextNode(
       createState({
-        requestedToolGroupIds: ["browser_computer_use", "browser"],
+        requestedToolGroupIds: ["browser"],
       }),
     );
 

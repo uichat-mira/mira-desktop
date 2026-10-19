@@ -66,7 +66,7 @@ describe("browser capability projection", () => {
     expect(profiles.some((profile) => profile.id === "browser_computer_use")).toBe(
       false,
     );
-    expect(browser?.aliases).toEqual(["browser_computer_use"]);
+    expect(browser?.aliases).toBeUndefined();
     expect(new Set(browser?.supportingToolIds)).toEqual(
       new Set(managedBrowserDefinitions().map((definition) => definition.id)),
     );

@@ -36,8 +36,6 @@ import { computerUseRepository } from "@/db/repositories/computer-use/repository
 import { normalizeToolResult, projectToolEvidence } from "./tool-result.js";
 
 const COMPUTER_USE_TOOL_IDS = new Set([
-  "browser_observe",
-  "browser_act",
   "browser_assert",
   "browser_navigate",
   "browser_wait_for",
