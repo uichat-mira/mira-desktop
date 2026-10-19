@@ -267,6 +267,7 @@ test("computer use routes expose runtime state and debugger browser sessions", a
   });
   assert.equal(debuggerStatusResponse.statusCode, 200, debuggerStatusResponse.body);
   assert.equal(debuggerStatusResponse.json().data.runtime.status, "ready");
+  assert.equal("model" in debuggerStatusResponse.json().data, false);
 
   const sessionResponse = await app.inject({
     method: "POST",

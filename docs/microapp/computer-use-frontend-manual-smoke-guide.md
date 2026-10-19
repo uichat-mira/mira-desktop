@@ -1,7 +1,7 @@
 ---
 status: current
 owner: microapp / chat / runtime / desktop
-last_verified: 2026-07-15
+last_verified: 2026-10-19
 layer: wiki
 module: MicroAPP
 feature: ComputerUse
@@ -119,4 +119,4 @@ Agent 前台绑定
 .test-artifact/computer-use-acceptance/desktop/manual-blackbox/
 ```
 
-截图、Network 摘要和结果记录必须与用例 ID 对应。真实 provider 未配置时，`CU-FE-020` 的真实模型部分记录为 `SKIPPED`，不得写成通过。
+截图、Network 摘要和结果记录必须与用例 ID 对应。Agent 主链的真实模型 smoke 如果因 provider 未配置而无法执行，应明确记录为 `SKIPPED`；不得把 Studio 已退役的 Model Run 当作替代验收入口。
