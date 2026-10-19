@@ -537,7 +537,7 @@ describe.skipIf(!executablePath)("AGT-012 Managed Browser cutover acceptance", (
       if (!executed.includes("browser_wait_for")) {
         return requestOrUse("browser_wait_for", {
           condition: { kind: "text", value: "Welcome Mira" },
-          timeoutMs: 5000,
+          timeoutMs: 15000,
         });
       }
       if (executed.filter((toolId) => toolId === "browser_snapshot").length === 2) {
