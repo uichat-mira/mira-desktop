@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BrowserSessionManager, BrowserTabNotFoundError } from "../session/manager.js";
+import { BrowserSessionManager, BrowserTabNotFoundError, BrowserTabPolicyError } from "../session/manager.js";
 
 const readyRuntime = { resolveRuntime: () => ({ status: "ready" as const, strategy: "managed" as const, runtime: { source: "managed" as const, channel: "chromium" as const, executablePath: "C:/chrome.exe", version: "1", installedAt: "now" }, inspectedCandidates: [] }) };
 
@@ -154,6 +154,60 @@ describe("BrowserSessionManager", () => {
 
     await manager.closeAll();
     await other.closeAll();
+  });
+
+  it("rejects an out-of-policy tab before focus and rechecks after an asynchronous focus", async () => {
+    const firstPage = {
+      goto: vi.fn(async () => undefined),
+      url: vi.fn(() => "https://example.com/first"),
+    };
+    let secondUrl = "https://outside.invalid/popup";
+    let redirectOnFocus = false;
+    const secondPage = {
+      goto: vi.fn(async () => undefined),
+      url: vi.fn(() => secondUrl),
+      bringToFront: vi.fn(async () => {
+        if (redirectOnFocus) secondUrl = "https://outside.invalid/redirected";
+      }),
+    };
+    const manager = new BrowserSessionManager({
+      runtime: readyRuntime,
+      launcher: {
+        launch: vi.fn(async () => ({
+          newContext: vi.fn(async () => ({
+            newPage: vi.fn(async () => firstPage),
+            pages: vi.fn(() => [firstPage, secondPage]),
+            close: vi.fn(async () => undefined),
+          })),
+          close: vi.fn(async () => undefined),
+        })),
+      },
+    });
+    try {
+      const created = await manager.create({ allowedDomains: ["example.com"], allowedSchemes: ["https:"] });
+      const session = manager.get(created.id)!;
+      const tab = (await manager.listTabs(session)).tabs[1]!;
+      await expect(manager.selectTab(session, tab.id)).rejects.toBeInstanceOf(BrowserTabPolicyError);
+      expect(secondPage.bringToFront).not.toHaveBeenCalled();
+      expect(session.page).toBe(firstPage);
+
+      secondUrl = "data:text/html,not-allowed";
+      await expect(manager.selectTab(session, tab.id)).rejects.toThrow("URL scheme is not allowed");
+      expect(session.page).toBe(firstPage);
+
+      secondUrl = "https://example.com/allowed";
+      redirectOnFocus = true;
+      await expect(manager.selectTab(session, tab.id)).rejects.toBeInstanceOf(BrowserTabPolicyError);
+      expect(secondPage.bringToFront).toHaveBeenCalledOnce();
+      expect(session.page).toBe(firstPage);
+
+      redirectOnFocus = false;
+      secondUrl = "https://example.com/allowed";
+      await manager.selectTab(session, tab.id);
+      expect(session.page).toBe(secondPage);
+    } finally {
+      await manager.closeAll();
+    }
   });
 
   it("keeps an initial navigation alive while its idle timer fires, then expires it normally", async () => {
