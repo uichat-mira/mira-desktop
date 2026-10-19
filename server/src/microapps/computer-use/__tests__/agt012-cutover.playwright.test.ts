@@ -6,6 +6,22 @@ import { chromium } from "playwright-core";
 import { afterEach, describe, expect, it } from "vitest";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import {
+  appendPendingEvidence,
+  createAgentGoal,
+  genericTaskSubAgentNode,
+  normalizeAndFreezeToolCall,
+  pauseForApproval,
+  policyNode,
+  prepareContextNode,
+  retrieveNode,
+  toolNode,
+  toolSchemaDisclosureNode,
+} from "@/agent/nodes/index.js";
+import { createPiAgentLoop, type PiAgentLoopSemantics } from "@/agent/pi-loop/index.js";
+import type { AgentNodeState } from "@/agent/node-runtime.js";
+import type { AgentInputWithCheckpoint } from "@/agent/runtime-checkpoint.js";
+import type { AgentGraphOutput } from "@/agent/types.js";
+import {
   clearInvocations,
   executeInvocation,
   resolveInvocationApproval,
@@ -398,6 +414,310 @@ describe.skipIf(!executablePath)("AGT-012 Managed Browser cutover acceptance", (
       ),
     );
   }, 30000);
+
+  it("runs the application-default Pi loop through Browser metadata disclosure, atomic execution and approval resume", async () => {
+    fs.mkdirSync(evidenceRoot, { recursive: true });
+    const fixture = await startFixtureServer();
+    servers.push(fixture);
+
+    const manager = new BrowserSessionManager({
+      launcher: {
+        launch: (options) => chromium.launch({ ...options, executablePath }),
+      },
+      artifactRoot: evidenceRoot,
+    });
+    managers.push(manager);
+    const browser = new BrowserService(manager);
+    for (const tool of createComputerUseBrowserTools(browser, { sessionManager: manager })) {
+      registerTool(tool);
+    }
+
+    const loginUrl = `${fixture.baseUrl}/login`;
+    const prompt = `Open ${loginUrl}, sign in as Mira, wait until the page reports Welcome Mira, then report the final state.`;
+    const plannerCalls: Array<{
+      exposed: string[];
+      schemas: string[];
+      executed: string[];
+      selected: string;
+    }> = [];
+
+    const browserResultFromExecution = (
+      state: AgentNodeState,
+      toolId: string,
+    ) => {
+      const execution = [...(state.evidence?.toolExecutions ?? [])]
+        .reverse()
+        .find((item) => item.toolId === toolId);
+      return execution?.result as {
+        page?: { url?: string; snapshotHash?: string };
+        observation?: { snapshot?: string; visibleText?: string };
+        assertion?: { passed?: boolean };
+      } | undefined;
+    };
+
+    const planner: PiAgentLoopSemantics["planner"] = async (state) => {
+      const executions = state.evidence?.toolExecutions ?? [];
+      const executed = executions.map((item) => item.toolId);
+      const metaById = new Map(
+        (state.toolExposure?.toolMeta ?? []).map((meta) => [meta.toolId, meta]),
+      );
+      const hasSchema = (toolId: string) => Boolean(metaById.get(toolId)?.inputSchema);
+      const useTool = (toolId: string, args: Record<string, unknown>) => {
+        plannerCalls.push({
+          exposed: [...(state.toolExposure?.exposedTools ?? [])],
+          schemas: [...metaById.entries()]
+            .filter(([, meta]) => Boolean(meta.inputSchema))
+            .map(([id]) => id),
+          executed: [...executed],
+          selected: toolId,
+        });
+        return {
+          nextAction: {
+            type: "use_tool" as const,
+            toolId,
+            args,
+            reason: `AGT-012 deterministic Pi acceptance step: ${toolId}`,
+          },
+        };
+      };
+      const requestOrUse = (toolId: string, args: Record<string, unknown>) =>
+        useTool(toolId, hasSchema(toolId) ? args : {});
+
+      if (!executed.includes("browser_navigate")) {
+        return requestOrUse("browser_navigate", { url: loginUrl });
+      }
+      if (executed.filter((toolId) => toolId === "browser_snapshot").length === 0) {
+        return requestOrUse("browser_snapshot", {});
+      }
+      if (!executed.includes("browser_fill")) {
+        const snapshot = browserResultFromExecution(state, "browser_snapshot");
+        const refs = snapshotRefs(snapshot?.observation?.snapshot);
+        if (!snapshot?.page?.url || !snapshot.page.snapshotHash || !refs.input) {
+          return {
+            errorMessage: "AGT-012 planner could not derive the input ref from Browser evidence.",
+            errorSourceNodeId: "nextActionPlanner",
+            nextAction: {
+              type: "error" as const,
+              reason: "Missing input Browser evidence.",
+            },
+          };
+        }
+        return requestOrUse("browser_fill", {
+          pageUrl: snapshot.page.url,
+          snapshotHash: snapshot.page.snapshotHash,
+          ref: refs.input,
+          value: "Mira",
+        });
+      }
+      if (executed.filter((toolId) => toolId === "browser_snapshot").length === 1) {
+        return requestOrUse("browser_snapshot", {});
+      }
+      if (!executed.includes("browser_click")) {
+        const snapshot = browserResultFromExecution(state, "browser_snapshot");
+        const refs = snapshotRefs(snapshot?.observation?.snapshot);
+        if (!snapshot?.page?.url || !snapshot.page.snapshotHash || !refs.button) {
+          return {
+            errorMessage: "AGT-012 planner could not derive the button ref from Browser evidence.",
+            errorSourceNodeId: "nextActionPlanner",
+            nextAction: {
+              type: "error" as const,
+              reason: "Missing button Browser evidence.",
+            },
+          };
+        }
+        return requestOrUse("browser_click", {
+          pageUrl: snapshot.page.url,
+          snapshotHash: snapshot.page.snapshotHash,
+          ref: refs.button,
+        });
+      }
+      if (!executed.includes("browser_wait_for")) {
+        return requestOrUse("browser_wait_for", {
+          condition: { kind: "text", value: "Welcome Mira" },
+          timeoutMs: 5000,
+        });
+      }
+      if (executed.filter((toolId) => toolId === "browser_snapshot").length === 2) {
+        return requestOrUse("browser_snapshot", {});
+      }
+      if (!executed.includes("browser_assert")) {
+        return requestOrUse("browser_assert", {
+          assertion: { kind: "text", expected: "Welcome Mira" },
+        });
+      }
+
+      const finalSnapshot = browserResultFromExecution(state, "browser_snapshot");
+      const asserted = browserResultFromExecution(state, "browser_assert");
+      if (
+        !finalSnapshot?.observation?.visibleText?.includes("Welcome Mira") ||
+        asserted?.assertion?.passed !== true
+      ) {
+        return {
+          nextAction: {
+            type: "error" as const,
+            reason: "Final Browser evidence did not prove the requested state.",
+          },
+          errorMessage: "Final Browser evidence did not prove the requested state.",
+          errorSourceNodeId: "nextActionPlanner",
+        };
+      }
+      return {
+        nextAction: {
+          type: "answer" as const,
+          reason: "Atomic Browser evidence proves the requested final state.",
+          completionProof: [
+            {
+              criterion: "Welcome Mira is visible and asserted",
+              evidenceRefs: ["browser_snapshot", "browser_assert"],
+            },
+          ],
+          unresolvedGaps: [],
+        },
+      };
+    };
+
+    const semantics: PiAgentLoopSemantics = {
+      prepareContext: prepareContextNode,
+      planner,
+      delegateTask: genericTaskSubAgentNode,
+      discloseToolSchema: toolSchemaDisclosureNode,
+      normalizeAndFreeze: normalizeAndFreezeToolCall,
+      evaluatePolicy: policyNode,
+      pauseForApproval,
+      retrieve: retrieveNode,
+      executeTool: toolNode,
+      appendEvidence: appendPendingEvidence,
+      generate: async () => ({ answer: "Welcome Mira is visible on the authenticated page." }),
+      finalize: async () => ({ terminalReason: "completed" }),
+      finishWithError: async (state) => ({
+        errorMessage: state.errorMessage ?? "AGT-012 Pi acceptance failed.",
+      }),
+    };
+    const loop = createPiAgentLoop(semantics);
+    const baseInput: AgentInputWithCheckpoint = {
+      runId: `agt012-pi-${crypto.randomUUID()}`,
+      threadId: `agt012-pi-thread-${crypto.randomUUID()}`,
+      userId: 1,
+      goal: createAgentGoal(prompt),
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+          parts: [{ type: "text", text: prompt }],
+        },
+      ],
+      requestedToolGroupIds: ["browser"],
+      maxIterations: 20,
+    };
+
+    const approvalTrace: Array<{
+      toolId: string;
+      inputHash: string;
+      approvalId: string;
+    }> = [];
+    let input: AgentInputWithCheckpoint = baseInput;
+    let output: AgentGraphOutput & { iterationCount?: number };
+
+    for (let resumeCount = 0; resumeCount < 12; resumeCount += 1) {
+      output = await loop.run(input) as AgentGraphOutput & { iterationCount?: number };
+      if (output.status !== "waiting_approval") break;
+      expect(output.pendingApproval).toBeDefined();
+      expect(output.pendingToolCall).toBeDefined();
+      const approval = output.pendingApproval!;
+      const pending = output.pendingToolCall!;
+      expect(approval.toolId).toBe(pending.toolId);
+      expect(approval.inputHash).toBe(pending.inputHash);
+      approvalTrace.push({
+        toolId: pending.toolId,
+        inputHash: pending.inputHash,
+        approvalId: approval.id,
+      });
+      input = {
+        ...baseInput,
+        currentTaskFrame: output.currentTaskFrame,
+        observations: output.observations,
+        evidence: output.evidence,
+        retrievedChunks: output.retrievedChunks,
+        lastToolExecution: output.lastToolExecution,
+        iterationCount: output.iterationCount,
+        finalizationPacket: output.finalizationPacket,
+        workspaceOutputs: output.workspaceOutputs,
+        progressiveResolution: output.progressiveResolution,
+        pendingToolCall: pending,
+        approvedInvocations: [
+          {
+            toolId: pending.toolId,
+            input: pending.args,
+            inputHash: pending.inputHash,
+            approvedAt: new Date().toISOString(),
+            approvalId: approval.id,
+          },
+        ],
+      };
+    }
+
+    expect(output!).toBeDefined();
+    expect(output!.status).toBe("completed");
+    expect(output!.answer).toContain("Welcome Mira");
+    const executed = output!.evidence.toolExecutions.map((execution) => execution.toolId);
+    expect(executed).toEqual([
+      "browser_navigate",
+      "browser_snapshot",
+      "browser_fill",
+      "browser_snapshot",
+      "browser_click",
+      "browser_wait_for",
+      "browser_snapshot",
+      "browser_assert",
+    ]);
+    expect(executed).not.toContain("browser_observe");
+    expect(executed).not.toContain("browser_act");
+    // Current Agent MVP policy conservatively requires approval for the
+    // browser_action domain even when a concrete Tool declares sideEffect:none.
+    // AGT-012 verifies and preserves that policy; it does not relax approvals.
+    expect(approvalTrace.map((item) => item.toolId)).toEqual(executed);
+    expect(output!.progressiveResolution?.budget.consumed).toBe(6);
+    for (const toolId of [
+      "browser_navigate",
+      "browser_snapshot",
+      "browser_fill",
+      "browser_click",
+      "browser_wait_for",
+      "browser_assert",
+    ]) {
+      expect(output!.progressiveResolution?.disclosure[toolId]).toBe("schema");
+    }
+    expect(
+      plannerCalls.some(
+        (call) =>
+          call.selected === "browser_click" &&
+          !call.schemas.includes("browser_click"),
+      ),
+    ).toBe(true);
+    expect(
+      plannerCalls.some(
+        (call) =>
+          call.selected === "browser_click" &&
+          call.schemas.includes("browser_click"),
+      ),
+    ).toBe(true);
+
+    fs.writeFileSync(
+      path.join(evidenceRoot, "pi-main-agent-trace.json"),
+      JSON.stringify(
+        {
+          prompt,
+          executed,
+          approvalTrace,
+          progressiveResolution: output!.progressiveResolution,
+          plannerCalls,
+          answer: output!.answer,
+        },
+        null,
+        2,
+      ),
+    );
+  }, 60000);
 
   it("keeps stale identity, navigation policy and wait timeout failures explicit on the atomic Tool path", async () => {
     const fixture = await startFixtureServer();
