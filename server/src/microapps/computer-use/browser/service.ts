@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { BrowserActInput, BrowserArtifact, BrowserAssertInput, BrowserAssertion, BrowserInspectInput, BrowserNavigateInput, BrowserTabSelectInput, BrowserTabsListInput, BrowserToolError, BrowserToolResult, BrowserWaitInput } from "./types.js";
-import { BrowserActionTimeoutError, BrowserTabNotFoundError } from "../session/manager.js";
+import { BrowserActionTimeoutError, BrowserTabNotFoundError, BrowserTabPolicyError } from "../session/manager.js";
 import type { BrowserPage, BrowserSessionManager, ManagedBrowserSession } from "../session/manager.js";
 
 const failure = (sessionId: string, invocationId: string, page: BrowserToolResult["page"], code: string, message: string, retryable = false, assertion?: BrowserToolResult["assertion"]): BrowserToolResult => ({ ok: false, sessionId, invocationId, page, artifacts: [], assertion, error: { code, message, retryable } });
@@ -225,14 +225,14 @@ export class BrowserService {
     } catch (cause) {
       if (cause instanceof BrowserActionTimeoutError) pendingOperation = cause.operation;
       const message = cause instanceof Error ? cause.message : String(cause);
-      const code = cause instanceof BrowserTabNotFoundError ? "tab_not_found" : "tab_select_failed";
+      const code = cause instanceof BrowserTabNotFoundError ? "tab_not_found" : cause instanceof BrowserTabPolicyError ? "navigation_blocked" : "tab_select_failed";
       return failure(
         input.sessionId,
         invocationId,
         { url: session.page.url(), title: "" },
         code,
         message,
-        code !== "tab_not_found",
+        code === "tab_select_failed",
       );
     } finally {
       const finish = () => {
