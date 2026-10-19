@@ -61,6 +61,13 @@ export class BrowserTabNotFoundError extends Error {
   }
 }
 
+export class BrowserTabPolicyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BrowserTabPolicyError";
+  }
+}
+
 export class BrowserSessionManager {
   private readonly sessions = new Map<string, ManagedBrowserSession>();
   private readonly runtime?: BrowserRuntimeResolver;
@@ -168,7 +175,21 @@ export class BrowserSessionManager {
   async selectTab(session: ManagedBrowserSession, tabId: string): Promise<BrowserPage> {
     const target = this.sessionTabs(session).find((tab) => tab.id === tabId);
     if (!target) throw new BrowserTabNotFoundError(tabId);
+    const assertTargetAllowed = () => {
+      try {
+        this.assertAllowedUrl(session, target.page.url());
+      } catch (cause) {
+        throw new BrowserTabPolicyError(cause instanceof Error ? cause.message : String(cause));
+      }
+    };
+    // A popup is not permission to browse outside the session's existing URL policy.
+    assertTargetAllowed();
     await target.page.bringToFront?.();
+    if (!this.sessionTabs(session).some((tab) => tab.id === tabId && tab.page === target.page)) {
+      throw new BrowserTabNotFoundError(tabId);
+    }
+    // Focusing is asynchronous; a page may close or navigate while it is pending.
+    assertTargetAllowed();
     session.page = target.page;
     this.touch(session);
     return target.page;
@@ -226,7 +247,7 @@ export class BrowserSessionManager {
     await Promise.all([...this.sessions.keys()].map((id) => this.stop(id)));
   }
 
-  async navigate(session: ManagedBrowserSession, url: string) {
+  private assertAllowedUrl(session: ManagedBrowserSession, url: string) {
     const parsed = new URL(url);
     const schemes = session.info.config.allowedSchemes ?? DEFAULT_ALLOWED_SCHEMES;
     if (!schemes.includes(parsed.protocol)) throw new Error(`URL scheme is not allowed: ${parsed.protocol}`);
@@ -242,6 +263,10 @@ export class BrowserSessionManager {
       }
     }
 
+  }
+
+  async navigate(session: ManagedBrowserSession, url: string) {
+    this.assertAllowedUrl(session, url);
     const operation = Promise.resolve().then(() => session.page.goto(url, {
       waitUntil: "domcontentloaded",
       timeout: session.info.config.actionTimeoutMs,
