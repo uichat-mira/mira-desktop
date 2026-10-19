@@ -71,6 +71,7 @@ import { UChatRagProgressDetailDrawer } from "./UChatRagProgressDetailDrawer";
 import { UChatRagSourceDetailDrawer } from "./UChatRagSourceDetailDrawer";
 import { UChatThreadHeader } from "./UChatThreadHeader";
 import { UChatToolTrace } from "./UChatToolTrace";
+import { visibleChatToolTraceEntries } from "./browserToolTrace";
 import { UChatWelcomeEmptyState } from "./UChatWelcomeEmptyState";
 import type { UChatThreadSlots } from "./UChatThreadSlots";
 
@@ -846,6 +847,10 @@ function UChatMessageRow({
   const failurePresentation = messageTrace.failurePresentation;
   const toolTraceEntries = message.toolTrace ?? [];
   const hasExecutionTrace = messageTrace.hasTrace;
+  const visibleToolTraceEntries = visibleChatToolTraceEntries(
+    toolTraceEntries,
+    hasExecutionTrace,
+  );
   const preferMarkdownForText =
     messagePresentation.preferMarkdownForText !== false;
   const assistantBubbleWidthClassName = resolveBubbleWidthClassName(
@@ -1050,8 +1055,12 @@ function UChatMessageRow({
               controller={agent}
             />
 
-            {toolTraceEntries.length > 0 && !hasExecutionTrace ? (
-              <UChatToolTrace entries={toolTraceEntries} />
+            {visibleToolTraceEntries.length > 0 ? (
+              <UChatToolTrace
+                entries={visibleToolTraceEntries}
+                resolveAttachmentSource={resolveAttachmentSource}
+                onPreviewImage={(src) => onPreviewImage({ src })}
+              />
             ) : null}
           </UChatAssistantBubbleShell>
 
