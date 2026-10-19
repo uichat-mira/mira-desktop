@@ -10,6 +10,8 @@ import type { AgentInputWithCheckpoint } from "@/agent/runtime-checkpoint.js";
 import { clearHarnessRegistry, registerTool } from "@/harness/registry.js";
 import { createComputerUseBrowserTools } from "@/mcp/tools/browser-tools.tool.js";
 import { BrowserService } from "@/microapps/computer-use/browser/service.js";
+import type { BrowserSessionConfig } from "@/microapps/computer-use/browser/types.js";
+import { isExpectedAgt012FinalBrowserState } from "@/microapps/computer-use/agt012-smoke-evidence.js";
 import { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
 import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 
@@ -116,7 +118,17 @@ if (!address || typeof address === "string") {
 const loginUrl = `http://127.0.0.1:${address.port}/login`;
 const prompt = `Open ${loginUrl}, sign in as Mira, wait until the page reports Welcome Mira, then tell me the final page state.`;
 
-const manager = new BrowserSessionManager({
+class RecordingBrowserSessionManager extends BrowserSessionManager {
+  readonly createdSessionIds: string[] = [];
+
+  override async create(config: BrowserSessionConfig) {
+    const session = await super.create(config);
+    if (session.status === "ready") this.createdSessionIds.push(session.id);
+    return session;
+  }
+}
+
+const manager = new RecordingBrowserSessionManager({
   launcher: {
     launch: (options) => chromium.launch({ ...options, executablePath }),
   },
@@ -262,10 +274,28 @@ try {
     (toolId) => toolId === "browser_observe" || toolId === "browser_act",
   );
   const finalEvidence = output.evidence.toolExecutions.at(-1)?.result;
-  const finalStateText = JSON.stringify({
-    answer: output.answer,
-    finalEvidence,
-    requests,
+  const finalBrowserSessionId = manager.createdSessionIds.at(-1);
+  const finalBrowserSession = finalBrowserSessionId
+    ? manager.get(finalBrowserSessionId)
+    : undefined;
+  const expectedFinalUrl = new URL("/success?name=Mira", loginUrl).toString();
+  let finalBrowserUrl: string | undefined;
+  let finalBrowserVisibleText: string | undefined;
+  let finalBrowserReadError: string | undefined;
+  if (finalBrowserSession) {
+    try {
+      finalBrowserUrl = finalBrowserSession.page.url();
+      finalBrowserVisibleText = await finalBrowserSession.page.evaluate(
+        () => document.body?.innerText ?? "",
+      );
+    } catch (cause) {
+      finalBrowserReadError = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
+  const browserStatePassed = isExpectedAgt012FinalBrowserState({
+    actualUrl: finalBrowserUrl,
+    expectedUrl: expectedFinalUrl,
+    visibleText: finalBrowserVisibleText,
   });
   const passed =
     !stoppedForLegacySelection &&
@@ -274,7 +304,7 @@ try {
     legacyDiscoverableToolIds.length === 0 &&
     attachedExecutions.length === 0 &&
     requests.includes("/success") &&
-    finalStateText.includes("Welcome Mira");
+    browserStatePassed;
 
   const evidence = {
     recordedAt: new Date().toISOString(),
@@ -300,6 +330,14 @@ try {
     },
     approvals,
     attempts,
+    browserState: {
+      sessionId: finalBrowserSessionId,
+      expectedUrl: expectedFinalUrl,
+      actualUrl: finalBrowserUrl,
+      visibleText: finalBrowserVisibleText,
+      readError: finalBrowserReadError,
+      passed: browserStatePassed,
+    },
     fixture: {
       loginUrl,
       requests,
@@ -324,6 +362,13 @@ try {
     attachedExecutions,
     approvals: approvals.map(({ toolId, inputHash }) => ({ toolId, inputHash })),
     requests,
+    browserState: {
+      expectedUrl: expectedFinalUrl,
+      actualUrl: finalBrowserUrl,
+      visibleText: finalBrowserVisibleText,
+      readError: finalBrowserReadError,
+      passed: browserStatePassed,
+    },
     stoppedForLegacySelection,
     errorMessage: output.errorMessage,
   }, null, 2));
