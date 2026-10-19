@@ -28,6 +28,8 @@ const AGENT_MANAGED_BROWSER_TOOL_IDS = [
   "browser_press_key",
   "browser_select_option",
   "browser_scroll",
+  "browser_tabs_list",
+  "browser_tab_select",
 ] as const;
 
 const MANAGED_BROWSER_TOOL_IDS = [

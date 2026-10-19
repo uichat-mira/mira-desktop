@@ -13,12 +13,14 @@ const browser = {
   assert: vi.fn(async (input) => ({ ok: true, sessionId: input.sessionId, invocationId: "browser-assert", page: { url: "https://example.com", title: "Example" }, assertion: { kind: input.assertion.kind, passed: true }, artifacts: [] })),
   navigate: vi.fn(async (input: { sessionId: string; url: string }) => ({ ok: true, sessionId: input.sessionId, invocationId: "browser-navigate", page: { url: input.url, title: "Destination", snapshotHash: "hash-nav" }, observation: { snapshot: 'heading "Destination" ref=e1' }, artifacts: [] })),
   wait: vi.fn(async (input: { sessionId: string; condition: { kind: string } }) => ({ ok: true, sessionId: input.sessionId, invocationId: "browser-wait", page: { url: "https://example.com", title: "Example", snapshotHash: "hash-wait" }, observation: { snapshot: 'button "Go" ref=e2' }, artifacts: [] })),
+  listTabs: vi.fn(async (input: { sessionId: string }) => ({ ok: true, sessionId: input.sessionId, invocationId: "browser-tabs-list", page: { url: "https://example.com", title: "Example" }, tabs: [{ id: "tab-1", title: "Example", url: "https://example.com", selected: true }], tabsTruncated: false, artifacts: [] })),
+  selectTab: vi.fn(async (input: { sessionId: string; tabId: string }) => ({ ok: true, sessionId: input.sessionId, invocationId: "browser-tab-select", page: { url: "https://example.com/second", title: "Second", snapshotHash: "hash-tab" }, tabs: [{ id: input.tabId, title: "Second", url: "https://example.com/second", selected: true }], observation: { snapshot: 'heading "Second"' }, artifacts: [] })),
 };
 
 describe("Computer Use browser MCP tools", () => {
   test("exposes only the atomic browser tools", () => {
     const tools = createComputerUseBrowserTools(browser as never);
-    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_assert", "browser_navigate", "browser_wait_for", "browser_snapshot", "browser_screenshot", "browser_click", "browser_fill", "browser_press_key", "browser_select_option", "browser_scroll"]);
+    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_assert", "browser_navigate", "browser_wait_for", "browser_snapshot", "browser_screenshot", "browser_click", "browser_fill", "browser_press_key", "browser_select_option", "browser_scroll", "browser_tabs_list", "browser_tab_select"]);
     expect(tools.every((tool) => tool.definition.inputSchema.additionalProperties === false)).toBe(true);
     expect(tools.find((tool) => tool.definition.id === "browser_click")?.definition.capabilities.requiresApproval).toBe(true);
     expect(tools.find((tool) => tool.definition.id === "browser_assert")?.definition.description).toContain("value(ref,expected)");
@@ -117,6 +119,45 @@ describe("Computer Use browser MCP tools", () => {
     expect(scrollProps.x).toMatchObject({ type: "number" });
     expect(scrollProps.y).toMatchObject({ type: "number" });
     expect(scroll.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
+  });
+
+  test("tabs list and tab select expose strict schemas with conservative approval", () => {
+    const tools = createComputerUseBrowserTools(browser as never);
+    const list = tools.find((tool) => tool.definition.id === "browser_tabs_list")!.definition;
+    expect(list.capabilities).toMatchObject({ sideEffect: "none", requiresApproval: false, networkAccess: true });
+    expect(list.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: [] });
+    expect(list.inputSchemaByExposure?.agent_intent).toMatchObject({ type: "object", additionalProperties: false, required: [] });
+
+    const select = tools.find((tool) => tool.definition.id === "browser_tab_select")!.definition;
+    expect(select.capabilities).toMatchObject({ sideEffect: "none", requiresApproval: true, networkAccess: true });
+    expect(select.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: ["tabId"] });
+    expect(select.inputSchemaByExposure?.agent_intent).toMatchObject({ required: ["tabId"], additionalProperties: false });
+    expect(select.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
+  });
+
+  test("tabs list runs without approval while tab select requires approval", async () => {
+    clearRegistry(); clearInvocations();
+    browser.listTabs.mockClear();
+    browser.selectTab.mockClear();
+    const manager = { create: vi.fn(async () => ({ id: "tab-session", status: "ready" as const })), get: vi.fn((id: string) => id === "tab-session" ? { info: { status: "ready" as const } } : undefined) };
+    const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
+    tools.forEach(registerTool);
+    const navArgs = { url: "https://example.com" };
+    await executeInvocation({ toolId: "browser_navigate", threadId: "tab-thread", args: navArgs, approvedInvocations: [approve("browser_navigate", navArgs)] });
+
+    const listed = await executeInvocation({ toolId: "browser_tabs_list", threadId: "tab-thread", args: {} });
+    expect(listed.status).toBe("completed");
+    expect(listed.result).toMatchObject({ ok: true, tabs: [{ id: "tab-1", selected: true }] });
+    expect(browser.listTabs).toHaveBeenLastCalledWith({ sessionId: "tab-session" });
+
+    const selectArgs = { tabId: "tab-2" };
+    const pending = await executeInvocation({ toolId: "browser_tab_select", threadId: "tab-thread", args: selectArgs });
+    expect(pending.status).toBe("awaiting_approval");
+    expect(browser.selectTab).not.toHaveBeenCalled();
+    const selected = await executeInvocation({ toolId: "browser_tab_select", threadId: "tab-thread", args: selectArgs, approvedInvocations: [{ toolId: "browser_tab_select", inputHash: pending.inputHash! }] });
+    expect(selected.status).toBe("completed");
+    expect(selected.result).toMatchObject({ ok: true, page: { url: "https://example.com/second" }, tabs: [{ id: "tab-2", selected: true }] });
+    expect(browser.selectTab).toHaveBeenLastCalledWith({ sessionId: "tab-session", tabId: "tab-2" });
   });
 
   test("press, select and scroll require approval before any browser action executes", async () => {

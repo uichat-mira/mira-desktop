@@ -1,7 +1,7 @@
 ---
 status: planned
 owner: agent-runtime
-last_verified: 2026-10-17
+last_verified: 2026-10-19
 layer: raw-source
 module: Agent
 feature: ManagedBrowser
@@ -42,8 +42,8 @@ related:
 
 - `server/src/mcp/tools/browser-tools.tool.ts`：当前只注册原子 Browser Tool。旧 `browser_observe / browser_act` 已于 AGT-012 final cut 移除，不再注册、不再进入 Main / Generic Agent 的 `agent_intent` 暴露，也没有 Computer Use Studio / Debugger 消费者。`browser_assert` 保留为正式 v1 Tool。
 - `server/src/microapps/computer-use/browser/service.ts`：自制可见 DOM 清单（不是完整 ARIA/Accessibility Snapshot），`data-cu-ref` 元素引用、snapshot 文本哈希、可见正文、全页截图 Artifact；BrowserService 有单会话动作排队和基础超时。
-- `server/src/microapps/computer-use/session/manager.ts`：单页 Playwright session，支持启动/关闭、domain/scheme 检查；已有可选 `sessionTimeoutMs`，当前 Agent 自动创建时未配置有限空闲时长；**不存在**已完成的多标签选择契约。
-- `server/src/microapps/computer-use/browser/types.ts`：`BrowserToolResult` 已包含 `ok / sessionId / invocationId / page / observation? / assertion? / artifacts / error?`。
+- `server/src/microapps/computer-use/session/manager.ts`：Playwright session 支持启动/关闭、domain/scheme 检查；`context.pages()` 中的同会话页面拥有稳定的 per-session tab ID，可列出并通过 `browser_tab_select` 切换当前活动页，切页不复用旧页面 observation。已有可选 `sessionTimeoutMs`；Agent 自动创建时的有限空闲时长由 Tool 层配置。
+- `server/src/microapps/computer-use/browser/types.ts`：`BrowserToolResult` 已包含 `ok / sessionId / invocationId / page / tabs? / observation? / assertion? / artifacts / error?`。
 - `server/src/harness/profiles/resolver.ts`：一级 `browser` Profile 拥有 Managed Browser 产品表面；`browser_computer_use` 兼容别名已移除，不再作为 capability-search 身份读取或投影。`browser_attached` 仍是独立 Profile。Profile 的 Tool ownership 与初始 schema disclosure 分离，避免分组选择时一次性展开整个 Browser catalog。
 - `server/src/index.ts` + `server/src/harness/managed-browser-readiness.ts`：[#355 / AGT-003](https://github.com/uichat-mira/mira-desktop/issues/355) 已在 dev 将三个 Managed Browser Tool 接到同一个运行时的 Harness Readiness Resolver；该完成项**不**等于已经做过真实 Playwright 浏览器烟测。
 
@@ -51,7 +51,7 @@ related:
 
 ## 3. v1 工具清单：P0 10 个，P1 2 个
 
-**这是目标 ID，不是当前 registry 已支持的 ID。** P0 中 `browser_assert` 保留现有语义，是**按需测试工具**而非每一步强制验证。P1 的标签页能力单独验收；下载不捆绑在标签页卡里。下表“审批”是**设计预期**，与现行 `browser_act` 权限不同的地方必须单独评审才能生效。
+**这是目标 ID 契约；截至 AGT-010 / #363，P0 与 P1 的 Tool ID 均已在 registry 实现，实际可用性仍以源码、Runtime Readiness 和证据为准。** P0 中 `browser_assert` 保留现有语义，是**按需测试工具**而非每一步强制验证。P1 的标签页能力单独验收；下载不捆绑在标签页卡里。下表“审批”是**设计预期**，与现行 `browser_act` 权限不同的地方必须单独评审才能生效。
 
 | 阶段 | Tool ID | Agent 何时选它（与相邻工具的边界） | 最小 Agent 输入（目标 schema） | 结果要证明什么 | 来源 / 施工卡 | 审批预期 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -65,8 +65,8 @@ related:
 | P0 | `browser_scroll` | **移动当前页面视口**；不是导航、也不是等待 | `pageUrl, snapshotHash, x?: number, y?: number`（有限数值，至少有一个非零偏移） | 可观察视口变化/结果；无法滚动要如实说明 | 现有 `act.scroll`；#362 | 是（可能触发懒加载） |
 | P0 | `browser_wait_for` | 等待**将来**的网页条件成立；不是当前状态断言 | `condition: {kind: "text", value} \| {kind: "url", value} \| {kind: "visible", ref, pageUrl, snapshotHash}, timeoutMs?`；visible 必须验证 Runtime 持有的稳定元素身份 | 条件满足才 `ok=true`；过期必须明确 `timeout` | 现有 `act.wait` 轮询文本/ref，目标条件需补齐；#360 | **是（v1 保守门槛）**：沿用当前 `browser_act.wait` 的审批要求；后续免审批提案需单独签核 |
 | P0 | `browser_assert` | **现在**对标题、URL、文字、元素可见性、输入值作严格断言；不是等将来 | `assertion: {kind, expected?/ref?}`（保留现有 ID/联合；visible/value 的 ref 必须匹配 Runtime 绑定的最新观察身份） | `assertion.passed`；失败是显式失败，不是“执行成功” | **已存在** `browser_assert`；#365 验收 | 否 |
-| P1 | `browser_tabs_list` | 需要理解**当前 Managed 会话**有哪些标签页 | 无业务参数 | 同会话 tab ID/URL/标题/选中项；不得列触界 Chrome 标签 | 目前仅单页引用；[#363](https://github.com/uichat-mira/mira-desktop/issues/363) | 否 |
-| P1 | `browser_tab_select` | 在**同一 Managed 会话内部**明确切换 tab | `tabId`（由 list 获得） | 选中 tab 身份和新页面观察，旧 refs 失效 | 需要 SessionManager 多页面建模；#363 | **是（v1 保守门槛）**：待实现时必须复用同一 Harness 审批管线 |
+| P1 | `browser_tabs_list` | 需要理解**当前 Managed 会话**有哪些标签页 | 无业务参数 | 同会话 tab ID/URL/标题/选中项；不得列触界 Chrome 标签 | SessionManager per-session tabs；[#363](https://github.com/uichat-mira/mira-desktop/issues/363) | 否 |
+| P1 | `browser_tab_select` | 在**同一 Managed 会话内部**明确切换 tab | `tabId`（由 list 获得） | 选中 tab 身份和新页面观察，旧 refs 失效 | SessionManager 多页面 active-page；#363 | **是（v1 保守门槛）**：复用同一 Harness 审批管线 |
 
 ### 使用意图示例
 
@@ -114,6 +114,8 @@ type BrowserToolResult = {
   sessionId: string;       // 内部/审计标识，不是模型可任意指定的输入
   invocationId: string;
   page: { url: string; title: string; snapshotHash?: string };
+  tabs?: Array<{ id: string; title: string; url: string; selected: boolean }>;
+  tabsTruncated?: boolean;
   observation?: { snapshot?: string; visibleText?: string; truncated?: boolean };
   assertion?: { kind: "title" | "url" | "text" | "visible" | "value"; passed: boolean };
   artifacts: Array<{ id: string; kind: "screenshot" | "json"; title: string; uri: string }>;
@@ -181,7 +183,7 @@ browser Capability（元信息：交互网页，Managed/Mira-owned）
 | `browser_act.scroll` | `browser_scroll`（拆分） | #362 |
 | `browser_act.wait` | `browser_wait_for`（拆分，目标条件更明确） | #360 |
 | `browser_assert` | **保留原 ID 和当前断言联合语义** | #365 验收 |
-| 当前 SessionManager 维护单个 `page` | `browser_tabs_list`、`browser_tab_select`（**P1 新能力，不是已有能力**） | #363 |
+| SessionManager 维护同会话页面集合与 active page | `browser_tabs_list`、`browser_tab_select`（P1） | #363 |
 | `browser_computer_use` Profile | `browser` 一级 Capability + Managed Runtime 描述 | #364 / #365 |
 | `browser_attached_*` | **不动**；触界增强能力作为未来独立 MCP 工作 | 后续独立决策 |
 

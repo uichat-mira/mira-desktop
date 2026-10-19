@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { chromium } from "playwright-core";
+import { chromium, type Page } from "playwright-core";
 import { describe, expect, it } from "vitest";
 import { BrowserService } from "../browser/service.js";
 import { BrowserSessionManager } from "../session/manager.js";
@@ -126,6 +126,144 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
     } finally {
       await manager.closeAll();
       clearRegistry(); clearInvocations();
+      fs.rmSync(file, { force: true });
+    }
+  }, 30000);
+
+  it("lists and selects same-session tabs, rejects closed and foreign tab IDs, and keeps session ownership", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const firstFile = path.join(root, `tabs-first-${crypto.randomUUID()}.html`);
+    const secondFile = path.join(root, `tabs-second-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(firstFile, `<!doctype html><html><head><title>First Tab</title></head><body><h1>First Tab</h1></body></html>`);
+    fs.writeFileSync(secondFile, `<!doctype html><html><head><title>Second Tab</title></head><body><h1>Second Tab</h1></body></html>`);
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const otherManager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    const approve = (toolId: string, args: Record<string, unknown>) => ({ toolId, inputHash: createInvocationInputHash(args) });
+    try {
+      clearRegistry(); clearInvocations();
+      for (const tool of createComputerUseBrowserTools(browser, { sessionManager: manager })) registerTool(tool);
+      const threadId = `tabs-${crypto.randomUUID()}`;
+      const firstUrl = pathToFileURL(firstFile).href;
+      const secondUrl = pathToFileURL(secondFile).href;
+
+      const navArgs = { url: firstUrl };
+      const boot = await executeInvocation({ toolId: "browser_navigate", threadId, args: navArgs, approvedInvocations: [approve("browser_navigate", navArgs)] });
+      expect(boot.status).toBe("completed");
+      const sessionId = boot.args.sessionId as string;
+      const session = manager.get(sessionId)!;
+      const firstPage = session.page;
+
+      const single = await executeInvocation({ toolId: "browser_tabs_list", threadId, args: {} });
+      expect(single.status).toBe("completed");
+      const singleResult = single.result as { tabs?: Array<{ id: string; title: string; url: string; selected: boolean }> };
+      expect(singleResult.tabs).toHaveLength(1);
+      expect(singleResult.tabs?.[0]).toMatchObject({ title: "First Tab", url: firstUrl, selected: true });
+      const firstTabId = singleResult.tabs![0]!.id;
+
+      // A same-context page represents a tab created by an in-session popup or
+      // page action; it must be discoverable without touching another browser.
+      const secondPage = await session.context.newPage();
+      await secondPage.goto(secondUrl, { waitUntil: "domcontentloaded" });
+      const listed = await executeInvocation({ toolId: "browser_tabs_list", threadId, args: {} });
+      const listedResult = listed.result as { tabs?: Array<{ id: string; title: string; url: string; selected: boolean }> };
+      expect(listedResult.tabs).toHaveLength(2);
+      expect(listedResult.tabs?.find((tab) => tab.id === firstTabId)).toMatchObject({ selected: true });
+      const secondTab = listedResult.tabs!.find((tab) => tab.url === secondUrl)!;
+      expect(secondTab).toMatchObject({ title: "Second Tab", selected: false });
+
+      const selectArgs = { tabId: secondTab.id };
+      const selectPending = await executeInvocation({ toolId: "browser_tab_select", threadId, args: selectArgs });
+      expect(selectPending.status).toBe("awaiting_approval");
+      expect(session.page).toBe(firstPage);
+      const selected = await executeInvocation({ toolId: "browser_tab_select", threadId, args: selectArgs, approvedInvocations: [approve("browser_tab_select", selectArgs)] });
+      expect(selected.status).toBe("completed");
+      expect(selected.result).toMatchObject({ ok: true, page: { url: secondUrl, title: "Second Tab" } });
+      expect(session.page).toBe(secondPage);
+      const secondSnapshot = await executeInvocation({ toolId: "browser_snapshot", threadId, args: {} });
+      expect((secondSnapshot.result as { observation?: { snapshot?: string } }).observation?.snapshot).toContain('heading "Second Tab"');
+
+      const firstSelectArgs = { tabId: firstTabId };
+      const back = await executeInvocation({ toolId: "browser_tab_select", threadId, args: firstSelectArgs, approvedInvocations: [approve("browser_tab_select", firstSelectArgs)] });
+      expect(back.result).toMatchObject({ ok: true, page: { url: firstUrl } });
+
+      await secondPage.close?.();
+      const closedArgs = { tabId: secondTab.id };
+      const closed = await executeInvocation({ toolId: "browser_tab_select", threadId, args: closedArgs, approvedInvocations: [approve("browser_tab_select", closedArgs)] });
+      expect(closed.status).toBe("completed");
+      expect(closed.result).toMatchObject({ ok: false, error: { code: "tab_not_found" } });
+      const afterClose = await executeInvocation({ toolId: "browser_tabs_list", threadId, args: {} });
+      expect((afterClose.result as { tabs?: Array<{ id: string }> }).tabs?.map((tab) => tab.id)).toEqual([firstTabId]);
+      expect(session.page).toBe(firstPage);
+
+      const otherSession = await otherManager.create({ allowedDomains: [], allowedSchemes: ["file:"], initialUrl: secondUrl });
+      expect(otherSession.status).toBe("ready");
+      const foreignTab = (await otherManager.listTabs(otherManager.get(otherSession.id)!)).tabs[0]!;
+      const foreignArgs = { tabId: foreignTab.id };
+      const foreign = await executeInvocation({ toolId: "browser_tab_select", threadId, args: foreignArgs, approvedInvocations: [approve("browser_tab_select", foreignArgs)] });
+      expect(foreign.result).toMatchObject({ ok: false, error: { code: "tab_not_found" } });
+      expect(session.page).toBe(firstPage);
+
+      await manager.stop(sessionId);
+      expect(firstPage.isClosed?.()).toBe(true);
+      expect(secondPage.isClosed?.()).toBe(true);
+    } finally {
+      await manager.closeAll();
+      await otherManager.closeAll();
+      clearRegistry(); clearInvocations();
+      fs.rmSync(firstFile, { force: true });
+      fs.rmSync(secondFile, { force: true });
+    }
+  }, 30000);
+
+  it("blocks an out-of-scope same-context tab even when its ID was listed while allowed", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const file = path.join(root, `tab-policy-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(file, '<!doctype html><html><head><title>Allowed Tab</title></head><body><h1>Allowed Tab</h1></body></html>');
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    try {
+      const allowedUrl = pathToFileURL(file).href;
+      const created = await manager.create({
+        allowedDomains: ["approved.example"],
+        allowedSchemes: ["file:", "https:"],
+        initialUrl: allowedUrl,
+      });
+      expect(created.status).toBe("ready");
+      const session = manager.get(created.id)!;
+      const originalPage = session.page;
+      const popup = (await session.context.newPage()) as Page;
+      await popup.goto(allowedUrl, { waitUntil: "domcontentloaded" });
+      const listed = await browser.listTabs({ sessionId: created.id });
+      const tabId = listed.tabs?.find((tab) => tab.url === allowedUrl && !tab.selected)?.id;
+      expect(tabId).toBeTruthy();
+
+      // The site can navigate its own popup after the list; its tab ID remains
+      // valid, but cannot authorize a destination outside allowedDomains.
+      await popup.route("https://outside.invalid/**", (route) => route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<title>Outside Domain</title><h1>Outside Domain</h1>",
+      }));
+      await popup.goto("https://outside.invalid/popup", { waitUntil: "domcontentloaded" });
+      const denied = await browser.selectTab({ sessionId: created.id, tabId: tabId! });
+      expect(denied).toMatchObject({ ok: false, error: { code: "navigation_blocked", retryable: false } });
+      expect(session.page).toBe(originalPage);
+      const observed = await browser.observe({ sessionId: created.id });
+      expect(observed.ok).toBe(true);
+      expect(observed.page.url).toBe(allowedUrl);
+      expect(observed.observation?.snapshot).toContain('heading "Allowed Tab"');
+    } finally {
+      await manager.closeAll();
       fs.rmSync(file, { force: true });
     }
   }, 30000);

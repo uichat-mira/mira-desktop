@@ -94,13 +94,14 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
   };
   const browserClose = vi.fn(async () => undefined);
   const contextClose = vi.fn(async () => undefined);
+  const pages: unknown[] = [page];
   const manager = new BrowserSessionManager({
     runtime: { resolveRuntime: () => ({ status: "ready" as const, strategy: "managed" as const, runtime: { source: "managed" as const, channel: "chromium" as const, executablePath: "C:/chrome.exe", version: "1", installedAt: "now" }, inspectedCandidates: [] }) },
     artifactRoot: root,
-    launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), close: contextClose })), close: browserClose })) } as never,
+    launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), pages: vi.fn(() => pages), close: contextClose })), close: browserClose })) } as never,
   });
   const session = await manager.create({ allowedDomains: ["example.com"], ...config });
-  return { manager, service: new BrowserService(manager), session, page, nodes, browserClose, contextClose };
+  return { manager, service: new BrowserService(manager), session, page, pages, nodes, browserClose, contextClose };
 };
 
 const pathLib = path;
@@ -177,6 +178,135 @@ describe("BrowserService", () => {
     expect(fs.existsSync(result.artifacts[0]!.uri)).toBe(true);
     const truncated = await service.observe({ sessionId: session.id, maxSnapshotChars: 5 });
     expect(truncated.observation?.snapshot).toHaveLength(5);
+  });
+
+  it("lists session tabs, selects one and invalidates the previous tab observation", async () => {
+    const { service, session, pages } = await createHarness();
+    const first = await service.observe({ sessionId: session.id });
+    const secondPage = {
+      goto: vi.fn(async () => undefined),
+      url: vi.fn(() => "https://example.com/second"),
+      title: vi.fn(async () => "Second Tab"),
+      evaluate: vi.fn(async () => "Second Tab"),
+      ariaSnapshot: vi.fn(async () => '- heading "Second" [ref=e1]'),
+      getByRef: vi.fn(() => ({ count: vi.fn(async () => 1) })),
+      screenshot: vi.fn(async () => undefined),
+    };
+    pages.push(secondPage);
+
+    const listed = await service.listTabs({ sessionId: session.id });
+    expect(listed.ok).toBe(true);
+    expect(listed.tabsTruncated).toBe(false);
+    expect(listed.tabs).toEqual([
+      { id: expect.stringMatching(/^tab-/), title: "Example Domain", url: "https://example.com/", selected: true },
+      { id: expect.stringMatching(/^tab-/), title: "Second Tab", url: "https://example.com/second", selected: false },
+    ]);
+    const tabIds = listed.tabs!.map((tab) => tab.id);
+    expect(new Set(tabIds).size).toBe(2);
+
+    const secondTab = listed.tabs!.find((tab) => tab.url === "https://example.com/second")!;
+    const selected = await service.selectTab({ sessionId: session.id, tabId: secondTab.id });
+    expect(selected.ok).toBe(true);
+    expect(selected.page).toMatchObject({ url: "https://example.com/second", title: "Second Tab" });
+    expect(selected.observation?.snapshot).toContain('heading "Second"');
+    expect(selected.tabs?.find((tab) => tab.id === secondTab.id)?.selected).toBe(true);
+
+    const oldRef = first.observation?.snapshot?.match(/button "Go" \[ref=(e\d+)\]/)?.[1]!;
+    const stale = await service.act({
+      sessionId: session.id,
+      pageUrl: first.page.url,
+      snapshotHash: first.page.snapshotHash!,
+      action: { kind: "click", ref: oldRef },
+    });
+    expect(stale.ok).toBe(false);
+    expect(stale.error?.code).toBe("stale_snapshot");
+
+    pages.splice(pages.indexOf(secondPage), 1);
+    const closed = await service.selectTab({ sessionId: session.id, tabId: secondTab.id });
+    expect(closed.ok).toBe(false);
+    expect(closed.error).toMatchObject({ code: "tab_not_found", retryable: false });
+    const stillA = await service.listTabs({ sessionId: session.id });
+    expect(stillA.tabs?.map((tab) => tab.id)).toEqual([tabIds[0]]);
+  });
+
+  it("does not revive old action refs across identical A -> B -> A tabs", async () => {
+    const { manager, service, session, page, pages } = await createHarness();
+    const first = await service.observe({ sessionId: session.id });
+    expect(first.ok).toBe(true);
+    const ref = buttonRef(first);
+    const originalHash = first.page.snapshotHash!;
+
+    // Same URL, visible text, ARIA snapshot and ref IDs on distinct Page objects.
+    const clickB = vi.fn(async () => undefined);
+    const pageB = {
+      ...page,
+      getByRef: vi.fn((_ref: string) => ({
+        count: vi.fn(async () => 1),
+        click: clickB,
+      })),
+      bringToFront: vi.fn(async () => undefined),
+    };
+    pages.push(pageB);
+    const tabs = (await service.listTabs({ sessionId: session.id })).tabs!;
+    const tabA = tabs.find((tab) => tab.selected)!;
+    const tabB = tabs.find((tab) => !tab.selected)!;
+    const selectB = await service.selectTab({ sessionId: session.id, tabId: tabB.id });
+    expect(selectB.ok).toBe(true);
+    expect(selectB.page.url).toBe(first.page.url);
+    expect(selectB.observation?.snapshot).toBe(first.observation?.snapshot);
+    expect(selectB.page.snapshotHash).not.toBe(originalHash);
+
+    const staleOnB = await service.act({
+      sessionId: session.id, pageUrl: first.page.url,
+      snapshotHash: originalHash, action: { kind: "click", ref },
+    });
+    expect(staleOnB.error?.code).toBe("stale_snapshot");
+    expect(page.click).not.toHaveBeenCalled();
+    expect(clickB).not.toHaveBeenCalled();
+
+    const freshB = await service.observe({ sessionId: session.id });
+    expect(freshB.page.snapshotHash).toBe(selectB.page.snapshotHash);
+    const currentB = await service.act({
+      sessionId: session.id, pageUrl: freshB.page.url,
+      snapshotHash: freshB.page.snapshotHash!, action: { kind: "click", ref },
+    });
+    expect(currentB.ok).toBe(true);
+    expect(clickB).toHaveBeenCalledOnce();
+
+    // Selecting an already selected tab must not bump the generation.
+    const sameB = await service.selectTab({ sessionId: session.id, tabId: tabB.id });
+    expect(sameB.page.snapshotHash).toBe(freshB.page.snapshotHash);
+
+    const selectA = await service.selectTab({ sessionId: session.id, tabId: tabA.id });
+    expect(selectA.ok).toBe(true);
+    expect(selectA.page.snapshotHash).not.toBe(originalHash);
+    expect(selectA.page.snapshotHash).not.toBe(freshB.page.snapshotHash);
+    const staleOnReturn = await service.act({
+      sessionId: session.id, pageUrl: first.page.url,
+      snapshotHash: originalHash, action: { kind: "click", ref },
+    });
+    expect(staleOnReturn.error?.code).toBe("stale_snapshot");
+    expect(page.click).not.toHaveBeenCalled();
+    const refreshedA = await service.observe({ sessionId: session.id });
+    expect(refreshedA.page.snapshotHash).toBe(selectA.page.snapshotHash);
+
+    // A rejected switch cannot invalidate a valid observation or move the page.
+    const blockedPage = { ...page, url: vi.fn(() => "https://outside.invalid/") };
+    pages.push(blockedPage);
+    const blockedTab = (await service.listTabs({ sessionId: session.id })).tabs!.find(
+      (tab) => tab.url === "https://outside.invalid/",
+    )!;
+    const denied = await service.selectTab({ sessionId: session.id, tabId: blockedTab.id });
+    expect(denied.error?.code).toBe("navigation_blocked");
+    expect(manager.get(session.id)?.page).toBe(page);
+    const afterDenial = await service.observe({ sessionId: session.id });
+    expect(afterDenial.page.snapshotHash).toBe(refreshedA.page.snapshotHash);
+    const currentA = await service.act({
+      sessionId: session.id, pageUrl: refreshedA.page.url,
+      snapshotHash: refreshedA.page.snapshotHash!, action: { kind: "click", ref },
+    });
+    expect(currentA.ok).toBe(true);
+    expect(page.click).toHaveBeenCalledOnce();
   });
 
   it("rejects stale refs, unsafe navigation and invalid refs", async () => {

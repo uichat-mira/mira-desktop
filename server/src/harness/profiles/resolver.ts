@@ -92,6 +92,11 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
       "scroll",
       "wait",
       "assert",
+      "tab",
+      "tabs",
+      "switch",
+      "标签",
+      "标签页",
       "网页",
       "页面",
       "标题",
@@ -124,6 +129,8 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
       "browser_scroll",
       "browser_wait_for",
       "browser_assert",
+      "browser_tabs_list",
+      "browser_tab_select",
     ],
     // Native Managed Browser ownership is complete above, but the initial
     // disclosure stage stays empty: a grouped selection must not eagerly inject

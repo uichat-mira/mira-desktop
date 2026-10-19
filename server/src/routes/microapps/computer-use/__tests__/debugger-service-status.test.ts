@@ -21,6 +21,8 @@ describe("retired Managed Browser legacy Tools", () => {
         "browser_scroll",
         "browser_wait_for",
         "browser_assert",
+        "browser_tabs_list",
+        "browser_tab_select",
       ]),
     );
   });

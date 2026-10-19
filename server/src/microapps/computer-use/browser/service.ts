@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { BrowserActInput, BrowserArtifact, BrowserAssertInput, BrowserAssertion, BrowserInspectInput, BrowserNavigateInput, BrowserToolError, BrowserToolResult, BrowserWaitInput } from "./types.js";
-import { BrowserActionTimeoutError } from "../session/manager.js";
+import type { BrowserActInput, BrowserArtifact, BrowserAssertInput, BrowserAssertion, BrowserInspectInput, BrowserNavigateInput, BrowserTabSelectInput, BrowserTabsListInput, BrowserToolError, BrowserToolResult, BrowserWaitInput } from "./types.js";
+import { BrowserActionTimeoutError, BrowserTabNotFoundError, BrowserTabPolicyError } from "../session/manager.js";
 import type { BrowserPage, BrowserSessionManager, ManagedBrowserSession } from "../session/manager.js";
 
 const failure = (sessionId: string, invocationId: string, page: BrowserToolResult["page"], code: string, message: string, retryable = false, assertion?: BrowserToolResult["assertion"]): BrowserToolResult => ({ ok: false, sessionId, invocationId, page, artifacts: [], assertion, error: { code, message, retryable } });
@@ -23,6 +23,7 @@ const withTimeout = async <T>(operation: () => Promise<T>, timeoutMs: number): P
 };
 
 type LatestObservation = {
+  page: BrowserPage;
   pageUrl: string;
   snapshotHash: string;
   refs: Set<string>;
@@ -48,6 +49,7 @@ const validateObservation = (
 ) => {
   const latest = latestObservations.get(session);
   if (!latest ||
+      latest.page !== session.page ||
       latest.pageUrl !== pageUrl ||
       latest.snapshotHash !== snapshotHash ||
       session.page.url() !== pageUrl) return undefined;
@@ -86,8 +88,13 @@ const state = async (session: ManagedBrowserSession, maxChars = 12000) => {
       .update(snapshot)
       .update("\0")
       .update(visibleText)
+      // Different tabs can have identical content and aria refs. A successful
+      // A -> B -> A switch must not revive an old action fingerprint.
+      .update("\0")
+      .update(String(session.selectionEpoch))
       .digest("hex");
     latestObservations.set(session, {
+      page: session.page,
       pageUrl: url,
       snapshotHash,
       refs: refsFromSnapshot(snapshot),
@@ -163,6 +170,83 @@ export class BrowserService {
     } finally {
       releaseOperation();
       this.sessions.endOperation(session);
+    }
+  }
+
+  async listTabs(input: BrowserTabsListInput): Promise<BrowserToolResult> {
+    const invocationId = crypto.randomUUID();
+    const session = this.sessions.get(input.sessionId);
+    if (!session || (session.info.status !== "ready" && session.info.status !== "busy")) return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
+    this.sessions.beginOperation(session);
+    const releaseOperation = await this.acquireSessionOperation(session);
+    try {
+      const { tabs, truncated } = await this.sessions.listTabs(session);
+      const active = tabs.find((tab) => tab.selected);
+      return {
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId,
+        page: active ? { url: session.page.url(), title: active.title } : { url: "", title: "" },
+        tabs,
+        tabsTruncated: truncated,
+        artifacts: [],
+      };
+    } catch (cause) {
+      return failure(input.sessionId, invocationId, { url: session.page.url(), title: "" }, "tabs_list_failed", cause instanceof Error ? cause.message : String(cause), true);
+    } finally {
+      releaseOperation();
+      this.sessions.endOperation(session);
+    }
+  }
+
+  async selectTab(input: BrowserTabSelectInput): Promise<BrowserToolResult> {
+    const invocationId = crypto.randomUUID();
+    const session = this.sessions.get(input.sessionId);
+    if (!session || (session.info.status !== "ready" && session.info.status !== "busy")) return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
+    this.sessions.beginOperation(session);
+    const releaseAction = await this.acquireActionTurn(input.sessionId);
+    const releaseOperation = await this.acquireSessionOperation(session);
+    let pendingOperation: Promise<unknown> | undefined;
+    try {
+      if (session.info.status !== "ready") return failure(input.sessionId, invocationId, { url: "", title: "" }, "session_unavailable", "Browser session is not ready.", true);
+      session.info.status = "busy";
+      await this.sessions.selectTab(session, input.tabId);
+      // Refs are page/frame scoped: switching tabs must never preserve the
+      // previous page's accepted observation.
+      latestObservations.delete(session);
+      const next = await state(session);
+      const { tabs, truncated } = await this.sessions.listTabs(session);
+      return {
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId,
+        page: { url: next.url, title: next.title, snapshotHash: next.snapshotHash },
+        tabs,
+        tabsTruncated: truncated,
+        observation: { snapshot: next.observation.snapshot, visibleText: next.observation.visibleText, truncated: next.observation.truncated },
+        artifacts: [],
+      };
+    } catch (cause) {
+      if (cause instanceof BrowserActionTimeoutError) pendingOperation = cause.operation;
+      const message = cause instanceof Error ? cause.message : String(cause);
+      const code = cause instanceof BrowserTabNotFoundError ? "tab_not_found" : cause instanceof BrowserTabPolicyError ? "navigation_blocked" : "tab_select_failed";
+      return failure(
+        input.sessionId,
+        invocationId,
+        { url: session.page.url(), title: "" },
+        code,
+        message,
+        code === "tab_select_failed",
+      );
+    } finally {
+      const finish = () => {
+        if (session.info.status === "busy") session.info.status = "ready";
+        releaseOperation();
+        this.sessions.endOperation(session);
+        releaseAction();
+      };
+      if (pendingOperation) void pendingOperation.catch(() => undefined).then(finish);
+      else finish();
     }
   }
 
