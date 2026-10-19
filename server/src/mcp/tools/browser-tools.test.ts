@@ -2,7 +2,10 @@ import { describe, expect, test, vi } from "vitest";
 import { createComputerUseBrowserTools } from "./browser-tools.tool.js";
 import { clearInvocations, executeInvocation } from "../core/invocations.js";
 import { clearRegistry, registerTool } from "../core/registry.js";
+import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 import { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
+
+const approve = (toolId: string, args: Record<string, unknown>) => ({ toolId, inputHash: createInvocationInputHash(args) });
 
 const browser = {
   observe: vi.fn(async (input) => ({ ok: true, sessionId: input.sessionId, invocationId: "browser-observe", page: { url: "https://example.com", title: "Example", snapshotHash: "hash-1" }, artifacts: [] })),
@@ -13,17 +16,12 @@ const browser = {
 };
 
 describe("Computer Use browser MCP tools", () => {
-  test("exposes legacy tools and the atomic navigation/observation tools", () => {
+  test("exposes only the atomic browser tools", () => {
     const tools = createComputerUseBrowserTools(browser as never);
-    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_observe", "browser_act", "browser_assert", "browser_navigate", "browser_wait_for", "browser_snapshot", "browser_screenshot", "browser_click", "browser_fill", "browser_press_key", "browser_select_option", "browser_scroll"]);
+    expect(tools.map((tool) => tool.definition.id)).toEqual(["browser_assert", "browser_navigate", "browser_wait_for", "browser_snapshot", "browser_screenshot", "browser_click", "browser_fill", "browser_press_key", "browser_select_option", "browser_scroll"]);
     expect(tools.every((tool) => tool.definition.inputSchema.additionalProperties === false)).toBe(true);
-    expect(tools.find((tool) => tool.definition.id === "browser_act")?.definition.capabilities.requiresApproval).toBe(true);
-    expect(tools.find((tool) => tool.definition.id === "browser_observe")?.definition.description).toContain("page.title");
-    expect(tools.find((tool) => tool.definition.id === "browser_act")?.definition.description).toContain("navigate(url)");
-    expect(tools.find((tool) => tool.definition.id === "browser_act")?.definition.description).toContain("scroll(x,y)");
+    expect(tools.find((tool) => tool.definition.id === "browser_click")?.definition.capabilities.requiresApproval).toBe(true);
     expect(tools.find((tool) => tool.definition.id === "browser_assert")?.definition.description).toContain("value(ref,expected)");
-    expect(tools.find((tool) => tool.definition.id === "browser_observe")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
-    expect(tools.find((tool) => tool.definition.id === "browser_act")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
     expect(tools.find((tool) => tool.definition.id === "browser_navigate")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
     expect(tools.find((tool) => tool.definition.id === "browser_wait_for")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
     expect(tools.find((tool) => tool.definition.id === "browser_click")?.definition.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
@@ -41,10 +39,6 @@ describe("Computer Use browser MCP tools", () => {
     expect(fill.capabilities).toMatchObject({ sideEffect: "network", requiresApproval: true, networkAccess: true });
     expect(fill.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: ["pageUrl", "snapshotHash", "ref", "value"] });
     expect(fill.inputSchemaByExposure?.agent_intent).toMatchObject({ required: ["pageUrl", "snapshotHash", "ref", "value"], additionalProperties: false });
-    // browser_fill is not an alias of browser_act.type: the union only reaches fill
-    // through the new atomic facade, and the legacy act schema stays type-based.
-    const actAction = (tools.find((tool) => tool.definition.id === "browser_act")!.definition.inputSchema.properties as { action: { oneOf: Array<{ properties: { kind: { enum: string[] } } }> } }).action;
-    expect(actAction.oneOf.map((variant) => variant.properties.kind.enum[0])).not.toContain("fill");
   });
 
   test("click and fill require approval before any browser action executes", async () => {
@@ -54,7 +48,8 @@ describe("Computer Use browser MCP tools", () => {
     const manager = { create, get: vi.fn((id: string) => id === "action-session" ? { info: { status: "ready" as const } } : undefined) };
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
     tools.forEach(registerTool);
-    await executeInvocation({ toolId: "browser_observe", threadId: "action-thread", args: { url: "https://example.com" } });
+    const navArgs = { url: "https://example.com" };
+    await executeInvocation({ toolId: "browser_navigate", threadId: "action-thread", args: navArgs, approvedInvocations: [approve("browser_navigate", navArgs)] });
 
     const clickArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e2" };
     const clickPending = await executeInvocation({ toolId: "browser_click", threadId: "action-thread", args: clickArgs });
@@ -122,11 +117,6 @@ describe("Computer Use browser MCP tools", () => {
     expect(scrollProps.x).toMatchObject({ type: "number" });
     expect(scrollProps.y).toMatchObject({ type: "number" });
     expect(scroll.inputSchemaByExposure?.agent_intent).not.toHaveProperty("properties.sessionId");
-
-    // The atomic facades are distinct IDs but the legacy act union keeps its own
-    // press/select/scroll variants until the migration card retires them.
-    const actAction = (tools.find((tool) => tool.definition.id === "browser_act")!.definition.inputSchema.properties as { action: { oneOf: Array<{ properties: { kind: { enum: string[] } } }> } }).action;
-    expect(actAction.oneOf.map((variant) => variant.properties.kind.enum[0])).toEqual(expect.arrayContaining(["press", "select", "scroll"]));
   });
 
   test("press, select and scroll require approval before any browser action executes", async () => {
@@ -135,7 +125,8 @@ describe("Computer Use browser MCP tools", () => {
     const manager = { create: vi.fn(async () => ({ id: "action-session", status: "ready" as const })), get: vi.fn((id: string) => id === "action-session" ? { info: { status: "ready" as const } } : undefined) };
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: manager as never });
     tools.forEach(registerTool);
-    await executeInvocation({ toolId: "browser_observe", threadId: "press-thread", args: { url: "https://example.com" } });
+    const navArgs = { url: "https://example.com" };
+    await executeInvocation({ toolId: "browser_navigate", threadId: "press-thread", args: navArgs, approvedInvocations: [approve("browser_navigate", navArgs)] });
 
     const pressArgs = { pageUrl: "https://example.com/", snapshotHash: "hash-1", ref: "e2", key: "Enter" };
     const pressPending = await executeInvocation({ toolId: "browser_press_key", threadId: "press-thread", args: pressArgs });
@@ -253,7 +244,8 @@ describe("Computer Use browser MCP tools", () => {
       get: vi.fn(() => ({ info: { status: "ready" as const } })),
     } as never });
     tools.forEach(registerTool);
-    await executeInvocation({ toolId: "browser_observe", threadId: "bound-thread", args: { url: "https://example.com" } });
+    const boundNavArgs = { url: "https://example.com" };
+    await executeInvocation({ toolId: "browser_navigate", threadId: "bound-thread", args: boundNavArgs, approvedInvocations: [approve("browser_navigate", boundNavArgs)] });
     const snapshot = await executeInvocation({ toolId: "browser_snapshot", threadId: "bound-thread", args: { maxSnapshotChars: 100 } });
     expect(snapshot.status).toBe("completed");
     expect(mock.observe).toHaveBeenCalledWith({ sessionId: "bound", includeScreenshot: false, maxSnapshotChars: 100 });
@@ -275,10 +267,12 @@ describe("Computer Use browser MCP tools", () => {
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: sessionManager as never });
     tools.forEach(registerTool);
 
-    const observed = await executeInvocation({
-      toolId: "browser_observe",
-      args: { url: "https://example.com" },
+    const navArgs = { url: "https://example.com" };
+    const navigated = await executeInvocation({
+      toolId: "browser_navigate",
+      args: navArgs,
       threadId: "agent-thread-1",
+      approvedInvocations: [approve("browser_navigate", navArgs)],
     });
     const asserted = await executeInvocation({
       toolId: "browser_assert",
@@ -286,12 +280,11 @@ describe("Computer Use browser MCP tools", () => {
       threadId: "agent-thread-1",
     });
 
-    expect(sessionManager.create).toHaveBeenCalledWith(expect.objectContaining({ allowedDomains: ["example.com"], initialUrl: "https://example.com/", headless: true, sessionTimeoutMs: expect.any(Number) }));
-    expect(browser.observe).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "browser-1" }));
+    expect(sessionManager.create).toHaveBeenCalledWith(expect.objectContaining({ allowedDomains: ["example.com"], headless: true, sessionTimeoutMs: expect.any(Number) }));
+    expect(browser.navigate).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "browser-1" }));
     expect(browser.assert).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "browser-1" }));
-    expect(observed.args).toMatchObject({ sessionId: "browser-1" });
+    expect(navigated.args).toMatchObject({ sessionId: "browser-1" });
     expect(asserted.args).toMatchObject({ sessionId: "browser-1" });
-    expect(observed.evidence?.facts).toEqual(expect.arrayContaining(["title=Example", "url=https://example.com"]));
     expect(asserted.evidence?.data).toMatchObject({ kind: "computer_use_browser", operation: "assert" });
   });
 
@@ -303,7 +296,8 @@ describe("Computer Use browser MCP tools", () => {
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: sessionManager as never, sessionIdleTimeoutMs: 1234 });
     tools.forEach(registerTool);
 
-    await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "timeout-thread" });
+    const navArgs = { url: "https://example.com" };
+    await executeInvocation({ toolId: "browser_navigate", args: navArgs, threadId: "timeout-thread", approvedInvocations: [approve("browser_navigate", navArgs)] });
 
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ sessionTimeoutMs: 1234 }));
@@ -317,7 +311,8 @@ describe("Computer Use browser MCP tools", () => {
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: sessionManager as never });
     tools.forEach(registerTool);
 
-    await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "default-thread" });
+    const navArgs = { url: "https://example.com" };
+    await executeInvocation({ toolId: "browser_navigate", args: navArgs, threadId: "default-thread", approvedInvocations: [approve("browser_navigate", navArgs)] });
 
     const call = create.mock.calls[0]?.[0];
     expect(call?.sessionTimeoutMs).toBeGreaterThan(0);
@@ -333,8 +328,9 @@ describe("Computer Use browser MCP tools", () => {
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: { create, get } as never });
     tools.forEach(registerTool);
 
-    await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "stale-thread" });
-    await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "stale-thread" });
+    const navArgs = { url: "https://example.com" };
+    await executeInvocation({ toolId: "browser_navigate", args: navArgs, threadId: "stale-thread", approvedInvocations: [approve("browser_navigate", navArgs)] });
+    await executeInvocation({ toolId: "browser_navigate", args: navArgs, threadId: "stale-thread", approvedInvocations: [approve("browser_navigate", navArgs)] });
 
     expect(create).toHaveBeenCalledTimes(2);
   });
@@ -352,8 +348,9 @@ describe("Computer Use browser MCP tools", () => {
     const tools = createComputerUseBrowserTools(browser as never, { sessionManager: { create, get } as never });
     tools.forEach(registerTool);
 
-    await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "thread-a" });
-    await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "thread-b" });
+    const navArgs = { url: "https://example.com" };
+    await executeInvocation({ toolId: "browser_navigate", args: navArgs, threadId: "thread-a", approvedInvocations: [approve("browser_navigate", navArgs)] });
+    await executeInvocation({ toolId: "browser_navigate", args: navArgs, threadId: "thread-b", approvedInvocations: [approve("browser_navigate", navArgs)] });
 
     expect(create).toHaveBeenCalledTimes(2);
   });
@@ -370,7 +367,8 @@ describe("Computer Use browser MCP tools", () => {
       const tools = createComputerUseBrowserTools(browser as never, { sessionManager, sessionIdleTimeoutMs: 10 });
       tools.forEach(registerTool);
 
-      const observed = await executeInvocation({ toolId: "browser_observe", args: { url: "https://example.com" }, threadId: "expiry-thread" });
+      const navArgs = { url: "https://example.com" };
+      const observed = await executeInvocation({ toolId: "browser_navigate", args: navArgs, threadId: "expiry-thread", approvedInvocations: [approve("browser_navigate", navArgs)] });
       const sessionId = (observed.args as { sessionId?: string }).sessionId;
       expect(sessionId).toBeTruthy();
       expect(sessionManager.get(sessionId!)).toBeDefined();
@@ -385,12 +383,12 @@ describe("Computer Use browser MCP tools", () => {
   test("approval is invalidated when page or snapshot arguments change", async () => {
     clearRegistry();
     clearInvocations();
-    const act = createComputerUseBrowserTools(browser as never).find((tool) => tool.definition.id === "browser_act")!;
-    registerTool(act);
-    const args = { sessionId: "session-1", pageUrl: "https://example.com", snapshotHash: "hash-1", action: { kind: "click", ref: "e1" } };
-    const pending = await executeInvocation({ toolId: "browser_act", args });
+    const click = createComputerUseBrowserTools(browser as never).find((tool) => tool.definition.id === "browser_click")!;
+    registerTool(click);
+    const args = { sessionId: "session-1", pageUrl: "https://example.com", snapshotHash: "hash-1", ref: "e1" };
+    const pending = await executeInvocation({ toolId: "browser_click", args });
     expect(pending.status).toBe("awaiting_approval");
-    const changed = await executeInvocation({ toolId: "browser_act", args: { ...args, snapshotHash: "hash-2" }, approvedInvocations: [{ toolId: "browser_act", inputHash: "invalid" }] });
+    const changed = await executeInvocation({ toolId: "browser_click", args: { ...args, snapshotHash: "hash-2" }, approvedInvocations: [{ toolId: "browser_click", inputHash: "invalid" }] });
     expect(changed.status).toBe("awaiting_approval");
     expect(browser.act).not.toHaveBeenCalled();
   });
@@ -399,8 +397,8 @@ describe("Computer Use browser MCP tools", () => {
     clearRegistry();
     clearInvocations();
     const tools = createComputerUseBrowserTools(browser as never);
-    registerTool(tools.find((tool) => tool.definition.id === "browser_act")!);
-    await expect(executeInvocation({ toolId: "browser_act", args: { sessionId: "s", pageUrl: "https://example.com", snapshotHash: "h", action: { kind: "click" } } })).rejects.toThrow(/schema variant/);
+    registerTool(tools.find((tool) => tool.definition.id === "browser_click")!);
+    await expect(executeInvocation({ toolId: "browser_click", args: { pageUrl: "https://example.com", snapshotHash: "h" } })).rejects.toThrow(/required|schema/);
     clearRegistry();
     registerTool(tools.find((tool) => tool.definition.id === "browser_assert")!);
     await expect(executeInvocation({ toolId: "browser_assert", args: { sessionId: "s", assertion: { kind: "title" } } })).rejects.toThrow(/schema variant/);
@@ -598,7 +596,8 @@ describe("Computer Use browser MCP tools", () => {
     expect(unbound.result).toMatchObject({ ok: false, error: { code: "session_unavailable" } });
     expect(browser.wait).not.toHaveBeenCalled();
 
-    await executeInvocation({ toolId: "browser_observe", threadId: "wait-bound", args: { url: "https://example.com" } });
+    const waitNavArgs = { url: "https://example.com" };
+    await executeInvocation({ toolId: "browser_navigate", threadId: "wait-bound", args: waitNavArgs, approvedInvocations: [approve("browser_navigate", waitNavArgs)] });
     const boundArgs = { condition: { kind: "visible", ref: "e1", pageUrl: "https://example.com/", snapshotHash: "hash-1" }, timeoutMs: 500 };
     const boundPending = await executeInvocation({ toolId: "browser_wait_for", threadId: "wait-bound", args: boundArgs });
     expect(boundPending.status).toBe("awaiting_approval");

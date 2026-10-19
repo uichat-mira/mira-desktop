@@ -1023,7 +1023,7 @@ export const projectToolEvidence = (
     const page = asRecord(result.page);
     const url = typeof result.url === "string" ? result.url : typeof page?.url === "string" ? page.url : undefined;
     const title = typeof result.title === "string" ? result.title : typeof page?.title === "string" ? page.title : undefined;
-    const operation = definition.id === "browser_observe" ? "observe" : definition.id === "browser_act" ? "act" : definition.id === "browser_assert" ? "assert" : definition.id;
+    const operation = definition.id === "browser_assert" ? "assert" : definition.id;
     const attached = definition.id.startsWith("browser_attached_");
     const provider = attached ? "chujie" : undefined;
     const observation = asRecord(result.observation);

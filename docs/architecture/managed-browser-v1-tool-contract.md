@@ -40,11 +40,11 @@ related:
 
 源码锚点：
 
-- `server/src/mcp/tools/browser-tools.tool.ts`：当前同时注册原子 Browser Tool 与旧 `browser_observe / browser_act` 兼容 Tool。AGT-012 cutover 后，Main / Generic Agent 的 `agent_intent` 暴露只包含原子 Tool；旧两个 ID 仅为 Computer Use Studio / Debugger 的精确调用兼容保留，不再属于 Agent 可发现能力。`browser_assert` 保留为正式 v1 Tool。
+- `server/src/mcp/tools/browser-tools.tool.ts`：当前只注册原子 Browser Tool。旧 `browser_observe / browser_act` 已于 AGT-012 final cut 移除，不再注册、不再进入 Main / Generic Agent 的 `agent_intent` 暴露，也没有 Computer Use Studio / Debugger 消费者。`browser_assert` 保留为正式 v1 Tool。
 - `server/src/microapps/computer-use/browser/service.ts`：自制可见 DOM 清单（不是完整 ARIA/Accessibility Snapshot），`data-cu-ref` 元素引用、snapshot 文本哈希、可见正文、全页截图 Artifact；BrowserService 有单会话动作排队和基础超时。
 - `server/src/microapps/computer-use/session/manager.ts`：单页 Playwright session，支持启动/关闭、domain/scheme 检查；已有可选 `sessionTimeoutMs`，当前 Agent 自动创建时未配置有限空闲时长；**不存在**已完成的多标签选择契约。
 - `server/src/microapps/computer-use/browser/types.ts`：`BrowserToolResult` 已包含 `ok / sessionId / invocationId / page / observation? / assertion? / artifacts / error?`。
-- `server/src/harness/profiles/resolver.ts`：一级 `browser` Profile 继续拥有 Managed Browser 产品表面；`browser_computer_use` 仅作为旧持久化/分组输入的兼容身份读取，不投影进 Agent capability-search metadata。`browser_attached` 仍是独立 Profile。Profile 的 Tool ownership 与初始 schema disclosure 分离，避免分组选择时一次性展开整个 Browser catalog。
+- `server/src/harness/profiles/resolver.ts`：一级 `browser` Profile 拥有 Managed Browser 产品表面；`browser_computer_use` 兼容别名已移除，不再作为 capability-search 身份读取或投影。`browser_attached` 仍是独立 Profile。Profile 的 Tool ownership 与初始 schema disclosure 分离，避免分组选择时一次性展开整个 Browser catalog。
 - `server/src/index.ts` + `server/src/harness/managed-browser-readiness.ts`：[#355 / AGT-003](https://github.com/uichat-mira/mira-desktop/issues/355) 已在 dev 将三个 Managed Browser Tool 接到同一个运行时的 Harness Readiness Resolver；该完成项**不**等于已经做过真实 Playwright 浏览器烟测。
 
 **现有安全缺口，不能用“已有 snapshotHash”掩盖：** 当前 hash 来自 snapshot **字符串**，Ref 编号在重新观察时重新分配。即使文本看起来一样，旧元素也可能被替换；哈希匹配不等于 DOM 节点身份匹配。#359 必须给出浏览器支撑的验证证据，未通过前不能宣布新原子点击/填值已具备可靠 stale-ref 防护。导航 URL 的初始 allowlist 也不能自动证明后续重定向、脚本导航或弹窗始终在边界内。
@@ -164,8 +164,8 @@ browser Capability（元信息：交互网页，Managed/Mira-owned）
 
 - 直接复用 `server/src/harness/capability-view.ts`、`capability-disclosure.ts`、`candidates-core/resolver.ts` 和现有注册机制，**不**将 10 个完整 Schema 无条件注入所有 Planner turn。
 - 已知 Tool 允许直接 materialize schema，不强制 Tool Search。披露预算沿用 #301 的 **默认 8**；常规 Tool 调用不消耗披露预算。不同 Agent scope 的能力边界按二期契约执行。
-- 新 Profile 使用一级 `browser`（Managed 为 provider/运行时语义）；不保留长期一级 `browser_computer_use`。AGT-012 起，该旧身份不再进入 Agent capability search，但仍可把旧持久化/分组输入解析到 canonical `browser`，直到相关历史状态迁移完成。
-- `browser_observe / browser_act` 的实现和精确 ID 暂时只为 Computer Use Studio / Debugger 活跃消费者保留，并从 `agent_intent` 暴露中移除；它们不得再被 Main / Generic Agent 发现或执行。`browser_assert` 继续作为正式 v1 Tool。Studio/Debugger 迁移完成后删除旧 Tool 实现与专用 model loop。
+- 新 Profile 使用一级 `browser`（Managed 为 provider/运行时语义）；不保留长期一级 `browser_computer_use`。AGT-012 final cut 后，该旧身份已从 Profile 与 Agent capability search 中移除。
+- `browser_observe / browser_act` 的实现、注册与 profile 引用已在 AGT-012 final cut 移除；它们的最后一个消费者（Computer Use Manual Debug）已随 Studio 手动调试面退役，没有保留兼容路径。`browser_assert` 继续作为正式 v1 Tool。
 - 新旧 facade **不能长期作为两套默认 Model-facing Tool** 并存。切换计划由 #364 控制，#365 验证新调用路径、历史消费者和移除条件；不可用“仅改 Tool description”冒充交付。
 
 ### 现状 → 目标映射

@@ -13,8 +13,8 @@ describe("Computer Use observability persistence", () => {
   afterEach(() => { resetDatabaseClients(); delete process.env.DATABASE_URL; });
 
   test("reads invocation, trace, and approval events after database client reset", () => {
-    const record: ToolInvocation = { id: "invocation-1", toolId: "browser_act", status: "awaiting_approval", args: { sessionId: "session-1", pageUrl: "https://example.com", snapshotHash: "hash", action: { kind: "click", ref: "e1" } }, traceId: "trace-1", artifacts: [], approval: { required: true, reason: "approval" }, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
-    const trace: ToolTrace = { traceId: "trace-1", invocationId: "invocation-1", toolId: "browser_act", startedAt: record.startedAt!, finishedAt: record.finishedAt, spans: [] };
+    const record: ToolInvocation = { id: "invocation-1", toolId: "browser_click", status: "awaiting_approval", args: { sessionId: "session-1", pageUrl: "https://example.com", snapshotHash: "hash", ref: "e1" }, traceId: "trace-1", artifacts: [], approval: { required: true, reason: "approval" }, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
+    const trace: ToolTrace = { traceId: "trace-1", invocationId: "invocation-1", toolId: "browser_click", startedAt: record.startedAt!, finishedAt: record.finishedAt, spans: [] };
     const events: ToolInvocationEvent[] = [{ type: "invocation:approval_required", invocationId: "invocation-1", message: "approval", at: new Date().toISOString() }];
     computerUseRepository.persistInvocation(record);
     computerUseRepository.persistTrace(trace);

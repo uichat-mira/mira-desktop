@@ -1,33 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { browserResultFromRecord, getDebuggerInvocationStatus } from "../debugger-service.js";
+import { createComputerUseBrowserTools } from "@/mcp/tools/browser-tools.tool.js";
 
-describe("Computer Use debugger invocation status", () => {
-  it("does not turn a completed browser failure into succeeded", () => {
-    expect(getDebuggerInvocationStatus("completed", false)).toBe("failed");
-    expect(getDebuggerInvocationStatus("completed", true)).toBe("succeeded");
-    expect(getDebuggerInvocationStatus("awaiting_approval", false)).toBe("awaiting_approval");
+describe("retired Managed Browser legacy Tools", () => {
+  it("no longer registers browser_observe or browser_act", () => {
+    const toolIds = createComputerUseBrowserTools({} as never).map(
+      (tool) => tool.definition.id,
+    );
+
+    expect(toolIds).not.toContain("browser_observe");
+    expect(toolIds).not.toContain("browser_act");
+    expect(toolIds).toEqual(
+      expect.arrayContaining([
+        "browser_navigate",
+        "browser_snapshot",
+        "browser_screenshot",
+        "browser_click",
+        "browser_fill",
+        "browser_press_key",
+        "browser_select_option",
+        "browser_scroll",
+        "browser_wait_for",
+        "browser_assert",
+      ]),
+    );
   });
-
-  it("reads the direct MCP result shape returned by executeInvocation", () => {
-    const result = browserResultFromRecord({
-      id: "invocation-1",
-      toolId: "browser_observe",
-      status: "completed",
-      args: { sessionId: "session-1" },
-      artifacts: [],
-      result: {
-        ok: true,
-        sessionId: "session-1",
-        invocationId: "invocation-1",
-        page: { url: "https://example.com/", title: "Example Domain", snapshotHash: "hash-1" },
-        observation: { snapshot: "h1 Example Domain", visibleText: "Example Domain", truncated: false },
-        artifacts: [],
-      },
-    });
-
-    expect(result.ok).toBe(true);
-    expect(result.page.title).toBe("Example Domain");
-    expect(result.observation?.snapshot).toBe("h1 Example Domain");
-  });
-
 });

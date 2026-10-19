@@ -28,7 +28,6 @@ import type { ExternalExpertService } from "@/microapps/external-expert/index.js
 import { success } from "@/utils/index.js";
 import { badRequest, notFound, routeHandler } from "@/utils/route-errors.js";
 import computerUseRoutes from "./computer-use/index.js";
-import type { ComputerUseDebuggerService } from "./computer-use/debugger-service.js";
 import codeGraphRoutes from "./codegraph/index.js";
 import evolvingKnowledgeRoutes from "./evolving-knowledge/index.js";
 import externalExpertRoutes from "./external-expert/index.js";
@@ -108,7 +107,6 @@ type MicroappsRouteOptions = {
   imageGenerationService?: ImageGenerationRouteService;
   comfyUiStudioService?: ComfyUiStudioRouteService;
   computerUseRuntimeService?: ComputerUseRuntimeRouteService;
-  computerUseDebuggerService?: ComputerUseDebuggerService;
   codeGraphStudioService?: CodeGraphStudioService;
   mailCenterService?: MailCenterRouteService;
   newsHubService?: NewsHubRouteService;
@@ -238,7 +236,6 @@ const microappsRoute: FastifyPluginAsync<MicroappsRouteOptions> = async (
   const imageGenerationService = options.imageGenerationService;
   const comfyUiStudioService = options.comfyUiStudioService;
   const computerUseRuntimeService = options.computerUseRuntimeService;
-  const computerUseDebuggerService = options.computerUseDebuggerService;
   const codeGraphStudioService = options.codeGraphStudioService;
   const mailCenterService = options.mailCenterService;
   const newsHubService = options.newsHubService;
@@ -589,7 +586,6 @@ const microappsRoute: FastifyPluginAsync<MicroappsRouteOptions> = async (
   await app.register(officeSuiteRoutes);
   await app.register(computerUseRoutes, {
     computerUseRuntimeService,
-    computerUseDebuggerService,
   });
   await app.register(codeGraphRoutes, {
     codeGraphStudioService,

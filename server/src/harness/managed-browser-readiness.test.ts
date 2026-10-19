@@ -17,11 +17,6 @@ import {
 } from "./registry.js";
 import { resolveToolRuntimeReadiness } from "./runtime-readiness.js";
 
-const LEGACY_STUDIO_BROWSER_TOOL_IDS = [
-  "browser_observe",
-  "browser_act",
-] as const;
-
 const AGENT_MANAGED_BROWSER_TOOL_IDS = [
   "browser_assert",
   "browser_navigate",
@@ -36,7 +31,6 @@ const AGENT_MANAGED_BROWSER_TOOL_IDS = [
 ] as const;
 
 const MANAGED_BROWSER_TOOL_IDS = [
-  ...LEGACY_STUDIO_BROWSER_TOOL_IDS,
   ...AGENT_MANAGED_BROWSER_TOOL_IDS,
 ] as const;
 
@@ -100,8 +94,8 @@ describe("Managed Browser Harness runtime readiness", () => {
     expect(exposure.exposedToolIds).toEqual(
       expect.arrayContaining([...AGENT_MANAGED_BROWSER_TOOL_IDS]),
     );
-    for (const toolId of LEGACY_STUDIO_BROWSER_TOOL_IDS) {
-      expect(exposure.exposedToolIds).not.toContain(toolId);
+    for (const legacyToolId of ["browser_observe", "browser_act"]) {
+      expect(exposure.exposedToolIds).not.toContain(legacyToolId);
     }
 
     const view = projectAgentCapabilityView({
@@ -211,11 +205,8 @@ describe("Managed Browser Harness runtime readiness", () => {
       expect(exposure.exposedToolIds).not.toContain(toolId);
       expect(exposure.blockedCapabilityReasons[toolId]).toBe(unavailableReason);
     }
-    for (const toolId of LEGACY_STUDIO_BROWSER_TOOL_IDS) {
-      expect(exposure.exposedToolIds).not.toContain(toolId);
-      expect(exposure.blockedCapabilityReasons[toolId]).toContain(
-        "Computer Use Studio/Debugger compatibility",
-      );
+    for (const legacyToolId of ["browser_observe", "browser_act"]) {
+      expect(exposure.exposedToolIds).not.toContain(legacyToolId);
     }
 
     const view = projectAgentCapabilityView({
@@ -257,12 +248,12 @@ describe("Managed Browser Harness runtime readiness", () => {
           : unavailableRuntime.resolveRuntime(),
     });
 
-    expect(resolveToolRuntimeReadiness("browser_observe").state).toBe(
+    expect(resolveToolRuntimeReadiness("browser_snapshot").state).toBe(
       "unavailable",
     );
 
     installed = true;
-    expect(resolveToolRuntimeReadiness("browser_observe").state).toBe("ready");
+    expect(resolveToolRuntimeReadiness("browser_snapshot").state).toBe("ready");
   });
 
   it("maps the manager resolver directly for non-ready states", () => {

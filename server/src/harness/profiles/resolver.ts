@@ -124,17 +124,12 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
       "browser_scroll",
       "browser_wait_for",
       "browser_assert",
-      "browser_observe",
-      "browser_act",
     ],
     // Native Managed Browser ownership is complete above, but the initial
     // disclosure stage stays empty: a grouped selection must not eagerly inject
     // the whole Browser catalog. AGT-017 generic mid-run disclosure materializes
     // the concrete Tool schema the Planner actually requests.
     disclosureToolIds: [],
-    // Compatibility only until AGT-012/#365 completes accepted cutover. This is
-    // the pre-AGT-011 profile/workbench identity, not a second capability.
-    aliases: ["browser_computer_use"],
     workbench: {
       label: "智控",
       description: "Playwright / Managed Browser 浏览器自动化工具。",

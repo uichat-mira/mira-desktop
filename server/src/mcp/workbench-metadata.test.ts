@@ -36,8 +36,8 @@ const createGitHubTool = (id: string): ToolDefinition => ({
 describe("withWorkbenchMetadata", () => {
   it("projects different capability-owned product groups for the same runtime domain", () => {
     const definitions = [
-      createBrowserTool("browser_observe"),
-      createBrowserTool("browser_act"),
+      createBrowserTool("browser_navigate"),
+      createBrowserTool("browser_snapshot"),
       createBrowserTool("browser_assert"),
       createBrowserTool("browser_attached_look"),
       createBrowserTool("browser_attached_browse"),
@@ -52,7 +52,7 @@ describe("withWorkbenchMetadata", () => {
       projected
         .filter((tool) => tool.workbench?.groupId === "browser")
         .map((tool) => tool.id),
-    ).toEqual(["browser_observe", "browser_act", "browser_assert"]);
+    ).toEqual(["browser_navigate", "browser_snapshot", "browser_assert"]);
     expect(
       projected
         .filter((tool) => tool.workbench?.groupId === "browser_attached")
@@ -63,7 +63,7 @@ describe("withWorkbenchMetadata", () => {
       "browser_attached_act",
       "browser_attached_transfer",
     ]);
-    expect(projected.find((tool) => tool.id === "browser_observe")?.workbench).toMatchObject({
+    expect(projected.find((tool) => tool.id === "browser_navigate")?.workbench).toMatchObject({
       groupId: "browser",
       groupLabel: "智控",
       groupOrder: 50,
@@ -98,14 +98,14 @@ describe("withWorkbenchMetadata", () => {
 
   it("uses complete registry ownership when projecting a filtered tool list", () => {
     const ownershipDefinitions = [
-      createBrowserTool("browser_observe"),
-      createBrowserTool("browser_act"),
+      createBrowserTool("browser_navigate"),
+      createBrowserTool("browser_snapshot"),
       createBrowserTool("browser_assert"),
     ];
 
     expect(
       withWorkbenchMetadata(
-        [createBrowserTool("browser_act")],
+        [createBrowserTool("browser_snapshot")],
         ownershipDefinitions,
       )[0]?.workbench?.groupId,
     ).toBe("browser");

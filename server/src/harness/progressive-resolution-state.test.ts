@@ -6,8 +6,6 @@ import {
 } from "./registry.js";
 import {
   DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
-  createCapabilityDisclosureToolIdResolver,
-  createCapabilityToolIdResolver,
   createProgressiveResolutionState,
   isProgressiveResolutionBudgetExhausted,
   readCapabilityDisclosure,
@@ -18,7 +16,6 @@ import {
   resolveAndDiscloseCapability,
   type ProgressiveResolutionState,
 } from "./progressive-resolution-state.js";
-import { resolveHarnessCapabilityProfiles } from "./profiles/resolver.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 import { writeTool } from "../mcp/tools/write.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
@@ -171,78 +168,5 @@ describe("progressive resolution durable state", () => {
 
     expect(readCapabilityDisclosure(reconciled, "read")).toBe("schema");
     expect(readCapabilityDisclosure(reconciled, "web_search")).toBe("hidden");
-  });
-
-  it("resolves declared profile aliases without creating a second capability", () => {
-    const browserDefinition = (id: string) => ({
-      id,
-      title: id,
-      description: id,
-      domain: "browser_action" as const,
-      source: "internal" as const,
-      mode: "sync" as const,
-      inputSchema: {},
-      tags: ["browser"],
-      capabilities: { sideEffect: "none" as const, requiresApproval: false },
-    });
-    const profiles = resolveHarnessCapabilityProfiles([
-      browserDefinition("browser_navigate"),
-      browserDefinition("browser_click"),
-    ]);
-
-    const resolveOwnership = createCapabilityToolIdResolver(profiles);
-    const resolveDisclosure = createCapabilityDisclosureToolIdResolver(profiles);
-
-    expect(profiles.filter((profile) => profile.id === "browser")).toHaveLength(1);
-    expect(resolveOwnership("browser")).toEqual([
-      "browser_navigate",
-      "browser_click",
-    ]);
-    // A legacy grouped snapshot keyed by the old profile identity reconciles to
-    // the same canonical Tools instead of being dropped.
-    expect(resolveOwnership("browser_computer_use")).toEqual([
-      "browser_navigate",
-      "browser_click",
-    ]);
-    // Ownership is complete, but grouped selection must not broaden initial
-    // schema disclosure.
-    expect(resolveDisclosure("browser")).toEqual([]);
-    expect(resolveDisclosure("browser_computer_use")).toEqual([]);
-    expect(resolveOwnership("unregistered_tool")).toEqual(["unregistered_tool"]);
-  });
-
-  it("keeps an alias-keyed legacy browser snapshot across reconciliation", () => {
-    const browserDefinition = (id: string) => ({
-      id,
-      title: id,
-      description: id,
-      domain: "browser_action" as const,
-      source: "internal" as const,
-      mode: "sync" as const,
-      inputSchema: {},
-      tags: ["browser"],
-      capabilities: { sideEffect: "none" as const, requiresApproval: false },
-    });
-    const definitions = [
-      browserDefinition("browser_navigate"),
-      browserDefinition("browser_click"),
-    ];
-    const profiles = resolveHarnessCapabilityProfiles(definitions);
-    const resolveOwnership = createCapabilityToolIdResolver(profiles);
-
-    const profileKeyed = resolveAndDiscloseCapability(
-      createProgressiveResolutionState(),
-      { capabilityId: "browser_computer_use", target: "schema" },
-    ).state;
-    const reconciled = reconcileProgressiveResolutionState({
-      state: profileKeyed,
-      definitions,
-      eligibleCapabilityIds: definitions.map((definition) => definition.id),
-      resolveToolIds: resolveOwnership,
-    });
-
-    expect(readCapabilityDisclosure(reconciled, "browser_computer_use")).toBe(
-      "schema",
-    );
   });
 });

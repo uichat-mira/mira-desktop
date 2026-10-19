@@ -301,12 +301,10 @@ describe("mcp routes", () => {
         .map((tool) => tool.id)
         .sort(),
     ).toEqual([
-      "browser_act",
       "browser_assert",
       "browser_click",
       "browser_fill",
       "browser_navigate",
-      "browser_observe",
       "browser_press_key",
       "browser_screenshot",
       "browser_scroll",
