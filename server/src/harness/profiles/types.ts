@@ -24,8 +24,10 @@ export interface HarnessCapabilityProfile {
    */
   disclosureToolIds?: string[];
   /**
-   * Temporary compatibility identities for this capability. Aliases resolve to
-   * the canonical profile id and never create a second profile.
+   * Temporary compatibility identities for persisted/grouped inputs. Aliases
+   * resolve to the canonical profile id and never create a second profile, but
+   * they are not Agent capability-search aliases unless a caller explicitly
+   * projects them.
    */
   aliases?: string[];
   actionProfileId?: string;
