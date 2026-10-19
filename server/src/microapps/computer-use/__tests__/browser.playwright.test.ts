@@ -222,6 +222,52 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
     }
   }, 30000);
 
+  it("blocks an out-of-scope same-context tab even when its ID was listed while allowed", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const file = path.join(root, `tab-policy-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(file, '<!doctype html><html><head><title>Allowed Tab</title></head><body><h1>Allowed Tab</h1></body></html>');
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    try {
+      const allowedUrl = pathToFileURL(file).href;
+      const created = await manager.create({
+        allowedDomains: ["approved.example"],
+        allowedSchemes: ["file:", "https:"],
+        initialUrl: allowedUrl,
+      });
+      expect(created.status).toBe("ready");
+      const session = manager.get(created.id)!;
+      const originalPage = session.page;
+      const popup = await session.context.newPage();
+      await popup.goto(allowedUrl, { waitUntil: "domcontentloaded" });
+      const listed = await browser.listTabs({ sessionId: created.id });
+      const tabId = listed.tabs?.find((tab) => tab.url === allowedUrl && !tab.selected)?.id;
+      expect(tabId).toBeTruthy();
+
+      // The site can navigate its own popup after the list; its tab ID remains
+      // valid, but cannot authorize a destination outside allowedDomains.
+      await popup.route("https://outside.invalid/**", (route) => route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<title>Outside Domain</title><h1>Outside Domain</h1>",
+      }));
+      await popup.goto("https://outside.invalid/popup", { waitUntil: "domcontentloaded" });
+      const denied = await browser.selectTab({ sessionId: created.id, tabId: tabId! });
+      expect(denied).toMatchObject({ ok: false, error: { code: "navigation_blocked", retryable: false } });
+      expect(session.page).toBe(originalPage);
+      const observed = await browser.observe({ sessionId: created.id });
+      expect(observed.ok).toBe(true);
+      expect(observed.page.url).toBe(allowedUrl);
+      expect(observed.observation?.snapshot).toContain('heading "Allowed Tab"');
+    } finally {
+      await manager.closeAll();
+      fs.rmSync(file, { force: true });
+    }
+  }, 30000);
+
   it("rejects a pre-navigation native ref after a same-URL full-document navigation", async () => {
     fs.mkdirSync(root, { recursive: true });
     const file = path.join(root, `generation-fixture-${crypto.randomUUID()}.html`);
