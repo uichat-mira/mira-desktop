@@ -284,7 +284,8 @@ describe("Computer Use browser MCP tools", () => {
     expect(browser.navigate).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "browser-1" }));
     expect(browser.assert).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "browser-1" }));
     expect(navigated.args).toMatchObject({ sessionId: "browser-1" });
-    expect(asserted.args).toMatchObject({ sessionId: "browser-1" });
+    expect(asserted.args).toMatchObject({ assertion: { kind: "title", expected: "Example" } });
+    expect(asserted.args).not.toHaveProperty("sessionId");
     expect(asserted.evidence?.data).toMatchObject({ kind: "computer_use_browser", operation: "assert" });
   });
 
