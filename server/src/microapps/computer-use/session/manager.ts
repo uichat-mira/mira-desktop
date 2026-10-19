@@ -19,6 +19,8 @@ export type ManagedBrowserSession = {
   context: PlaywrightContextLike;
   page: BrowserPage;
   tabIds: Map<BrowserPage, string>;
+  // Changes only after a successful switch to a different page.
+  selectionEpoch: number;
   artifactRoot: string;
   lastUsedAt: number;
   timeoutHandle?: ReturnType<typeof setTimeout>;
@@ -105,7 +107,7 @@ export class BrowserSessionManager {
         const pageWithViewport = page as BrowserPage & { setViewportSize?: (size: { width: number; height: number }) => Promise<unknown> };
         await pageWithViewport.setViewportSize?.(config.viewport);
       }
-      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, tabIds: new Map(), artifactRoot: sessionRoot, lastUsedAt: this.now(), activeOperations: 0 };
+      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, tabIds: new Map(), selectionEpoch: 0, artifactRoot: sessionRoot, lastUsedAt: this.now(), activeOperations: 0 };
       this.sessions.set(id, session);
       this.scheduleTimeout(session);
       if (config.initialUrl) {
@@ -190,7 +192,10 @@ export class BrowserSessionManager {
     }
     // Focusing is asynchronous; a page may close or navigate while it is pending.
     assertTargetAllowed();
-    session.page = target.page;
+    if (session.page !== target.page) {
+      session.selectionEpoch += 1;
+      session.page = target.page;
+    }
     this.touch(session);
     return target.page;
   }
