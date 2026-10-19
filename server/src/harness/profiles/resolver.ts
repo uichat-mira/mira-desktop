@@ -8,7 +8,9 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   domain: ToolDefinition["domain"];
   tags: string[];
   preferredToolId?: string;
+  aliases?: string[];
   supportingToolIds: string[];
+  ownedToolIds?: string[];
   actionProfileId?: string;
   actionProfileTitle?: string;
   actionProfileDescription?: string;
@@ -60,13 +62,35 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     supportingToolIds: ["web_search", "web_fetch"],
   },
   {
-    id: "browser_computer_use",
-    title: "Browser Computer Use",
+    // `browser` is the canonical Managed Browser Capability. `browser_computer_use`
+    // is a temporary compatibility alias for in-flight explicit toolkit
+    // selections and legacy grouped disclosure snapshots; it is not a second
+    // Capability or Workbench group. AGT-012 / #365 removes it after live
+    // acceptance of the atomic Browser tools.
+    id: "browser",
+    title: "Browser",
     description: "Inspect and operate an isolated Playwright automation session in a Mira-managed browser, returning structured page evidence.",
     domain: "browser_action",
     tags: ["browser", "managed-browser", "mira-managed-browser", "isolated-session", "automation-session", "playwright", "website", "webpage", "page", "open", "visit", "navigate", "title", "inspect", "computer-use", "网页", "页面", "打开", "访问"],
-    preferredToolId: "browser_observe",
+    aliases: ["browser_computer_use"],
+    // Compatibility disclosure expansion. The atomic Tools are owned by this
+    // Capability but are not eagerly materialized here: AGT-017 / #387 owns the
+    // generic mid-run metadata -> schema disclosure seam.
     supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
+    ownedToolIds: [
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "browser_navigate",
+      "browser_wait_for",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_fill",
+      "browser_press_key",
+      "browser_select_option",
+      "browser_scroll",
+    ],
     workbench: {
       label: "智控",
       description: "Playwright / Managed Browser 浏览器自动化工具。",
@@ -181,14 +205,16 @@ export const resolveHarnessCapabilityProfiles = (
 
   for (const blueprint of INTERNAL_PROFILE_BLUEPRINTS) {
     const matchedToolIds = blueprint.supportingToolIds.filter((toolId) => definitionMap.has(toolId));
+    const matchedOwnedToolIds = (blueprint.ownedToolIds ?? blueprint.supportingToolIds)
+      .filter((toolId) => definitionMap.has(toolId));
     if (
-      matchedToolIds.length === 0 ||
+      (matchedToolIds.length === 0 && matchedOwnedToolIds.length === 0) ||
       (blueprint.preferredToolId && !definitionMap.has(blueprint.preferredToolId))
     ) {
       continue;
     }
 
-    matchedToolIds.forEach((toolId) => consumed.add(toolId));
+    matchedOwnedToolIds.forEach((toolId) => consumed.add(toolId));
     profiles.push({
       id: blueprint.id,
       title: blueprint.title,
@@ -197,7 +223,11 @@ export const resolveHarnessCapabilityProfiles = (
       source: "internal",
       tags: blueprint.tags,
       ...(blueprint.preferredToolId ? { preferredToolId: blueprint.preferredToolId } : {}),
+      ...(blueprint.aliases?.length ? { aliases: [...blueprint.aliases] } : {}),
       supportingToolIds: matchedToolIds,
+      ...(blueprint.ownedToolIds
+        ? { ownedToolIds: matchedOwnedToolIds }
+        : {}),
       ...(blueprint.workbench ? { workbench: blueprint.workbench } : {}),
       ...(blueprint.actionProfileId
         ? {
@@ -217,4 +247,28 @@ export const resolveHarnessCapabilityProfiles = (
   }
 
   return profiles;
+};
+
+/**
+ * Resolves a declared Capability/Profile identity (canonical id or alias) to
+ * the canonical Profile id. Canonical ids always win over aliases. This is a
+ * generic identity lookup only: it does not register a Capability, widen
+ * readiness, or grant execution authority.
+ */
+export const createHarnessCapabilityIdResolver = (
+  profiles: readonly HarnessCapabilityProfile[],
+): ((capabilityId: string) => string) => {
+  const canonicalIds = new Set(profiles.map((profile) => profile.id));
+  const aliasIds = new Map<string, string>();
+  for (const profile of profiles) {
+    for (const alias of profile.aliases ?? []) {
+      if (canonicalIds.has(alias)) continue;
+      if (!aliasIds.has(alias)) aliasIds.set(alias, profile.id);
+    }
+  }
+
+  return (capabilityId: string) =>
+    canonicalIds.has(capabilityId)
+      ? capabilityId
+      : (aliasIds.get(capabilityId) ?? capabilityId);
 };

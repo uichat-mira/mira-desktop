@@ -796,9 +796,9 @@ describe("useToolsWorkbench", () => {
       },
     });
     getMcpToolsMock.mockResolvedValueOnce([
-      createBrowserTool("browser_observe", "browser_computer_use", "智控", 50),
-      createBrowserTool("browser_act", "browser_computer_use", "智控", 50),
-      createBrowserTool("browser_assert", "browser_computer_use", "智控", 50),
+      createBrowserTool("browser_observe", "browser", "智控", 50),
+      createBrowserTool("browser_act", "browser", "智控", 50),
+      createBrowserTool("browser_assert", "browser", "智控", 50),
       createBrowserTool("browser_attached_look", "browser_attached", "触界", 60),
       createBrowserTool("browser_attached_browse", "browser_attached", "触界", 60),
       createBrowserTool("browser_attached_act", "browser_attached", "触界", 60),
@@ -813,7 +813,7 @@ describe("useToolsWorkbench", () => {
     }, { timeout: 3000 });
 
     expect(result.current.groupSummaries).toEqual([
-      expect.objectContaining({ id: "browser_computer_use", label: "智控", count: 3 }),
+      expect.objectContaining({ id: "browser", label: "智控", count: 3 }),
       expect.objectContaining({ id: "browser_attached", label: "触界", count: 4 }),
     ]);
     expect(result.current.filteredTools.map((tool) => tool.id).sort()).toEqual([

@@ -206,7 +206,7 @@ export const withWorkbenchMetadata = (
     if (!profile.workbench) {
       continue;
     }
-    for (const toolId of profile.supportingToolIds) {
+    for (const toolId of profile.ownedToolIds ?? profile.supportingToolIds) {
       explicitOwnership.set(toolId, {
         groupId: profile.id,
         presentation: {

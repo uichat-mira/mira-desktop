@@ -511,6 +511,95 @@ test("prepareContextNode injects an explicit tool package as a Planner preferenc
   }
 });
 
+test("prepareContextNode resolves a legacy browser_computer_use toolkit selection to the canonical browser group", async () => {
+  const managedToolIds = [
+    "browser_observe",
+    "browser_act",
+    "browser_assert",
+    "browser_navigate",
+    "browser_wait_for",
+    "browser_snapshot",
+    "browser_screenshot",
+    "browser_click",
+    "browser_fill",
+    "browser_press_key",
+    "browser_select_option",
+    "browser_scroll",
+  ];
+  const definitions = managedToolIds.map((toolId) =>
+    makeToolDefinition(toolId, "browser_action"),
+  );
+  const compatibilityToolIds = ["browser_observe", "browser_act", "browser_assert"];
+  const registrySpy = vi
+    .spyOn(harnessRegistry, "listToolDefinitions")
+    .mockReturnValue(definitions);
+  const matcherSpy = vi
+    .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
+    .mockImplementation(async ({ query }) => ({
+      query,
+      topCandidates: [],
+      toolCandidates: [],
+      toolExposure: {
+        exposedToolIds: compatibilityToolIds,
+        exposedDefinitions: definitions.filter((definition) =>
+          compatibilityToolIds.includes(definition.id),
+        ),
+        reason: ["matched browser tools"],
+      },
+      exposureReasons: ["matched browser tools"],
+      resolution: makeSelectionResolution("browser"),
+    }));
+
+  try {
+    const patch = await prepareContextNode(
+      createBaseState({ requestedToolGroupIds: ["browser_computer_use"] }),
+    );
+
+    assert.match(matcherSpy.mock.calls[0]?.[0].query ?? "", /智控/);
+    assert.deepEqual(
+      patch.toolExposure?.requestedToolGroups?.map((group) => ({
+        groupId: group.groupId,
+        toolIds: group.toolIds,
+        status: group.status,
+      })),
+      [
+        {
+          groupId: "browser",
+          toolIds: managedToolIds,
+          status: "available",
+        },
+      ],
+    );
+    assert.equal(
+      patch.toolExposure?.requestedToolGroups?.some(
+        (group) => group.groupId === "browser_computer_use",
+      ),
+      false,
+    );
+
+    const canonicalPatch = await prepareContextNode(
+      createBaseState({ requestedToolGroupIds: ["browser"] }),
+    );
+    assert.deepEqual(
+      canonicalPatch.toolExposure?.requestedToolGroups?.map((group) => ({
+        groupId: group.groupId,
+        toolIds: group.toolIds,
+        status: group.status,
+      })),
+      [
+        {
+          groupId: "browser",
+          toolIds: managedToolIds,
+          status: "available",
+        },
+      ],
+    );
+  } finally {
+    matcherSpy.mockRestore();
+    registrySpy.mockRestore();
+  }
+});
+
 test("prepareContextNode reports unavailable and unknown tool packages without changing tool exposure", async () => {
   const readOpen = makeToolDefinition("read_open");
   const webSearch = makeToolDefinition("web_search", "web_search");

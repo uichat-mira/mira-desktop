@@ -14,7 +14,10 @@ import {
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
-import { resolveHarnessCapabilityProfiles } from "@/harness/profiles";
+import {
+  createHarnessCapabilityIdResolver,
+  resolveHarnessCapabilityProfiles,
+} from "@/harness/profiles";
 import {
   createCapabilityToolIdResolver,
   createProgressiveResolutionState,
@@ -85,6 +88,17 @@ const resolveRequestedToolGroupHints = (
   ];
   if (requested.length === 0) return [];
 
+  // Declared Profile aliases are compatibility identities for explicit toolkit
+  // selection. Resolve them to the one canonical Workbench group before lookup
+  // so an in-flight `browser_computer_use` selection maps to `browser` without
+  // creating a second group or widening authority.
+  const resolveCanonicalCapabilityId = createHarnessCapabilityIdResolver(
+    resolveHarnessCapabilityProfiles(definitions),
+  );
+  const requestedCanonicalGroupIds = [
+    ...new Set(requested.map(resolveCanonicalCapabilityId)),
+  ];
+
   const definitionsByGroup = new Map<
     string,
     ReturnType<typeof withWorkbenchMetadata>
@@ -97,7 +111,7 @@ const resolveRequestedToolGroupHints = (
     definitionsByGroup.set(groupId, groupDefinitions);
   }
 
-  return requested.map((groupId) => {
+  return requestedCanonicalGroupIds.map((groupId) => {
     const groupDefinitions = definitionsByGroup.get(groupId) ?? [];
     const workbench = groupDefinitions[0]?.workbench;
     return {

@@ -192,7 +192,11 @@ export const buildCapabilityResolutionDocuments = (
     domain: profile.domain,
     tags: [...profile.tags],
     toolIds: [...profile.supportingToolIds],
-    aliases: [profile.id, ...profile.supportingToolIds],
+    aliases: [
+      profile.id,
+      ...(profile.aliases ?? []),
+      ...profile.supportingToolIds,
+    ],
   }));
 
 const canonicalKeysOf = (

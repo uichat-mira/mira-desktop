@@ -297,12 +297,23 @@ describe("mcp routes", () => {
     }).data.filter((tool) => tool.domain === "browser_action");
     expect(
       browserTools
-        .filter((tool) => tool.workbench?.groupId === "browser_computer_use")
+        .filter((tool) => tool.workbench?.groupId === "browser")
         .map((tool) => tool.id)
         .sort(),
-    ).toEqual(
-      ["browser_act", "browser_assert", "browser_observe"],
-    );
+    ).toEqual([
+      "browser_act",
+      "browser_assert",
+      "browser_click",
+      "browser_fill",
+      "browser_navigate",
+      "browser_observe",
+      "browser_press_key",
+      "browser_screenshot",
+      "browser_scroll",
+      "browser_select_option",
+      "browser_snapshot",
+      "browser_wait_for",
+    ]);
     expect(
       browserTools
         .filter((tool) => tool.workbench?.groupId === "browser_attached")

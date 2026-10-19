@@ -34,11 +34,23 @@ const createGitHubTool = (id: string): ToolDefinition => ({
 });
 
 describe("withWorkbenchMetadata", () => {
-  it("projects different capability-owned product groups for the same runtime domain", () => {
+  it("projects one browser product group for every managed tool and keeps Attached Browser separate", () => {
+    const managedToolIds = [
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "browser_navigate",
+      "browser_wait_for",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_fill",
+      "browser_press_key",
+      "browser_select_option",
+      "browser_scroll",
+    ];
     const definitions = [
-      createBrowserTool("browser_observe"),
-      createBrowserTool("browser_act"),
-      createBrowserTool("browser_assert"),
+      ...managedToolIds.map((toolId) => createBrowserTool(toolId)),
       createBrowserTool("browser_attached_look"),
       createBrowserTool("browser_attached_browse"),
       createBrowserTool("browser_attached_act"),
@@ -50,9 +62,14 @@ describe("withWorkbenchMetadata", () => {
     expect(projected.every((tool) => tool.domain === "browser_action")).toBe(true);
     expect(
       projected
-        .filter((tool) => tool.workbench?.groupId === "browser_computer_use")
+        .filter((tool) => tool.workbench?.groupId === "browser")
         .map((tool) => tool.id),
-    ).toEqual(["browser_observe", "browser_act", "browser_assert"]);
+    ).toEqual(managedToolIds);
+    expect(
+      projected.some(
+        (tool) => tool.workbench?.groupId === "browser_computer_use",
+      ),
+    ).toBe(false);
     expect(
       projected
         .filter((tool) => tool.workbench?.groupId === "browser_attached")
@@ -64,6 +81,10 @@ describe("withWorkbenchMetadata", () => {
       "browser_attached_transfer",
     ]);
     expect(projected.find((tool) => tool.id === "browser_observe")?.workbench).toMatchObject({
+      groupLabel: "智控",
+      groupOrder: 50,
+    });
+    expect(projected.find((tool) => tool.id === "browser_navigate")?.workbench).toMatchObject({
       groupLabel: "智控",
       groupOrder: 50,
     });
@@ -100,14 +121,15 @@ describe("withWorkbenchMetadata", () => {
       createBrowserTool("browser_observe"),
       createBrowserTool("browser_act"),
       createBrowserTool("browser_assert"),
+      createBrowserTool("browser_navigate"),
     ];
 
     expect(
       withWorkbenchMetadata(
-        [createBrowserTool("browser_act")],
+        [createBrowserTool("browser_navigate")],
         ownershipDefinitions,
       )[0]?.workbench?.groupId,
-    ).toBe("browser_computer_use");
+    ).toBe("browser");
   });
 
   it("keeps Tool Lab acceptance cases out of the ordinary Settings workbench", () => {
