@@ -14,6 +14,7 @@ import {
   type CapabilityToolMetadata,
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
+import { isAgentIntentCompatibilityOnlyToolId } from "@/harness/exposure-core/filters.js";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
 import {
   createHarnessCapabilityProfileKeyIndex,
@@ -105,6 +106,10 @@ const resolveRequestedToolGroupHints = (
     ReturnType<typeof withWorkbenchMetadata>
   >();
   for (const definition of withWorkbenchMetadata(definitions)) {
+    // Workbench keeps legacy Browser tools visible for Studio/Debugger, but a
+    // requested Agent group must not leak those compatibility-only ids back
+    // into the model-biased query after AGT-012 cutover.
+    if (isAgentIntentCompatibilityOnlyToolId(definition.id)) continue;
     const groupId = definition.workbench?.groupId;
     if (!groupId) continue;
     const groupDefinitions = definitionsByGroup.get(groupId) ?? [];
