@@ -618,9 +618,14 @@ export const prepareContextNode = async (
   // through the same Profile -> supportingToolIds mapping used for
   // reconciliation. A turn without a confident selection discloses nothing new
   // instead of eagerly materializing the whole catalog.
+  // A task-relevant capability reports the concrete Tool(s) whose schema this
+  // turn may materialize, so a matched first-level capability (for example
+  // `browser`) never eager-discloses its whole atomic catalog. Grouped
+  // capabilities keep the existing Profile -> supportingToolIds expansion.
   const selectedCapabilityId = matcherResult.resolution?.selectedCapabilityId;
   const resolutionSelectedToolIds = selectedCapabilityId
-    ? resolveCapabilityToolIds(selectedCapabilityId)
+    ? (matcherResult.resolution?.selectedToolIds ??
+      resolveCapabilityToolIds(selectedCapabilityId))
     : [];
   for (const toolId of resolutionSelectedToolIds) addSchemaTarget(toolId);
 

@@ -1,5 +1,9 @@
+import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import { resolveHarnessToolExposure } from "../exposure-core/index.js";
-import { resolveHarnessCapabilityProfiles } from "../profiles/index.js";
+import {
+  resolveHarnessCapabilityProfiles,
+  type HarnessCapabilityProfile,
+} from "../profiles/index.js";
 import { resolveWorkspaceEditFacadeForModel } from "../edit-facade.js";
 import {
   expandHarnessToolCandidates,
@@ -10,6 +14,7 @@ import {
   type CapabilityResolutionResult,
 } from "./capability-resolution.js";
 import { resolveProgressiveCapabilitySearch } from "./capability-resolution.semantic.js";
+import { resolveTaskRelevantToolSelection } from "./task-relevant-selection.js";
 import { TOOL_EXPOSURE_RECALL_THRESHOLD } from "./scoring.js";
 import type {
   HarnessToolCandidate,
@@ -30,6 +35,35 @@ const dedupeCandidates = (candidates: HarnessToolCandidate[]) => {
     seen.add(candidate.toolId);
     return true;
   });
+};
+
+/**
+ * Opt-in narrowing of a selected capability to the concrete Tool(s) whose
+ * schema this turn may materialize. It only runs for profiles that declare
+ * `schemaSelection: "task_relevant"`; grouped profiles keep their existing
+ * `supportingToolIds` disclosure behavior. The nested selection is deterministic
+ * (no semantic Resolver), so it adds no extra model roundtrip and never eagerly
+ * materializes the whole atomic catalog. It changes disclosure only and grants
+ * no execution authority.
+ */
+const applyTaskRelevantToolSelection = async (input: {
+  resolution: CapabilityResolutionResult | undefined;
+  profileMap: ReadonlyMap<string, HarnessCapabilityProfile>;
+  query: string;
+  definitions: readonly ToolDefinition[];
+}): Promise<CapabilityResolutionResult | undefined> => {
+  const resolution = input.resolution;
+  const selectedCapabilityId = resolution?.selectedCapabilityId;
+  if (!resolution || !selectedCapabilityId) return resolution;
+  const profile = input.profileMap.get(selectedCapabilityId);
+  if (!profile || profile.schemaSelection !== "task_relevant") return resolution;
+
+  const selectedToolIds = await resolveTaskRelevantToolSelection({
+    query: input.query,
+    profile,
+    definitions: input.definitions,
+  });
+  return { ...resolution, selectedToolIds };
 };
 
 export const resolveHarnessToolCandidatesForTurn = async (
@@ -85,7 +119,10 @@ export const resolveHarnessToolCandidatesForTurn = async (
     // capability this turn should disclose. The resolver still only decides
     // disclosure order; it never grants authority.
     const selectionProfiles = resolveHarnessCapabilityProfiles(visibleDefinitions);
-    const resolution =
+    const selectionProfileMap = new Map(
+      selectionProfiles.map((profile) => [profile.id, profile]),
+    );
+    const rawResolution =
       input.query.trim() && selectionProfiles.length > 0
         ? await resolveProgressiveCapabilitySearch({
             query: input.query,
@@ -101,6 +138,12 @@ export const resolveHarnessToolCandidatesForTurn = async (
               : {}),
           })
         : undefined;
+    const resolution = await applyTaskRelevantToolSelection({
+      resolution: rawResolution,
+      profileMap: selectionProfileMap,
+      query: input.query,
+      definitions: visibleDefinitions,
+    });
     return {
       query: input.query,
       source,
@@ -151,7 +194,7 @@ export const resolveHarnessToolCandidatesForTurn = async (
     );
   }
 
-  const resolution = await resolveProgressiveCapabilitySearch({
+  const rawResolution = await resolveProgressiveCapabilitySearch({
     query: input.query,
     capabilities: buildCapabilityResolutionDocuments(profiles),
     ...(input.knownCapabilityId
@@ -162,6 +205,13 @@ export const resolveHarnessToolCandidatesForTurn = async (
       : {}),
     ...(input.resolutionBudget ? { budget: input.resolutionBudget } : {}),
   });
+  const resolution =
+    (await applyTaskRelevantToolSelection({
+      resolution: rawResolution,
+      profileMap,
+      query: input.query,
+      definitions: visibleDefinitions,
+    })) ?? rawResolution;
 
   const toMatches = (value: CapabilityResolutionResult) =>
     value.candidates
