@@ -322,7 +322,10 @@ describe.skipIf(!executablePath)("AGT-012 Managed Browser cutover acceptance", (
 
     const waitArgs = {
       condition: { kind: "text" as const, value: "Welcome Mira" },
-      timeoutMs: 5000,
+      // Full Windows CI can spend several seconds capturing a real AI aria
+      // snapshot under load. This is the success-path integration budget; the
+      // explicit wait_timeout negative below stays at 100 ms.
+      timeoutMs: 15000,
     };
     const waitPending = await executeInvocation({
       toolId: "browser_wait_for",
