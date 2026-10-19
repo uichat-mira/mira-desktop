@@ -86,6 +86,15 @@ export interface PiAgentLoopNodes {
   error: PiAgentLoopNodeHandler;
 }
 
+/**
+ * Compatibility-only hook for injected/custom Pi runtimes that predate
+ * mid-run schema disclosure. Without this no-op, a runtime that replaces
+ * prepare/normalize semantics would unexpectedly execute the production
+ * disclosure node before its own steps (the regression caught by
+ * unbounded-agent-iterations). Remove this fallback once every supported
+ * injected runtime explicitly supplies discloseToolSchema or has migrated to
+ * the application-default Pi semantics.
+ */
 const noOpToolSchemaDisclosure: PiAgentLoopStepHandler = async () => ({
   toolSchemaDisclosure: undefined,
 });
