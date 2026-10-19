@@ -41,6 +41,22 @@ export type BrowserNavigateInput = {
   url: string;
 };
 
+export type BrowserTabsListInput = {
+  sessionId: string;
+};
+
+export type BrowserTabSelectInput = {
+  sessionId: string;
+  tabId: string;
+};
+
+export type BrowserTab = {
+  id: string;
+  title: string;
+  url: string;
+  selected: boolean;
+};
+
 export type BrowserWaitCondition =
   | { kind: "text"; value: string }
   | { kind: "url"; value: string }
@@ -88,6 +104,8 @@ export type BrowserToolResult = {
   sessionId: string;
   invocationId: string;
   page: BrowserPageState;
+  tabs?: BrowserTab[];
+  tabsTruncated?: boolean;
   observation?: {
     snapshot?: string;
     visibleText?: string;

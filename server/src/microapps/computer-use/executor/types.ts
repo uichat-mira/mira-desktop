@@ -11,6 +11,9 @@ export type PlaywrightLocatorLike = {
 
 export type PlaywrightPageLike = {
   goto(url: string, options?: { waitUntil?: "load" | "domcontentloaded" | "networkidle"; timeout?: number }): Promise<unknown>;
+  close?(): Promise<unknown>;
+  isClosed?(): boolean;
+  bringToFront?(): Promise<unknown>;
   click(selector: string, options?: { timeout?: number }): Promise<unknown>;
   fill(selector: string, value: string, options?: { timeout?: number }): Promise<unknown>;
   type(
@@ -35,6 +38,7 @@ export type PlaywrightPageLike = {
 
 export type PlaywrightContextLike = {
   newPage(): Promise<PlaywrightPageLike>;
+  pages(): PlaywrightPageLike[];
   close(): Promise<unknown>;
 };
 

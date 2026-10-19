@@ -125,6 +125,7 @@ describe("Computer Use T122 server acceptance", () => {
         launch: vi.fn(async () => ({
           newContext: vi.fn(async () => ({
             newPage: vi.fn(async () => page),
+            pages: vi.fn(() => [page]),
             close: vi.fn(async () => undefined),
           })),
           close: vi.fn(async () => undefined),
@@ -172,7 +173,7 @@ describe("Computer Use T122 server acceptance", () => {
     const page = createPage();
     const manager = new BrowserSessionManager({
       runtime: { resolveRuntime: () => ({ status: "ready", strategy: "managed", runtime: { source: "managed", channel: "chromium", executablePath: "C:/chrome.exe", version: "test", installedAt: "now" }, inspectedCandidates: [] }) },
-      launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), close: vi.fn(async () => undefined) })), close: vi.fn(async () => undefined) })) },
+      launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), pages: vi.fn(() => [page]), close: vi.fn(async () => undefined) })), close: vi.fn(async () => undefined) })) },
     });
     managers.push(manager);
     const browser = new BrowserService(manager);

@@ -30,6 +30,8 @@ const browserResultSchema = {
     sessionId: { type: "string" },
     invocationId: { type: "string" },
     page: { type: "object", required: ["url", "title"], additionalProperties: false, properties: { url: { type: "string" }, title: { type: "string" }, snapshotHash: { type: "string" } } },
+    tabs: { type: "array", items: { type: "object", required: ["id", "title", "url", "selected"], additionalProperties: false, properties: { id: { type: "string" }, title: { type: "string" }, url: { type: "string" }, selected: { type: "boolean" } } } },
+    tabsTruncated: { type: "boolean" },
     observation: { type: "object", additionalProperties: false, properties: { snapshot: { type: "string" }, visibleText: { type: "string" }, truncated: { type: "boolean" } } },
     assertion: { type: "object", required: ["kind", "passed"], additionalProperties: false, properties: { kind: { type: "string", enum: ["title", "url", "text", "visible", "value"] }, passed: { type: "boolean" } } },
     scroll: { type: "object", required: ["requested", "before", "after", "moved"], additionalProperties: false, properties: { requested: browserScrollPointSchema, before: browserScrollPointSchema, after: browserScrollPointSchema, moved: { type: "boolean" } } },
@@ -127,6 +129,19 @@ const agentScrollSchema = {
     x: { type: "number" },
     y: { type: "number" },
   },
+} as const;
+
+const agentTabSelectSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["tabId"],
+  properties: { tabId: { type: "string", minLength: 1, maxLength: 128 } },
+} as const;
+const agentTabsListSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [],
+  properties: {},
 } as const;
 
 const emitBrowserArtifacts = (
@@ -617,5 +632,66 @@ export const createComputerUseBrowserTools = (
     },
   };
 
-  return [assert, navigate, wait, snapshot, screenshot, click, fill, pressKey, selectOption, scroll];
+  const tabsList: ToolImplementation = {
+    definition: {
+      id: "browser_tabs_list",
+      title: "Browser Tabs List",
+      description: "List the tabs that belong to the current Managed Browser session. Returns bounded tab IDs, URL, title and which tab is selected. It never enumerates the user's Chrome or attached-browser tabs. Read-only; navigate first, then use browser_tab_select only with an ID returned here.",
+      domain: "browser_action",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object", additionalProperties: false, required: [], properties: {},
+      },
+      inputSchemaByExposure: { agent_intent: agentTabsListSchema },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "tabs", "tab", "list", "window", "标签", "标签页"],
+      capabilities: { sideEffect: "none", requiresApproval: false, networkAccess: true },
+    },
+    execute: async (context) => {
+      requireObject<Record<string, never>>(context.args, "args");
+      const bound = requireBoundSession(context);
+      const result = bound
+        ? await browser.listTabs({ sessionId: bound })
+        : unavailable(context);
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  const tabSelect: ToolImplementation = {
+    definition: {
+      id: "browser_tab_select",
+      title: "Browser Tab Select",
+      description: "Select one tab inside the current Managed Browser session using a tabId returned by browser_tabs_list. Only same-session tabs are accepted; an unknown, closed or foreign tab ID fails explicitly and never starts, re-parents or switches to another session. The selection invalidates the previous page's snapshot refs and returns the selected page observation. Requires approval.",
+      domain: "browser_action",
+      source: "internal",
+      mode: "sync",
+      inputSchema: {
+        type: "object", additionalProperties: false, required: ["tabId"],
+        properties: {
+          sessionId,
+          tabId: { type: "string", minLength: 1, maxLength: 128 },
+        },
+      },
+      inputSchemaByExposure: { agent_intent: agentTabSelectSchema },
+      outputSchema: browserResultSchema,
+      tags: ["computer-use", "browser", "tab", "tabs", "select", "switch", "focus", "标签", "标签页", "切换"],
+      capabilities: { sideEffect: "none", requiresApproval: true, networkAccess: true },
+    },
+    execute: async (context) => {
+      const args = requireObject<{ tabId?: string }>(context.args, "args");
+      if (typeof args.tabId !== "string" || args.tabId.length === 0) {
+        throw mcpBadRequest("tabId is required");
+      }
+      const bound = requireBoundSession(context);
+      const result = bound
+        ? await browser.selectTab({ sessionId: bound, tabId: args.tabId })
+        : unavailable(context);
+      emitBrowserArtifacts(context, result);
+      return { structuredContent: result, ...(result.ok === false ? { isError: true } : {}) };
+    },
+  };
+
+  return [assert, navigate, wait, snapshot, screenshot, click, fill, pressKey, selectOption, scroll, tabsList, tabSelect];
 };

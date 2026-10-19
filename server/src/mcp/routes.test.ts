@@ -310,6 +310,8 @@ describe("mcp routes", () => {
       "browser_scroll",
       "browser_select_option",
       "browser_snapshot",
+      "browser_tab_select",
+      "browser_tabs_list",
       "browser_wait_for",
     ]);
     expect(

@@ -239,6 +239,8 @@ describe("resolveHarnessCapabilityProfiles", () => {
       "browser_select_option",
       "browser_scroll",
       "browser_wait_for",
+      "browser_tabs_list",
+      "browser_tab_select",
     ];
     const profiles = resolveHarnessCapabilityProfiles([
       ...atomicToolIds.map((toolId) => createDefinition(toolId)),
@@ -274,6 +276,8 @@ describe("resolveHarnessCapabilityProfiles", () => {
           "browser_scroll",
           "browser_wait_for",
           "browser_assert",
+          "browser_tabs_list",
+          "browser_tab_select",
         ]),
         workbench: {
           label: "智控",

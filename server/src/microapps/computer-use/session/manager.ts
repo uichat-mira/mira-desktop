@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { BrowserRuntimeResolver } from "../browser/types.js";
-import type { BrowserSessionConfig, BrowserSessionInfo } from "../browser/types.js";
+import type { BrowserSessionConfig, BrowserSessionInfo, BrowserTab } from "../browser/types.js";
 import type { PlaywrightBrowserLike, PlaywrightChromiumLauncherLike, PlaywrightContextLike, PlaywrightPageLike } from "../executor/types.js";
 import { loadPlaywrightChromiumLauncher } from "../executor/playwright.js";
 
@@ -18,10 +18,16 @@ export type ManagedBrowserSession = {
   browser: PlaywrightBrowserLike;
   context: PlaywrightContextLike;
   page: BrowserPage;
+  tabIds: Map<BrowserPage, string>;
   artifactRoot: string;
   lastUsedAt: number;
   timeoutHandle?: ReturnType<typeof setTimeout>;
   activeOperations: number;
+};
+
+export type ManagedBrowserTabList = {
+  tabs: BrowserTab[];
+  truncated: boolean;
 };
 
 export type BrowserSessionManagerOptions = {
@@ -33,6 +39,9 @@ export type BrowserSessionManagerOptions = {
 
 const error = (code: string, message: string, retryable = false) => ({ code, message, retryable });
 const DEFAULT_ALLOWED_SCHEMES = ["http:", "https:", "file:"];
+const MAX_LISTED_TABS = 50;
+const MAX_TAB_TITLE_CHARS = 256;
+const MAX_TAB_URL_CHARS = 2048;
 
 const isLocalFileUrl = (url: URL) =>
   url.protocol === "file:" &&
@@ -42,6 +51,13 @@ export class BrowserActionTimeoutError extends Error {
   constructor(public readonly operation: Promise<unknown>) {
     super("Browser action timed out.");
     this.name = "BrowserActionTimeoutError";
+  }
+}
+
+export class BrowserTabNotFoundError extends Error {
+  constructor(public readonly tabId: string) {
+    super(`Tab is not part of the current Managed Browser session or has been closed: ${tabId}`);
+    this.name = "BrowserTabNotFoundError";
   }
 }
 
@@ -82,7 +98,7 @@ export class BrowserSessionManager {
         const pageWithViewport = page as BrowserPage & { setViewportSize?: (size: { width: number; height: number }) => Promise<unknown> };
         await pageWithViewport.setViewportSize?.(config.viewport);
       }
-      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, artifactRoot: sessionRoot, lastUsedAt: this.now(), activeOperations: 0 };
+      const session: ManagedBrowserSession = { info: { ...info, status: "ready" }, browser, context, page, tabIds: new Map(), artifactRoot: sessionRoot, lastUsedAt: this.now(), activeOperations: 0 };
       this.sessions.set(id, session);
       this.scheduleTimeout(session);
       if (config.initialUrl) {
@@ -106,6 +122,57 @@ export class BrowserSessionManager {
   }
 
   get(sessionId: string) { return this.sessions.get(sessionId); }
+
+  private sessionTabs(session: ManagedBrowserSession) {
+    const pages = session.context.pages() as BrowserPage[];
+    const current = new Set(pages);
+    for (const page of session.tabIds.keys()) {
+      if (!current.has(page)) session.tabIds.delete(page);
+    }
+    return pages.map((page) => {
+      let id = session.tabIds.get(page);
+      if (!id) {
+        // Session-scoped random IDs keep a foreign session's tab ID from
+        // matching a local tab even when both sessions use the same context.
+        id = `tab-${crypto.randomUUID()}`;
+        session.tabIds.set(page, id);
+      }
+      return { id, page };
+    });
+  }
+
+  private async readTabTitle(page: BrowserPage) {
+    try {
+      return ((await page.title?.()) ?? "").slice(0, MAX_TAB_TITLE_CHARS);
+    } catch {
+      // A tab can close between pages() and title resolution; the tab list
+      // still reports the remaining session-owned tabs truthfully.
+      return "";
+    }
+  }
+
+  async listTabs(session: ManagedBrowserSession): Promise<ManagedBrowserTabList> {
+    const pages = this.sessionTabs(session);
+    const truncated = pages.length > MAX_LISTED_TABS;
+    const tabs = await Promise.all(
+      pages.slice(0, MAX_LISTED_TABS).map(async ({ id, page }) => ({
+        id,
+        title: await this.readTabTitle(page),
+        url: page.url().slice(0, MAX_TAB_URL_CHARS),
+        selected: page === session.page,
+      })),
+    );
+    return { tabs, truncated };
+  }
+
+  async selectTab(session: ManagedBrowserSession, tabId: string): Promise<BrowserPage> {
+    const target = this.sessionTabs(session).find((tab) => tab.id === tabId);
+    if (!target) throw new BrowserTabNotFoundError(tabId);
+    await target.page.bringToFront?.();
+    session.page = target.page;
+    this.touch(session);
+    return target.page;
+  }
 
   private scheduleTimeout(session: ManagedBrowserSession) {
     const timeoutMs = session.info.config.sessionTimeoutMs;

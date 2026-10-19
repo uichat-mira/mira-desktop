@@ -94,13 +94,14 @@ const createHarness = async (visibleText = "Example Domain", config: { actionTim
   };
   const browserClose = vi.fn(async () => undefined);
   const contextClose = vi.fn(async () => undefined);
+  const pages: unknown[] = [page];
   const manager = new BrowserSessionManager({
     runtime: { resolveRuntime: () => ({ status: "ready" as const, strategy: "managed" as const, runtime: { source: "managed" as const, channel: "chromium" as const, executablePath: "C:/chrome.exe", version: "1", installedAt: "now" }, inspectedCandidates: [] }) },
     artifactRoot: root,
-    launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), close: contextClose })), close: browserClose })) } as never,
+    launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), pages: vi.fn(() => pages), close: contextClose })), close: browserClose })) } as never,
   });
   const session = await manager.create({ allowedDomains: ["example.com"], ...config });
-  return { manager, service: new BrowserService(manager), session, page, nodes, browserClose, contextClose };
+  return { manager, service: new BrowserService(manager), session, page, pages, nodes, browserClose, contextClose };
 };
 
 const pathLib = path;
@@ -177,6 +178,55 @@ describe("BrowserService", () => {
     expect(fs.existsSync(result.artifacts[0]!.uri)).toBe(true);
     const truncated = await service.observe({ sessionId: session.id, maxSnapshotChars: 5 });
     expect(truncated.observation?.snapshot).toHaveLength(5);
+  });
+
+  it("lists session tabs, selects one and invalidates the previous tab observation", async () => {
+    const { service, session, pages } = await createHarness();
+    const first = await service.observe({ sessionId: session.id });
+    const secondPage = {
+      goto: vi.fn(async () => undefined),
+      url: vi.fn(() => "https://example.com/second"),
+      title: vi.fn(async () => "Second Tab"),
+      evaluate: vi.fn(async () => "Second Tab"),
+      ariaSnapshot: vi.fn(async () => '- heading "Second" [ref=e1]'),
+      getByRef: vi.fn(() => ({ count: vi.fn(async () => 1) })),
+      screenshot: vi.fn(async () => undefined),
+    };
+    pages.push(secondPage);
+
+    const listed = await service.listTabs({ sessionId: session.id });
+    expect(listed.ok).toBe(true);
+    expect(listed.tabsTruncated).toBe(false);
+    expect(listed.tabs).toEqual([
+      { id: expect.stringMatching(/^tab-/), title: "Example Domain", url: "https://example.com/", selected: true },
+      { id: expect.stringMatching(/^tab-/), title: "Second Tab", url: "https://example.com/second", selected: false },
+    ]);
+    const tabIds = listed.tabs!.map((tab) => tab.id);
+    expect(new Set(tabIds).size).toBe(2);
+
+    const secondTab = listed.tabs!.find((tab) => tab.url === "https://example.com/second")!;
+    const selected = await service.selectTab({ sessionId: session.id, tabId: secondTab.id });
+    expect(selected.ok).toBe(true);
+    expect(selected.page).toMatchObject({ url: "https://example.com/second", title: "Second Tab" });
+    expect(selected.observation?.snapshot).toContain('heading "Second"');
+    expect(selected.tabs?.find((tab) => tab.id === secondTab.id)?.selected).toBe(true);
+
+    const oldRef = first.observation?.snapshot?.match(/button "Go" \[ref=(e\d+)\]/)?.[1]!;
+    const stale = await service.act({
+      sessionId: session.id,
+      pageUrl: first.page.url,
+      snapshotHash: first.page.snapshotHash!,
+      action: { kind: "click", ref: oldRef },
+    });
+    expect(stale.ok).toBe(false);
+    expect(stale.error?.code).toBe("stale_snapshot");
+
+    pages.splice(pages.indexOf(secondPage), 1);
+    const closed = await service.selectTab({ sessionId: session.id, tabId: secondTab.id });
+    expect(closed.ok).toBe(false);
+    expect(closed.error).toMatchObject({ code: "tab_not_found", retryable: false });
+    const stillA = await service.listTabs({ sessionId: session.id });
+    expect(stillA.tabs?.map((tab) => tab.id)).toEqual([tabIds[0]]);
   });
 
   it("rejects stale refs, unsafe navigation and invalid refs", async () => {
