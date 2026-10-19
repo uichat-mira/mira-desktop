@@ -11,7 +11,7 @@ import { clearHarnessRegistry, registerTool } from "@/harness/registry.js";
 import { createComputerUseBrowserTools } from "@/mcp/tools/browser-tools.tool.js";
 import { BrowserService } from "@/microapps/computer-use/browser/service.js";
 import type { BrowserSessionConfig } from "@/microapps/computer-use/browser/types.js";
-import { isExpectedAgt012FinalBrowserState } from "@/microapps/computer-use/agt012-smoke-evidence.js";
+import { isAgt012SmokeAutoApprovableTool, isExpectedAgt012FinalBrowserState } from "@/microapps/computer-use/agt012-smoke-evidence.js";
 import { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
 import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 
@@ -185,18 +185,6 @@ const attempts: Array<{
   errorMessage?: string;
 }> = [];
 
-const AUTO_APPROVABLE_BROWSER_TOOL_IDS = new Set([
-  "browser_assert",
-  "browser_navigate",
-  "browser_wait_for",
-  "browser_snapshot",
-  "browser_screenshot",
-  "browser_click",
-  "browser_fill",
-  "browser_press_key",
-  "browser_select_option",
-  "browser_scroll",
-]);
 
 let input: AgentGraphInput = baseInput;
 let output: AgentGraphOutput | undefined;
@@ -225,7 +213,7 @@ try {
       stoppedForLegacySelection = true;
       break;
     }
-    if (!AUTO_APPROVABLE_BROWSER_TOOL_IDS.has(pending.toolId)) {
+    if (!isAgt012SmokeAutoApprovableTool(pending.toolId)) {
       stoppedForUnexpectedTool = pending.toolId;
       break;
     }
