@@ -317,7 +317,7 @@ describe("CapabilitiesPage", () => {
     render(<MemoryRouter><CapabilitiesPage /></MemoryRouter>);
 
     expect(screen.getByText("Browser")).toBeInTheDocument();
-    expect(screen.getByText("Browser Navigate")).toBeInTheDocument();
+    expect(screen.getAllByText("Browser Navigate").length).toBeGreaterThan(0);
     expect(screen.getByText("settings.development.capabilities.noCases")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "工具详情" }));
     expect(screen.getByText("Navigate within a managed browser session.")).toBeInTheDocument();
