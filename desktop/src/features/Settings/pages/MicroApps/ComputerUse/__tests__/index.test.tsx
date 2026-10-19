@@ -57,6 +57,21 @@ describe("Computer Use Debugger", () => {
     expect(screen.queryByText("Create Plan")).not.toBeInTheDocument();
   });
 
+  it("switches execution feedback to raw session JSON without restoring Model Run", () => {
+    debuggerState.current = {
+      config: { runtime: "managed", url: "https://example.com", allowedDomains: ["example.com"], limits: { timeoutMs: 30000, maxSnapshotChars: 12000 }, approvalPolicy: "write_actions" },
+      setConfig: vi.fn(), status: { runtime: { status: "ready" } }, runtime: { status: "ready" }, busy: false, error: undefined, refreshStatus: vi.fn(), newSession: vi.fn(), observe: vi.fn(), executeAction: vi.fn(), assertState: vi.fn(), approve: vi.fn(), reject: vi.fn(), stop: vi.fn(), reset: vi.fn(),
+      session: { sessionId: "session-json", status: "ready", config: {} as never, browser: {}, invocations: [] },
+    };
+
+    render(<ComputerUseDebuggerPage />);
+    fireEvent.click(screen.getByRole("button", { name: "settings.microApps.computerUseDebugger.feedback.json" }));
+
+    expect(screen.getByText(/session-json/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "settings.microApps.computerUseDebugger.modelRun.run" })).not.toBeInTheDocument();
+    debuggerState.current = undefined;
+  });
+
   it("maps manual fields to the browser action protocol", () => {
     expect(buildActionInput("navigate", "ignored", "https://example.com", "https://example.com", "hash")).toEqual({ pageUrl: "https://example.com", snapshotHash: "hash", action: { kind: "navigate", url: "https://example.com" } });
     expect(buildActionInput("click", "ref-1", "ignored", "https://example.com", "hash")).toEqual({ pageUrl: "https://example.com", snapshotHash: "hash", action: { kind: "click", ref: "ref-1" } });
