@@ -192,11 +192,10 @@ export const buildCapabilityResolutionDocuments = (
     domain: profile.domain,
     tags: [...profile.tags],
     toolIds: [...profile.supportingToolIds],
-    aliases: [
-      profile.id,
-      ...(profile.aliases ?? []),
-      ...profile.supportingToolIds,
-    ],
+    // Profile aliases are compatibility identities for stale persisted/grouped
+    // inputs, not model-facing capability names. Concrete Tool ids remain exact
+    // search keys; retired aliases therefore cannot re-enter Agent discovery.
+    aliases: [profile.id, ...profile.supportingToolIds],
   }));
 
 const canonicalKeysOf = (
