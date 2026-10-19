@@ -44,10 +44,10 @@ const createTool = (
 describe("getToolGroups", () => {
   it("keeps different product groups separate when their runtime domain is the same", () => {
     expect(getToolGroups([
-      createTool("browser_observe", "browser_computer_use", 50),
+      createTool("browser_observe", "browser", 50),
       createTool("browser_attached_look", "browser_attached", 60),
-      createTool("browser_act", "browser_computer_use", 50),
-    ])).toEqual(["browser_computer_use", "browser_attached"]);
+      createTool("browser_act", "browser", 50),
+    ])).toEqual(["browser", "browser_attached"]);
   });
 });
 

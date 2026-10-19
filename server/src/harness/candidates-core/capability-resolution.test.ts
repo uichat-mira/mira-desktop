@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildCapabilityResolutionDocuments,
   lexicalSearchCapabilities,
   resolveCapabilityCascade,
   type CapabilityResolutionDocument,
@@ -51,6 +52,30 @@ describe("deterministic-first capability resolution cascade", () => {
 
     expect(result.path).toBe("exact");
     expect(result.selectedCapabilityId).toBe("web_search");
+    expect(result.trace.modelCalls).toBe(0);
+  });
+
+  it("resolves a declared Profile alias to the one canonical capability", async () => {
+    const capabilities = buildCapabilityResolutionDocuments([
+      {
+        id: "browser",
+        title: "Browser",
+        description: "Managed Playwright browser automation.",
+        domain: "browser_action",
+        source: "internal",
+        tags: ["browser", "playwright"],
+        aliases: ["browser_computer_use"],
+        supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
+      },
+    ]);
+
+    const result = await resolveCapabilityCascade({
+      query: "browser_computer_use",
+      capabilities,
+    });
+
+    expect(result.path).toBe("exact");
+    expect(result.selectedCapabilityId).toBe("browser");
     expect(result.trace.modelCalls).toBe(0);
   });
 

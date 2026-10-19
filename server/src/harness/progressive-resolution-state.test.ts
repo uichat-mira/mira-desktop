@@ -6,6 +6,7 @@ import {
 } from "./registry.js";
 import {
   DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+  createCapabilityToolIdResolver,
   createProgressiveResolutionState,
   isProgressiveResolutionBudgetExhausted,
   readCapabilityDisclosure,
@@ -16,9 +17,25 @@ import {
   resolveAndDiscloseCapability,
   type ProgressiveResolutionState,
 } from "./progressive-resolution-state.js";
+import type { ToolDefinition } from "../mcp/core/definitions.js";
 import { readTool } from "../mcp/tools/read.tool.js";
 import { writeTool } from "../mcp/tools/write.tool.js";
 import { webSearchTool } from "../mcp/tools/web-search.tool.js";
+
+const createDefinition = (id: string): ToolDefinition => ({
+  id,
+  title: id,
+  description: id,
+  domain: "browser_action",
+  source: "internal",
+  mode: "sync",
+  inputSchema: {},
+  tags: ["browser"],
+  capabilities: {
+    sideEffect: "none",
+    requiresApproval: false,
+  },
+});
 
 const unavailableReadiness = () => ({
   state: "unavailable" as const,
@@ -114,6 +131,49 @@ describe("progressive resolution durable state", () => {
     expect(state.unresolvedCapabilityGap).toContain("write");
     // Already-disclosed detail remains usable.
     expect(readCapabilityDisclosure(state, "read")).toBe("metadata");
+  });
+
+  it("resolves legacy grouped disclosure keys through declared Profile aliases", () => {
+    const resolveToolIds = createCapabilityToolIdResolver([
+      {
+        id: "browser",
+        title: "Browser",
+        description: "Managed Browser",
+        domain: "browser_action",
+        source: "internal",
+        tags: ["browser"],
+        aliases: ["browser_computer_use"],
+        supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
+      },
+    ]);
+
+    expect(resolveToolIds("browser")).toEqual([
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+    ]);
+    expect(resolveToolIds("browser_computer_use")).toEqual([
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+    ]);
+    expect(resolveToolIds("browser_navigate")).toEqual(["browser_navigate"]);
+
+    const reconciled = reconcileProgressiveResolutionState({
+      state: {
+        ...createProgressiveResolutionState(),
+        disclosure: { browser_computer_use: "schema" },
+      },
+      definitions: [
+        createDefinition("browser_observe"),
+        createDefinition("browser_act"),
+        createDefinition("browser_assert"),
+      ],
+      resolveToolIds,
+    });
+    expect(readCapabilityDisclosure(reconciled, "browser_computer_use")).toBe(
+      "schema",
+    );
   });
 
   it("reconciles persisted visibility against the current registry and drops unregistered capabilities", () => {
