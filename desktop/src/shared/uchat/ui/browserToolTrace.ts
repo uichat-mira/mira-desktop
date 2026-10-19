@@ -69,6 +69,17 @@ const readString = (value: unknown): string | null => {
 export const isBrowserToolName = (toolName: string): toolName is BrowserToolName =>
   Object.prototype.hasOwnProperty.call(browserActionKeyByToolName, toolName);
 
+// The normal Chat tool loop emits both tool events and execution-node events.
+// Keep Browser's human-readable Tool Trace visible when execution steps exist,
+// without duplicating the generic trace for other tools.
+export const visibleChatToolTraceEntries = (
+  entries: ChatToolTraceEntry[],
+  hasExecutionTrace: boolean,
+): ChatToolTraceEntry[] =>
+  hasExecutionTrace
+    ? entries.filter((entry) => isBrowserToolName(entry.toolName))
+    : entries;
+
 export const formatBrowserUrlForDisplay = (value: string): string => {
   const trimmed = value.trim();
   if (!trimmed) {
