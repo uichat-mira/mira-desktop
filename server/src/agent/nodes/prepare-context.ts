@@ -11,6 +11,7 @@ import {
   projectCapabilityToolMetadata,
   promoteCapabilitySchema,
   type CapabilityDisclosureTransition,
+  type CapabilityToolMetadata,
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
@@ -149,32 +150,38 @@ const resolveRequestedToolGroupAvailability = (
 
 const toAgentToolExposureState = (
   exposedToolIds: string[],
-  exposedDefinitions: Array<
-    Awaited<ReturnType<typeof matchToolCandidatesByEmbedding>>["toolExposure"]["exposedDefinitions"][number]
-  >,
+  compactMetadata: readonly CapabilityToolMetadata[],
+  definitions: ReturnType<typeof listToolDefinitions>,
   requestedToolGroups: AgentRequestedToolGroupHint[],
   eligibleToolIds: string[],
   schemaDisclosedToolIds: ReadonlySet<string>,
-) => ({
-  exposedTools: exposedToolIds,
-  toolMeta: exposedDefinitions.map((definition) => ({
-    toolId: definition.id,
-    title: definition.title,
-    description: definition.description,
-    // Full schema is a disclosure stage, not an automatic property of exposure.
-    // Only Tools promoted to the schema stage carry their input schema; a Tool
-    // that never reached schema disclosure stays compact metadata only.
-    ...(schemaDisclosedToolIds.has(definition.id)
-      ? { inputSchema: definition.inputSchema }
-      : {}),
-    domain: definition.domain,
-    source: definition.source,
-    tags: definition.tags,
-    capabilities: definition.capabilities,
-  })),
-  eligibleTools: eligibleToolIds,
-  ...(requestedToolGroups.length > 0 ? { requestedToolGroups } : {}),
-});
+) => {
+  const definitionsById = new Map(
+    definitions.map((definition) => [definition.id, definition]),
+  );
+  return {
+    exposedTools: exposedToolIds,
+    toolMeta: compactMetadata.map((metadata) => {
+      const definition = definitionsById.get(metadata.capabilityId);
+      return {
+        toolId: metadata.capabilityId,
+        title: metadata.title,
+        description: metadata.description,
+        // Compact metadata remains Planner-visible even before schema
+        // disclosure. Only schema-stage Tools become callable.
+        ...(schemaDisclosedToolIds.has(metadata.capabilityId) && definition
+          ? { inputSchema: definition.inputSchema }
+          : {}),
+        domain: metadata.domain,
+        source: metadata.source,
+        tags: [...metadata.tags],
+        capabilities: { ...metadata.capabilities },
+      };
+    }),
+    eligibleTools: eligibleToolIds,
+    ...(requestedToolGroups.length > 0 ? { requestedToolGroups } : {}),
+  };
+};
 
 const mergeCapabilityDefinitions = (
   registryDefinitions: ReturnType<typeof listToolDefinitions>,
@@ -659,18 +666,10 @@ export const prepareContextNode = async (
     capabilityDefinitions,
   );
 
-  const capabilityDefinitionsById = new Map(
-    capabilityDefinitions.map((definition) => [definition.id, definition]),
-  );
-  const schemaDisclosedDefinitions = [...schemaDisclosedToolIds].flatMap(
-    (toolId) => {
-      const definition = capabilityDefinitionsById.get(toolId);
-      return definition ? [definition] : [];
-    },
-  );
   const toolExposure = toAgentToolExposureState(
     [...schemaDisclosedToolIds],
-    schemaDisclosedDefinitions,
+    compactCapabilityMetadata,
+    capabilityDefinitions,
     requestedToolGroupsWithAvailability,
     currentEligibleToolIds,
     schemaDisclosedToolIds,

@@ -194,12 +194,11 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
         patch.toolExposure?.exposedTools?.includes(fillerDefinition.id),
         false,
       );
-      assert.equal(
-        (patch.toolExposure?.toolMeta ?? []).some(
-          (tool) => tool.toolId === fillerDefinition.id,
-        ),
-        false,
+      const fillerMeta = (patch.toolExposure?.toolMeta ?? []).find(
+        (tool) => tool.toolId === fillerDefinition.id,
       );
+      assert.ok(fillerMeta, `missing compact metadata for ${fillerDefinition.id}`);
+      assert.equal(fillerMeta.inputSchema, undefined);
     }
 
     // New schema detail spends one budget step per Tool; the catalog itself does
@@ -629,12 +628,19 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
     const argsVariants = (
       properties.args as { anyOf: Array<Record<string, unknown>> }
     ).anyOf;
-    // One variant per exposed Tool plus the trailing null variant.
-    assert.equal(argsVariants.length, exposure.exposedTools.length + 1);
+    // Full-schema Tools keep one args variant each. Metadata-only Tools
+    // share one empty-object detail-request variant, followed by null.
+    assert.equal(argsVariants.length, exposure.exposedTools.length + 2);
     for (const variant of argsVariants.slice(0, exposure.exposedTools.length)) {
       const variantProperties = variant.properties as Record<string, unknown>;
       assert.ok(Object.keys(variantProperties).length > 0);
     }
+    assert.deepEqual(argsVariants[exposure.exposedTools.length], {
+      type: "object",
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    });
 
     const plannerMessages = buildNextActionPlannerMessages({
       question: "inspect the workspace files",

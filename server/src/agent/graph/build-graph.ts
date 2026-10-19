@@ -11,6 +11,7 @@ import {
   prepareContextNode,
   retrieveNode,
   activateSkillNode,
+  toolSchemaDisclosureNode,
   toolCallNormalizeNode,
   toolNode,
 } from "../nodes/index";
@@ -26,6 +27,7 @@ import {
   routeAfterPrepareContext,
   routeAfterRetrieve,
   routeAfterTool,
+  routeAfterToolSchemaDisclosure,
   routeAfterToolCallNormalize,
 } from "./routes";
 
@@ -41,6 +43,10 @@ export const compiledAgentStateGraph = new StateGraph(AgentGraphStateAnnotation)
   .addNode(
     "genericTaskSubAgent",
     createAgentNode("genericTaskSubAgent", genericTaskSubAgentNode),
+  )
+  .addNode(
+    "discloseToolSchema",
+    createAgentNode("discloseToolSchema", toolSchemaDisclosureNode),
   )
   .addNode(
     "toolCallNormalize",
@@ -67,13 +73,18 @@ export const compiledAgentStateGraph = new StateGraph(AgentGraphStateAnnotation)
     "retrieve",
     "activateSkill",
     "genericTaskSubAgent",
-    "toolCallNormalize",
+    "discloseToolSchema",
     "error",
   ])
   .addConditionalEdges(
     "genericTaskSubAgent",
     routeAfterGenericTaskSubAgent,
     ["evidenceStage", "nextActionPlanner", "approval", "error"],
+  )
+  .addConditionalEdges(
+    "discloseToolSchema",
+    routeAfterToolSchemaDisclosure,
+    ["nextActionPlanner", "toolCallNormalize", "error"],
   )
   .addConditionalEdges("toolCallNormalize", routeAfterToolCallNormalize, [
     "nextActionPlanner",

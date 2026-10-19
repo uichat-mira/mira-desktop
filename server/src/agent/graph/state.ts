@@ -17,6 +17,7 @@ import type {
   AgentObservation,
   AgentRetrievalEvidence,
   AgentSchemaReplanDiagnostics,
+  AgentToolSchemaDisclosure,
   AgentToolExposureState,
   AgentWorkspaceOutputDeclaration,
 } from "../types";
@@ -64,6 +65,7 @@ export const AgentGraphStateAnnotation = Annotation.Root({
   errorMessage: Annotation<string | undefined>,
   errorSourceNodeId: Annotation<string | undefined>,
   schemaReplanDiagnostics: Annotation<AgentSchemaReplanDiagnostics | undefined>,
+  toolSchemaDisclosure: Annotation<AgentToolSchemaDisclosure | undefined>,
   generatedAnswerEmptyFallback: Annotation<boolean | undefined>,
   approvedInvocations: Annotation<AgentGraphInput["approvedInvocations"] | undefined>,
   progressiveResolution: Annotation<ProgressiveResolutionState | undefined>,
@@ -170,6 +172,7 @@ export const createInitialAgentGraphState = (
     errorSourceNodeId: undefined,
     pendingApproval: undefined,
     schemaReplanDiagnostics: undefined,
+    toolSchemaDisclosure: undefined,
     generatedAnswerEmptyFallback: false,
     progressiveResolution: checkpointInput.progressiveResolution,
     iterationCount: checkpointInput.iterationCount ?? 0,

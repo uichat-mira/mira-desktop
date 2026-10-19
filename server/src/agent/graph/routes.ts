@@ -51,7 +51,7 @@ export const routeAfterNextAction = (state: AgentGraphStateType) => {
     case "use_tool":
       return state.nextAction.toolId === GENERIC_TASK_DELEGATE_TOOL_ID
         ? "genericTaskSubAgent"
-        : "toolCallNormalize";
+        : "discloseToolSchema";
     case "error":
       return "error";
     default:
@@ -80,6 +80,18 @@ export const routeAfterGenericTaskSubAgent = (state: AgentGraphStateType) => {
   }
 
   return "error";
+};
+
+export const routeAfterToolSchemaDisclosure = (state: AgentGraphStateType) => {
+  if (state.errorMessage) {
+    return "error";
+  }
+
+  if (state.toolSchemaDisclosure?.status === "disclosed") {
+    return "nextActionPlanner";
+  }
+
+  return "toolCallNormalize";
 };
 
 export const routeAfterToolCallNormalize = (state: AgentGraphStateType) => {
