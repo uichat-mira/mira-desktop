@@ -308,10 +308,10 @@ describe("mcp routes", () => {
       "browser_navigate",
       "browser_observe",
       "browser_press_key",
+      "browser_screenshot",
       "browser_scroll",
       "browser_select_option",
       "browser_snapshot",
-      "browser_screenshot",
       "browser_wait_for",
     ]);
     expect(
