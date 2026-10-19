@@ -14,7 +14,8 @@ import {
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
-import { resolveHarnessCapabilityProfiles } from "@/harness/profiles";
+import { resolveCapabilitySchemaToolIds } from "@/harness/capability-tool-selection";
+import { resolveHarnessCapabilityProfiles, LEGACY_CAPABILITY_PROFILE_ID_ALIASES } from "@/harness/profiles";
 import {
   createCapabilityToolIdResolver,
   createProgressiveResolutionState,
@@ -98,11 +99,16 @@ const resolveRequestedToolGroupHints = (
   }
 
   return requested.map((groupId) => {
-    const groupDefinitions = definitionsByGroup.get(groupId) ?? [];
+    // A resumed task may still carry the pre-cutover Managed Browser workbench
+    // group id. Resolve it to the canonical `browser` group so the in-flight
+    // preference keeps working until AGT-012 / #365 removes the alias.
+    const canonicalGroupId =
+      LEGACY_CAPABILITY_PROFILE_ID_ALIASES[groupId] ?? groupId;
+    const groupDefinitions = definitionsByGroup.get(canonicalGroupId) ?? [];
     const workbench = groupDefinitions[0]?.workbench;
     return {
-      groupId,
-      groupLabel: workbench?.groupLabel ?? groupId,
+      groupId: canonicalGroupId,
+      groupLabel: workbench?.groupLabel ?? canonicalGroupId,
       groupDescription: workbench?.groupDescription ?? "",
       toolIds: groupDefinitions.map((definition) => definition.id),
       exposedToolIds: [],
@@ -616,11 +622,19 @@ export const prepareContextNode = async (
   // resolver reports grouped capability ids (for example `workspace_lookup`),
   // so the selected capability is expanded to its canonical supporting Tool ids
   // through the same Profile -> supportingToolIds mapping used for
-  // reconciliation. A turn without a confident selection discloses nothing new
-  // instead of eagerly materializing the whole catalog.
+  // reconciliation. A `task_relevant` first-level capability (the Managed
+  // `browser` Capability) opts into narrowing: the same deterministic-first
+  // resolution machinery selects the concrete Tool(s) for this turn instead of
+  // promoting the whole catalog. A turn without a confident selection discloses
+  // nothing new instead of eagerly materializing the whole catalog.
   const selectedCapabilityId = matcherResult.resolution?.selectedCapabilityId;
   const resolutionSelectedToolIds = selectedCapabilityId
-    ? resolveCapabilityToolIds(selectedCapabilityId)
+    ? await resolveCapabilitySchemaToolIds({
+        capabilityId: selectedCapabilityId,
+        query: matcherResult.query || query,
+        profiles: capabilityProfiles,
+        definitions: capabilityDefinitions,
+      })
     : [];
   for (const toolId of resolutionSelectedToolIds) addSchemaTarget(toolId);
 

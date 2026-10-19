@@ -18,7 +18,7 @@ import { buildPlannerStructuredOutputJsonSchema } from "../planner/structured-ou
 import { prepareContextNode } from "./prepare-context.js";
 import type { AgentNodeState } from "../node-runtime.js";
 
-type ToolDomain = "read" | "edit" | "web_search" | "terminal";
+type ToolDomain = "read" | "edit" | "web_search" | "terminal" | "browser_action";
 
 const makeToolDefinition = (
   toolId: string,
@@ -96,12 +96,13 @@ const buildMatcherResult = (input: {
   exposed: ToolDefinition[];
   eligibleToolIds?: string[];
   resolution?: CapabilityResolutionResult;
+  query?: string;
 }): Awaited<
   ReturnType<typeof intentMatcherModule.matchToolCandidatesByEmbedding>
 > => {
   const exposedToolIds = input.exposed.map((definition) => definition.id);
   return {
-    query: "inspect the workspace files",
+    query: input.query ?? "inspect the workspace files",
     topCandidates: [],
     toolCandidates: [],
     toolExposure: {
@@ -121,6 +122,7 @@ const mockMatcher = (input: {
   exposed: ToolDefinition[];
   eligibleToolIds?: string[];
   resolution?: CapabilityResolutionResult;
+  query?: string;
 }) => {
   const spy = vi.spyOn(
     intentMatcherModule,
@@ -654,5 +656,93 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
       "read",
     ]);
     assert.equal(payload.toolExposure.exposedTools.includes("tool_1"), false);
+  });
+
+  it("narrows the first-level browser capability to the selected concrete Tool schema", async () => {
+    const browserTools = [
+      makeToolDefinition("browser_observe", "browser_action"),
+      makeToolDefinition("browser_navigate", "browser_action"),
+      makeToolDefinition("browser_click", "browser_action"),
+    ];
+    const filler = Array.from({ length: 16 }, (_, index) =>
+      makeToolDefinition(`tool_${index + 1}`),
+    );
+    const definitions = [...browserTools, ...filler];
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    mockMatcher({
+      exposed: definitions,
+      eligibleToolIds: definitions.map((definition) => definition.id),
+      query: "browser_navigate",
+      resolution: makeResolution({
+        selectedCapabilityId: "browser",
+        candidates: ["browser"],
+      }),
+    });
+
+    const patch = await prepareContextNode(createState());
+
+    // Product ownership stays grouped, but the group does not eagerly promote
+    // its whole catalog: only the concrete Tool selected for this turn reaches
+    // the Planner with a schema.
+    assert.deepEqual(patch.toolExposure?.exposedTools, ["browser_navigate"]);
+    assert.deepEqual(schemaExposedToolIds(patch), ["browser_navigate"]);
+    assert.deepEqual(patch.progressiveResolution?.budget, {
+      limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+      consumed: 1,
+    });
+    assert.equal(
+      readCapabilityDisclosure(patch.progressiveResolution!, "browser_observe"),
+      "hidden",
+    );
+    assert.equal(
+      readCapabilityDisclosure(patch.progressiveResolution!, "browser_click"),
+      "hidden",
+    );
+  });
+
+  it("does not disclose an unavailable browser Tool even when the browser capability is selected", async () => {
+    const browserTools = [
+      makeToolDefinition("browser_observe", "browser_action"),
+      makeToolDefinition("browser_navigate", "browser_action"),
+      makeToolDefinition("browser_click", "browser_action"),
+    ];
+    const filler = Array.from({ length: 16 }, (_, index) =>
+      makeToolDefinition(`tool_${index + 1}`),
+    );
+    const definitions = [...browserTools, ...filler];
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    registerToolRuntimeReadiness("browser_click", () => ({
+      state: "unavailable",
+      reason: "managed browser runtime missing",
+      code: "browser_runtime_unavailable",
+    }));
+    try {
+      mockMatcher({
+        exposed: definitions,
+        eligibleToolIds: definitions.map((definition) => definition.id),
+        query: "browser_click",
+        resolution: makeResolution({
+          selectedCapabilityId: "browser",
+          candidates: ["browser"],
+        }),
+      });
+
+      const patch = await prepareContextNode(createState());
+
+      // Discovery/profile selection never makes an unavailable Tool ready or
+      // callable: no schema is materialized and no budget is spent.
+      assert.deepEqual(patch.toolExposure?.exposedTools, []);
+      assert.deepEqual(schemaExposedToolIds(patch), []);
+      assert.equal(
+        readCapabilityDisclosure(patch.progressiveResolution!, "browser_click"),
+        "hidden",
+      );
+      assert.deepEqual(patch.progressiveResolution?.budget, {
+        limit: DEFAULT_PROGRESSIVE_RESOLUTION_BUDGET,
+        consumed: 0,
+      });
+    } finally {
+      unregisterToolRuntimeReadiness("browser_click");
+    }
   });
 });

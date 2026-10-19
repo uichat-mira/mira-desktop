@@ -2,6 +2,7 @@ import type { ToolDefinition } from "../mcp/core/definitions.js";
 import type { CapabilityDisclosure } from "./capability-view.js";
 import type { CapabilityResolutionPath } from "./candidates-core/capability-resolution.js";
 import type { HarnessCapabilityProfile } from "./profiles/types.js";
+import { LEGACY_CAPABILITY_PROFILE_ID_ALIASES } from "./profiles/resolver.js";
 import {
   resolveToolRuntimeReadiness,
   type HarnessToolRuntimeReadiness,
@@ -268,7 +269,9 @@ export const createCapabilityToolIdResolver = (
 ): ((capabilityId: string) => readonly string[]) => {
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
   return (capabilityId: string) => {
-    const profile = profileById.get(capabilityId);
+    const canonicalId =
+      LEGACY_CAPABILITY_PROFILE_ID_ALIASES[capabilityId] ?? capabilityId;
+    const profile = profileById.get(canonicalId);
     return profile ? profile.supportingToolIds : [capabilityId];
   };
 };
