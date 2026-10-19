@@ -292,6 +292,37 @@ describe("CapabilitiesPage", () => {
     });
   });
 
+  it("keeps Browser Tool navigation and details usable without a preset acceptance case", async () => {
+    const browserTool = {
+      ...capabilities.selectedTool,
+      id: "browser_navigate",
+      title: "Browser Navigate",
+      description: "Navigate within a managed browser session.",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Managed Browser tools.",
+        groupOrder: 50,
+        icon: "mouse-pointer",
+      },
+    };
+    capabilities.tools = [browserTool];
+    capabilities.selectedTool = browserTool;
+    capabilities.cases = [];
+    capabilities.toolCases = [];
+    capabilities.selectedCase = null as never;
+
+    const user = userEvent.setup();
+    render(<MemoryRouter><CapabilitiesPage /></MemoryRouter>);
+
+    expect(screen.getByText("Browser")).toBeInTheDocument();
+    expect(screen.getByText("Browser Navigate")).toBeInTheDocument();
+    expect(screen.getByText("settings.development.capabilities.noCases")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "工具详情" }));
+    expect(screen.getByText("Navigate within a managed browser session.")).toBeInTheDocument();
+  });
+
   it("groups Managed Browser from backend Workbench ownership, separate from Web and 触界", () => {
     const translate = (key: string) =>
       ({
