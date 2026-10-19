@@ -240,7 +240,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
     ]);
 
     const computerUse = profiles.find(
-      (profile) => profile.id === "browser_computer_use",
+      (profile) => profile.id === "browser",
     );
     const attached = profiles.find(
       (profile) => profile.id === "browser_attached",
@@ -249,6 +249,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
     expect(computerUse).toEqual(
       expect.objectContaining({
         preferredToolId: "browser_observe",
+        schemaDisclosure: "task_relevant",
         supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
         workbench: {
           label: "智控",

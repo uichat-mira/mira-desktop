@@ -1,6 +1,25 @@
 import type { ToolDefinition } from "../../mcp/core/definitions.js";
 import type { HarnessCapabilityProfile } from "./types.js";
 
+/**
+ * Canonical capability/profile id migrations.
+ *
+ * A durable Progressive Resolution snapshot or checkpoint may still carry a
+ * legacy grouped capability key. Mapping the legacy id to the canonical profile
+ * keeps resumed disclosure reconciliation, workbench ownership and diagnostics
+ * on one Managed Browser Tool family instead of registering a second profile or
+ * duplicating runtime registration.
+ *
+ * Compatibility removal condition: AGT-012 / #365 performs the explicit
+ * `browser_computer_use` cutover. Delete this alias once no pre-cutover snapshot
+ * remains resumable.
+ */
+export const LEGACY_CAPABILITY_PROFILE_ID_ALIASES: Readonly<
+  Record<string, string>
+> = {
+  browser_computer_use: "browser",
+};
+
 const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   id: string;
   title: string;
@@ -9,6 +28,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   tags: string[];
   preferredToolId?: string;
   supportingToolIds: string[];
+  schemaDisclosure?: HarnessCapabilityProfile["schemaDisclosure"];
   actionProfileId?: string;
   actionProfileTitle?: string;
   actionProfileDescription?: string;
@@ -60,13 +80,30 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     supportingToolIds: ["web_search", "web_fetch"],
   },
   {
-    id: "browser_computer_use",
-    title: "Browser Computer Use",
+    id: "browser",
+    title: "Browser",
     description: "Inspect and operate an isolated Playwright automation session in a Mira-managed browser, returning structured page evidence.",
     domain: "browser_action",
     tags: ["browser", "managed-browser", "mira-managed-browser", "isolated-session", "automation-session", "playwright", "website", "webpage", "page", "open", "visit", "navigate", "title", "inspect", "computer-use", "网页", "页面", "打开", "访问"],
     preferredToolId: "browser_observe",
-    supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
+    // Product/workbench ownership stays grouped under one first-level capability,
+    // while schema disclosure narrows to the task-relevant concrete Tool(s) so a
+    // 10+ Tool catalog does not eagerly materialize through the group.
+    schemaDisclosure: "task_relevant",
+    supportingToolIds: [
+      "browser_observe",
+      "browser_navigate",
+      "browser_wait_for",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_fill",
+      "browser_press_key",
+      "browser_select_option",
+      "browser_scroll",
+      "browser_act",
+      "browser_assert",
+    ],
     workbench: {
       label: "智控",
       description: "Playwright / Managed Browser 浏览器自动化工具。",
@@ -198,6 +235,9 @@ export const resolveHarnessCapabilityProfiles = (
       tags: blueprint.tags,
       ...(blueprint.preferredToolId ? { preferredToolId: blueprint.preferredToolId } : {}),
       supportingToolIds: matchedToolIds,
+      ...(blueprint.schemaDisclosure
+        ? { schemaDisclosure: blueprint.schemaDisclosure }
+        : {}),
       ...(blueprint.workbench ? { workbench: blueprint.workbench } : {}),
       ...(blueprint.actionProfileId
         ? {

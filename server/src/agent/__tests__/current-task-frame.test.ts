@@ -511,6 +511,46 @@ test("prepareContextNode injects an explicit tool package as a Planner preferenc
   }
 });
 
+test("prepareContextNode maps a pre-cutover browser workbench group id to the canonical browser group", async () => {
+  const observe = makeToolDefinition("browser_observe", "browser_action");
+  const navigate = makeToolDefinition("browser_navigate", "browser_action");
+  const registrySpy = vi
+    .spyOn(harnessRegistry, "listToolDefinitions")
+    .mockReturnValue([observe, navigate]);
+  const matcherSpy = vi
+    .spyOn(intentMatcherModule, "matchToolCandidatesByEmbedding")
+    .mockImplementation(async ({ query }) => ({
+      query,
+      topCandidates: [],
+      toolCandidates: [],
+      toolExposure: {
+        exposedToolIds: ["browser_observe"],
+        exposedDefinitions: [observe],
+        reason: ["matched tools"],
+      },
+      exposureReasons: ["matched tools"],
+      resolution: makeSelectionResolution("browser", ["browser"]),
+    }));
+
+  try {
+    // A resumed run may still carry the pre-#365 workbench group id.
+    const patch = await prepareContextNode(
+      createBaseState({ requestedToolGroupIds: ["browser_computer_use"] }),
+    );
+    const groups = patch.toolExposure?.requestedToolGroups ?? [];
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0]?.groupId, "browser");
+    assert.equal(groups[0]?.groupLabel, "智控");
+    assert.deepEqual(groups[0]?.toolIds, [
+      "browser_observe",
+      "browser_navigate",
+    ]);
+  } finally {
+    matcherSpy.mockRestore();
+    registrySpy.mockRestore();
+  }
+});
+
 test("prepareContextNode reports unavailable and unknown tool packages without changing tool exposure", async () => {
   const readOpen = makeToolDefinition("read_open");
   const webSearch = makeToolDefinition("web_search", "web_search");
