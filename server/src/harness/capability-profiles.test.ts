@@ -228,28 +228,41 @@ describe("resolveHarnessCapabilityProfiles", () => {
     );
   });
 
-  it("keeps Attached Browser and managed Playwright Computer Use as isolated profiles", () => {
+  it("keeps Attached Browser and the Managed Browser as isolated profiles", () => {
+    const managedToolIds = [
+      "browser_navigate",
+      "browser_wait_for",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_fill",
+      "browser_press_key",
+      "browser_select_option",
+      "browser_scroll",
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+    ];
     const profiles = resolveHarnessCapabilityProfiles([
-      createDefinition("browser_observe"),
-      createDefinition("browser_act"),
-      createDefinition("browser_assert"),
+      ...managedToolIds.map((toolId) => createDefinition(toolId)),
       createDefinition("browser_attached_look"),
       createDefinition("browser_attached_browse"),
       createDefinition("browser_attached_act"),
       createDefinition("browser_attached_transfer"),
     ]);
 
-    const computerUse = profiles.find(
-      (profile) => profile.id === "browser_computer_use",
+    const browser = profiles.find(
+      (profile) => profile.id === "browser",
     );
     const attached = profiles.find(
       (profile) => profile.id === "browser_attached",
     );
 
-    expect(computerUse).toEqual(
+    expect(browser).toEqual(
       expect.objectContaining({
-        preferredToolId: "browser_observe",
-        supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
+        supportingToolIds: managedToolIds,
+        schemaSelection: "concrete",
+        aliases: ["browser_computer_use"],
         workbench: {
           label: "智控",
           description: expect.any(String),
@@ -258,8 +271,8 @@ describe("resolveHarnessCapabilityProfiles", () => {
         },
       }),
     );
-    expect(computerUse?.description).toMatch(/isolated Playwright.*Mira-managed/i);
-    expect(computerUse?.tags).toEqual(
+    expect(browser?.description).toMatch(/isolated Playwright.*Mira-managed/i);
+    expect(browser?.tags).toEqual(
       expect.arrayContaining(["managed-browser", "isolated-session", "playwright"]),
     );
 
@@ -296,7 +309,7 @@ describe("resolveHarnessCapabilityProfiles", () => {
     expect(attached?.supportingToolIds).not.toEqual(
       expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]),
     );
-    expect(computerUse?.supportingToolIds).not.toEqual(
+    expect(browser?.supportingToolIds).not.toEqual(
       expect.arrayContaining(["browser_attached_look"]),
     );
   });

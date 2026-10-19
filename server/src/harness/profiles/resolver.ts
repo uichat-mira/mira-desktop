@@ -1,4 +1,8 @@
 import type { ToolDefinition } from "../../mcp/core/definitions.js";
+import {
+  buildCapabilityResolutionDocuments,
+  resolveCapabilityCascade,
+} from "../candidates-core/capability-resolution.js";
 import type { HarnessCapabilityProfile } from "./types.js";
 
 const INTERNAL_PROFILE_BLUEPRINTS: Array<{
@@ -9,6 +13,8 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   tags: string[];
   preferredToolId?: string;
   supportingToolIds: string[];
+  aliases?: string[];
+  schemaSelection?: "group" | "concrete";
   actionProfileId?: string;
   actionProfileTitle?: string;
   actionProfileDescription?: string;
@@ -60,13 +66,34 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     supportingToolIds: ["web_search", "web_fetch"],
   },
   {
-    id: "browser_computer_use",
-    title: "Browser Computer Use",
+    id: "browser",
+    title: "Browser",
     description: "Inspect and operate an isolated Playwright automation session in a Mira-managed browser, returning structured page evidence.",
     domain: "browser_action",
-    tags: ["browser", "managed-browser", "mira-managed-browser", "isolated-session", "automation-session", "playwright", "website", "webpage", "page", "open", "visit", "navigate", "title", "inspect", "computer-use", "网页", "页面", "打开", "访问"],
-    preferredToolId: "browser_observe",
-    supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
+    tags: ["browser", "managed-browser", "mira-managed-browser", "isolated-session", "automation-session", "playwright", "website", "webpage", "page", "open", "visit", "navigate", "title", "inspect", "computer-use", "snapshot", "screenshot", "click", "fill", "press", "select", "scroll", "wait", "observe", "act", "assert", "网页", "页面", "打开", "访问", "截图", "点击", "填写", "等待", "滚动", "断言"],
+    // `browser` owns the whole Managed Browser Tool catalog for first-level
+    // capability discovery, workbench grouping and readiness/eligibility. Schema
+    // disclosure is opt-in concrete so selecting the capability selects only the
+    // task-relevant atomic Tool schema instead of eager-expanding all of them.
+    supportingToolIds: [
+      "browser_navigate",
+      "browser_wait_for",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_fill",
+      "browser_press_key",
+      "browser_select_option",
+      "browser_scroll",
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+    ],
+    schemaSelection: "concrete",
+    // Temporary compatibility until AGT-012 / #365 performs the explicit legacy
+    // cutover. `browser_computer_use` stays resolvable and reconciles to the same
+    // Managed Browser Tools; it is not a second capability or Tool family.
+    aliases: ["browser_computer_use"],
     workbench: {
       label: "智控",
       description: "Playwright / Managed Browser 浏览器自动化工具。",
@@ -198,6 +225,8 @@ export const resolveHarnessCapabilityProfiles = (
       tags: blueprint.tags,
       ...(blueprint.preferredToolId ? { preferredToolId: blueprint.preferredToolId } : {}),
       supportingToolIds: matchedToolIds,
+      ...(blueprint.aliases ? { aliases: blueprint.aliases } : {}),
+      ...(blueprint.schemaSelection ? { schemaSelection: blueprint.schemaSelection } : {}),
       ...(blueprint.workbench ? { workbench: blueprint.workbench } : {}),
       ...(blueprint.actionProfileId
         ? {
@@ -218,3 +247,75 @@ export const resolveHarnessCapabilityProfiles = (
 
   return profiles;
 };
+
+/**
+ * Generic opt-in concrete schema-selection seam.
+ *
+ * A Profile with `schemaSelection: "concrete"` still owns every supporting Tool
+ * for first-level capability/product discovery, workbench grouping, readiness
+ * and eligibility, but selecting that capability must not eager-materialize the
+ * whole grouped catalog. The same deterministic-first #301 cascade is reused
+ * over the profile's own concrete Tools without injecting a semantic Resolver,
+ * so this adds no model roundtrip; only the selected Tool schema(s) are
+ * disclosed. Every other Profile keeps the existing grouped behavior.
+ *
+ * The returned ids are canonical Tool ids. Readiness, discoverability and
+ * execution authority remain owned by the existing Harness capability-view /
+ * Policy / Approval path; this function changes schema-disclosure selection only.
+ */
+export const resolveCapabilitySchemaToolIds = async (input: {
+  capabilityId: string;
+  query: string;
+  profiles: readonly HarnessCapabilityProfile[];
+  definitions: readonly ToolDefinition[];
+}): Promise<readonly string[]> => {
+  const profile = input.profiles.find(
+    (candidate) => candidate.id === input.capabilityId,
+  );
+  if (!profile) return [input.capabilityId];
+  if (profile.schemaSelection !== "concrete") {
+    return [...profile.supportingToolIds];
+  }
+
+  const supporting = new Set(profile.supportingToolIds);
+  const supportingDefinitions = input.definitions.filter((definition) =>
+    supporting.has(definition.id),
+  );
+  if (supportingDefinitions.length <= 1) {
+    return supportingDefinitions.map((definition) => definition.id);
+  }
+
+  const resolution = await resolveCapabilityCascade({
+    query: input.query,
+    capabilities: buildCapabilityResolutionDocuments(
+      supportingDefinitions.map((definition) =>
+        createConcreteToolProfile(definition),
+      ),
+    ),
+  });
+  if (
+    resolution.selectedCapabilityId &&
+    supporting.has(resolution.selectedCapabilityId)
+  ) {
+    return [resolution.selectedCapabilityId];
+  }
+
+  // Deterministic evidence did not confidently select one concrete Tool. Keep
+  // the turn bounded by disclosing nothing new rather than guessing or
+  // eager-expanding the catalog; the whole capability still stays discoverable
+  // as compact metadata.
+  return [];
+};
+
+const createConcreteToolProfile = (
+  definition: ToolDefinition,
+): HarnessCapabilityProfile => ({
+  id: definition.id,
+  title: definition.title,
+  description: definition.description,
+  domain: definition.domain,
+  source: definition.source,
+  tags: [...definition.tags],
+  preferredToolId: definition.id,
+  supportingToolIds: [definition.id],
+});

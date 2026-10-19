@@ -14,7 +14,10 @@ import {
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
-import { resolveHarnessCapabilityProfiles } from "@/harness/profiles";
+import {
+  resolveCapabilitySchemaToolIds,
+  resolveHarnessCapabilityProfiles,
+} from "@/harness/profiles";
 import {
   createCapabilityToolIdResolver,
   createProgressiveResolutionState,
@@ -616,11 +619,19 @@ export const prepareContextNode = async (
   // resolver reports grouped capability ids (for example `workspace_lookup`),
   // so the selected capability is expanded to its canonical supporting Tool ids
   // through the same Profile -> supportingToolIds mapping used for
-  // reconciliation. A turn without a confident selection discloses nothing new
+  // reconciliation. A grouped Profile that opts into concrete schema selection
+  // (for example `browser`) resolves to the task-relevant concrete Tool(s) via
+  // the existing deterministic-first cascade instead of eager-expanding its
+  // whole catalog. A turn without a confident selection discloses nothing new
   // instead of eagerly materializing the whole catalog.
   const selectedCapabilityId = matcherResult.resolution?.selectedCapabilityId;
   const resolutionSelectedToolIds = selectedCapabilityId
-    ? resolveCapabilityToolIds(selectedCapabilityId)
+    ? await resolveCapabilitySchemaToolIds({
+        capabilityId: selectedCapabilityId,
+        query,
+        profiles: capabilityProfiles,
+        definitions: capabilityDefinitions,
+      })
     : [];
   for (const toolId of resolutionSelectedToolIds) addSchemaTarget(toolId);
 
