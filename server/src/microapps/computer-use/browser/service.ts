@@ -88,6 +88,10 @@ const state = async (session: ManagedBrowserSession, maxChars = 12000) => {
       .update(snapshot)
       .update("\0")
       .update(visibleText)
+      // Different tabs can have identical content and aria refs. A successful
+      // A -> B -> A switch must not revive an old action fingerprint.
+      .update("\0")
+      .update(String(session.selectionEpoch))
       .digest("hex");
     latestObservations.set(session, {
       page: session.page,
