@@ -364,15 +364,20 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
     );
   });
 
-  it("maps a legacy browser toolkit alias to the canonical group without duplicate groups", async () => {
-    const definitions = [
+  it("maps a legacy browser toolkit alias to the canonical group without leaking legacy Agent Tool ids", async () => {
+    const atomicDefinitions = [
       makeToolDefinition("browser_navigate", "browser_action"),
       makeToolDefinition("browser_click", "browser_action"),
     ];
-    const toolIds = definitions.map((definition) => definition.id);
+    const definitions = [
+      makeToolDefinition("browser_observe", "browser_action"),
+      makeToolDefinition("browser_act", "browser_action"),
+      ...atomicDefinitions,
+    ];
+    const toolIds = atomicDefinitions.map((definition) => definition.id);
     vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
-    mockMatcher({
-      exposed: definitions,
+    const matcherSpy = mockMatcher({
+      exposed: atomicDefinitions,
       eligibleToolIds: toolIds,
       resolution: makeResolution({
         selectedCapabilityId: "browser",
@@ -403,6 +408,9 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
       (patch.toolExposure?.toolMeta ?? []).map((tool) => tool.toolId),
       toolIds,
     );
+    const matcherQuery = matcherSpy.mock.calls[0]?.[0]?.query ?? "";
+    assert.ok(!matcherQuery.includes("browser_observe"));
+    assert.ok(!matcherQuery.includes("browser_act"));
   });
 
   it("promotes a second capability on a later turn within the budget without re-charging prior disclosure", async () => {
