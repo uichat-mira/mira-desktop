@@ -39,6 +39,8 @@ describe("withWorkbenchMetadata", () => {
       createBrowserTool("browser_observe"),
       createBrowserTool("browser_act"),
       createBrowserTool("browser_assert"),
+      createBrowserTool("browser_navigate"),
+      createBrowserTool("browser_click"),
       createBrowserTool("browser_attached_look"),
       createBrowserTool("browser_attached_browse"),
       createBrowserTool("browser_attached_act"),
@@ -50,9 +52,15 @@ describe("withWorkbenchMetadata", () => {
     expect(projected.every((tool) => tool.domain === "browser_action")).toBe(true);
     expect(
       projected
-        .filter((tool) => tool.workbench?.groupId === "browser_computer_use")
+        .filter((tool) => tool.workbench?.groupId === "browser")
         .map((tool) => tool.id),
-    ).toEqual(["browser_observe", "browser_act", "browser_assert"]);
+    ).toEqual([
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "browser_navigate",
+      "browser_click",
+    ]);
     expect(
       projected
         .filter((tool) => tool.workbench?.groupId === "browser_attached")
@@ -100,14 +108,15 @@ describe("withWorkbenchMetadata", () => {
       createBrowserTool("browser_observe"),
       createBrowserTool("browser_act"),
       createBrowserTool("browser_assert"),
+      createBrowserTool("browser_click"),
     ];
 
     expect(
       withWorkbenchMetadata(
-        [createBrowserTool("browser_act")],
+        [createBrowserTool("browser_click")],
         ownershipDefinitions,
       )[0]?.workbench?.groupId,
-    ).toBe("browser_computer_use");
+    ).toBe("browser");
   });
 
   it("keeps Tool Lab acceptance cases out of the ordinary Settings workbench", () => {

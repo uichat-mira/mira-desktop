@@ -8,6 +8,8 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   domain: ToolDefinition["domain"];
   tags: string[];
   preferredToolId?: string;
+  ownedToolIds?: string[];
+  aliases?: string[];
   supportingToolIds: string[];
   actionProfileId?: string;
   actionProfileTitle?: string;
@@ -60,13 +62,41 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     supportingToolIds: ["web_search", "web_fetch"],
   },
   {
-    id: "browser_computer_use",
-    title: "Browser Computer Use",
+    id: "browser",
+    title: "Managed Browser",
     description: "Inspect and operate an isolated Playwright automation session in a Mira-managed browser, returning structured page evidence.",
     domain: "browser_action",
     tags: ["browser", "managed-browser", "mira-managed-browser", "isolated-session", "automation-session", "playwright", "website", "webpage", "page", "open", "visit", "navigate", "title", "inspect", "computer-use", "网页", "页面", "打开", "访问"],
     preferredToolId: "browser_observe",
+    // Disclosure set. It stays on the legacy facades so the canonical `browser`
+    // identity does not eagerly promote the whole atomic catalog. Concrete Tool
+    // schema selection is owned by the generic mid-run disclosure seam
+    // (AGT-017 / #387), not by this Profile.
     supportingToolIds: ["browser_observe", "browser_act", "browser_assert"],
+    // Product/workbench ownership of every current native Managed Browser Tool.
+    // It is a projection-only grouping: it does not widen disclosure, readiness
+    // or approval. Kept separate from `supportingToolIds` on purpose.
+    ownedToolIds: [
+      "browser_observe",
+      "browser_act",
+      "browser_assert",
+      "browser_navigate",
+      "browser_wait_for",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_fill",
+      "browser_press_key",
+      "browser_select_option",
+      "browser_scroll",
+    ],
+    // Temporary compatibility alias only. Consumer: in-flight runs, persisted
+    // state and older clients that still name the capability
+    // `browser_computer_use`. Without it those exact ids would stop resolving,
+    // so the alias keeps them on the one canonical `browser` Profile instead of
+    // spawning a second Tool family. Remove with AGT-012 / #365 once live
+    // acceptance and the old-entry cutover pass.
+    aliases: ["browser_computer_use"],
     workbench: {
       label: "智控",
       description: "Playwright / Managed Browser 浏览器自动化工具。",
@@ -189,6 +219,9 @@ export const resolveHarnessCapabilityProfiles = (
     }
 
     matchedToolIds.forEach((toolId) => consumed.add(toolId));
+    const ownedToolIds = blueprint.ownedToolIds
+      ? blueprint.ownedToolIds.filter((toolId) => definitionMap.has(toolId))
+      : undefined;
     profiles.push({
       id: blueprint.id,
       title: blueprint.title,
@@ -197,6 +230,10 @@ export const resolveHarnessCapabilityProfiles = (
       source: "internal",
       tags: blueprint.tags,
       ...(blueprint.preferredToolId ? { preferredToolId: blueprint.preferredToolId } : {}),
+      ...(ownedToolIds && ownedToolIds.length > 0 ? { ownedToolIds } : {}),
+      ...(blueprint.aliases && blueprint.aliases.length > 0
+        ? { aliases: blueprint.aliases }
+        : {}),
       supportingToolIds: matchedToolIds,
       ...(blueprint.workbench ? { workbench: blueprint.workbench } : {}),
       ...(blueprint.actionProfileId
