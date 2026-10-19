@@ -86,6 +86,10 @@ export interface PiAgentLoopNodes {
   error: PiAgentLoopNodeHandler;
 }
 
+const noOpToolSchemaDisclosure: PiAgentLoopStepHandler = async () => ({
+  toolSchemaDisclosure: undefined,
+});
+
 const defaultSemantics: PiAgentLoopSemantics = {
   prepareContext: prepareContextNode,
   planner: nextActionPlannerNode,
@@ -114,7 +118,7 @@ const resolveSemantics = (
       ...runtime,
       delegateTask: runtime.delegateTask ?? genericTaskSubAgentNode,
       discloseToolSchema:
-        runtime.discloseToolSchema ?? toolSchemaDisclosureNode,
+        runtime.discloseToolSchema ?? noOpToolSchemaDisclosure,
     };
   }
 
@@ -122,7 +126,8 @@ const resolveSemantics = (
     prepareContext: runtime.prepareContext,
     planner: runtime.planner,
     delegateTask: runtime.delegateTask ?? genericTaskSubAgentNode,
-    discloseToolSchema: runtime.discloseToolSchema ?? toolSchemaDisclosureNode,
+    discloseToolSchema:
+      runtime.discloseToolSchema ?? noOpToolSchemaDisclosure,
     normalizeAndFreeze: runtime.normalizeToolCall,
     evaluatePolicy: runtime.policy,
     pauseForApproval: runtime.approval,
@@ -460,7 +465,8 @@ const createPiAgentLoopRunner = (steps: PiAgentLoopSemantics) => {
 
               await runStep({
                 traceNodeName: "toolSchemaDisclosure",
-                handler: steps.discloseToolSchema ?? toolSchemaDisclosureNode,
+                handler:
+                  steps.discloseToolSchema ?? noOpToolSchemaDisclosure,
                 state,
                 emit,
               });
