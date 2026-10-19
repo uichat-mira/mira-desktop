@@ -229,6 +229,86 @@ describe("BrowserService", () => {
     expect(stillA.tabs?.map((tab) => tab.id)).toEqual([tabIds[0]]);
   });
 
+  it("does not revive old action refs across identical A -> B -> A tabs", async () => {
+    const { service, session, page, pages } = await createHarness();
+    const first = await service.observe({ sessionId: session.id });
+    expect(first.ok).toBe(true);
+    const ref = buttonRef(first);
+    const originalHash = first.page.snapshotHash!;
+
+    // Same URL, visible text, ARIA snapshot and ref IDs on distinct Page objects.
+    const clickB = vi.fn(async () => undefined);
+    const pageB = {
+      ...page,
+      getByRef: vi.fn((_ref: string) => ({
+        count: vi.fn(async () => 1),
+        click: clickB,
+      })),
+      bringToFront: vi.fn(async () => undefined),
+    };
+    pages.push(pageB);
+    const tabs = (await service.listTabs({ sessionId: session.id })).tabs!;
+    const tabA = tabs.find((tab) => tab.selected)!;
+    const tabB = tabs.find((tab) => !tab.selected)!;
+    const selectB = await service.selectTab({ sessionId: session.id, tabId: tabB.id });
+    expect(selectB.ok).toBe(true);
+    expect(selectB.page.url).toBe(first.page.url);
+    expect(selectB.observation?.snapshot).toBe(first.observation?.snapshot);
+    expect(selectB.page.snapshotHash).not.toBe(originalHash);
+
+    const staleOnB = await service.act({
+      sessionId: session.id, pageUrl: first.page.url,
+      snapshotHash: originalHash, action: { kind: "click", ref },
+    });
+    expect(staleOnB.error?.code).toBe("stale_snapshot");
+    expect(page.click).not.toHaveBeenCalled();
+    expect(clickB).not.toHaveBeenCalled();
+
+    const freshB = await service.observe({ sessionId: session.id });
+    expect(freshB.page.snapshotHash).toBe(selectB.page.snapshotHash);
+    const currentB = await service.act({
+      sessionId: session.id, pageUrl: freshB.page.url,
+      snapshotHash: freshB.page.snapshotHash!, action: { kind: "click", ref },
+    });
+    expect(currentB.ok).toBe(true);
+    expect(clickB).toHaveBeenCalledOnce();
+
+    // Selecting an already selected tab must not bump the generation.
+    const sameB = await service.selectTab({ sessionId: session.id, tabId: tabB.id });
+    expect(sameB.page.snapshotHash).toBe(freshB.page.snapshotHash);
+
+    const selectA = await service.selectTab({ sessionId: session.id, tabId: tabA.id });
+    expect(selectA.ok).toBe(true);
+    expect(selectA.page.snapshotHash).not.toBe(originalHash);
+    expect(selectA.page.snapshotHash).not.toBe(freshB.page.snapshotHash);
+    const staleOnReturn = await service.act({
+      sessionId: session.id, pageUrl: first.page.url,
+      snapshotHash: originalHash, action: { kind: "click", ref },
+    });
+    expect(staleOnReturn.error?.code).toBe("stale_snapshot");
+    expect(page.click).not.toHaveBeenCalled();
+    const refreshedA = await service.observe({ sessionId: session.id });
+    expect(refreshedA.page.snapshotHash).toBe(selectA.page.snapshotHash);
+
+    // A rejected switch cannot invalidate a valid observation or move the page.
+    const blockedPage = { ...page, url: vi.fn(() => "https://outside.invalid/") };
+    pages.push(blockedPage);
+    const blockedTab = (await service.listTabs({ sessionId: session.id })).tabs!.find(
+      (tab) => tab.url === "https://outside.invalid/",
+    )!;
+    const denied = await service.selectTab({ sessionId: session.id, tabId: blockedTab.id });
+    expect(denied.error?.code).toBe("navigation_blocked");
+    expect(session.page).toBe(page);
+    const afterDenial = await service.observe({ sessionId: session.id });
+    expect(afterDenial.page.snapshotHash).toBe(refreshedA.page.snapshotHash);
+    const currentA = await service.act({
+      sessionId: session.id, pageUrl: refreshedA.page.url,
+      snapshotHash: refreshedA.page.snapshotHash!, action: { kind: "click", ref },
+    });
+    expect(currentA.ok).toBe(true);
+    expect(page.click).toHaveBeenCalledOnce();
+  });
+
   it("rejects stale refs, unsafe navigation and invalid refs", async () => {
     const { service, session } = await createHarness();
     const observed = await service.observe({ sessionId: session.id });
