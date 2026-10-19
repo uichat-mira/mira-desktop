@@ -250,6 +250,17 @@ try {
   const attachedExecutions = executedToolIds.filter((toolId) =>
     toolId.startsWith("browser_attached_"),
   );
+  const childDiscoverableToolIds = executionNodes.flatMap((node) => {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return [];
+    const record = node as { nodeId?: unknown; details?: unknown };
+    if (record.nodeId !== "agent-generic-task-subagent") return [];
+    if (!record.details || typeof record.details !== "object" || Array.isArray(record.details)) return [];
+    const ids = (record.details as Record<string, unknown>).childDiscoverableToolIds;
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+  });
+  const legacyDiscoverableToolIds = childDiscoverableToolIds.filter(
+    (toolId) => toolId === "browser_observe" || toolId === "browser_act",
+  );
   const finalEvidence = output.evidence.toolExecutions.at(-1)?.result;
   const finalStateText = JSON.stringify({
     answer: output.answer,
@@ -260,6 +271,7 @@ try {
     !stoppedForLegacySelection &&
     output.status === "completed" &&
     legacyExecutions.length === 0 &&
+    legacyDiscoverableToolIds.length === 0 &&
     attachedExecutions.length === 0 &&
     requests.includes("/success") &&
     finalStateText.includes("Welcome Mira");
@@ -280,6 +292,8 @@ try {
       subAgentExecutedToolIds,
       executedToolIds,
       legacyExecutions,
+      childDiscoverableToolIds,
+      legacyDiscoverableToolIds,
       attachedExecutions,
       progressiveResolution: output.progressiveResolution,
       finalEvidence,
@@ -305,6 +319,8 @@ try {
     subAgentExecutedToolIds,
     executedToolIds,
     legacyExecutions,
+    childDiscoverableToolIds,
+    legacyDiscoverableToolIds,
     attachedExecutions,
     approvals: approvals.map(({ toolId, inputHash }) => ({ toolId, inputHash })),
     requests,
