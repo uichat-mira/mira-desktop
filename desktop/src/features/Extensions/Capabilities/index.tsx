@@ -76,7 +76,6 @@ export default function CapabilitiesPage() {
   const hasVisibleSelection = Boolean(
     activeGroup &&
       selectedTool &&
-      selectedCase &&
       activeGroup.tools.some((tool) => tool.id === selectedTool.id),
   );
 
@@ -201,7 +200,7 @@ export default function CapabilitiesPage() {
         />
 
         <main className="flex min-h-0 flex-col overflow-hidden">
-        {hasVisibleSelection && selectedTool && selectedCase ? (
+        {hasVisibleSelection && selectedTool ? (
           <>
           <div className="stable-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto pb-4 pl-4 pr-5 sm:pr-6 xl:pr-8">
             {activeGroup ? (
@@ -251,7 +250,7 @@ export default function CapabilitiesPage() {
               </div>
             ) : null}
 
-            {capabilities.readiness.state === "unavailable" ? (
+            {selectedCase && capabilities.readiness.state === "unavailable" ? (
               <Alert
                 variant="warning"
                 title={t("settings.development.capabilities.unavailableTitle")}
@@ -271,7 +270,7 @@ export default function CapabilitiesPage() {
                   });
                   const runningThisCase =
                     (capabilities.isPreparingCase || capabilities.runState.isRunning) &&
-                    selectedCase.id === caseDefinition.id;
+                    selectedCase?.id === caseDefinition.id;
 
                   return (
                     <Card
@@ -340,6 +339,11 @@ export default function CapabilitiesPage() {
                   );
                 })}
               </div>
+              {capabilities.toolCases.length === 0 ? (
+                <div className="rounded-ui-control border border-border bg-surface-secondary px-4 py-5 text-sm text-text-secondary">
+                  {t("settings.development.capabilities.noCases")}
+                </div>
+              ) : null}
             </section>
 
             {selectedTool.id === "terminal" && capabilities.terminalSessionId ? (

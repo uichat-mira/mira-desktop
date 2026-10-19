@@ -10,11 +10,27 @@ import type {
   CapabilityTool,
 } from "./types";
 
+const MANAGED_BROWSER_GROUP_ID = "browser";
+
 const unavailable = (reason: string, settingsPath?: string): CapabilityReadiness => ({
   state: "unavailable",
   reason,
   ...(settingsPath ? { settingsPath } : {}),
 });
+
+export function isManagedBrowserTool(
+  tool: Pick<CapabilityTool, "workbench">,
+): boolean {
+  return tool.workbench?.groupId === MANAGED_BROWSER_GROUP_ID;
+}
+
+const isUnprojectedBrowserTool = (tool: CapabilityTool) =>
+  !tool.workbench && tool.domain === "browser_action";
+
+const requiresExplicitRuntimeReadiness = (tool: CapabilityTool) =>
+  tool.id === "web_search" ||
+  isManagedBrowserTool(tool) ||
+  isUnprojectedBrowserTool(tool);
 
 export function toNativeCapabilityTool(definition: HarnessToolDefinition): CapabilityTool {
   return {
@@ -33,7 +49,7 @@ export function resolveToolReadiness(tool: CapabilityTool): CapabilityReadiness[
     return tool.runtimeReadiness.state;
   }
 
-  return tool.id === "web_search" ? "unavailable" : "ready";
+  return requiresExplicitRuntimeReadiness(tool) ? "unavailable" : "ready";
 }
 
 export function toUnavailableNativeCapabilityTool(toolId: string): CapabilityTool {
@@ -112,7 +128,14 @@ export function resolveCapabilityReadiness(input: {
       "/settings/tools",
     );
   }
-  if (input.tool.id === "web_search" && !input.tool.runtimeReadiness) {
+  if (!input.tool.runtimeReadiness && requiresExplicitRuntimeReadiness(input.tool)) {
+    if (isManagedBrowserTool(input.tool) || isUnprojectedBrowserTool(input.tool)) {
+      return unavailable(
+        input.translate?.(
+          "settings.development.capabilities.readinessReasons.browserUnavailable",
+        ) ?? "Managed Browser runtime readiness is unavailable.",
+      );
+    }
     return unavailable(
       input.translate?.(
         "settings.development.capabilities.readinessReasons.webSearchUnavailable",

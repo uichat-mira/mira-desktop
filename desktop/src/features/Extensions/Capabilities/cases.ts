@@ -581,6 +581,37 @@ export const nativeCapabilityAcceptanceCases: CapabilityAcceptanceCase[] = [
     group: "Universal Web",
     workspace: "none",
   },
+  {
+    id: "browser-snapshot-observe",
+    toolId: "browser_snapshot",
+    title: "读取当前页面快照",
+    purpose:
+      "确认 Managed Browser 的只读 snapshot 走真实 Harness，并返回有界页面观察。",
+    expectedObservation:
+      "Completed；返回有界 aria snapshot、页面 URL/title 与 snapshotHash；没有已绑定会话时明确返回 session_unavailable，而不是伪造成功。",
+    args: {
+      includeVisibleText: true,
+      maxSnapshotChars: 4000,
+    },
+    group: "Browser",
+    workspace: "none",
+  },
+  {
+    id: "browser-click-approval",
+    toolId: "browser_click",
+    title: "点击审批边界",
+    purpose:
+      "确认 Managed Browser 的页面交互在真实 Policy 边界等待审批，审批前不会执行点击。",
+    expectedObservation:
+      "Awaiting Approval，并显示审批原因与范围；拒绝后保持 Cancelled，且不会发生页面交互。",
+    args: {
+      pageUrl: "https://example.com/",
+      snapshotHash: "capability-browser-snapshot",
+      ref: "e1",
+    },
+    group: "Browser",
+    workspace: "none",
+  },
 ];
 
 const hasNoRequiredInput = (inputSchema: Record<string, unknown>) => {

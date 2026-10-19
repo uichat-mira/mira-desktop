@@ -149,6 +149,8 @@ vi.mock("react-i18next", () => ({
       "settings.development.capabilities.groups.terminal.description": "Run governed terminal operations.",
       "settings.development.capabilities.groups.web.label": "Web",
       "settings.development.capabilities.groups.web.description": "Access public web information.",
+      "settings.development.capabilities.groups.browser.label": "Browser",
+      "settings.development.capabilities.groups.browser.description": "Inspect and operate an isolated Playwright session managed by Mira.",
       "settings.development.capabilities.console.toolRun": "tool run",
       "settings.development.capabilities.console.status": "status",
       "settings.development.capabilities.console.scope": "scope",
@@ -288,6 +290,162 @@ describe("CapabilitiesPage", () => {
       label: "Read",
       description: "Read and inspect workspace content.",
     });
+  });
+
+  it("keeps Browser Tool navigation and details usable without a preset acceptance case", async () => {
+    const browserTool = {
+      ...capabilities.selectedTool,
+      id: "browser_navigate",
+      title: "Browser Navigate",
+      description: "Navigate within a managed browser session.",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Managed Browser tools.",
+        groupOrder: 50,
+        icon: "mouse-pointer",
+      },
+    };
+    capabilities.tools = [browserTool];
+    capabilities.selectedTool = browserTool;
+    capabilities.cases = [];
+    capabilities.toolCases = [];
+    capabilities.selectedCase = null as never;
+
+    const user = userEvent.setup();
+    render(<MemoryRouter><CapabilitiesPage /></MemoryRouter>);
+
+    expect(screen.getByText("Browser")).toBeInTheDocument();
+    expect(screen.getAllByText("Browser Navigate").length).toBeGreaterThan(0);
+    expect(screen.getByText("settings.development.capabilities.noCases")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "工具详情" }));
+    expect(screen.getByText("Navigate within a managed browser session.")).toBeInTheDocument();
+  });
+
+  it("groups Managed Browser from backend Workbench ownership, separate from Web and 触界", () => {
+    const translate = (key: string) =>
+      ({
+        "settings.development.capabilities.groups.web.label": "Web",
+        "settings.development.capabilities.groups.web.description":
+          "Access public web information.",
+        "settings.development.capabilities.groups.browser.label": "Browser",
+        "settings.development.capabilities.groups.browser.description":
+          "Inspect and operate an isolated Playwright session managed by Mira.",
+      })[key] ?? key;
+    const browserTool = {
+      ...capabilities.selectedTool,
+      id: "browser_snapshot",
+      title: "Browser Snapshot",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Playwright / Managed Browser 浏览器自动化工具。",
+        groupOrder: 50,
+        icon: "mouse-pointer",
+      },
+    };
+    const webTool = {
+      ...capabilities.selectedTool,
+      id: "web_search",
+      title: "Web Search",
+      domain: "web_search",
+      workbench: {
+        groupId: "web_search",
+        groupLabel: "网络搜索",
+        groupDescription: "公网实时搜索。",
+        groupOrder: 30,
+        icon: "globe",
+      },
+    };
+    const attachedTool = {
+      ...capabilities.selectedTool,
+      id: "browser_attached_look",
+      title: "Attached Browser Look",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser_attached",
+        groupLabel: "触界",
+        groupDescription: "通过 Chrome Extension 操作用户已连接的真实浏览器。",
+        groupOrder: 60,
+        icon: "globe",
+      },
+    };
+
+    const groups = buildCapabilityGroups(
+      [browserTool, webTool, attachedTool],
+      translate,
+    );
+    const browserGroup = groups.find((group) => group.id === "native:browser");
+    const webGroup = groups.find((group) => group.id === "native:web_search");
+    const attachedGroup = groups.find(
+      (group) => group.id === "native:browser_attached",
+    );
+
+    expect(browserGroup).toMatchObject({
+      label: "Browser",
+      icon: "mouse-pointer",
+      kind: "native",
+    });
+    expect(browserGroup?.tools.map((tool) => tool.id)).toEqual([
+      "browser_snapshot",
+    ]);
+    expect(webGroup).toMatchObject({ label: "Web" });
+    expect(attachedGroup).toMatchObject({ label: "触界" });
+    expect(new Set(groups.map((group) => group.id)).size).toBe(groups.length);
+  });
+
+  it("shows Managed Browser readiness reason and disables an unavailable case", () => {
+    const browserTool = {
+      ...capabilities.selectedTool,
+      id: "browser_snapshot",
+      title: "Browser Snapshot",
+      description: "Read a bounded snapshot from the Managed Browser session.",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Playwright / Managed Browser 浏览器自动化工具。",
+        groupOrder: 50,
+        icon: "mouse-pointer",
+      },
+      runtimeReadiness: {
+        state: "unavailable" as const,
+        reason: "No managed Chromium was found.",
+        code: "browser_runtime_unavailable",
+      },
+    };
+    const browserCase = {
+      ...capabilities.selectedCase,
+      id: "browser-snapshot-observe",
+      toolId: "browser_snapshot",
+      title: "读取当前页面快照",
+      group: "Browser",
+    };
+    capabilities.tools = [browserTool];
+    capabilities.cases = [browserCase];
+    capabilities.toolCases = [browserCase];
+    capabilities.selectedTool = browserTool;
+    capabilities.selectedCase = browserCase;
+    capabilities.readiness = {
+      state: "unavailable" as const,
+      reason: "No managed Chromium was found.",
+    };
+
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("Browser").length).toBeGreaterThan(0);
+    expect(screen.getByText("No managed Chromium was found.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.actions.run",
+      }),
+    ).toBeDisabled();
   });
 
   it("exposes source filters for all, native, and extensions", async () => {

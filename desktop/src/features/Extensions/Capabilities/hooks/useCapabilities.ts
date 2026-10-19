@@ -23,6 +23,7 @@ import type {
   CapabilityTool,
 } from "../types";
 import {
+  isManagedBrowserTool,
   resolveCapabilityReadiness,
   toExternalCapabilityTools,
   toNativeCapabilityTool,
@@ -102,13 +103,18 @@ export function useCapabilities() {
 
   const tools = useMemo(() => {
     const caseToolIds = [...new Set(cases.map((caseDefinition) => caseDefinition.toolId))];
-
-    return caseToolIds.flatMap((toolId) => {
+    const caseTools = caseToolIds.flatMap((toolId) => {
       const registered = allTools.find((tool) => tool.id === toolId);
       if (registered) return [registered];
       if (toolId.startsWith("mcp:")) return [];
       return [toUnavailableNativeCapabilityTool(toolId)];
     });
+    const caseToolIdSet = new Set(caseTools.map((tool) => tool.id));
+    const browserTools = allTools.filter(
+      (tool) => isManagedBrowserTool(tool) && !caseToolIdSet.has(tool.id),
+    );
+
+    return [...caseTools, ...browserTools];
   }, [allTools, cases]);
 
   useEffect(() => {
