@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { Readable } from "node:stream";
 import { success } from "@/utils/index.js";
-import { routeHandler } from "@/utils/route-errors.js";
+import { routeHandler, unauthorized } from "@/utils/route-errors.js";
 import { successEnvelope } from "@/routes/schema-helpers.js";
 import { initializeHarnessRuntime } from "./bootstrap.js";
 import {
@@ -31,6 +31,13 @@ import {
   getToolLabWorkspaceSelection,
 } from "./tool-lab-workspace.js";
 import { resetToolLabFixture } from "./tool-lab-fixtures.js";
+import {
+  acquireToolLabBrowserRunStep,
+  createToolLabBrowserRun,
+  getToolLabBrowserRun,
+  isToolLabBrowserTool,
+  resetToolLabBrowserRun,
+} from "./tool-lab-browser-runs.js";
 import { createMcpMarketplaceCatalog } from "./marketplace-catalog.js";
 import {
   connectExternalMcpServer,
@@ -184,6 +191,62 @@ const upsertDefaultWecomResources = (input: {
   }
 
   return next;
+};
+
+const requireAuthenticatedUserId = (request: {
+  authUser?: { id: number };
+}) => {
+  const userId = request.authUser?.id;
+  if (typeof userId !== "number") {
+    throw unauthorized("Missing auth token");
+  }
+  return userId;
+};
+
+const resolveToolLabBrowserRunStep = (input: {
+  toolId: string;
+  args?: Record<string, unknown>;
+  browserRunHandle?: string;
+  userId?: number;
+  clientThreadId?: unknown;
+  clientSessionId?: unknown;
+}) => {
+  if (!isToolLabBrowserTool(input.toolId)) {
+    if (input.browserRunHandle !== undefined) {
+      throw mcpBadRequest(
+        "A Browser Lab run handle is only valid for Managed Browser tools",
+      );
+    }
+    return undefined;
+  }
+  if (input.browserRunHandle === undefined) {
+    throw mcpBadRequest(
+      "A Browser Lab run handle is required for Managed Browser tools",
+    );
+  }
+  if (typeof input.userId !== "number") {
+    throw unauthorized("Missing auth token");
+  }
+  if (
+    input.clientThreadId !== undefined ||
+    input.clientSessionId !== undefined
+  ) {
+    throw mcpBadRequest(
+      "Client-supplied threadId and sessionId are not allowed for Managed Browser tools",
+    );
+  }
+  if (
+    input.args &&
+    Object.prototype.hasOwnProperty.call(input.args, "sessionId")
+  ) {
+    throw mcpBadRequest(
+      "Client-supplied sessionId is not allowed for Managed Browser tools",
+    );
+  }
+  return acquireToolLabBrowserRunStep({
+    handle: input.browserRunHandle,
+    userId: input.userId,
+  });
 };
 
 const mcpRoutes: FastifyPluginAsync = async (app) => {
@@ -747,6 +810,81 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
       success(await resetToolLabFixture(request.params.id))),
   );
 
+  app.post(
+    "/mcp/tool-lab/browser-runs",
+    {
+      schema: {
+        tags: ["Tools"],
+        summary: "Create a short-lived Tool Lab Managed Browser run",
+        response: {
+          200: successEnvelope(objectSchema),
+        },
+      },
+    },
+    routeHandler("Failed to create Tool Lab Browser run", async (request) =>
+      success(
+        createToolLabBrowserRun({
+          userId: requireAuthenticatedUserId(request),
+        }),
+      )),
+  );
+
+  app.post<{ Body: { handle: string } }>(
+    "/mcp/tool-lab/browser-runs/status",
+    {
+      schema: {
+        tags: ["Tools"],
+        summary: "Get a Tool Lab Managed Browser run",
+        body: {
+          type: "object",
+          required: ["handle"],
+          additionalProperties: false,
+          properties: {
+            handle: { type: "string", minLength: 1, maxLength: 256 },
+          },
+        },
+        response: {
+          200: successEnvelope(objectSchema),
+        },
+      },
+    },
+    routeHandler("Failed to get Tool Lab Browser run", async (request) =>
+      success(
+        getToolLabBrowserRun({
+          handle: request.body.handle,
+          userId: requireAuthenticatedUserId(request),
+        }),
+      )),
+  );
+
+  app.post<{ Body: { handle: string } }>(
+    "/mcp/tool-lab/browser-runs/reset",
+    {
+      schema: {
+        tags: ["Tools"],
+        summary: "Reset a Tool Lab Managed Browser run",
+        body: {
+          type: "object",
+          required: ["handle"],
+          additionalProperties: false,
+          properties: {
+            handle: { type: "string", minLength: 1, maxLength: 256 },
+          },
+        },
+        response: {
+          200: successEnvelope(objectSchema),
+        },
+      },
+    },
+    routeHandler("Failed to reset Tool Lab Browser run", async (request) =>
+      success(
+        resetToolLabBrowserRun({
+          handle: request.body.handle,
+          userId: requireAuthenticatedUserId(request),
+        }),
+      )),
+  );
+
   app.get(
     "/mcp/tool-lab/workspace/managed",
     {
@@ -1002,6 +1140,9 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
       toolId: string;
       args?: Record<string, unknown>;
       workspaceContext?: "tool_lab" | "tool_lab_managed";
+      browserRunHandle?: string;
+      threadId?: unknown;
+      sessionId?: unknown;
     };
   }>(
     "/mcp/invocations",
@@ -1009,28 +1150,55 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
       schema: {
         tags: ["Tools"],
         summary: "Execute one MCP tool invocation",
+        body: {
+          type: "object",
+          required: ["toolId"],
+          additionalProperties: true,
+          properties: {
+            toolId: { type: "string", minLength: 1 },
+            args: { type: "object", additionalProperties: true },
+            workspaceContext: {
+              type: "string",
+              enum: ["tool_lab", "tool_lab_managed"],
+            },
+            browserRunHandle: { type: "string", minLength: 1, maxLength: 256 },
+          },
+        },
         response: {
           200: successEnvelope(objectSchema),
         },
       },
     },
     routeHandler("Failed to execute MCP invocation", async (request) => {
-      const result = await executeHarnessInvocation({
+      const runStep = resolveToolLabBrowserRunStep({
         toolId: request.body.toolId,
         args: request.body.args,
+        browserRunHandle: request.body.browserRunHandle,
         userId: request.authUser?.id,
-        ...(request.body.workspaceContext
-          ? {
-              environment: createHarnessEnvironmentSnapshot({
-                workspace:
-                  request.body.workspaceContext === "tool_lab_managed"
-                    ? getManagedToolLabWorkspaceSelection()
-                    : getToolLabWorkspaceSelection(),
-              }),
-            }
-          : {}),
+        clientThreadId: request.body.threadId,
+        clientSessionId: request.body.sessionId,
       });
-      return success(result);
+      try {
+        const result = await executeHarnessInvocation({
+          toolId: request.body.toolId,
+          args: request.body.args,
+          userId: request.authUser?.id,
+          ...(runStep ? { threadId: runStep.threadId } : {}),
+          ...(request.body.workspaceContext
+            ? {
+                environment: createHarnessEnvironmentSnapshot({
+                  workspace:
+                    request.body.workspaceContext === "tool_lab_managed"
+                      ? getManagedToolLabWorkspaceSelection()
+                      : getToolLabWorkspaceSelection(),
+                }),
+              }
+            : {}),
+        });
+        return success(result);
+      } finally {
+        runStep?.release();
+      }
     }),
   );
 
@@ -1039,6 +1207,9 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
       toolId: string;
       args?: Record<string, unknown>;
       workspaceContext?: "tool_lab" | "tool_lab_managed";
+      browserRunHandle?: string;
+      threadId?: unknown;
+      sessionId?: unknown;
     };
   }>(
     "/mcp/invocations/stream",
@@ -1046,9 +1217,31 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
       schema: {
         tags: ["Tools"],
         summary: "Execute one MCP tool invocation with SSE stream",
+        body: {
+          type: "object",
+          required: ["toolId"],
+          additionalProperties: true,
+          properties: {
+            toolId: { type: "string", minLength: 1 },
+            args: { type: "object", additionalProperties: true },
+            workspaceContext: {
+              type: "string",
+              enum: ["tool_lab", "tool_lab_managed"],
+            },
+            browserRunHandle: { type: "string", minLength: 1, maxLength: 256 },
+          },
+        },
       },
     },
     routeHandler("Failed to stream MCP invocation", async (request, reply) => {
+      const runStep = resolveToolLabBrowserRunStep({
+        toolId: request.body.toolId,
+        args: request.body.args,
+        browserRunHandle: request.body.browserRunHandle,
+        userId: request.authUser?.id,
+        clientThreadId: request.body.threadId,
+        clientSessionId: request.body.sessionId,
+      });
       reply
         .header("Content-Type", "text/event-stream")
         .header("Cache-Control", "no-cache, no-transform")
@@ -1070,6 +1263,7 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
             toolId: request.body.toolId,
             args: request.body.args,
             userId: request.authUser?.id,
+            ...(runStep ? { threadId: runStep.threadId } : {}),
             ...(request.body.workspaceContext
               ? {
                   environment: createHarnessEnvironmentSnapshot({
@@ -1087,6 +1281,7 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
               resolvePending = null;
             },
           }).finally(() => {
+            runStep?.release();
             finished = true;
             resolvePending?.();
             resolvePending = null;
