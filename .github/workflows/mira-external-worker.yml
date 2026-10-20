@@ -123,10 +123,11 @@ jobs:
       contents: write
       issues: read
       pull-requests: write
-    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@621bc797562ee2ba92e77e215deb68833113231e
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@1380017dbedd147fdfec4c5b2404443e12967182
     with:
       issue_number: ${{ fromJSON(needs.enrollment.outputs.issue_number) }}
       base_branch: dev
+      timeout_minutes: 60
       verification_command: |
         corepack enable
         pnpm install --frozen-lockfile
