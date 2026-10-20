@@ -246,6 +246,8 @@
 - 页面级 tabs 优先复用 `NavigationCardTabs`，不要在业务页重复手写 tab rail
 - `NavigationCardTabs` 可基于 Radix Tabs primitives 实现交互与可访问性，但视觉仍需保持紧凑、低噪音
 - tab trigger 默认用 `surface-* + border + text-*` 建层，激活态只做轻量顶部强调，不铺满高饱和主色
+- 空间不足时由组件自身按容器实测宽度折叠溢出项：宽屏最多 5 个、中屏最多 4 个，继续变窄时按真实宽度递减，不靠横向滚动或裁切隐藏
+- 溢出项统一收进右端无边框的竖向 `⋮` 菜单；触发器保持轻量图标，不额外加按钮壳，只有存在溢出项时才出现
 - 若只是局部模式切换或小范围过滤，优先使用 `SegmentedTabs`，不要把页面级 tabs 缩成胶囊按钮
 
 ## 8. Typography
