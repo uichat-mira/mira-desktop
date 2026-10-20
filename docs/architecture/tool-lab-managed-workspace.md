@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: runtime / tooling
-Last verified: 2026-10-05
+Last verified: 2026-10-20
 Layer: raw-source
 Module: Tools
 Feature: ToolLabManagedWorkspace
@@ -148,6 +148,29 @@ fixture-backed / workspace-bound acceptance Case 使用 `tool_lab_managed`；bac
 - Policy/Approval 不复制；
 - Tool runtime 不复制；
 - renderer 不获得“指定任意执行根”的能力。
+
+## Browser run context
+
+Managed Browser Tool 需要 `threadId` 才能把一次 Tool Lab run 的多个步骤绑定到同一个内部 Browser session。该绑定不能由客户端直接提交，因此 Tool Lab 增加一套专用于 Browser 的短期 run handle：
+
+```text
+POST /mcp/tool-lab/browser-runs          -> { handle, expiresAt, activeStep }
+POST /mcp/tool-lab/browser-runs/status   -> { handle, expiresAt, activeStep }
+POST /mcp/tool-lab/browser-runs/reset    -> { handle, reset: true }
+```
+
+- handle 由 backend 使用加密随机数生成，格式为 `blrun_` 前缀的不透明字符串；
+- 每个 handle 只属于创建它的 authenticated user，并映射到一个独立命名空间的内部 `threadId`（包含 user 与 run 标识）；同一 run 复用同一 thread，不同 run 永不共用 thread；
+- handle 默认 10 分钟固定 TTL；过期、reset、跨 user 或未知 handle 均按 not found 处理，不泄露其他 run 是否存在；
+- 每个 user 最多 4 个 active run，全局最多 64 个；过期记录在下一次创建/访问时惰性清理；
+- 同一 run 同一时间只允许一个活动步骤；第二个并发步骤返回受控 400；
+- 步骤进入审批等待时保留 run 级 pending 标记，未决期间拒绝新的 Browser 步骤；reset 在 pending 期间仍可撤销该 run；
+- 活动步骤期间拒绝 reset（返回可诊断的 400），等步骤结束后才允许 reset；过期 run 不再授权任何新调用；
+- Managed Browser Tool 必须携带有效 handle。非 Browser Tool 携带 handle、Browser Tool 缺少 handle、客户端提交 `threadId`/`sessionId` 或 `args.sessionId` 均被拒绝；
+- Tool Lab 路由只把 backend 解析出的内部 `threadId` 注入现有 Harness invocation，不新增第二套 SessionManager，也不改变原有 Policy/Approval 门槛；
+- POST `/mcp/invocations` 与 GET `/mcp/invocations/:id` 的 Browser Lab 响应会投影掉内部 `threadId`；服务端保存的原 invocation 仍保留该字段，供后续审批恢复卡使用。
+
+本卡不改变 `resolveHarnessInvocationApproval` 的恢复实现。审批恢复的 run-context 传递由后续独立卡处理；本次 invocation 记录中的内部 `threadId` 可作为该卡复用的契约。Tool Lab UI 连续 Browser 旅程也不在本卡范围内。
 
 ## Approval / resume
 
