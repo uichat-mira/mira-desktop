@@ -17,6 +17,11 @@ import {
   type ExecuteInvocationInput,
 } from "../mcp/core/invocations.js";
 import { mcpBadRequest, mcpNotFound } from "../mcp/core/errors.js";
+import {
+  beginToolLabBrowserApprovalResume,
+  isToolLabBrowserTool,
+  settleToolLabBrowserApprovalRejection,
+} from "../mcp/tool-lab-browser-runs.js";
 import { createInvocationInputHash } from "../agent/approval-fingerprint.js";
 import {
   createHarnessEnvironmentSnapshot,
@@ -109,7 +114,15 @@ export const resolveHarnessInvocationApproval = async (input: {
     throw mcpBadRequest("Tool approval does not match the original tool");
   }
 
+  const isBrowserLab = isToolLabBrowserTool(original.toolId);
+
   if (input.decision === "rejected") {
+    if (isBrowserLab) {
+      settleToolLabBrowserApprovalRejection({
+        threadId: original.threadId,
+        userId: original.userId,
+      });
+    }
     return {
       originalInvocation: resolveInvocationApproval({
         invocationId: input.invocationId,
@@ -134,19 +147,49 @@ export const resolveHarnessInvocationApproval = async (input: {
     );
   }
 
-  claimInvocationApproval({
-    invocationId: input.invocationId,
-    userId: input.userId,
-    reason: "Approved from Tool Lab",
-  });
+  let browserStep:
+    | ReturnType<typeof beginToolLabBrowserApprovalResume>
+    | undefined;
+  try {
+    if (isBrowserLab) {
+      // The pending Browser Lab step must still belong to a live run owned by
+      // the same user; consume that pending marker before claiming the approval.
+      browserStep = beginToolLabBrowserApprovalResume({
+        toolId: original.toolId,
+        threadId: original.threadId,
+        userId: original.userId,
+      });
+    }
+    claimInvocationApproval({
+      invocationId: input.invocationId,
+      userId: input.userId,
+      reason: "Approved from Tool Lab",
+    });
+  } catch (error) {
+    browserStep?.release();
+    throw error;
+  }
+
+  const resumedToolId = original.toolId;
+  // Browser Lab resumes the frozen server-side invocation, never client args,
+  // so the approved navigate cannot drift to another URL or session. Clone it
+  // because browser tools add their own sessionId onto the execution args.
+  const resumedArgs = isBrowserLab
+    ? structuredClone(original.args ?? {})
+    : args;
+  const resumedInputHash = isBrowserLab ? original.inputHash : inputHash;
 
   let resumed: HarnessInvocationRecord;
   try {
     resumed = await executeHarnessInvocation({
-      toolId: input.toolId,
-      args,
-      userId: input.userId,
-      approvedInvocations: [{ toolId: input.toolId, inputHash }],
+      toolId: resumedToolId,
+      args: resumedArgs,
+      userId: original.userId ?? input.userId,
+      ...(isBrowserLab && original.threadId
+        ? { threadId: original.threadId }
+        : {}),
+      ...(isBrowserLab && original.turnId ? { turnId: original.turnId } : {}),
+      approvedInvocations: [{ toolId: resumedToolId, inputHash: resumedInputHash }],
       environment: createHarnessEnvironmentSnapshot({
         workspace: originalWorkspace,
       }),
@@ -160,8 +203,12 @@ export const resolveHarnessInvocationApproval = async (input: {
           ? error.message
           : "Approved tool invocation failed.",
     });
+    browserStep?.release();
     throw error;
   }
+  browserStep?.release({
+    pendingApproval: resumed.status === "awaiting_approval",
+  });
 
   const originalInvocation = finalizeClaimedInvocationApproval({
     invocationId: input.invocationId,

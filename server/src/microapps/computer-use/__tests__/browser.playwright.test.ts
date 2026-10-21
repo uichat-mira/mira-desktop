@@ -9,6 +9,16 @@ import { BrowserSessionManager } from "../session/manager.js";
 import { createComputerUseBrowserTools } from "../../../mcp/tools/browser-tools.tool.js";
 import { clearRegistry, listToolDefinitions, registerTool } from "../../../mcp/core/registry.js";
 import { clearInvocations, executeInvocation } from "../../../mcp/core/invocations.js";
+import {
+  clearHarnessInvocations,
+  executeHarnessInvocation,
+  resolveHarnessInvocationApproval,
+} from "../../../harness/invocations.js";
+import {
+  acquireToolLabBrowserRunStep,
+  clearToolLabBrowserRuns,
+  createToolLabBrowserRun,
+} from "../../../mcp/tool-lab-browser-runs.js";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 
 const root = path.join(path.basename(process.cwd()) === "server" ? path.resolve(process.cwd(), "..") : process.cwd(), ".test-artifact", "computer-use", "agt-006");
@@ -599,6 +609,83 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
     } finally {
       await manager.closeAll();
       clearRegistry(); clearInvocations();
+      fs.rmSync(file, { force: true });
+    }
+  }, 30000);
+
+  it("resumes a Tool Lab Navigate approval on the original real Chromium session", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const file = path.join(root, `approval-${crypto.randomUUID()}.html`);
+    fs.writeFileSync(file, `<!doctype html><html><head><title>Approved Destination</title></head>
+<body><h1>Approved Destination</h1></body></html>`);
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    const navArgs = { url: pathToFileURL(file).href };
+    try {
+      clearRegistry();
+      clearHarnessInvocations();
+      clearToolLabBrowserRuns();
+      const tools = createComputerUseBrowserTools(browser, { sessionManager: manager });
+      for (const tool of tools) registerTool(tool);
+
+      const run = createToolLabBrowserRun({ userId: 7 });
+      const step = acquireToolLabBrowserRunStep({ handle: run.handle, userId: 7 });
+      const pending = await executeHarnessInvocation({
+        toolId: "browser_navigate",
+        args: navArgs,
+        userId: 7,
+        threadId: step.threadId,
+      });
+      step.release({ pendingApproval: pending.status === "awaiting_approval" });
+      expect(pending.status).toBe("awaiting_approval");
+      expect(pending.threadId).toBe(step.threadId);
+
+      const approved = await resolveHarnessInvocationApproval({
+        invocationId: pending.id,
+        decision: "approved",
+        toolId: "browser_navigate",
+        args: navArgs,
+        userId: 7,
+      });
+      expect(approved.originalInvocation.status).toBe("completed");
+      expect(approved.originalInvocation.threadId).toBe(step.threadId);
+      expect(approved.resumedInvocation?.status).toBe("completed");
+      expect(approved.resumedInvocation?.threadId).toBe(step.threadId);
+      const resumedResult = approved.resumedInvocation?.result as {
+        ok?: boolean;
+        sessionId?: string;
+        page?: { url?: string };
+      };
+      expect(resumedResult).toMatchObject({
+        ok: true,
+        page: { url: navArgs.url },
+      });
+      expect(manager.get(resumedResult.sessionId!)).toBeTruthy();
+
+      const snapshot = await executeHarnessInvocation({
+        toolId: "browser_snapshot",
+        args: {},
+        userId: 7,
+        threadId: step.threadId,
+      });
+      expect(snapshot.status).toBe("completed");
+      expect(snapshot.result).toMatchObject({
+        ok: true,
+        sessionId: resumedResult.sessionId,
+        page: { url: navArgs.url },
+      });
+      expect(
+        (snapshot.result as { observation?: { snapshot?: string } }).observation
+          ?.snapshot,
+      ).toContain('heading "Approved Destination"');
+    } finally {
+      clearToolLabBrowserRuns();
+      clearRegistry();
+      clearHarnessInvocations();
+      await manager.closeAll();
       fs.rmSync(file, { force: true });
     }
   }, 30000);

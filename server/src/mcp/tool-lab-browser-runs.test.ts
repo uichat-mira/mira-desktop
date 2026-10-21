@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   TOOL_LAB_BROWSER_RUN_TTL_MS,
   acquireToolLabBrowserRunStep,
+  beginToolLabBrowserApprovalResume,
   clearToolLabBrowserRuns,
   createToolLabBrowserRun,
   getToolLabBrowserRun,
   resetToolLabBrowserRun,
+  settleToolLabBrowserApprovalRejection,
 } from "./tool-lab-browser-runs.js";
 
 describe("Tool Lab Browser runs", () => {
@@ -147,5 +149,157 @@ describe("Tool Lab Browser runs", () => {
       /too many active Browser Lab runs for this user/i,
     );
     expect(createToolLabBrowserRun({ userId: 8 }).handle).toMatch(/^blrun_/);
+  });
+
+  it("resumes only the pending approval of the same owned run", () => {
+    const run = createToolLabBrowserRun({ userId: 7 });
+    const pending = acquireToolLabBrowserRunStep({
+      handle: run.handle,
+      userId: 7,
+    });
+    pending.release({ pendingApproval: true });
+
+    expect(() =>
+      beginToolLabBrowserApprovalResume({
+        toolId: "browser_navigate",
+        threadId: pending.threadId,
+        userId: 8,
+      }),
+    ).toThrow(/not found/i);
+    expect(() =>
+      beginToolLabBrowserApprovalResume({
+        toolId: "glob",
+        threadId: pending.threadId,
+        userId: 7,
+      }),
+    ).toThrow(/Managed Browser tools/i);
+    expect(() =>
+      beginToolLabBrowserApprovalResume({
+        toolId: "browser_navigate",
+        threadId: "tool-lab-browser-run:7:other",
+        userId: 7,
+      }),
+    ).toThrow(/not found/i);
+    expect(() =>
+      beginToolLabBrowserApprovalResume({
+        toolId: "browser_navigate",
+        userId: 7,
+      }),
+    ).toThrow(/context is unavailable/i);
+
+    const resumed = beginToolLabBrowserApprovalResume({
+      toolId: "browser_navigate",
+      threadId: pending.threadId,
+      userId: 7,
+    });
+    expect(resumed.threadId).toBe(pending.threadId);
+    expect(() =>
+      beginToolLabBrowserApprovalResume({
+        toolId: "browser_navigate",
+        threadId: pending.threadId,
+        userId: 7,
+      }),
+    ).toThrow(/active step/i);
+    expect(() =>
+      acquireToolLabBrowserRunStep({ handle: run.handle, userId: 7 }),
+    ).toThrow(/active step/i);
+    resumed.release();
+    expect(() =>
+      beginToolLabBrowserApprovalResume({
+        toolId: "browser_navigate",
+        threadId: pending.threadId,
+        userId: 7,
+      }),
+    ).toThrow(/no pending approval/i);
+
+    const nextPending = acquireToolLabBrowserRunStep({
+      handle: run.handle,
+      userId: 7,
+    });
+    nextPending.release({ pendingApproval: true });
+    expect(() =>
+      beginToolLabBrowserApprovalResume({
+        toolId: "browser_navigate",
+        threadId: nextPending.threadId,
+        userId: 7,
+      }),
+    ).not.toThrow();
+  });
+
+  it("fails closed when a pending approval outlives its run TTL or reset", () => {
+    const expiring = createToolLabBrowserRun({ userId: 7 });
+    const expiringStep = acquireToolLabBrowserRunStep({
+      handle: expiring.handle,
+      userId: 7,
+    });
+    expiringStep.release({ pendingApproval: true });
+    vi.advanceTimersByTime(TOOL_LAB_BROWSER_RUN_TTL_MS + 1);
+    expect(() =>
+      beginToolLabBrowserApprovalResume({
+        toolId: "browser_navigate",
+        threadId: expiringStep.threadId,
+        userId: 7,
+      }),
+    ).toThrow(/expired/i);
+
+    const resettable = createToolLabBrowserRun({ userId: 7 });
+    const pending = acquireToolLabBrowserRunStep({
+      handle: resettable.handle,
+      userId: 7,
+    });
+    pending.release({ pendingApproval: true });
+    resetToolLabBrowserRun({ handle: resettable.handle, userId: 7 });
+    expect(() =>
+      beginToolLabBrowserApprovalResume({
+        toolId: "browser_navigate",
+        threadId: pending.threadId,
+        userId: 7,
+      }),
+    ).toThrow(/not found/i);
+  });
+
+  it("settles a rejection without granting browser execution", () => {
+    const run = createToolLabBrowserRun({ userId: 7 });
+    const pending = acquireToolLabBrowserRunStep({
+      handle: run.handle,
+      userId: 7,
+    });
+    pending.release({ pendingApproval: true });
+
+    settleToolLabBrowserApprovalRejection({
+      threadId: pending.threadId,
+      userId: 8,
+    });
+    const resume = beginToolLabBrowserApprovalResume({
+      toolId: "browser_navigate",
+      threadId: pending.threadId,
+      userId: 7,
+    });
+    resume.release();
+
+    const nextPending = acquireToolLabBrowserRunStep({
+      handle: run.handle,
+      userId: 7,
+    });
+    nextPending.release({ pendingApproval: true });
+    settleToolLabBrowserApprovalRejection({
+      threadId: nextPending.threadId,
+      userId: 7,
+    });
+    acquireToolLabBrowserRunStep({ handle: run.handle, userId: 7 }).release();
+
+    const reset = createToolLabBrowserRun({ userId: 7 });
+    const resetPending = acquireToolLabBrowserRunStep({
+      handle: reset.handle,
+      userId: 7,
+    });
+    resetPending.release({ pendingApproval: true });
+    resetToolLabBrowserRun({ handle: reset.handle, userId: 7 });
+    expect(() =>
+      settleToolLabBrowserApprovalRejection({
+        threadId: resetPending.threadId,
+        userId: 7,
+      }),
+    ).not.toThrow();
   });
 });

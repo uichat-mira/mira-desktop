@@ -1362,17 +1362,23 @@ const mcpRoutes: FastifyPluginAsync = async (app) => {
         },
       },
     },
-    routeHandler("Failed to resolve MCP invocation approval", async (request) =>
-      success(
-        await resolveHarnessInvocationApproval({
-          invocationId: request.params.id,
-          decision: request.body.decision,
-          toolId: request.body.toolId,
-          args: request.body.args,
-          userId: request.authUser?.id,
-        }),
-      ),
-    ),
+    routeHandler("Failed to resolve MCP invocation approval", async (request) => {
+      const resolution = await resolveHarnessInvocationApproval({
+        invocationId: request.params.id,
+        decision: request.body.decision,
+        toolId: request.body.toolId,
+        args: request.body.args,
+        userId: request.authUser?.id,
+      });
+      return success({
+        originalInvocation: projectToolLabBrowserInvocation(
+          resolution.originalInvocation,
+        ),
+        resumedInvocation: resolution.resumedInvocation
+          ? projectToolLabBrowserInvocation(resolution.resumedInvocation)
+          : null,
+      });
+    }),
   );
 
   app.get<{ Params: { id: string } }>(

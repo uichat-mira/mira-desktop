@@ -114,6 +114,23 @@ export const resetToolLabBrowserRun = (input: {
   return { handle: run.handle, reset: true };
 };
 
+const createRunStep = (run: BrowserRunRecord) => {
+  run.activeStep = true;
+  let released = false;
+  return {
+    threadId: run.threadId,
+    release: (options?: { pendingApproval?: boolean }) => {
+      if (released) return;
+      released = true;
+      run.activeStep = false;
+      run.pendingApproval = options?.pendingApproval === true;
+      if (browserRuns.get(run.handle) !== run || run.expiresAt <= now()) {
+        browserRuns.delete(run.handle);
+      }
+    },
+  };
+};
+
 export const acquireToolLabBrowserRunStep = (input: {
   handle: string;
   userId: number;
@@ -132,20 +149,72 @@ export const acquireToolLabBrowserRunStep = (input: {
       "Browser Lab run is awaiting approval for its previous step. Reset the run or wait for the approval to resolve before starting another.",
     );
   }
-  run.activeStep = true;
-  let released = false;
-  return {
-    threadId: run.threadId,
-    release: (options) => {
-      if (released) return;
-      released = true;
-      run.activeStep = false;
-      run.pendingApproval = options?.pendingApproval === true;
-      if (browserRuns.get(run.handle) !== run || run.expiresAt <= now()) {
-        browserRuns.delete(run.handle);
-      }
-    },
-  };
+  return createRunStep(run);
+};
+
+const findRunByThreadId = (threadId: string) => {
+  for (const run of browserRuns.values()) {
+    if (run.threadId === threadId) return run;
+  }
+  return undefined;
+};
+
+export const beginToolLabBrowserApprovalResume = (input: {
+  toolId: string;
+  threadId?: string;
+  userId?: number;
+}): {
+  threadId: string;
+  release: (options?: { pendingApproval?: boolean }) => void;
+} => {
+  if (!isToolLabBrowserTool(input.toolId)) {
+    throw mcpBadRequest(
+      "Browser Lab approval context is only valid for Managed Browser tools",
+    );
+  }
+  // The threadId comes from the server-side original invocation, never from a
+  // client-supplied approval field; a missing binding is not recoverable.
+  if (!input.threadId || typeof input.userId !== "number") {
+    throw mcpBadRequest(
+      "Browser Lab approval context is unavailable for this invocation",
+    );
+  }
+  const run = findRunByThreadId(input.threadId);
+  // Missing, reset, expired, and foreign runs are indistinguishable on purpose.
+  if (!run || run.userId !== input.userId) {
+    throw mcpNotFound("Browser Lab run was not found");
+  }
+  if (run.expiresAt <= now()) {
+    browserRuns.delete(run.handle);
+    throw mcpNotFound("Browser Lab run has expired");
+  }
+  if (run.activeStep) {
+    throw mcpBadRequest(
+      "Browser Lab run already has an active step. Wait for it to finish before resuming approval.",
+    );
+  }
+  if (!run.pendingApproval) {
+    throw mcpBadRequest(
+      "Browser Lab run has no pending approval for this step",
+    );
+  }
+  run.pendingApproval = false;
+  return createRunStep(run);
+};
+
+export const settleToolLabBrowserApprovalRejection = (input: {
+  threadId?: string;
+  userId?: number;
+}) => {
+  // Rejection never executes a browser step, so it must not fail because the
+  // run was reset or expired meanwhile; it only releases a still-live pending flag.
+  if (!input.threadId || typeof input.userId !== "number") return;
+  const run = findRunByThreadId(input.threadId);
+  if (!run || run.userId !== input.userId) return;
+  run.pendingApproval = false;
+  if (run.expiresAt <= now() && !run.activeStep) {
+    browserRuns.delete(run.handle);
+  }
 };
 
 export const projectToolLabBrowserInvocation = (

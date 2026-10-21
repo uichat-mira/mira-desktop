@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: runtime / tooling
-Last verified: 2026-10-20
+Last verified: 2026-10-21
 Layer: raw-source
 Module: Tools
 Feature: ToolLabManagedWorkspace
@@ -170,7 +170,7 @@ POST /mcp/tool-lab/browser-runs/reset    -> { handle, reset: true }
 - Tool Lab 路由只把 backend 解析出的内部 `threadId` 注入现有 Harness invocation，不新增第二套 SessionManager，也不改变原有 Policy/Approval 门槛；
 - POST `/mcp/invocations` 与 GET `/mcp/invocations/:id` 的 Browser Lab 响应会投影掉内部 `threadId`；服务端保存的原 invocation 仍保留该字段，供后续审批恢复卡使用。
 
-本卡不改变 `resolveHarnessInvocationApproval` 的恢复实现。审批恢复的 run-context 传递由后续独立卡处理；本次 invocation 记录中的内部 `threadId` 可作为该卡复用的契约。Tool Lab UI 连续 Browser 旅程也不在本卡范围内。
+审批恢复（`resolveHarnessInvocationApproval`）只从服务端 original invocation 继承内部 `threadId`、`turnId`、`userId` 以及冻结的 toolId/args/inputHash，不接受客户端指定这些上下文。批准 Browser Lab 步骤前必须校验该内部 thread 仍属于同一 user、run 未过期且未 reset、并且正等待对应步骤的审批；任一项不满足即 fail closed，不执行页面操作。批准后复用原内部线程执行既定 Browser 工具，完成后同一 run 的下一步（例如 Snapshot）仍复用该线程；明确拒绝不执行页面操作，并结束该 run 的 pending 状态。审批响应与 invocation 响应一致，投影掉内部 `threadId`，服务端 original record 保留绑定。Tool Lab UI 连续 Browser 旅程仍不在本卡范围内。
 
 ## Approval / resume
 
