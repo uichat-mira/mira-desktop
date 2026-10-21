@@ -2306,4 +2306,302 @@ describe("mcp routes", () => {
       await app.close();
     }
   });
+
+  it("resumes a Browser Lab navigate approval on the original run and keeps the next snapshot bound", async () => {
+    const browser = {
+      observe: vi.fn(async (input: { sessionId: string }) => ({
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId: "browser-observe",
+        page: {
+          url: "https://example.com/",
+          title: "Example",
+          snapshotHash: "hash-1",
+        },
+        observation: { snapshot: 'heading "Example"' },
+        artifacts: [],
+      })),
+      navigate: vi.fn(async (input: { sessionId: string; url: string }) => ({
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId: "browser-navigate",
+        page: {
+          url: input.url,
+          title: "Destination",
+          snapshotHash: "hash-nav",
+        },
+        observation: { snapshot: 'heading "Destination"' },
+        artifacts: [],
+      })),
+    };
+    const sessions = new Map<string, { info: { status: "ready" } }>();
+    const create = vi.fn(async () => {
+      const id = `browser-session-${sessions.size + 1}`;
+      sessions.set(id, { info: { status: "ready" as const } });
+      return { id, status: "ready" as const };
+    });
+    const sessionManager = {
+      create,
+      get: vi.fn((id: string) => sessions.get(id)),
+    };
+    createComputerUseBrowserTools(browser as never, {
+      sessionManager: sessionManager as never,
+    }).forEach(registerTool);
+
+    const app = await createToolLabApp();
+    const asUser = (id: number) => ({ "x-test-user": String(id) });
+    const navigateArgs = { url: "https://example.com/" };
+
+    const createRun = async () =>
+      (
+        (await app.inject({
+          method: "POST",
+          url: "/mcp/tool-lab/browser-runs",
+          headers: asUser(7),
+        })).json() as { data: { handle: string } }
+      ).data;
+    const invoke = async (
+      handle: string,
+      toolId: string,
+      args: Record<string, unknown>,
+    ) =>
+      app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: { toolId, args, browserRunHandle: handle },
+      });
+    const resolveApproval = (
+      invocationId: string,
+      userId: number,
+      decision: "approved" | "rejected",
+    ) =>
+      app.inject({
+        method: "POST",
+        url: `/mcp/invocations/${invocationId}/approval`,
+        headers: asUser(userId),
+        payload: { decision, toolId: "browser_navigate", args: navigateArgs },
+      });
+
+    try {
+      const run = await createRun();
+      const pendingResponse = await invoke(run.handle, "browser_navigate", navigateArgs);
+      expect(pendingResponse.statusCode).toBe(200);
+      const pending = (pendingResponse.json() as {
+        data: { id: string; status: string; approval?: { required: boolean }; threadId?: string };
+      }).data;
+      expect(pending).toMatchObject({
+        status: "awaiting_approval",
+        approval: { required: true },
+      });
+      expect(pending).not.toHaveProperty("threadId");
+      const pendingId = pending.id;
+      const trustedThreadId = getHarnessInvocation(pendingId)?.threadId;
+      expect(trustedThreadId).toMatch(/^tool-lab-browser-run:7:/);
+      const frozenArgs = structuredClone(getHarnessInvocation(pendingId)?.args);
+      expect(browser.navigate).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+
+      const foreignApproval = await resolveApproval(pendingId, 8, "approved");
+      expect(foreignApproval.statusCode).toBe(404);
+      expect(browser.navigate).not.toHaveBeenCalled();
+      expect(getHarnessInvocation(pendingId)?.status).toBe("awaiting_approval");
+
+      const approvedResponse = await resolveApproval(pendingId, 7, "approved");
+      expect(approvedResponse.statusCode).toBe(200);
+      const approved = (approvedResponse.json() as {
+        data: {
+          originalInvocation: { id: string; status: string; threadId?: string };
+          resumedInvocation: { id: string; status: string; threadId?: string } | null;
+        };
+      }).data;
+      expect(approved.originalInvocation).toMatchObject({
+        id: pendingId,
+        status: "completed",
+      });
+      expect(approved.originalInvocation).not.toHaveProperty("threadId");
+      expect(approved.resumedInvocation).not.toBeNull();
+      expect(approved.resumedInvocation).toMatchObject({ status: "completed" });
+      expect(approved.resumedInvocation).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(approved.resumedInvocation!.id)?.threadId).toBe(
+        trustedThreadId,
+      );
+      expect(getHarnessInvocation(pendingId)?.args).toEqual(frozenArgs);
+      expect(create).toHaveBeenCalledTimes(1);
+      const trustedSessionId = browser.navigate.mock.calls[0]![0].sessionId;
+      expect(trustedSessionId).toBe("browser-session-1");
+
+      const snapshotResponse = await invoke(run.handle, "browser_snapshot", {});
+      expect(snapshotResponse.statusCode).toBe(200);
+      const snapshot = (snapshotResponse.json() as {
+        data: { id: string; status: string; threadId?: string };
+      }).data;
+      expect(snapshot).toMatchObject({ status: "completed" });
+      expect(snapshot).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(snapshot.id)?.threadId).toBe(trustedThreadId);
+      expect(browser.observe).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: trustedSessionId }),
+      );
+
+      const duplicateApproval = await resolveApproval(pendingId, 7, "approved");
+      expect(duplicateApproval.statusCode).toBe(400);
+      expect(browser.navigate).toHaveBeenCalledTimes(1);
+
+      const secondRun = await createRun();
+      const secondPending = (await invoke(secondRun.handle, "browser_navigate", navigateArgs))
+        .json() as { data: { id: string; status: string } };
+      expect(secondPending.data.status).toBe("awaiting_approval");
+      const secondApproval = await resolveApproval(
+        secondPending.data.id,
+        7,
+        "approved",
+      );
+      expect(secondApproval.statusCode).toBe(200);
+      expect(create).toHaveBeenCalledTimes(2);
+      const secondSessionId = browser.navigate.mock.calls[1]![0].sessionId;
+      expect(secondSessionId).not.toBe(trustedSessionId);
+
+      const secondSnapshot = await invoke(secondRun.handle, "browser_snapshot", {});
+      expect(secondSnapshot.statusCode).toBe(200);
+      expect(browser.observe).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: secondSessionId }),
+      );
+
+      const firstSnapshotAgain = await invoke(run.handle, "browser_snapshot", {});
+      expect(firstSnapshotAgain.statusCode).toBe(200);
+      expect(browser.observe).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: trustedSessionId }),
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects a Browser Lab approval without page side effects and fails closed after reset", async () => {
+    const browser = {
+      observe: vi.fn(async (input: { sessionId: string }) => ({
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId: "browser-observe",
+        page: { url: "https://example.com/", title: "Example" },
+        artifacts: [],
+      })),
+      navigate: vi.fn(async (input: { sessionId: string; url: string }) => ({
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId: "browser-navigate",
+        page: { url: input.url, title: "Destination" },
+        artifacts: [],
+      })),
+    };
+    const sessionManager = {
+      create: vi.fn(async () => ({ id: "unused-session", status: "ready" as const })),
+      get: vi.fn(() => undefined),
+    };
+    createComputerUseBrowserTools(browser as never, {
+      sessionManager: sessionManager as never,
+    }).forEach(registerTool);
+
+    const app = await createToolLabApp();
+    const asUser = (id: number) => ({ "x-test-user": String(id) });
+    const navigateArgs = { url: "https://example.com/" };
+
+    const createRun = async () =>
+      (
+        (await app.inject({
+          method: "POST",
+          url: "/mcp/tool-lab/browser-runs",
+          headers: asUser(7),
+        })).json() as { data: { handle: string } }
+      ).data;
+    const invoke = async (handle: string, toolId: string) =>
+      app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: { toolId, args: toolId === "browser_navigate" ? navigateArgs : {}, browserRunHandle: handle },
+      });
+    const resolveApproval = (
+      invocationId: string,
+      decision: "approved" | "rejected",
+    ) =>
+      app.inject({
+        method: "POST",
+        url: `/mcp/invocations/${invocationId}/approval`,
+        headers: asUser(7),
+        payload: { decision, toolId: "browser_navigate", args: navigateArgs },
+      });
+
+    try {
+      const run = await createRun();
+      const pending = (await invoke(run.handle, "browser_navigate")).json() as {
+        data: { id: string; status: string };
+      };
+      expect(pending.data.status).toBe("awaiting_approval");
+
+      const rejectedResponse = await resolveApproval(pending.data.id, "rejected");
+      expect(rejectedResponse.statusCode).toBe(200);
+      const rejected = (rejectedResponse.json() as {
+        data: {
+          originalInvocation: { id: string; status: string; threadId?: string };
+          resumedInvocation: unknown;
+        };
+      }).data;
+      expect(rejected.originalInvocation).toMatchObject({
+        id: pending.data.id,
+        status: "cancelled",
+      });
+      expect(rejected.originalInvocation).not.toHaveProperty("threadId");
+      expect(rejected.resumedInvocation).toBeNull();
+      expect(browser.navigate).not.toHaveBeenCalled();
+      expect(sessionManager.create).not.toHaveBeenCalled();
+
+      const nextStep = await invoke(run.handle, "browser_snapshot");
+      expect(nextStep.statusCode).toBe(200);
+      expect(
+        (nextStep.json() as {
+          data: { status: string; result?: { ok?: boolean; error?: { code?: string } } };
+        }).data,
+      ).toMatchObject({
+        status: "completed",
+        result: { ok: false, error: { code: "session_unavailable" } },
+      });
+
+      const resetRun = await createRun();
+      const resetPending = (await invoke(resetRun.handle, "browser_navigate")).json() as {
+        data: { id: string };
+      };
+      expect(getHarnessInvocation(resetPending.data.id)?.status).toBe(
+        "awaiting_approval",
+      );
+      const resetResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/reset",
+        headers: asUser(7),
+        payload: { handle: resetRun.handle },
+      });
+      expect(resetResponse.statusCode).toBe(200);
+
+      const afterResetApproval = await resolveApproval(
+        resetPending.data.id,
+        "approved",
+      );
+      expect(afterResetApproval.statusCode).toBe(404);
+      expect(browser.navigate).not.toHaveBeenCalled();
+      expect(sessionManager.create).not.toHaveBeenCalled();
+      expect(getHarnessInvocation(resetPending.data.id)?.status).toBe(
+        "awaiting_approval",
+      );
+
+      const afterResetRejection = await resolveApproval(
+        resetPending.data.id,
+        "rejected",
+      );
+      expect(afterResetRejection.statusCode).toBe(200);
+      expect(getHarnessInvocation(resetPending.data.id)?.status).toBe("cancelled");
+      expect(browser.navigate).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
 });
