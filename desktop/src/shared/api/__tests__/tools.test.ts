@@ -33,6 +33,9 @@ import {
   getMcpCapabilityWorkspaceSelection,
   getMcpManagedCapabilityWorkspaceSelection,
   resetMcpCapabilityFixture,
+  createMcpToolLabBrowserRun,
+  getMcpToolLabBrowserRun,
+  resetMcpToolLabBrowserRun,
   getMcpWebSearchConfig,
   saveMcpWebSearchConfig,
   selectMcpWorkspaceRoot,
@@ -363,6 +366,37 @@ describe("tools api", () => {
     expect(result).toEqual(resetResult);
   });
 
+  it("creates and resets an opaque Tool Lab Browser run handle", async () => {
+    const run = {
+      handle: "blrun_opaque",
+      expiresAt: "2026-10-21T00:10:00.000Z",
+      activeStep: false,
+    };
+    vi.mocked(post)
+      .mockResolvedValueOnce(run)
+      .mockResolvedValueOnce(run)
+      .mockResolvedValueOnce({ handle: run.handle, reset: true });
+
+    await expect(createMcpToolLabBrowserRun()).resolves.toEqual(run);
+    await expect(getMcpToolLabBrowserRun(run.handle)).resolves.toEqual(run);
+    await expect(resetMcpToolLabBrowserRun(run.handle)).resolves.toEqual({
+      handle: run.handle,
+      reset: true,
+    });
+
+    expect(post).toHaveBeenNthCalledWith(1, "/mcp/tool-lab/browser-runs");
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      "/mcp/tool-lab/browser-runs/status",
+      { handle: run.handle },
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      3,
+      "/mcp/tool-lab/browser-runs/reset",
+      { handle: run.handle },
+    );
+  });
+
   it("getMcpWebSearchConfig 获取搜索配置", async () => {
     vi.mocked(get).mockResolvedValueOnce(sampleWebSearchConfig);
 
@@ -485,5 +519,50 @@ describe("tools api", () => {
     expect(events).toHaveLength(2);
     expect((events[0] as { type: string }).type).toBe("invocation:start");
     expect((events[1] as { type: string }).type).toBe("invocation:done");
+  });
+
+  it("executeMcpInvocationStream forwards the Tool Lab Browser run handle", async () => {
+    const encoder = new TextEncoder();
+    const doneEvent = JSON.stringify({
+      type: "invocation:done",
+      invocationId: "inv-browser",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi
+              .fn()
+              .mockResolvedValueOnce({
+                done: false,
+                value: encoder.encode(`data: ${doneEvent}\n\n`),
+              })
+              .mockResolvedValueOnce({ done: true }),
+          }),
+        },
+      }),
+    );
+
+    await executeMcpInvocationStream(
+      {
+        toolId: "browser_navigate",
+        args: { url: "https://www.selenium.dev/selenium/web/web-form.html" },
+        browserRunHandle: "blrun_opaque",
+      },
+      () => undefined,
+    );
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/mcp/invocations/stream",
+      expect.objectContaining({
+        body: JSON.stringify({
+          toolId: "browser_navigate",
+          args: { url: "https://www.selenium.dev/selenium/web/web-form.html" },
+          browserRunHandle: "blrun_opaque",
+        }),
+      }),
+    );
   });
 });

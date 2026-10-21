@@ -24,6 +24,7 @@ import NavigationCardTabs from "@/shared/ui/NavigationCardTabs";
 import Select from "@/shared/ui/Select";
 import type { CapabilityAcceptanceCase, CapabilityTool } from "./types";
 import ToolRunConsole from "./components/ToolRunConsole";
+import BrowserJourneyPanel from "./components/BrowserJourneyPanel";
 import CapabilitiesSidebar, {
   buildCapabilityGroups,
   filterCapabilityGroups,
@@ -345,6 +346,22 @@ export default function CapabilitiesPage() {
                 </div>
               ) : null}
             </section>
+
+            {selectedCase?.browserJourney ? (
+              <BrowserJourneyPanel
+                journey={capabilities.browserJourney}
+                isRunning={
+                  capabilities.isPreparingCase || capabilities.runState.isRunning
+                }
+                onRetry={() => {
+                  setResultConsoleOpen(true);
+                  void capabilities.runSelectedCase();
+                }}
+                onReset={() => {
+                  void capabilities.resetBrowserJourneyRun();
+                }}
+              />
+            ) : null}
 
             {selectedTool.id === "terminal" && capabilities.terminalSessionId ? (
               <section className="flex flex-wrap items-center justify-between gap-3 rounded-ui-control border border-border bg-surface-secondary px-3 py-2">

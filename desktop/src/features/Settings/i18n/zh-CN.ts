@@ -2464,6 +2464,40 @@ const settingsPending = {
           failed: "Failed",
           cancelled: "Cancelled",
         },
+        browserJourney: {
+          title: "真实 Browser 连续流程",
+          description:
+            "同一个 Managed Browser run 依次执行 Navigate → Snapshot → Click → Snapshot → Assert。Navigate 与 Click 都停在真实审批边界；Click 只接收实时快照返回的 pageUrl、snapshotHash 与 ref。",
+          steps: {
+            navigate: "Navigate",
+            snapshot: "Snapshot",
+            click: "Click",
+            observeAfterClick: "点击后重新观察",
+            assert: "Assert",
+          },
+          status: {
+            idle: "未运行",
+            pending: "待执行",
+            running: "运行中",
+            awaiting_approval: "等待审批",
+            completed: "已完成",
+            failed: "失败",
+            rejected: "已拒绝",
+            skipped: "已跳过",
+          },
+          approval: {
+            approved: "已批准",
+            rejected: "已拒绝",
+          },
+          actions: {
+            retry: "重试流程",
+            reset: "重置 Run",
+          },
+          labels: {
+            approval: "审批",
+            runStatus: "流程",
+          },
+        },
         labels: {
           readiness: "运行前状态",
           expected: "预期观察",

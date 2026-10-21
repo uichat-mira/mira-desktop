@@ -2507,6 +2507,40 @@ const settingsPending = {
           failed: "Failed",
           cancelled: "Cancelled",
         },
+        browserJourney: {
+          title: "Real Browser journey",
+          description:
+            "One Managed Browser run executes Navigate → Snapshot → Click → Snapshot → Assert. Navigate and Click stop at the real approval boundary, and Click only receives pageUrl, snapshotHash and ref from the live snapshot.",
+          steps: {
+            navigate: "Navigate",
+            snapshot: "Snapshot",
+            click: "Click",
+            observeAfterClick: "Observe after click",
+            assert: "Assert",
+          },
+          status: {
+            idle: "Not run",
+            pending: "Pending",
+            running: "Running",
+            awaiting_approval: "Awaiting Approval",
+            completed: "Completed",
+            failed: "Failed",
+            rejected: "Rejected",
+            skipped: "Skipped",
+          },
+          approval: {
+            approved: "approved",
+            rejected: "rejected",
+          },
+          actions: {
+            retry: "Retry journey",
+            reset: "Reset run",
+          },
+          labels: {
+            approval: "approval",
+            runStatus: "journey",
+          },
+        },
         labels: {
           readiness: "Pre-run readiness",
           expected: "Expected observation",
