@@ -9,10 +9,14 @@ import {
   getToolImplementation,
   registerTool,
 } from "../harness/registry.js";
-import { clearHarnessInvocations } from "../harness/invocations.js";
+import {
+  clearHarnessInvocations,
+  getHarnessInvocation,
+} from "../harness/invocations.js";
 import { resetHarnessRuntime } from "./bootstrap.js";
 import { clearWorkspaceSelection } from "./workspace.js";
 import { clearExternalMcpServers } from "./external.js";
+import { clearToolLabBrowserRuns, createToolLabBrowserRun } from "./tool-lab-browser-runs.js";
 import { sendRouteError } from "@/utils/route-errors.js";
 import { getLoggerConfig } from "@/logger";
 import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
@@ -151,6 +155,27 @@ const restoreWebSearchEnv = () => {
   }
 };
 
+const createToolLabApp = async () => {
+  const app = Fastify({
+    logger: getLoggerConfig(),
+    serializerOpts: { encoding: "utf8" },
+  });
+  app.setErrorHandler(sendRouteError);
+  app.addHook("preHandler", async (request) => {
+    const raw = request.headers["x-test-user"];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (value === undefined) return;
+    const id = Number(value);
+    request.authUser = {
+      id,
+      username: `user-${id}`,
+      role: "user",
+    };
+  });
+  await app.register(mcpRoutes);
+  return app;
+};
+
 describe("mcp routes", () => {
   beforeEach(() => {
     fs.mkdirSync(tempRoot, { recursive: true });
@@ -163,6 +188,7 @@ describe("mcp routes", () => {
     resetHarnessRuntime();
     clearWorkspaceSelection();
     clearExternalMcpServers();
+    clearToolLabBrowserRuns();
     vi.unstubAllGlobals();
     stdioMockHandlers.length = 0;
     initializeModelConfigDatabase();
@@ -1972,5 +1998,312 @@ describe("mcp routes", () => {
     ).toBe(false);
 
     await app.close();
+  });
+
+  it("binds Browser Lab invocations to an owner-scoped run and rejects forged bindings", async () => {
+    createComputerUseBrowserTools({} as never).forEach(registerTool);
+    const app = await createToolLabApp();
+    const asUser = (id: number) => ({ "x-test-user": String(id) });
+
+    try {
+      const unauthenticated = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs",
+      });
+      expect(unauthenticated.statusCode).toBe(401);
+
+      const createdResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs",
+        headers: asUser(7),
+      });
+      expect(createdResponse.statusCode).toBe(200);
+      const created = (createdResponse.json() as {
+        data: { handle: string; expiresAt: string; activeStep: boolean };
+      }).data;
+      expect(created.handle).toMatch(/^blrun_[A-Za-z0-9_-]{43}$/);
+      expect(created).not.toHaveProperty("threadId");
+
+      const secondCreated = (await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs",
+        headers: asUser(7),
+      })).json() as { data: { handle: string } };
+
+      const statusResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/status",
+        headers: asUser(7),
+        payload: { handle: created.handle },
+      });
+      expect(statusResponse.statusCode).toBe(200);
+      expect((statusResponse.json() as { data: { handle: string } }).data.handle).toBe(
+        created.handle,
+      );
+
+      const foreignStatus = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/status",
+        headers: asUser(8),
+        payload: { handle: created.handle },
+      });
+      expect(foreignStatus.statusCode).toBe(404);
+
+      const invoke = async (browserRunHandle: string, body: Record<string, unknown> = {}) =>
+        app.inject({
+          method: "POST",
+          url: "/mcp/invocations",
+          headers: asUser(7),
+          payload: {
+            toolId: "browser_snapshot",
+            args: {},
+            browserRunHandle,
+            ...body,
+          },
+        });
+
+      const firstInvocation = await invoke(created.handle);
+      expect(firstInvocation.statusCode).toBe(200);
+      const firstData = (firstInvocation.json() as {
+        data: { id: string; status: string; threadId?: string };
+      }).data;
+      expect(firstData.status).toBe("completed");
+      expect(firstData).not.toHaveProperty("threadId");
+      const firstThreadId = getHarnessInvocation(firstData.id)?.threadId;
+      expect(firstThreadId).toMatch(/^tool-lab-browser-run:7:/);
+
+      const repeatedInvocation = await invoke(created.handle);
+      const repeatedData = (repeatedInvocation.json() as {
+        data: { id: string; threadId?: string };
+      }).data;
+      expect(repeatedData).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(repeatedData.id)?.threadId).toBe(firstThreadId);
+
+      const secondInvocation = await invoke(secondCreated.data.handle);
+      const secondData = (secondInvocation.json() as {
+        data: { id: string; threadId?: string };
+      }).data;
+      expect(secondData).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(secondData.id)?.threadId).not.toBe(firstThreadId);
+
+      const streamResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations/stream",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.handle,
+        },
+      });
+      expect(streamResponse.statusCode).toBe(200);
+      const streamEvents = streamResponse.body
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => JSON.parse(line.slice(6)) as {
+          type: string;
+          invocationId?: string;
+        });
+      const streamInvocationId = streamEvents.find(
+        (event) => event.type === "invocation:start",
+      )?.invocationId;
+      expect(streamInvocationId).toBeTruthy();
+      const streamInvocation = await app.inject({
+        method: "GET",
+        url: `/mcp/invocations/${streamInvocationId}`,
+      });
+      expect(
+        (streamInvocation.json() as { data: { threadId?: string } }).data,
+      ).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(streamInvocationId!)?.threadId).toBe(firstThreadId);
+
+      const missingHandle = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: { toolId: "browser_snapshot", args: {} },
+      });
+      expect(missingHandle.statusCode).toBe(400);
+
+      const nonBrowserHandle = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "glob",
+          args: { pattern: "*", path: "." },
+          browserRunHandle: created.handle,
+        },
+      });
+      expect(nonBrowserHandle.statusCode).toBe(400);
+
+      const forgedThreadId = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.handle,
+          threadId: "forged-thread",
+        },
+      });
+      expect(forgedThreadId.statusCode).toBe(400);
+
+      const forgedSessionId = await invoke(created.handle, {
+        args: { sessionId: "forged-session" },
+      });
+      expect(forgedSessionId.statusCode).toBe(400);
+
+      const governedNavigate = await invoke(created.handle, {
+        toolId: "browser_navigate",
+        args: { url: "https://example.com/" },
+      });
+      expect(governedNavigate.statusCode).toBe(200);
+      expect(
+        (governedNavigate.json() as {
+          data: { status: string; approval?: { required: boolean } };
+        }).data,
+      ).toMatchObject({
+        status: "awaiting_approval",
+        approval: { required: true },
+      });
+
+      const pendingStep = await invoke(created.handle);
+      expect(pendingStep.statusCode).toBe(400);
+      expect(pendingStep.json()).toMatchObject({
+        message: expect.stringMatching(/awaiting approval/i),
+      });
+
+      const resetResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/reset",
+        headers: asUser(7),
+        payload: { handle: created.handle },
+      });
+      expect(resetResponse.statusCode).toBe(200);
+      expect(
+        (resetResponse.json() as { data: { handle: string; reset: boolean } }).data,
+      ).toEqual({ handle: created.handle, reset: true });
+
+      const afterReset = await invoke(created.handle);
+      expect(afterReset.statusCode).toBe(404);
+
+      const foreignReset = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/reset",
+        headers: asUser(8),
+        payload: { handle: secondCreated.data.handle },
+      });
+      expect(foreignReset.statusCode).toBe(404);
+
+      const expiring = createToolLabBrowserRun({ userId: 7, ttlMs: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const expiredInvocation = await invoke(expiring.handle);
+      expect(expiredInvocation.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects a second concurrent Browser Lab step for the same run", async () => {
+    let signalStarted: (() => void) | undefined;
+    let releaseExecution: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseExecution = resolve;
+    });
+
+    registerTool({
+      definition: {
+        id: "browser_snapshot",
+        title: "Browser Snapshot",
+        description: "Test double for concurrency.",
+        domain: "browser_action",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {},
+        },
+        tags: ["browser"],
+        capabilities: { sideEffect: "none", requiresApproval: false },
+      },
+      execute: async () => {
+        signalStarted?.();
+        await gate;
+        return { structuredContent: { ok: true } };
+      },
+    });
+
+    const app = await createToolLabApp();
+    const asUser = (id: number) => ({ "x-test-user": String(id) });
+
+    try {
+      const created = (await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs",
+        headers: asUser(7),
+      })).json() as { data: { handle: string } };
+
+      const firstInvocation = app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.data.handle,
+        },
+      });
+      await started;
+
+      const concurrent = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.data.handle,
+        },
+      });
+      expect(concurrent.statusCode).toBe(400);
+      expect(concurrent.json()).toMatchObject({
+        message: expect.stringMatching(/active step/i),
+      });
+
+      const runningReset = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/reset",
+        headers: asUser(7),
+        payload: { handle: created.data.handle },
+      });
+      expect(runningReset.statusCode).toBe(400);
+      expect(runningReset.json()).toMatchObject({
+        message: expect.stringMatching(/active step/i),
+      });
+
+      releaseExecution?.();
+      expect((await firstInvocation).statusCode).toBe(200);
+
+      const afterRelease = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.data.handle,
+        },
+      });
+      expect(afterRelease.statusCode).toBe(200);
+    } finally {
+      releaseExecution?.();
+      await app.close();
+    }
   });
 });

@@ -49,7 +49,7 @@ const COMPUTER_USE_TOOL_IDS = new Set([
   "browser_tabs_list",
   "browser_tab_select",
 ]);
-const isComputerUseInvocation = (toolId: string) =>
+export const isComputerUseInvocation = (toolId: string) =>
   COMPUTER_USE_TOOL_IDS.has(toolId);
 
 const getStructuredInvocationError = (
