@@ -1442,7 +1442,7 @@ const settingsPending = {
         "Manage MCP marketplace discovery, third-party MCP servers, and future built-in MCP packages.",
       tabs: {
         marketplace: "Marketplace",
-        installed: "Installed",
+        installed: "My connectors",
       },
       marketplace: {
         description:
@@ -1544,17 +1544,17 @@ const settingsPending = {
         intro:
           "A quick walk-through of the MCP flow: find, install, configure, connect, discover capabilities, and understand the current boundary.",
         searchHint:
-          "Marketplace search is triggered by Enter. Typing alone will not fire the request, which keeps the UI usable even when the upstream registry is slow.",
+          "Expand search and press Enter to submit. The keyword persists across views. All and External also search the marketplace; Built-in and Installed filter local records.",
         sections: {
           search: {
             title: "Start with marketplace",
             body:
-              "Use the Marketplace tab, type a name/title/description keyword, then press Enter. Results come from the official MCP registry.",
+              "Browse marketplace entries in All or External, and open a card for details. The External view has a filter menu for categories and connection methods.",
           },
           install: {
             title: "Install",
             body:
-              "Both `streamable-http` and `stdio` servers can now be installed. A third-party disclaimer is required before enablement, and the server is then added to the installed list.",
+              "Open a marketplace card and install a supported `streamable-http` or `stdio` server from its details. Success opens management while retaining your view and search.",
           },
           config: {
             title: "Configure",
@@ -1574,7 +1574,7 @@ const settingsPending = {
           inspect: {
             title: "Inspect results",
             body:
-              "The installed list shows projected IDs, remote server info, capability summaries, error state, and current protocol status.",
+              "Installed cards show real connection state and separate Agent access. The management drawer contains projected IDs, remote server info, capabilities, and errors.",
           },
           boundary: {
             title: "Connect Agent mode",

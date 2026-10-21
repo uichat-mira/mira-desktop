@@ -1,6 +1,6 @@
 import {
   Braces,
-  Boxes,
+  PlugZap,
   CircleHelp,
   ExternalLink,
   FolderKanban,
@@ -117,8 +117,9 @@ function isExtensionCapabilitiesRoute(pathname: string) {
   return matchesRoute(pathname, "/extensions/capabilities");
 }
 
-function isExtensionMcpRoute(pathname: string) {
+function isExtensionConnectorsRoute(pathname: string) {
   return (
+    matchesRoute(pathname, "/extensions/connectors") ||
     matchesRoute(pathname, "/extensions/mcp") ||
     matchesRoute(pathname, "/settings/mcp")
   );
@@ -129,7 +130,7 @@ function isExtensionSkillsRoute(pathname: string) {
 }
 
 function isExtensionsRoute(pathname: string) {
-  return matchesRoute(pathname, "/extensions") || isExtensionMcpRoute(pathname);
+  return matchesRoute(pathname, "/extensions") || isExtensionConnectorsRoute(pathname);
 }
 
 function RailButton({
@@ -249,10 +250,10 @@ function ExtensionsMenu({
           selected: isExtensionCapabilitiesRoute(pathname),
         },
         {
-          id: "mcp",
-          label: t("app.navigation.mcp"),
-          leadingIcon: <Boxes className="h-4 w-4" />,
-          selected: isExtensionMcpRoute(pathname),
+          id: "connectors",
+          label: t("app.navigation.connectors"),
+          leadingIcon: <PlugZap className="h-4 w-4" />,
+          selected: isExtensionConnectorsRoute(pathname),
         },
         {
           id: "skills",
@@ -264,8 +265,8 @@ function ExtensionsMenu({
       onSelect={(item) => {
         if (item.id === "capabilities") {
           void navigate("/extensions/capabilities");
-        } else if (item.id === "mcp") {
-          void navigate("/extensions/mcp");
+        } else if (item.id === "connectors") {
+          void navigate("/extensions/connectors");
         } else if (item.id === "skills") {
           void navigate("/extensions/skills");
         }
