@@ -12,6 +12,8 @@ const getMcpInvocationEventsMock = vi.fn();
 const getMcpInvocationTraceMock = vi.fn();
 const resetMcpCapabilityFixtureMock = vi.fn();
 const resolveMcpInvocationApprovalMock = vi.fn();
+const createMcpToolLabBrowserRunMock = vi.fn();
+const resetMcpToolLabBrowserRunMock = vi.fn();
 
 vi.mock("@/shared/api/tools", () => ({
   getMcpRegisteredTools: () => getMcpRegisteredToolsMock(),
@@ -28,6 +30,10 @@ vi.mock("@/shared/api/tools", () => ({
     getMcpInvocationTraceMock(...args),
   resetMcpCapabilityFixture: (...args: unknown[]) =>
     resetMcpCapabilityFixtureMock(...args),
+  createMcpToolLabBrowserRun: (...args: unknown[]) =>
+    createMcpToolLabBrowserRunMock(...args),
+  resetMcpToolLabBrowserRun: (...args: unknown[]) =>
+    resetMcpToolLabBrowserRunMock(...args),
   resolveMcpInvocationApproval: (...args: unknown[]) =>
     resolveMcpInvocationApprovalMock(...args),
 }));
@@ -165,6 +171,15 @@ describe("useCapabilities", () => {
       },
       fixtureRoot: "/managed/tool-lab/workspace/.tool-lab-fixtures/fixture",
       resetAt: "2026-10-05T00:00:00.000Z",
+    });
+    createMcpToolLabBrowserRunMock.mockResolvedValue({
+      handle: "blrun_test",
+      expiresAt: "2026-10-21T00:10:00.000Z",
+      activeStep: false,
+    });
+    resetMcpToolLabBrowserRunMock.mockResolvedValue({
+      handle: "blrun_test",
+      reset: true,
     });
     getMcpInvocationEventsMock.mockResolvedValue([]);
     getMcpInvocationTraceMock.mockResolvedValue({
@@ -573,48 +588,88 @@ describe("useCapabilities", () => {
     expect(result.current.runState.resolutionInvocation?.id).toBe("inv-resumed");
   });
 
-  it("lists backend Browser atomic Tools and blocks an unavailable Browser case", async () => {
+  const browserJourneyUrl =
+    "https://www.selenium.dev/selenium/web/web-form.html";
+  const browserJourneyTargetUrl =
+    "https://www.selenium.dev/selenium/web/submitted-form.html?my-text=";
+
+  const readyBrowserTools = [
+    {
+      ...browserNavigateTool,
+      runtimeReadiness: {
+        state: "ready",
+        reason: "Managed browser runtime prerequisites are satisfied.",
+      },
+    },
+    {
+      ...browserSnapshotTool,
+      runtimeReadiness: {
+        state: "ready",
+        reason: "Managed browser runtime prerequisites are satisfied.",
+      },
+    },
+    {
+      ...browserClickTool,
+      runtimeReadiness: {
+        state: "ready",
+        reason: "Managed browser runtime prerequisites are satisfied.",
+      },
+    },
+  ];
+
+  const createBrowserResult = (input: {
+    url: string;
+    title: string;
+    snapshotHash: string;
+    snapshot?: string;
+    assertion?: { kind: string; passed: boolean };
+  }) => ({
+    ok: true,
+    sessionId: "session-1",
+    invocationId: "browser-result",
+    page: {
+      url: input.url,
+      title: input.title,
+      snapshotHash: input.snapshotHash,
+    },
+    ...(input.snapshot
+      ? { observation: { snapshot: input.snapshot, truncated: false } }
+      : {}),
+    ...(input.assertion ? { assertion: input.assertion } : {}),
+    artifacts: [],
+  });
+
+  it("blocks an unavailable Browser journey before creating any run handle", async () => {
     getMcpRegisteredToolsMock.mockResolvedValueOnce([
       readTool,
       writeTool,
       {
-        ...browserSnapshotTool,
+        ...browserNavigateTool,
         runtimeReadiness: {
           state: "unavailable",
           reason: "No managed Chromium was found.",
           code: "browser_runtime_unavailable",
         },
       },
-      browserClickTool,
-      browserNavigateTool,
     ]);
 
     const useCapabilities = await importHook();
     const { result } = renderHook(() => useCapabilities());
 
     await waitFor(() =>
-      expect(result.current.tools.some((tool) => tool.id === "browser_snapshot")).toBe(
+      expect(result.current.tools.some((tool) => tool.id === "browser_navigate")).toBe(
         true,
       ),
     );
 
-    expect(result.current.tools.map((tool) => tool.id)).toEqual(
-      expect.arrayContaining([
-        "browser_snapshot",
-        "browser_click",
-        "browser_navigate",
-      ]),
-    );
-
     act(() => {
-      result.current.selectCase("browser-snapshot-observe");
+      result.current.selectCase("browser-approval-journey");
     });
 
     await waitFor(() => {
-      expect(result.current.selectedTool?.id).toBe("browser_snapshot");
-      expect(result.current.selectedCase?.id).toBe("browser-snapshot-observe");
+      expect(result.current.selectedTool?.id).toBe("browser_navigate");
+      expect(result.current.selectedCase?.id).toBe("browser-approval-journey");
     });
-    expect(result.current.selectedTool?.title).toBe("Browser Snapshot");
     expect(result.current.readiness).toMatchObject({
       state: "unavailable",
       reason: "No managed Chromium was found.",
@@ -623,84 +678,378 @@ describe("useCapabilities", () => {
     await act(async () => {
       await result.current.runSelectedCase();
     });
+    expect(createMcpToolLabBrowserRunMock).not.toHaveBeenCalled();
     expect(executeMcpInvocationStreamMock).not.toHaveBeenCalled();
   });
 
-  it("keeps a denied Browser interaction cancelled instead of successful", async () => {
+  it("runs Navigate → Snapshot → Click → Snapshot → Assert in one Browser run with real approvals", async () => {
     getMcpRegisteredToolsMock.mockResolvedValueOnce([
       readTool,
       writeTool,
-      {
-        ...browserSnapshotTool,
-        runtimeReadiness: {
-          state: "ready",
-          reason: "Managed browser runtime prerequisites are satisfied.",
-        },
+      ...readyBrowserTools,
+    ]);
+    let snapshotCount = 0;
+    executeMcpInvocationStreamMock.mockImplementation(
+      async (
+        input: { toolId: string; args: Record<string, unknown> },
+        onEvent: (event: unknown) => void,
+      ) => {
+        const invocationId =
+          input.toolId === "browser_navigate"
+            ? "inv-navigate-pending"
+            : input.toolId === "browser_click"
+              ? "inv-click-pending"
+              : input.toolId === "browser_snapshot"
+                ? snapshotCount++ === 0
+                  ? "inv-snapshot"
+                  : "inv-observe"
+                : "inv-assert";
+        onEvent({
+          type: "invocation:start",
+          invocationId,
+          toolId: input.toolId,
+          at: "2026-10-21T00:00:00.000Z",
+        });
+        if (input.toolId === "browser_navigate" || input.toolId === "browser_click") {
+          onEvent({
+            type: "invocation:approval_required",
+            invocationId,
+            message: "Approval required",
+            scope: "browser.interaction",
+            at: "2026-10-21T00:00:00.001Z",
+          });
+          onEvent({
+            type: "invocation:finish",
+            invocationId,
+            status: "awaiting_approval",
+            at: "2026-10-21T00:00:00.002Z",
+          });
+          return;
+        }
+        onEvent({
+          type: "invocation:finish",
+          invocationId,
+          status: "completed",
+          at: "2026-10-21T00:00:00.002Z",
+        });
       },
+    );
+
+    const formSnapshot =
+      '- heading "Web form" [level=1] [ref=e6]\n- button "Submit" [ref=e40] [cursor=pointer]';
+    getMcpInvocationMock.mockImplementation(async (invocationId: string) => {
+      if (invocationId === "inv-navigate-pending") {
+        return {
+          id: invocationId,
+          toolId: "browser_navigate",
+          status: "awaiting_approval",
+          args: { url: browserJourneyUrl },
+          approval: { required: true, reason: "Approval required" },
+          artifacts: [],
+        };
+      }
+      if (invocationId === "inv-snapshot") {
+        return {
+          id: invocationId,
+          toolId: "browser_snapshot",
+          status: "completed",
+          args: {},
+          result: createBrowserResult({
+            url: browserJourneyUrl,
+            title: "Web form",
+            snapshotHash: "snapshot-hash",
+            snapshot: formSnapshot,
+          }),
+          artifacts: [],
+        };
+      }
+      if (invocationId === "inv-click-pending") {
+        return {
+          id: invocationId,
+          toolId: "browser_click",
+          status: "awaiting_approval",
+          args: {
+            pageUrl: browserJourneyUrl,
+            snapshotHash: "snapshot-hash",
+            ref: "e40",
+          },
+          approval: { required: true, reason: "Approval required" },
+          artifacts: [],
+        };
+      }
+      if (invocationId === "inv-observe") {
+        return {
+          id: invocationId,
+          toolId: "browser_snapshot",
+          status: "completed",
+          args: {},
+          result: createBrowserResult({
+            url: browserJourneyTargetUrl,
+            title: "Web form - target page",
+            snapshotHash: "target-snapshot-hash",
+            snapshot: '- heading "Form submitted" [level=1] [ref=e6]',
+          }),
+          artifacts: [],
+        };
+      }
+      return {
+        id: invocationId,
+        toolId: "browser_assert",
+        status: "completed",
+        args: {},
+        result: createBrowserResult({
+          url: browserJourneyTargetUrl,
+          title: "Web form - target page",
+          snapshotHash: "target-snapshot-hash",
+          assertion: { kind: "title", passed: true },
+        }),
+        artifacts: [],
+      };
+    });
+
+    resolveMcpInvocationApprovalMock.mockImplementation(
+      async (invocationId: string) =>
+        invocationId === "inv-navigate-pending"
+          ? {
+              originalInvocation: {
+                id: invocationId,
+                toolId: "browser_navigate",
+                status: "completed",
+                args: { url: browserJourneyUrl },
+                approval: {
+                  required: true,
+                  reason: "Approval required",
+                  resolution: {
+                    decision: "approved",
+                    resolvedAt: "2026-10-21T00:00:01.000Z",
+                  },
+                },
+                artifacts: [],
+              },
+              resumedInvocation: {
+                id: "inv-navigate",
+                toolId: "browser_navigate",
+                status: "completed",
+                args: { url: browserJourneyUrl },
+                result: createBrowserResult({
+                  url: browserJourneyUrl,
+                  title: "Web form",
+                  snapshotHash: "navigate-hash",
+                }),
+                artifacts: [],
+              },
+            }
+          : {
+              originalInvocation: {
+                id: invocationId,
+                toolId: "browser_click",
+                status: "completed",
+                args: {
+                  pageUrl: browserJourneyUrl,
+                  snapshotHash: "snapshot-hash",
+                  ref: "e40",
+                },
+                approval: {
+                  required: true,
+                  reason: "Approval required",
+                  resolution: {
+                    decision: "approved",
+                    resolvedAt: "2026-10-21T00:00:02.000Z",
+                  },
+                },
+                artifacts: [],
+              },
+              resumedInvocation: {
+                id: "inv-click",
+                toolId: "browser_click",
+                status: "completed",
+                args: {},
+                result: createBrowserResult({
+                  url: browserJourneyTargetUrl,
+                  title: "Web form - target page",
+                  snapshotHash: "click-hash",
+                }),
+                artifacts: [],
+              },
+            },
+    );
+
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
+
+    await waitFor(() =>
+      expect(result.current.tools.some((tool) => tool.id === "browser_navigate")).toBe(
+        true,
+      ),
+    );
+
+    act(() => {
+      result.current.selectCase("browser-approval-journey");
+    });
+    await waitFor(() =>
+      expect(result.current.selectedCase?.id).toBe("browser-approval-journey"),
+    );
+
+    await act(async () => {
+      await result.current.runSelectedCase();
+    });
+
+    expect(createMcpToolLabBrowserRunMock).toHaveBeenCalledOnce();
+    expect(executeMcpInvocationStreamMock).toHaveBeenCalledWith(
       {
-        ...browserClickTool,
-        runtimeReadiness: {
-          state: "ready",
-          reason: "Managed browser runtime prerequisites are satisfied.",
-        },
+        toolId: "browser_navigate",
+        args: { url: browserJourneyUrl },
+        browserRunHandle: "blrun_test",
       },
+      expect.any(Function),
+    );
+    expect(result.current.runState.invocation?.status).toBe("awaiting_approval");
+    expect(result.current.browserJourney.status).toBe("awaiting_approval");
+    expect(result.current.browserJourney.handle).toBe("blrun_test");
+    expect(result.current.browserJourney.steps[0]).toMatchObject({
+      id: "navigate",
+      status: "awaiting_approval",
+      invocationId: "inv-navigate-pending",
+    });
+
+    await act(async () => {
+      await result.current.resolveApproval("approved");
+    });
+
+    expect(result.current.browserJourney.steps[0]).toMatchObject({
+      status: "completed",
+      approvalDecision: "approved",
+      approvalInvocationId: "inv-navigate-pending",
+      invocationId: "inv-navigate",
+      resultOk: true,
+    });
+    expect(result.current.browserJourney.steps[1]).toMatchObject({
+      status: "completed",
+      invocationId: "inv-snapshot",
+      page: { snapshotHash: "snapshot-hash" },
+      ref: "e40",
+    });
+    expect(result.current.browserJourney.status).toBe("awaiting_approval");
+    expect(result.current.browserJourney.steps[2]).toMatchObject({
+      id: "click",
+      status: "awaiting_approval",
+      invocationId: "inv-click-pending",
+    });
+    expect(executeMcpInvocationStreamMock).toHaveBeenNthCalledWith(
+      3,
+      {
+        toolId: "browser_click",
+        args: {
+          pageUrl: browserJourneyUrl,
+          snapshotHash: "snapshot-hash",
+          ref: "e40",
+        },
+        browserRunHandle: "blrun_test",
+      },
+      expect.any(Function),
+    );
+    expect(
+      executeMcpInvocationStreamMock.mock.calls.every(
+        (call) => call[0]?.browserRunHandle === "blrun_test",
+      ),
+    ).toBe(true);
+
+    await act(async () => {
+      await result.current.resolveApproval("approved");
+    });
+
+    expect(result.current.browserJourney.status).toBe("completed");
+    expect(result.current.browserJourney.steps.map((step) => step.status)).toEqual([
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+    ]);
+    expect(result.current.browserJourney.steps[3]).toMatchObject({
+      id: "observe-after-click",
+      invocationId: "inv-observe",
+      page: { snapshotHash: "target-snapshot-hash" },
+    });
+    expect(result.current.browserJourney.steps[4]).toMatchObject({
+      id: "assert",
+      invocationId: "inv-assert",
+      resultOk: true,
+      page: { title: "Web form - target page" },
+      assertion: { kind: "title", passed: true },
+    });
+    expect(executeMcpInvocationStreamMock).toHaveBeenNthCalledWith(
+      4,
+      {
+        toolId: "browser_snapshot",
+        args: { includeVisibleText: true, maxSnapshotChars: 4000 },
+        browserRunHandle: "blrun_test",
+      },
+      expect.any(Function),
+    );
+    expect(executeMcpInvocationStreamMock).toHaveBeenNthCalledWith(
+      5,
+      {
+        toolId: "browser_assert",
+        args: {
+          assertion: { kind: "title", expected: "Web form - target page" },
+        },
+        browserRunHandle: "blrun_test",
+      },
+      expect.any(Function),
+    );
+    expect(resetMcpToolLabBrowserRunMock).toHaveBeenCalledWith("blrun_test");
+    expect(result.current.browserJourney.handle).toBeNull();
+  });
+
+  it("keeps a rejected Browser navigate step cancelled and never starts Snapshot", async () => {
+    getMcpRegisteredToolsMock.mockResolvedValueOnce([
+      readTool,
+      writeTool,
+      ...readyBrowserTools,
     ]);
     executeMcpInvocationStreamMock.mockImplementation(
       async (_input: unknown, onEvent: (event: unknown) => void) => {
         onEvent({
           type: "invocation:start",
-          invocationId: "inv-browser-click",
-          toolId: "browser_click",
-          at: "2026-10-19T00:00:00.000Z",
+          invocationId: "inv-navigate-pending",
+          toolId: "browser_navigate",
+          at: "2026-10-21T00:00:00.000Z",
         });
         onEvent({
           type: "invocation:approval_required",
-          invocationId: "inv-browser-click",
+          invocationId: "inv-navigate-pending",
           message: "Approval required",
-          scope: "browser.interaction",
-          at: "2026-10-19T00:00:00.001Z",
+          at: "2026-10-21T00:00:00.001Z",
         });
         onEvent({
           type: "invocation:finish",
-          invocationId: "inv-browser-click",
+          invocationId: "inv-navigate-pending",
           status: "awaiting_approval",
-          at: "2026-10-19T00:00:00.002Z",
+          at: "2026-10-21T00:00:00.002Z",
         });
       },
     );
     getMcpInvocationMock.mockResolvedValue({
-      id: "inv-browser-click",
-      toolId: "browser_click",
+      id: "inv-navigate-pending",
+      toolId: "browser_navigate",
       status: "awaiting_approval",
-      args: {
-        pageUrl: "https://example.com/",
-        snapshotHash: "capability-browser-snapshot",
-        ref: "e1",
-      },
-      approval: {
-        required: true,
-        reason: "Approval required",
-        scope: "browser.interaction",
-      },
+      args: { url: browserJourneyUrl },
+      approval: { required: true, reason: "Approval required" },
       artifacts: [],
     });
     resolveMcpInvocationApprovalMock.mockResolvedValue({
       originalInvocation: {
-        id: "inv-browser-click",
-        toolId: "browser_click",
+        id: "inv-navigate-pending",
+        toolId: "browser_navigate",
         status: "cancelled",
-        args: {
-          pageUrl: "https://example.com/",
-          snapshotHash: "capability-browser-snapshot",
-          ref: "e1",
-        },
+        args: { url: browserJourneyUrl },
         approval: {
           required: true,
           reason: "Approval required",
-          scope: "browser.interaction",
           resolution: {
             decision: "rejected",
-            resolvedAt: "2026-10-19T00:00:01.000Z",
+            resolvedAt: "2026-10-21T00:00:01.000Z",
           },
         },
         error: {
@@ -716,54 +1065,151 @@ describe("useCapabilities", () => {
     const { result } = renderHook(() => useCapabilities());
 
     await waitFor(() =>
-      expect(result.current.tools.some((tool) => tool.id === "browser_click")).toBe(
+      expect(result.current.tools.some((tool) => tool.id === "browser_navigate")).toBe(
         true,
       ),
     );
-
     act(() => {
-      result.current.selectCase("browser-click-approval");
+      result.current.selectCase("browser-approval-journey");
     });
-
     await waitFor(() =>
-      expect(result.current.selectedCase?.id).toBe("browser-click-approval"),
+      expect(result.current.selectedCase?.id).toBe("browser-approval-journey"),
     );
 
     await act(async () => {
       await result.current.runSelectedCase();
     });
-
-    expect(executeMcpInvocationStreamMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        toolId: "browser_click",
-        args: {
-          pageUrl: "https://example.com/",
-          snapshotHash: "capability-browser-snapshot",
-          ref: "e1",
-        },
-      }),
-      expect.any(Function),
-    );
     expect(result.current.runState.invocation?.status).toBe("awaiting_approval");
 
     await act(async () => {
       await result.current.resolveApproval("rejected");
     });
 
-    expect(resolveMcpInvocationApprovalMock).toHaveBeenCalledWith(
-      "inv-browser-click",
-      {
-        decision: "rejected",
-        toolId: "browser_click",
-        args: {
-          pageUrl: "https://example.com/",
-          snapshotHash: "capability-browser-snapshot",
-          ref: "e1",
-        },
-      },
-    );
     expect(result.current.runState.invocation?.status).toBe("cancelled");
     expect(result.current.runState.resolutionInvocation).toBeNull();
+    expect(result.current.browserJourney.status).toBe("rejected");
+    expect(result.current.browserJourney.error?.code).toBe("cancelled");
+    expect(result.current.browserJourney.steps[0]).toMatchObject({
+      status: "rejected",
+      approvalDecision: "rejected",
+      resultOk: false,
+    });
+    expect(result.current.browserJourney.steps[1]).toMatchObject({
+      id: "snapshot",
+      status: "pending",
+      invocationId: null,
+    });
+    expect(executeMcpInvocationStreamMock).toHaveBeenCalledTimes(1);
+    expect(resetMcpToolLabBrowserRunMock).toHaveBeenCalledWith("blrun_test");
+  });
+
+  it("stops before Click when an approved Navigate returns ok=false", async () => {
+    getMcpRegisteredToolsMock.mockResolvedValueOnce([
+      readTool,
+      writeTool,
+      ...readyBrowserTools,
+    ]);
+    executeMcpInvocationStreamMock.mockImplementation(
+      async (_input: unknown, onEvent: (event: unknown) => void) => {
+        onEvent({
+          type: "invocation:start",
+          invocationId: "inv-navigate-pending",
+          toolId: "browser_navigate",
+          at: "2026-10-21T00:00:00.000Z",
+        });
+        onEvent({
+          type: "invocation:finish",
+          invocationId: "inv-navigate-pending",
+          status: "awaiting_approval",
+          at: "2026-10-21T00:00:00.002Z",
+        });
+      },
+    );
+    getMcpInvocationMock.mockResolvedValue({
+      id: "inv-navigate-pending",
+      toolId: "browser_navigate",
+      status: "awaiting_approval",
+      args: { url: "https://blocked.example/" },
+      approval: { required: true, reason: "Approval required" },
+      artifacts: [],
+    });
+    resolveMcpInvocationApprovalMock.mockResolvedValue({
+      originalInvocation: {
+        id: "inv-navigate-pending",
+        toolId: "browser_navigate",
+        status: "failed",
+        args: { url: "https://blocked.example/" },
+        approval: {
+          required: true,
+          reason: "Approval required",
+          resolution: {
+            decision: "approved",
+            resolvedAt: "2026-10-21T00:00:01.000Z",
+          },
+        },
+        artifacts: [],
+      },
+      resumedInvocation: {
+        id: "inv-navigate",
+        toolId: "browser_navigate",
+        status: "failed",
+        args: { url: "https://blocked.example/" },
+        result: {
+          ok: false,
+          sessionId: "",
+          invocationId: "inv-navigate",
+          page: { url: "", title: "" },
+          artifacts: [],
+          error: {
+            code: "navigation_blocked",
+            message: "Navigation domain is not allowed: blocked.example",
+            retryable: false,
+          },
+        },
+        error: {
+          message: "Navigation domain is not allowed: blocked.example",
+          failureCode: "navigation_blocked",
+        },
+        artifacts: [],
+      },
+    });
+
+    const useCapabilities = await importHook();
+    const { result } = renderHook(() => useCapabilities());
+
+    await waitFor(() =>
+      expect(result.current.tools.some((tool) => tool.id === "browser_navigate")).toBe(
+        true,
+      ),
+    );
+    act(() => {
+      result.current.selectCase("browser-approval-journey");
+    });
+    await waitFor(() =>
+      expect(result.current.selectedCase?.id).toBe("browser-approval-journey"),
+    );
+    await act(async () => {
+      await result.current.runSelectedCase();
+    });
+    await act(async () => {
+      await result.current.resolveApproval("approved");
+    });
+
+    expect(result.current.browserJourney.status).toBe("failed");
+    expect(result.current.browserJourney.steps[0]).toMatchObject({
+      status: "failed",
+      resultOk: false,
+    });
+    expect(result.current.browserJourney.steps[1]).toMatchObject({
+      id: "snapshot",
+      status: "pending",
+    });
+    expect(
+      executeMcpInvocationStreamMock.mock.calls.some(
+        (call) => call[0]?.toolId === "browser_click",
+      ),
+    ).toBe(false);
+    expect(resetMcpToolLabBrowserRunMock).toHaveBeenCalledWith("blrun_test");
   });
 
   it("runs Terminal continuation, status, and stop from the Capability Lab without replaying the command", async () => {

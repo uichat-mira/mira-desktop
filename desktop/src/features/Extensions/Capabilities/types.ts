@@ -13,6 +13,22 @@ export type CapabilityReadiness = {
   settingsPath?: string;
 };
 
+export type BrowserJourneySpec = {
+  startUrl: string;
+  snapshot?: {
+    includeVisibleText?: boolean;
+    maxSnapshotChars?: number;
+  };
+  clickTarget: {
+    role: "button" | "link";
+    name: string;
+  };
+  assertion: {
+    kind: "title" | "url" | "text";
+    expected: string;
+  };
+};
+
 export type CapabilityAcceptanceCase = {
   id: string;
   toolId: string;
@@ -23,6 +39,7 @@ export type CapabilityAcceptanceCase = {
   group: string;
   workspace: "managed" | "none";
   fixture?: string;
+  browserJourney?: BrowserJourneySpec;
 };
 
 export type CapabilityToolSource = {

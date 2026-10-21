@@ -17,6 +17,7 @@ const resolveApproval = vi.fn();
 const runTerminalContinuation = vi.fn();
 const runTerminalStatus = vi.fn();
 const runTerminalStop = vi.fn();
+const resetBrowserJourneyRun = vi.fn();
 const webSearchConfigState = {
   config: { apiKey: "saved-key", baseUrl: "", maxResults: 4 },
   isLoading: false,
@@ -26,6 +27,36 @@ const webSearchConfigState = {
 };
 
 const capabilities = {
+  browserJourney: {
+    status: "idle" as
+      | "idle"
+      | "running"
+      | "awaiting_approval"
+      | "completed"
+      | "failed"
+      | "rejected",
+    handle: null as string | null,
+    spec: null as null | {
+      startUrl: string;
+      clickTarget: { role: "button" | "link"; name: string };
+      assertion: { kind: "title" | "url" | "text"; expected: string };
+    },
+    steps: [] as Array<{
+      id: string;
+      toolId: string;
+      status: string;
+      invocationId: string | null;
+      approvalInvocationId: string | null;
+      approvalDecision: string | null;
+      resultOk: boolean | null;
+      sessionId: string | null;
+      page: { url: string; title: string; snapshotHash?: string } | null;
+      ref: string | null;
+      assertion: { kind: string; passed: boolean } | null;
+      error: { code: string; message: string } | null;
+    }>,
+    error: null as null | { code: string; message: string },
+  },
   canOpenManual: true,
   cases: [
     {
@@ -128,6 +159,7 @@ const capabilities = {
     source: "selected" as const,
   },
   refresh: vi.fn(),
+  resetBrowserJourneyRun,
   resolveApproval,
   runCase,
   runSelectedCase,
@@ -396,6 +428,136 @@ describe("CapabilitiesPage", () => {
     expect(new Set(groups.map((group) => group.id)).size).toBe(groups.length);
   });
 
+  it("renders the real Browser journey steps with invocation ids, approvals and page facts", async () => {
+    const navigateTool = {
+      ...capabilities.selectedTool,
+      id: "browser_navigate",
+      title: "Browser Navigate",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Managed Browser tools.",
+        groupOrder: 50,
+        icon: "mouse-pointer",
+      },
+    };
+    const journeyCase = {
+      ...capabilities.selectedCase,
+      id: "browser-approval-journey",
+      toolId: "browser_navigate",
+      title: "Browser 连续验收",
+      group: "Browser",
+      args: {
+        url: "https://www.selenium.dev/selenium/web/web-form.html",
+      },
+      browserJourney: {
+        startUrl: "https://www.selenium.dev/selenium/web/web-form.html",
+        clickTarget: { role: "button" as const, name: "Submit" },
+        assertion: { kind: "title" as const, expected: "Web form - target page" },
+      },
+    };
+    capabilities.tools = [navigateTool];
+    capabilities.selectedTool = navigateTool;
+    capabilities.cases = [journeyCase];
+    capabilities.toolCases = [journeyCase];
+    capabilities.selectedCase = journeyCase;
+    capabilities.browserJourney = {
+      status: "failed",
+      handle: null,
+      spec: journeyCase.browserJourney,
+      steps: [
+        {
+          id: "navigate",
+          toolId: "browser_navigate",
+          status: "completed",
+          invocationId: "inv-navigate",
+          approvalInvocationId: "inv-navigate-pending",
+          approvalDecision: "approved",
+          resultOk: true,
+          sessionId: "session-1",
+          page: {
+            url: "https://www.selenium.dev/selenium/web/web-form.html",
+            title: "Web form",
+            snapshotHash: "snapshot-hash",
+          },
+          ref: null,
+          assertion: null,
+          error: null,
+        },
+        {
+          id: "snapshot",
+          toolId: "browser_snapshot",
+          status: "completed",
+          invocationId: "inv-snapshot",
+          approvalInvocationId: null,
+          approvalDecision: null,
+          resultOk: true,
+          sessionId: "session-1",
+          page: {
+            url: "https://www.selenium.dev/selenium/web/web-form.html",
+            title: "Web form",
+            snapshotHash: "snapshot-hash",
+          },
+          ref: "e40",
+          assertion: null,
+          error: null,
+        },
+        {
+          id: "click",
+          toolId: "browser_click",
+          status: "failed",
+          invocationId: null,
+          approvalInvocationId: "inv-click-pending",
+          approvalDecision: "rejected",
+          resultOk: false,
+          sessionId: null,
+          page: null,
+          ref: null,
+          assertion: null,
+          error: {
+            code: "navigation_blocked",
+            message: "Navigation domain is not allowed",
+          },
+        },
+      ],
+      error: {
+        code: "navigation_blocked",
+        message: "Navigation domain is not allowed",
+      },
+    };
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    const panel = screen.getByTestId("browser-journey-panel");
+    expect(panel).toHaveTextContent("browser_navigate");
+    expect(panel).toHaveTextContent("invocation :: inv-snapshot");
+    expect(panel).toHaveTextContent("approval_invocation :: inv-navigate-pending");
+    expect(panel).toHaveTextContent("result.ok :: true");
+    expect(panel).toHaveTextContent("page.title :: Web form");
+    expect(panel).toHaveTextContent("snapshot.ref :: e40");
+    expect(panel).toHaveTextContent("navigation_blocked");
+    expect(panel).toHaveTextContent("Navigation domain is not allowed");
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.browserJourney.actions.retry",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.browserJourney.actions.reset",
+      }),
+    );
+    expect(runSelectedCase).toHaveBeenCalledOnce();
+    expect(resetBrowserJourneyRun).toHaveBeenCalledOnce();
+  });
+
   it("shows Managed Browser readiness reason and disables an unavailable case", () => {
     const browserTool = {
       ...capabilities.selectedTool,
@@ -643,8 +805,10 @@ describe("CapabilitiesPage", () => {
     );
 
     expect(
-      screen.getByLabelText("settings.development.capabilities.readiness.ready"),
-    ).toBeInTheDocument();
+      screen
+        .getAllByLabelText("settings.development.capabilities.readiness.ready")
+        .some((element) => !element.closest('[aria-hidden="true"]')),
+    ).toBe(true);
     expect(screen.queryByText("Write workspace files.", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
     expect(

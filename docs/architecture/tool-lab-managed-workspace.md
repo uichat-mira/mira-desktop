@@ -170,7 +170,27 @@ POST /mcp/tool-lab/browser-runs/reset    -> { handle, reset: true }
 - Tool Lab 路由只把 backend 解析出的内部 `threadId` 注入现有 Harness invocation，不新增第二套 SessionManager，也不改变原有 Policy/Approval 门槛；
 - POST `/mcp/invocations` 与 GET `/mcp/invocations/:id` 的 Browser Lab 响应会投影掉内部 `threadId`；服务端保存的原 invocation 仍保留该字段，供后续审批恢复卡使用。
 
-审批恢复（`resolveHarnessInvocationApproval`）只从服务端 original invocation 继承内部 `threadId`、`turnId`、`userId` 以及冻结的 toolId/args/inputHash，不接受客户端指定这些上下文。批准 Browser Lab 步骤前必须校验该内部 thread 仍属于同一 user、run 未过期且未 reset、并且正等待对应步骤的审批；任一项不满足即 fail closed，不执行页面操作。批准后复用原内部线程执行既定 Browser 工具，完成后同一 run 的下一步（例如 Snapshot）仍复用该线程；明确拒绝不执行页面操作，并结束该 run 的 pending 状态。审批响应与 invocation 响应一致，投影掉内部 `threadId`，服务端 original record 保留绑定。Tool Lab UI 连续 Browser 旅程仍不在本卡范围内。
+审批恢复（`resolveHarnessInvocationApproval`）只从服务端 original invocation 继承内部 `threadId`、`turnId`、`userId` 以及冻结的 toolId/args/inputHash，不接受客户端指定这些上下文。批准 Browser Lab 步骤前必须校验该内部 thread 仍属于同一 user、run 未过期且未 reset、并且正等待对应步骤的审批；任一项不满足即 fail closed，不执行页面操作。批准后复用原内部线程执行既定 Browser 工具，完成后同一 run 的下一步（例如 Snapshot）仍复用该线程；明确拒绝不执行页面操作，并结束该 run 的 pending 状态。审批响应与 invocation 响应一致，投影掉内部 `threadId`，服务端 original record 保留绑定。
+
+## Tool Lab Browser journey
+
+Tool Lab 的 Browser 验收入口是一条固定顺序、有限步骤的真实旅程，而不是静态 Ref/Hash 示例：
+
+```text
+create / reset Browser Lab run handle
+  -> browser_navigate (Approval)
+  -> browser_snapshot (real pageUrl / snapshotHash / ref)
+  -> browser_click (Approval; uses only the accepted snapshot facts)
+  -> browser_snapshot (re-observe the changed page)
+  -> browser_assert (real final page fact)
+```
+
+- Journey 只声明起始 URL、快照上限、快照中要查找的角色/名称以及最终断言；Step 的 `pageUrl`、`snapshotHash` 与 `ref` 全部来自同一次 run 的 Snapshot Result，不由客户端手填。
+- Navigate 与 Click 仍经过既有 Harness Approval。待批时旅程暂停；拒绝后立即终止，不执行后续 Snapshot/Click/Assert。
+- Click 后不沿用 Click Result 中的 Hash，而是强制重新 Snapshot，再使用新的页面事实进行 Assert。
+- 每一步在 UI 中显示 Invocation Id、审批结果、`result.ok`、session、页面事实、Ref、断言结果和结构化错误；`ok=false`、`session_unavailable`、stale 或 `navigation_blocked` 都按失败终止，不显示成功。
+- Run 完成或失败后客户端尝试 reset 对应 handle；重试会先 reset 旧 handle 再创建新 handle，不复用旧页面、审批或其他用户会话。
+- 当前 journey 使用 Selenium 维护的公开 web-form 自动化页面作为稳定受控页面，不修改导航 allowlist 或授予本地文件导航特权；自动化测试使用本地 HTTP fixture 验证同一 Approval/Session 主链。
 
 ## Approval / resume
 

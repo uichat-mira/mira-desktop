@@ -545,6 +545,29 @@ export function resetMcpCapabilityFixture(fixtureId: string) {
   );
 }
 
+export type ToolLabBrowserRun = {
+  handle: string;
+  expiresAt: string;
+  activeStep: boolean;
+};
+
+export function createMcpToolLabBrowserRun() {
+  return post<ToolLabBrowserRun>("/mcp/tool-lab/browser-runs");
+}
+
+export function getMcpToolLabBrowserRun(handle: string) {
+  return post<ToolLabBrowserRun>("/mcp/tool-lab/browser-runs/status", {
+    handle,
+  });
+}
+
+export function resetMcpToolLabBrowserRun(handle: string) {
+  return post<{ handle: string; reset: true }>(
+    "/mcp/tool-lab/browser-runs/reset",
+    { handle },
+  );
+}
+
 export function getMcpWebSearchConfig() {
   return get<McpWebSearchConfig>("/mcp/web-search/config");
 }
@@ -618,6 +641,7 @@ export async function executeMcpInvocationStream(
     toolId: string;
     args?: Record<string, unknown>;
     workspaceContext?: "tool_lab" | "tool_lab_managed";
+    browserRunHandle?: string;
     signal?: AbortSignal;
   },
   onEvent: (event: ToolInvocationStreamEvent) => void | Promise<void>,
@@ -635,6 +659,9 @@ export async function executeMcpInvocationStream(
       args: input.args ?? {},
       ...(input.workspaceContext
         ? { workspaceContext: input.workspaceContext }
+        : {}),
+      ...(input.browserRunHandle
+        ? { browserRunHandle: input.browserRunHandle }
         : {}),
     }),
     signal: input.signal,

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium, type Page } from "playwright-core";
@@ -687,6 +688,258 @@ describe.skipIf(!executablePath)("Managed Browser real Chromium DOM fixture", ()
       clearHarnessInvocations();
       await manager.closeAll();
       fs.rmSync(file, { force: true });
+    }
+  }, 30000);
+
+  it("runs the Tool Lab Navigate → Snapshot → Click → Snapshot → Assert journey on one real session", async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const server = http.createServer((request, response) => {
+      const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+      if (requestUrl.pathname === "/web-form") {
+        response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        response.end(`<!doctype html><html><head><title>Tool Lab Web form</title></head>
+<body><h1>Tool Lab Web form</h1>
+<form method="get" action="/submitted-form"><button type="submit">Submit</button></form>
+</body></html>`);
+        return;
+      }
+      if (requestUrl.pathname === "/submitted-form") {
+        response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        response.end(`<!doctype html><html><head><title>Tool Lab Submitted</title></head>
+<body><h1>Form submitted</h1></body></html>`);
+        return;
+      }
+      response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      response.end("not found");
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Tool Lab Browser fixture did not expose a TCP port.");
+    }
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const formUrl = `${baseUrl}/web-form`;
+    const manager = new BrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    const approve = (toolId: string, args: Record<string, unknown>) => ({
+      toolId,
+      inputHash: createInvocationInputHash(args),
+    });
+
+    try {
+      clearRegistry();
+      clearHarnessInvocations();
+      clearToolLabBrowserRuns();
+      for (const tool of createComputerUseBrowserTools(browser, { sessionManager: manager })) {
+        registerTool(tool);
+      }
+
+      const run = createToolLabBrowserRun({ userId: 7 });
+      const step = acquireToolLabBrowserRunStep({ handle: run.handle, userId: 7 });
+      const navArgs = { url: formUrl };
+      const pendingNavigate = await executeHarnessInvocation({
+        toolId: "browser_navigate",
+        args: navArgs,
+        userId: 7,
+        threadId: step.threadId,
+      });
+      step.release({ pendingApproval: pendingNavigate.status === "awaiting_approval" });
+      expect(pendingNavigate.status).toBe("awaiting_approval");
+
+      const navigate = await resolveHarnessInvocationApproval({
+        invocationId: pendingNavigate.id,
+        decision: "approved",
+        toolId: "browser_navigate",
+        args: navArgs,
+        userId: 7,
+      });
+      const navigateResult = navigate.resumedInvocation?.result as {
+        ok?: boolean;
+        sessionId?: string;
+        page?: { url?: string; title?: string; snapshotHash?: string };
+      };
+      expect(navigate.resumedInvocation?.status).toBe("completed");
+      expect(navigateResult).toMatchObject({
+        ok: true,
+        page: { url: formUrl, title: "Tool Lab Web form" },
+      });
+      expect(navigateResult.sessionId).toBeTruthy();
+
+      const snapshotStep = acquireToolLabBrowserRunStep({
+        handle: run.handle,
+        userId: 7,
+      });
+      const snapshot = await executeHarnessInvocation({
+        toolId: "browser_snapshot",
+        args: { includeVisibleText: true, maxSnapshotChars: 4000 },
+        userId: 7,
+        threadId: snapshotStep.threadId,
+      });
+      snapshotStep.release();
+      expect(snapshot.status).toBe("completed");
+      const snapshotResult = snapshot.result as {
+        ok?: boolean;
+        sessionId?: string;
+        page?: { url?: string; title?: string; snapshotHash?: string };
+        observation?: { snapshot?: string };
+      };
+      expect(snapshotResult).toMatchObject({
+        ok: true,
+        sessionId: navigateResult.sessionId,
+        page: { url: formUrl, title: "Tool Lab Web form" },
+      });
+      expect(snapshotResult.page?.snapshotHash).toBeTruthy();
+      const ref = snapshotResult.observation?.snapshot?.match(
+        /button "Submit" \[ref=([^\]]+)\]/,
+      )?.[1];
+      expect(ref).toBeTruthy();
+
+      const clickStep = acquireToolLabBrowserRunStep({
+        handle: run.handle,
+        userId: 7,
+      });
+      const clickArgs = {
+        pageUrl: snapshotResult.page!.url!,
+        snapshotHash: snapshotResult.page!.snapshotHash!,
+        ref: ref!,
+      };
+      const pendingClick = await executeHarnessInvocation({
+        toolId: "browser_click",
+        args: clickArgs,
+        userId: 7,
+        threadId: clickStep.threadId,
+      });
+      clickStep.release({ pendingApproval: pendingClick.status === "awaiting_approval" });
+      expect(pendingClick.status).toBe("awaiting_approval");
+
+      const click = await resolveHarnessInvocationApproval({
+        invocationId: pendingClick.id,
+        decision: "approved",
+        toolId: "browser_click",
+        args: clickArgs,
+        userId: 7,
+      });
+      const clickResult = click.resumedInvocation?.result as {
+        ok?: boolean;
+        sessionId?: string;
+        page?: { url?: string; title?: string; snapshotHash?: string };
+      };
+      expect(click.resumedInvocation?.status).toBe("completed");
+      expect(clickResult).toMatchObject({
+        ok: true,
+        sessionId: navigateResult.sessionId,
+        page: { title: "Tool Lab Submitted" },
+      });
+
+      const observeStep = acquireToolLabBrowserRunStep({
+        handle: run.handle,
+        userId: 7,
+      });
+      const reObserved = await executeHarnessInvocation({
+        toolId: "browser_snapshot",
+        args: { includeVisibleText: true, maxSnapshotChars: 4000 },
+        userId: 7,
+        threadId: observeStep.threadId,
+      });
+      observeStep.release();
+      const reObservedResult = reObserved.result as {
+        ok?: boolean;
+        sessionId?: string;
+        page?: { title?: string; snapshotHash?: string };
+        observation?: { snapshot?: string };
+      };
+      expect(reObservedResult).toMatchObject({
+        ok: true,
+        sessionId: navigateResult.sessionId,
+        page: { title: "Tool Lab Submitted" },
+      });
+      expect(reObservedResult.page?.snapshotHash).toBeTruthy();
+      expect(reObservedResult.observation?.snapshot).toContain(
+        'heading "Form submitted"',
+      );
+
+      const assertStep = acquireToolLabBrowserRunStep({
+        handle: run.handle,
+        userId: 7,
+      });
+      const asserted = await executeHarnessInvocation({
+        toolId: "browser_assert",
+        args: { assertion: { kind: "title", expected: "Tool Lab Submitted" } },
+        userId: 7,
+        threadId: assertStep.threadId,
+      });
+      assertStep.release();
+      expect(asserted.status).toBe("completed");
+      expect(asserted.result).toMatchObject({
+        ok: true,
+        sessionId: navigateResult.sessionId,
+        page: { title: "Tool Lab Submitted" },
+        assertion: { kind: "title", passed: true },
+      });
+    } finally {
+      clearToolLabBrowserRuns();
+      clearRegistry();
+      clearHarnessInvocations();
+      await manager.closeAll();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 30000);
+
+  it("rejects a Tool Lab Navigate approval without creating a Browser session", async () => {
+    const createdSessionIds: string[] = [];
+    class RecordingBrowserSessionManager extends BrowserSessionManager {
+      override async create(config: Parameters<BrowserSessionManager["create"]>[0]) {
+        const session = await super.create(config);
+        if (session.status === "ready") createdSessionIds.push(session.id);
+        return session;
+      }
+    }
+    const manager = new RecordingBrowserSessionManager({
+      launcher: { launch: (opts) => chromium.launch({ ...opts, executablePath }) },
+      artifactRoot: root,
+    });
+    const browser = new BrowserService(manager);
+    const navArgs = { url: "http://127.0.0.1:9/tool-lab-rejected" };
+    try {
+      clearRegistry();
+      clearHarnessInvocations();
+      clearToolLabBrowserRuns();
+      for (const tool of createComputerUseBrowserTools(browser, { sessionManager: manager })) {
+        registerTool(tool);
+      }
+
+      const run = createToolLabBrowserRun({ userId: 7 });
+      const step = acquireToolLabBrowserRunStep({ handle: run.handle, userId: 7 });
+      const pending = await executeHarnessInvocation({
+        toolId: "browser_navigate",
+        args: navArgs,
+        userId: 7,
+        threadId: step.threadId,
+      });
+      step.release({ pendingApproval: pending.status === "awaiting_approval" });
+      expect(pending.status).toBe("awaiting_approval");
+
+      const rejected = await resolveHarnessInvocationApproval({
+        invocationId: pending.id,
+        decision: "rejected",
+        toolId: "browser_navigate",
+        args: navArgs,
+        userId: 7,
+      });
+      expect(rejected.originalInvocation.status).toBe("cancelled");
+      expect(rejected.resumedInvocation).toBeNull();
+      expect(createdSessionIds).toHaveLength(0);
+    } finally {
+      clearToolLabBrowserRuns();
+      clearRegistry();
+      clearHarnessInvocations();
+      await manager.closeAll();
     }
   }, 30000);
 
