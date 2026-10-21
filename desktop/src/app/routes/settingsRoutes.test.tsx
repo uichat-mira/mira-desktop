@@ -4,6 +4,8 @@ import {
   createMemoryRouter,
   MemoryRouter,
   RouterProvider,
+  useRoutes,
+  useLocation,
 } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { settingsRoutes, useSettingsNavigationItems } from "./settingsRoutes";
@@ -32,9 +34,6 @@ vi.mock("@/features/Settings/pages/ModelSetting", () => ({
   default: () => null,
 }));
 vi.mock("@/features/Settings/pages/Tools/index", () => ({
-  default: () => null,
-}));
-vi.mock("@/features/Settings/pages/Mcp", () => ({
   default: () => null,
 }));
 vi.mock("@/features/Settings/pages/Personas/index", () => ({
@@ -80,6 +79,19 @@ function NavigationProbe() {
 }
 
 describe("settings routes", () => {
+  it("redirects the legacy settings MCP URL to the connector marketplace", async () => {
+    function TestRoutes() {
+      const location = useLocation();
+      const routes = useRoutes([
+        { path: "/settings", children: settingsRoutes },
+        { path: "/extensions/connectors", element: <div data-testid="connector-market" /> },
+      ]);
+      return <>{routes}<output data-testid="route-location">{location.pathname}{location.search}</output></>;
+    }
+    render(<MemoryRouter initialEntries={["/settings/mcp"]}><TestRoutes /></MemoryRouter>);
+    await screen.findByTestId("connector-market");
+    expect(screen.getByTestId("route-location")).toHaveTextContent("/extensions/connectors?view=external");
+  });
   it("includes mcp route in route objects", () => {
     expect(settingsRoutes.some((route) => route.path === "mcp")).toBe(true);
   });
@@ -88,7 +100,7 @@ describe("settings routes", () => {
     expect(settingsRoutes.some((route) => route.path === "integrations")).toBe(true);
   });
 
-  it("includes mcp route in navigation items", () => {
+  it("omits the migrated MCP entry from settings navigation", () => {
     render(
       <MemoryRouter>
         <NavigationProbe />
@@ -96,8 +108,8 @@ describe("settings routes", () => {
     );
 
     expect(
-      screen.getByText("settings.navigation.mcp:/settings/mcp:basic:30:exact:false"),
-    ).toBeInTheDocument();
+      screen.queryByText("settings.navigation.mcp:/settings/mcp:basic:30:exact:false"),
+    ).not.toBeInTheDocument();
   });
 
   it("includes personalization below general and mounts its page", () => {

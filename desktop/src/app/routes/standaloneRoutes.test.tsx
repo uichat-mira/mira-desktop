@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import {
-  createMemoryRouter,
+  MemoryRouter,
+  useRoutes,
+  useLocation,
   Outlet,
-  RouterProvider,
 } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { standaloneRoutes } from "./standaloneRoutes";
@@ -54,29 +55,31 @@ vi.mock("@/features/Development/pages/ServerTests/index", () => ({
 vi.mock("@/features/Extensions/Capabilities/index", () => ({
   default: () => <div data-testid="extensions-capabilities">extensions-capabilities</div>,
 }));
-vi.mock("@/features/Extensions/Mcp/index", () => ({
-  default: () => <div data-testid="extensions-mcp">extensions-mcp</div>,
+vi.mock("@/features/Extensions/Connectors/index", () => ({
+  default: () => <div data-testid="extensions-connectors">extensions-connectors</div>,
 }));
 vi.mock("@/features/Skills/index", () => ({
   default: () => <div data-testid="extensions-skills">extensions-skills</div>,
 }));
 
 function renderStandaloneRoute(path: string) {
-  const router = createMemoryRouter(
-    [
-      {
-        path: "/",
-        children: standaloneRoutes,
-      },
-    ],
-    { initialEntries: [path] },
-  );
-
-  render(<RouterProvider router={router} />);
+  // These routes have no data loaders. MemoryRouter exercises redirects without
+  // mixing Node's Request with jsdom's AbortSignal.
+  const router = { state: { location: { pathname: "", search: "" } } };
+  function TestRoutes() {
+    router.state.location = useLocation();
+    return useRoutes(standaloneRoutes);
+  }
+  render(<MemoryRouter initialEntries={[path]}><TestRoutes /></MemoryRouter>);
   return router;
 }
 
 describe("standalone routes", () => {
+  it("mounts the canonical connectors route", async () => {
+    renderStandaloneRoute("/extensions/connectors");
+    expect(await screen.findByTestId("extensions-connectors")).toBeInTheDocument();
+  });
+
   it("redirects /evaluation to the evaluation center", async () => {
     const router = renderStandaloneRoute("/evaluation");
 
@@ -109,10 +112,12 @@ describe("standalone routes", () => {
     expect(await screen.findByTestId("extensions-capabilities")).toBeInTheDocument();
   });
 
-  it("mounts the MCP surface at /extensions/mcp", async () => {
-    renderStandaloneRoute("/extensions/mcp");
+  it("redirects the old MCP surface to connectors", async () => {
+    const router = renderStandaloneRoute("/extensions/mcp");
 
-    expect(await screen.findByTestId("extensions-mcp")).toBeInTheDocument();
+    expect(await screen.findByTestId("extensions-connectors")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/extensions/connectors");
+    expect(router.state.location.search).toBe("?view=installed");
   });
 
   it("mounts the Skills surface at /extensions/skills", async () => {

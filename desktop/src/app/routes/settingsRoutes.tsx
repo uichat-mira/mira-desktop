@@ -7,7 +7,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   Blend,
   Bolt,
-  Boxes,
   PanelsTopLeft,
   SlidersHorizontal,
   ShieldCheck,
@@ -18,7 +17,6 @@ import GeneralSettings from "@/features/Settings/pages/General/index";
 import PersonalizationSettings from "@/features/Settings/pages/Personalization/index";
 import AccountSettings from "@/features/Settings/pages/Account/index";
 import ModelSettings from "@/features/Settings/pages/ModelSetting";
-import McpSettings from "@/features/Settings/pages/Mcp/index";
 import IntegrationsSettings from "@/features/Settings/pages/Integrations/index";
 import ToolsSettings from "@/features/Settings/pages/Tools/index";
 import RoleSettings from "@/features/Settings/pages/Personas/index";
@@ -168,8 +166,7 @@ const settingsRouteTree: SettingsRouteConfig[] = [
   },
   {
     path: "mcp",
-    element: <McpSettings />,
-    nav: { labelKey: "settings.navigation.mcp", icon: Boxes, group: "basic", order: 30 },
+    element: <Navigate to="/extensions/connectors?view=external" replace />,
   },
   {
     path: "integrations",
