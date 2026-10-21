@@ -850,6 +850,8 @@ describe("Connectors", () => {
       expect(screen.getByLabelText("Env JSON")).toBeInTheDocument();
       expect(screen.queryByLabelText("Endpoint URL")).not.toBeInTheDocument();
       expect(screen.getByText("@demo/local-docs-mcp")).toBeInTheDocument();
+      expect(screen.getByText("settings.mcp.config.launcher")).toBeInTheDocument();
+      expect(screen.getByText("settings.mcp.config.packageLauncher")).toBeInTheDocument();
     });
 
     await user.clear(screen.getByLabelText("Command"));

@@ -1,6 +1,7 @@
 # 连接器页面整合 Implementation Plan
 
-Status: Completed
+Status: Completed (original feat/ui-improvements implementation only)
+Verification scope: source branch only; new dev integration evidence is tracked in PR #417.
 Owner: desktop
 Last verified: 2026-10-19
 Layer: raw-source
@@ -191,6 +192,8 @@ Status: Completed
 - [x] 完成最终定向测试、TypeScript 检查和 diff 检查并记录输出。
 
 ### 实施与验证结果
+
+> **验证范围**：本节“142 项定向测试”、typecheck 和 Chrome fixture 记录均来自原始 `feat/ui-improvements` 分支；它们**没有在 DSK-004 整合后的 `dev` 候选提交上重新执行**。PR #417 的新版本验证须单独记录，不得把这里的历史结果当作整合验收证据。
 
 - 四视图、URL alias、市场按 ID 排除已接入、安装失败保护和接入后切换行为已落在 `desktop/src/features/Extensions/Connectors/index.tsx` 与 `catalog.ts`。
 - 自定义 MCP 的 JSON 校验/格式化和会话草稿操作位于 `customDrafts.ts`；配置弹窗、行号编辑区和卡片分别位于 `components/CustomMcpConfigModalContent.tsx`、`components/CustomDraftCatalog.tsx`。

@@ -1595,6 +1595,9 @@ const settingsPending = {
       },
       config: {
         title: "Configure {{name}}",
+        launcher: "Launcher",
+        packageLauncher: "Package launcher",
+        localLauncher: "Local launcher",
         loading: "Loading current configuration...",
         endpointUrl: "Endpoint URL",
         bearerToken: "Bearer Token",

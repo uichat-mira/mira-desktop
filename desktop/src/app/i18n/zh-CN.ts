@@ -12,6 +12,8 @@ const app = {
       available: "可接入",
       installationLoadFailed: "无法读取已接入记录，暂时无法接入新服务",
       cachedMarket: "当前显示最近一次成功获取的市场结果",
+      cachedMarketAt: "{{message}}（{{cachedAt}}）",
+      syncFailedDetail: "{{message}}：{{error}}",
       builtinEntry: "内置入口",
       open: "打开",
       manage: "管理",

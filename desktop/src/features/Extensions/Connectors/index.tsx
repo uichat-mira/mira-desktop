@@ -704,6 +704,9 @@ export default function ConnectorsPage() {
           isSubmitting={isSubmitting}
           error={error}
           labels={{
+            launcher: t("settings.mcp.config.launcher"),
+            packageLauncher: t("settings.mcp.config.packageLauncher"),
+            localLauncher: t("settings.mcp.config.localLauncher"),
             endpointUrl: t("settings.mcp.config.endpointUrl"),
             bearerToken: t("settings.mcp.config.bearerToken"),
             timeoutMs: t("settings.mcp.config.timeoutMs"),

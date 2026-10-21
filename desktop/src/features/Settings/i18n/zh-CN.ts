@@ -1580,6 +1580,9 @@ const settingsPending = {
       },
       config: {
         title: "配置 {{name}}",
+        launcher: "启动器",
+        packageLauncher: "包启动器",
+        localLauncher: "本地启动器",
         loading: "正在读取当前配置...",
         endpointUrl: "Endpoint URL",
         bearerToken: "Bearer Token",

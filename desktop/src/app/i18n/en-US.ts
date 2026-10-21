@@ -12,6 +12,8 @@ const app = {
       available: "Available",
       installationLoadFailed: "Could not read installed records. Installing new services is temporarily disabled.",
       cachedMarket: "Showing the last successful marketplace results",
+      cachedMarketAt: "{{message}} ({{cachedAt}})",
+      syncFailedDetail: "{{message}}: {{error}}",
       builtinEntry: "Built-in entry",
       open: "Open",
       manage: "Manage",
