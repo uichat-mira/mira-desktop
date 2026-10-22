@@ -40,6 +40,9 @@ const createLauncher = (navigatedUrls: string[]): PlaywrightChromiumLauncherLike
     async newPage() {
       return page;
     },
+    pages() {
+      return [page];
+    },
     async close() {},
   };
 

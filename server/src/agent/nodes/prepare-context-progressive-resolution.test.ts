@@ -18,7 +18,12 @@ import { buildPlannerStructuredOutputJsonSchema } from "../planner/structured-ou
 import { prepareContextNode } from "./prepare-context.js";
 import type { AgentNodeState } from "../node-runtime.js";
 
-type ToolDomain = "read" | "edit" | "web_search" | "terminal";
+type ToolDomain =
+  | "read"
+  | "edit"
+  | "web_search"
+  | "browser_action"
+  | "terminal";
 
 const makeToolDefinition = (
   toolId: string,
@@ -194,12 +199,11 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
         patch.toolExposure?.exposedTools?.includes(fillerDefinition.id),
         false,
       );
-      assert.equal(
-        (patch.toolExposure?.toolMeta ?? []).some(
-          (tool) => tool.toolId === fillerDefinition.id,
-        ),
-        false,
+      const fillerMeta = (patch.toolExposure?.toolMeta ?? []).find(
+        (tool) => tool.toolId === fillerDefinition.id,
       );
+      assert.ok(fillerMeta, `missing compact metadata for ${fillerDefinition.id}`);
+      assert.equal(fillerMeta.inputSchema, undefined);
     }
 
     // New schema detail spends one budget step per Tool; the catalog itself does
@@ -358,6 +362,55 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
       selectedEvents.map((event) => event.capabilityId),
       ["workspace_edit"],
     );
+  });
+
+  it("maps the requested browser group to the canonical capability without leaking retired Tool ids", async () => {
+    const atomicDefinitions = [
+      makeToolDefinition("browser_navigate", "browser_action"),
+      makeToolDefinition("browser_click", "browser_action"),
+    ];
+    const definitions = [
+      makeToolDefinition("browser_observe", "browser_action"),
+      makeToolDefinition("browser_act", "browser_action"),
+      ...atomicDefinitions,
+    ];
+    const toolIds = atomicDefinitions.map((definition) => definition.id);
+    vi.spyOn(harnessRegistry, "listToolDefinitions").mockReturnValue(definitions);
+    const matcherSpy = mockMatcher({
+      exposed: atomicDefinitions,
+      eligibleToolIds: toolIds,
+      resolution: makeResolution({
+        selectedCapabilityId: "browser",
+        candidates: ["browser"],
+      }),
+    });
+
+    const patch = await prepareContextNode(
+      createState({
+        requestedToolGroupIds: ["browser"],
+      }),
+    );
+
+    assert.deepEqual(patch.toolExposure?.requestedToolGroups, [
+      {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Playwright / Managed Browser 浏览器自动化工具。",
+        toolIds,
+        exposedToolIds: toolIds,
+        status: "available",
+      },
+    ]);
+    // The grouped Browser capability owns the atomic Tools, but its initial
+    // disclosure stage does not inject the whole catalog.
+    assert.deepEqual(patch.toolExposure?.exposedTools, []);
+    assert.deepEqual(
+      (patch.toolExposure?.toolMeta ?? []).map((tool) => tool.toolId),
+      toolIds,
+    );
+    const matcherQuery = matcherSpy.mock.calls[0]?.[0]?.query ?? "";
+    assert.ok(!matcherQuery.includes("browser_observe"));
+    assert.ok(!matcherQuery.includes("browser_act"));
   });
 
   it("promotes a second capability on a later turn within the budget without re-charging prior disclosure", async () => {
@@ -629,12 +682,19 @@ describe("prepareContextNode Progressive Resolution budget gate", () => {
     const argsVariants = (
       properties.args as { anyOf: Array<Record<string, unknown>> }
     ).anyOf;
-    // One variant per exposed Tool plus the trailing null variant.
-    assert.equal(argsVariants.length, exposure.exposedTools.length + 1);
+    // Full-schema Tools keep one args variant each. Metadata-only Tools
+    // share one empty-object detail-request variant, followed by null.
+    assert.equal(argsVariants.length, exposure.exposedTools.length + 2);
     for (const variant of argsVariants.slice(0, exposure.exposedTools.length)) {
       const variantProperties = variant.properties as Record<string, unknown>;
       assert.ok(Object.keys(variantProperties).length > 0);
     }
+    assert.deepEqual(argsVariants[exposure.exposedTools.length], {
+      type: "object",
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    });
 
     const plannerMessages = buildNextActionPlannerMessages({
       question: "inspect the workspace files",

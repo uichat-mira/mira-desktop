@@ -14,12 +14,23 @@ const evidenceRoot = path.resolve(
 const createPage = () => {
   let url = "https://example.com/";
   let visibleText = "Example Domain";
+  const nodes = [
+    { role: "heading", name: "Example Domain", ref: "e1", isConnected: true, visible: true },
+    { role: "button", name: "Go", ref: "e2", isConnected: true, visible: true },
+  ];
+  let latestRefs = new Map<string, (typeof nodes)[number]>();
+
+  const resolveRef = (ref: string) => {
+    const node = latestRefs.get(ref);
+    return node?.isConnected ? node : undefined;
+  };
+
   const page = {
     goto: vi.fn(async (nextUrl: string) => {
       url = nextUrl;
     }),
     click: vi.fn(async () => undefined),
-    type: vi.fn(async (_selector: string, text: string) => {
+    type: vi.fn(async (_ref: string, text: string) => {
       visibleText = text;
     }),
     selectOption: vi.fn(async () => undefined),
@@ -30,13 +41,32 @@ const createPage = () => {
     }),
     url: vi.fn(() => url),
     title: vi.fn(async () => "Example Domain"),
-    evaluate: vi.fn(async () => ({
-      snapshot: 'heading "Example Domain" ref=e1\nbutton "Go" ref=e2',
-      visibleText,
-      refs: [
-        { ref: "e1", selector: '[data-cu-ref="e1"]' },
-        { ref: "e2", selector: '[data-cu-ref="e2"]' },
-      ],
+    evaluate: vi.fn(async () => visibleText),
+    ariaSnapshot: vi.fn(async () => {
+      const visible = nodes.filter((node) => node.isConnected && node.visible);
+      latestRefs = new Map(visible.map((node) => [node.ref, node]));
+      return visible.map((node) => `- ${node.role} "${node.name}" [ref=${node.ref}]`).join("\n");
+    }),
+    getByRef: vi.fn((ref: string) => ({
+      count: vi.fn(async () => resolveRef(ref) ? 1 : 0),
+      isVisible: vi.fn(async () => Boolean(resolveRef(ref)?.visible)),
+      inputValue: vi.fn(async () => ""),
+      click: vi.fn(async (options?: { timeout?: number }) => {
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        return page.click(ref, options);
+      }),
+      type: vi.fn(async (text: string, options?: { timeout?: number }) => {
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        return page.type(ref, text, options);
+      }),
+      selectOption: vi.fn(async (value: string, options?: { timeout?: number }) => {
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        return page.selectOption(ref, value, options);
+      }),
+      press: vi.fn(async (key: string, options?: { timeout?: number }) => {
+        if (!resolveRef(ref)) throw new Error(`Ref ${ref} not found in current page snapshot`);
+        return page.press(ref, key, options);
+      }),
     })),
   };
   return page;
@@ -95,6 +125,7 @@ describe("Computer Use T122 server acceptance", () => {
         launch: vi.fn(async () => ({
           newContext: vi.fn(async () => ({
             newPage: vi.fn(async () => page),
+            pages: vi.fn(() => [page]),
             close: vi.fn(async () => undefined),
           })),
           close: vi.fn(async () => undefined),
@@ -119,7 +150,7 @@ describe("Computer Use T122 server acceptance", () => {
       sessionId: session.id,
       pageUrl: observed.page.url,
       snapshotHash: observed.page.snapshotHash!,
-      action: { kind: "click", ref: "e2" },
+      action: { kind: "click", ref: observed.observation?.snapshot?.match(/button "Go" \[ref=(e\d+)\]/)?.[1]! },
     });
     expect(acted.ok).toBe(true);
 
@@ -142,13 +173,13 @@ describe("Computer Use T122 server acceptance", () => {
     const page = createPage();
     const manager = new BrowserSessionManager({
       runtime: { resolveRuntime: () => ({ status: "ready", strategy: "managed", runtime: { source: "managed", channel: "chromium", executablePath: "C:/chrome.exe", version: "test", installedAt: "now" }, inspectedCandidates: [] }) },
-      launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), close: vi.fn(async () => undefined) })), close: vi.fn(async () => undefined) })) },
+      launcher: { launch: vi.fn(async () => ({ newContext: vi.fn(async () => ({ newPage: vi.fn(async () => page), pages: vi.fn(() => [page]), close: vi.fn(async () => undefined) })), close: vi.fn(async () => undefined) })) },
     });
     managers.push(manager);
     const browser = new BrowserService(manager);
     const session = await manager.create({ allowedDomains: ["example.com"] });
     const observed = await browser.observe({ sessionId: session.id });
-    const stale = await browser.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: "stale", action: { kind: "click", ref: "e2" } });
+    const stale = await browser.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: "stale", action: { kind: "click", ref: observed.observation?.snapshot?.match(/button "Go" \[ref=(e\d+)\]/)?.[1]! } });
     const boundary = await browser.act({ sessionId: session.id, pageUrl: observed.page.url, snapshotHash: observed.page.snapshotHash!, action: { kind: "navigate", url: "https://not-example.com/" } });
     expect(stale.error?.code).toBe("stale_snapshot");
     expect(boundary.error?.code).toBe("action_failed");

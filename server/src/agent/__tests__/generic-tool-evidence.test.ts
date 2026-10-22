@@ -194,16 +194,17 @@ describe("generic MCP tool evidence", () => {
     expect(JSON.stringify(summary.data?.preview)).toContain("Quarterly report");
   });
 
-  it("passes the real browser_observe evidence fields into the unified summary", async () => {
+  it("passes the real browser_navigate evidence fields into the unified summary", async () => {
     const tools = createComputerUseBrowserTools({
-      observe: vi.fn().mockResolvedValue({
+      navigate: vi.fn().mockResolvedValue({
         ok: true,
         sessionId: "browser-session-1",
-        invocationId: "browser-observe-1",
+        invocationId: "browser-navigate-1",
         page: { url: "https://example.com", title: "Example Domain", snapshotHash: "snapshot-1" },
         observation: { snapshot: "button ref=e1", visibleText: "Example Domain content" },
         artifacts: [],
       }),
+      observe: vi.fn(),
       act: vi.fn(),
       assert: vi.fn(),
     } as never, {
@@ -212,8 +213,8 @@ describe("generic MCP tool evidence", () => {
         get: vi.fn().mockReturnValue({ info: { status: "ready" } }),
       } as never,
     });
-    const adapterOutput = await tools.find((tool) => tool.definition.id === "browser_observe")!.execute({
-      invocationId: "browser-observe-1",
+    const adapterOutput = await tools.find((tool) => tool.definition.id === "browser_navigate")!.execute({
+      invocationId: "browser-navigate-1",
       args: { url: "https://example.com" },
       threadId: "thread-evidence-test",
       pushEvent: vi.fn(),
@@ -224,12 +225,12 @@ describe("generic MCP tool evidence", () => {
     const summary = createToolExecutionEvidenceSummary({
       evidenceIndex: 0,
       execution: {
-        toolId: "browser_observe",
+        toolId: "browser_navigate",
         args: { url: "https://example.com" },
         status: "completed",
         result: adapterOutput.structuredContent,
         evidence: projectToolEvidence(
-          tools.find((tool) => tool.definition.id === "browser_observe")!.definition,
+          tools.find((tool) => tool.definition.id === "browser_navigate")!.definition,
           normalizeToolResult(adapterOutput),
         ),
         startedAt: "2026-07-15T00:00:00.000Z",
@@ -239,7 +240,7 @@ describe("generic MCP tool evidence", () => {
 
     expect(summary.data).toMatchObject({
       kind: "computer_use_browser",
-      operation: "observe",
+      operation: "browser_navigate",
       page: { title: "Example Domain" },
       observation: { visibleText: "Example Domain content" },
     });

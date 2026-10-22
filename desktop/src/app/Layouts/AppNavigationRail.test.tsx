@@ -29,7 +29,7 @@ vi.mock("react-i18next", () => ({
         "app.navigation.evaluation": "评测中心",
         "app.navigation.extensions": "扩展",
         "app.navigation.capabilities": "能力",
-        "app.navigation.mcp": "MCP",
+        "app.navigation.connectors": "连接器",
         "app.navigation.skills": "技能",
         "app.navigation.forge": "淬行",
         "app.navigation.settings": "设置",
@@ -56,19 +56,19 @@ function renderRail(path = "/chat") {
 }
 
 describe("AppNavigationRail extensions menu", () => {
-  it("opens Extensions with Capabilities, MCP, and Skills entries", async () => {
+  it("opens Extensions with Capabilities, Connectors, and Skills entries", async () => {
     renderRail();
 
     await userEvent.click(screen.getByRole("button", { name: "扩展" }));
 
     expect(screen.getByRole("menuitem", { name: "能力" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "连接器" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "技能" })).toBeInTheDocument();
   });
 
   it.each([
     ["扩展", "能力", "/extensions/capabilities"],
-    ["扩展", "MCP", "/extensions/mcp"],
+    ["扩展", "连接器", "/extensions/connectors"],
     ["扩展", "技能", "/extensions/skills"],
     ["知识与评测", "知识库", "/knowledge-base"],
     ["知识与评测", "评测中心", "/evaluation/center"],

@@ -6,6 +6,7 @@ import {
   genericTaskSubAgentNode,
   nextActionPlannerNode,
   normalizeAndFreezeToolCall,
+  toolSchemaDisclosureNode,
   pauseForApproval,
   policyNode,
   prepareContextNode,
@@ -53,6 +54,7 @@ export interface PiAgentLoopSemantics {
   prepareContext: PiAgentLoopStepHandler;
   planner: PiAgentLoopStepHandler;
   delegateTask?: PiAgentLoopStepHandler;
+  discloseToolSchema?: PiAgentLoopStepHandler;
   normalizeAndFreeze: PiAgentLoopStepHandler;
   evaluatePolicy: PiAgentLoopStepHandler;
   pauseForApproval: PiAgentLoopStepHandler;
@@ -72,6 +74,7 @@ export interface PiAgentLoopNodes {
   prepareContext: PiAgentLoopNodeHandler;
   planner: PiAgentLoopNodeHandler;
   delegateTask?: PiAgentLoopNodeHandler;
+  discloseToolSchema?: PiAgentLoopNodeHandler;
   normalizeToolCall: PiAgentLoopNodeHandler;
   policy: PiAgentLoopNodeHandler;
   approval: PiAgentLoopNodeHandler;
@@ -83,10 +86,24 @@ export interface PiAgentLoopNodes {
   error: PiAgentLoopNodeHandler;
 }
 
+/**
+ * Compatibility-only hook for injected/custom Pi runtimes that predate
+ * mid-run schema disclosure. Without this no-op, a runtime that replaces
+ * prepare/normalize semantics would unexpectedly execute the production
+ * disclosure node before its own steps (the regression caught by
+ * unbounded-agent-iterations). Remove this fallback once every supported
+ * injected runtime explicitly supplies discloseToolSchema or has migrated to
+ * the application-default Pi semantics.
+ */
+const noOpToolSchemaDisclosure: PiAgentLoopStepHandler = async () => ({
+  toolSchemaDisclosure: undefined,
+});
+
 const defaultSemantics: PiAgentLoopSemantics = {
   prepareContext: prepareContextNode,
   planner: nextActionPlannerNode,
   delegateTask: genericTaskSubAgentNode,
+  discloseToolSchema: toolSchemaDisclosureNode,
   normalizeAndFreeze: normalizeAndFreezeToolCall,
   evaluatePolicy: policyNode,
   pauseForApproval,
@@ -109,6 +126,8 @@ const resolveSemantics = (
     return {
       ...runtime,
       delegateTask: runtime.delegateTask ?? genericTaskSubAgentNode,
+      discloseToolSchema:
+        runtime.discloseToolSchema ?? noOpToolSchemaDisclosure,
     };
   }
 
@@ -116,6 +135,8 @@ const resolveSemantics = (
     prepareContext: runtime.prepareContext,
     planner: runtime.planner,
     delegateTask: runtime.delegateTask ?? genericTaskSubAgentNode,
+    discloseToolSchema:
+      runtime.discloseToolSchema ?? noOpToolSchemaDisclosure,
     normalizeAndFreeze: runtime.normalizeToolCall,
     evaluatePolicy: runtime.policy,
     pauseForApproval: runtime.approval,
@@ -448,6 +469,21 @@ const createPiAgentLoopRunner = (steps: PiAgentLoopSemantics) => {
                 if (delegatedResult) {
                   return delegatedResult;
                 }
+                continue;
+              }
+
+              await runStep({
+                traceNodeName: "toolSchemaDisclosure",
+                handler:
+                  steps.discloseToolSchema ?? noOpToolSchemaDisclosure,
+                state,
+                emit,
+              });
+
+              if (state.errorMessage) {
+                return finishRunWithError(state, emit);
+              }
+              if (state.toolSchemaDisclosure?.status === "disclosed") {
                 continue;
               }
 

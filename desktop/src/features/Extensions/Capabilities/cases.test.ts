@@ -81,6 +81,7 @@ describe("Capability acceptance cases", () => {
       "web-fetch-known-url",
       "web-fetch-blocked-private-destination",
       "web-fetch-blocked-invalid-scheme",
+      "browser-approval-journey",
     ]);
 
     expect(
@@ -439,6 +440,32 @@ describe("Capability acceptance cases", () => {
         (item) => item.id === "file-mutation-apply-patch-controlled-error",
       )?.expectedObservation,
     ).toContain("Failed");
+  });
+
+  it("registers one real Managed Browser approval journey without static click facts", () => {
+    const browserCases = nativeCapabilityAcceptanceCases.filter(
+      (item) => item.group === "Browser",
+    );
+
+    expect(browserCases).toHaveLength(1);
+    expect(browserCases[0]).toMatchObject({
+      id: "browser-approval-journey",
+      toolId: "browser_navigate",
+      workspace: "none",
+      args: { url: "https://www.selenium.dev/selenium/web/web-form.html" },
+      browserJourney: {
+        startUrl: "https://www.selenium.dev/selenium/web/web-form.html",
+        clickTarget: { role: "button", name: "Submit" },
+        assertion: { kind: "title", expected: "Web form - target page" },
+      },
+    });
+    expect(browserCases[0]?.fixture).toBeUndefined();
+    expect(browserCases[0]?.args).not.toHaveProperty("pageUrl");
+    expect(browserCases[0]?.args).not.toHaveProperty("snapshotHash");
+    expect(browserCases[0]?.args).not.toHaveProperty("ref");
+    expect(browserCases[0]?.args).not.toHaveProperty("sessionId");
+    expect(browserCases[0]?.args).not.toHaveProperty("threadId");
+    expect(browserCases[0]?.expectedObservation).toContain("Approval");
   });
 
   it("registers only deterministic zero-input External MCP cases", () => {

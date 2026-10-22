@@ -45,6 +45,9 @@ export {
 } from "./generic-task-subagent";
 export { policyNode } from "./policy-node";
 export {
+  toolSchemaDisclosureNode,
+} from "./tool-schema-disclosure";
+export {
   toolCallNormalizeNode,
   toolCallNormalizeNode as normalizeAndFreezeToolCall,
 } from "./tool-call-normalize";

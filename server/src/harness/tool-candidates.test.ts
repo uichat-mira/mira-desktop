@@ -208,10 +208,10 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
   });
 
   it("keeps Browser/Edit/Terminal-style multi-step capability freedom when the set is small", async () => {
-    const browserObserve = {
-      ...createEligibleTool("browser_observe"),
+    const browserAssert = {
+      ...createEligibleTool("browser_assert"),
       definition: {
-        ...createEligibleTool("browser_observe").definition,
+        ...createEligibleTool("browser_assert").definition,
         domain: "browser_action" as const,
         tags: ["browser", "computer-use"],
         capabilities: {
@@ -233,7 +233,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
       },
     };
 
-    registerTool(browserObserve);
+    registerTool(browserAssert);
     registerTool(writeFile);
     registerTool(terminalTool);
 
@@ -243,7 +243,7 @@ describe("resolveHarnessToolCandidatesForTurn", () => {
     });
 
     expect(result.toolExposure.exposedToolIds).toEqual(
-      expect.arrayContaining(["browser_observe", "write", "terminal"]),
+      expect.arrayContaining(["browser_assert", "write", "terminal"]),
     );
   });
 

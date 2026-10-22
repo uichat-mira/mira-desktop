@@ -396,7 +396,7 @@ export const nextActionPlannerNode = async (
       const adaptedPlannerDecision = adaptPlannerProviderOutput(providerOutput);
       const validationResult = validateNextAction(
         adaptedPlannerDecision,
-        toolExposure.exposedTools,
+        toolExposure.toolMeta.map((tool) => tool.toolId),
       );
 
       return {

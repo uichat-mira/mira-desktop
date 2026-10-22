@@ -1,67 +1,52 @@
 import { describe, expect, it } from "vitest";
 import Fastify from "fastify";
-import computerUseRoutes, { type ComputerUseRouteService, type ComputerUseRuntimeRouteService } from "../index.js";
-import type { ComputerUseDebuggerService } from "../debugger-service.js";
+import computerUseRoutes, { type ComputerUseRuntimeRouteService } from "../index.js";
+import type { ComputerUseRuntimeState } from "@/microapps/computer-use/index.js";
 
-const session = {
-  sessionId: "session-1",
-  status: "ready" as const,
-  config: { runtime: "managed" as const, url: "https://example.com", allowedDomains: ["example.com"], limits: { timeoutMs: 30000, maxSnapshotChars: 12000 }, approvalPolicy: "write_actions" as const },
-  browser: { url: "https://example.com", title: "Example", snapshot: "button ref=e1", visibleText: "Example", screenshotArtifact: "artifact-1", snapshotHash: "hash-1" },
-  invocations: [],
-  evidence: { entries: [], artifacts: [] },
+const runtimeState: ComputerUseRuntimeState = {
+  status: "ready",
+  browserEngine: "chromium",
+  version: "141.0.0",
+  checkedAt: "2026-07-14T00:00:00.000Z",
 };
 
-const debuggerService: ComputerUseDebuggerService = {
-  getStatus: () => ({ runtime: { status: "ready", checkedAt: "2026-07-14T00:00:00.000Z" }, model: { status: "unavailable", message: "No provider", checkedAt: "2026-07-14T00:00:00.000Z" } }),
-  create: async () => session,
-  get: () => session,
-  observe: async () => session,
-  act: async (_id, input) => ({ ...session, invocations: [{ invocationId: "invocation-1", tool: "browser_act", args: input, status: "succeeded" as const, createdAt: "2026-07-14T00:00:00.000Z" }] }),
-  assert: async () => session,
-  approve: async () => ({ ...session, approval: { status: "approved" as const } }),
-  reject: async () => ({ ...session, approval: { status: "rejected" as const } }),
-  stop: async () => ({ ...session, status: "stopped" as const }),
-  readArtifact: async () => ({ bytes: Buffer.from("png-bytes"), contentType: "image/png" }),
+const computerUseRuntimeService: ComputerUseRuntimeRouteService = {
+  getRuntimeState: async () => runtimeState,
+  installRuntime: async () => runtimeState,
 };
 
 const app = async () => {
   const server = Fastify();
-  const computerUseService = {} as ComputerUseRouteService;
-  const computerUseRuntimeService = {} as ComputerUseRuntimeRouteService;
-  await server.register(computerUseRoutes, { computerUseService, computerUseRuntimeService, computerUseDebuggerService: debuggerService });
+  await server.register(computerUseRoutes, { computerUseRuntimeService });
   return server;
 };
 
-describe("Computer Use debugger routes", () => {
-  it("exposes the structured session flow and controlled artifact content", async () => {
+describe("Computer Use Studio routes", () => {
+  it("keeps runtime management routes and does not register the retired Manual Debug session routes", async () => {
     const server = await app();
-    const status = await server.inject({ method: "GET", url: "/microapps/computer-use/debugger/status" });
-    expect(status.statusCode).toBe(200);
-    expect(status.json().data.model.status).toBe("unavailable");
 
-    const created = await server.inject({ method: "POST", url: "/microapps/computer-use/sessions", payload: session.config });
-    expect(created.statusCode).toBe(200);
-    expect(created.json().data.sessionId).toBe("session-1");
+    const runtime = await server.inject({ method: "GET", url: "/microapps/computer-use/runtime" });
+    expect(runtime.statusCode).toBe(200);
+    expect(runtime.json().data.status).toBe("ready");
 
-    expect((await server.inject({ method: "POST", url: "/microapps/computer-use/sessions/session-1/observe" })).statusCode).toBe(200);
-    const action = await server.inject({ method: "POST", url: "/microapps/computer-use/sessions/session-1/action", payload: { pageUrl: "https://example.com", snapshotHash: "hash-1", action: { kind: "click", ref: "e1" } } });
-    expect(action.statusCode).toBe(200);
-    expect(action.json().data.invocations[0].tool).toBe("browser_act");
-    expect(action.json().data.invocations[0].args.action).toEqual({ kind: "click", ref: "e1" });
-    const invalidAction = await server.inject({ method: "POST", url: "/microapps/computer-use/sessions/session-1/action", payload: { action: "click", value: "e1" } });
-    expect(invalidAction.statusCode).toBe(400);
-    expect((await server.inject({ method: "POST", url: "/microapps/computer-use/sessions/session-1/assert", payload: { assertion: { kind: "title", expected: "Example" } } })).statusCode).toBe(200);
-    const approval = await server.inject({ method: "POST", url: "/microapps/computer-use/sessions/session-1/approval", payload: { invocationId: "invocation-1" } });
-    expect(approval.statusCode).toBe(200);
-    const rejection = await server.inject({ method: "POST", url: "/microapps/computer-use/sessions/session-1/approval/reject", payload: { invocationId: "invocation-1", reason: "Unsafe" } });
-    expect(rejection.statusCode).toBe(200);
+    const retired = [
+      { method: "GET" as const, url: "/microapps/computer-use/debugger/status" },
+      { method: "POST" as const, url: "/microapps/computer-use/sessions" },
+      { method: "GET" as const, url: "/microapps/computer-use/sessions/session-1" },
+      { method: "POST" as const, url: "/microapps/computer-use/sessions/session-1/observe" },
+      { method: "POST" as const, url: "/microapps/computer-use/sessions/session-1/action" },
+      { method: "POST" as const, url: "/microapps/computer-use/sessions/session-1/assert" },
+      { method: "POST" as const, url: "/microapps/computer-use/sessions/session-1/approval" },
+      { method: "POST" as const, url: "/microapps/computer-use/sessions/session-1/approval/reject" },
+      { method: "GET" as const, url: "/microapps/computer-use/sessions/session-1/artifacts/artifact-1/content" },
+      { method: "POST" as const, url: "/microapps/computer-use/sessions/session-1/stop" },
+    ];
 
-    const artifact = await server.inject({ method: "GET", url: "/microapps/computer-use/sessions/session-1/artifacts/artifact-1/content" });
-    expect(artifact.statusCode).toBe(200);
-    expect(artifact.headers["content-type"]).toBe("image/png");
-    expect(artifact.body).toBe("png-bytes");
-    expect((await server.inject({ method: "POST", url: "/microapps/computer-use/sessions/session-1/stop" })).statusCode).toBe(200);
+    for (const request of retired) {
+      const response = await server.inject(request);
+      expect(response.statusCode, `${request.method} ${request.url}: ${response.body}`).toBe(404);
+    }
+
     await server.close();
   });
 });

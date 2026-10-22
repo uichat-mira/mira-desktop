@@ -9,10 +9,14 @@ import {
   getToolImplementation,
   registerTool,
 } from "../harness/registry.js";
-import { clearHarnessInvocations } from "../harness/invocations.js";
+import {
+  clearHarnessInvocations,
+  getHarnessInvocation,
+} from "../harness/invocations.js";
 import { resetHarnessRuntime } from "./bootstrap.js";
 import { clearWorkspaceSelection } from "./workspace.js";
 import { clearExternalMcpServers } from "./external.js";
+import { clearToolLabBrowserRuns, createToolLabBrowserRun } from "./tool-lab-browser-runs.js";
 import { sendRouteError } from "@/utils/route-errors.js";
 import { getLoggerConfig } from "@/logger";
 import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
@@ -151,6 +155,27 @@ const restoreWebSearchEnv = () => {
   }
 };
 
+const createToolLabApp = async () => {
+  const app = Fastify({
+    logger: getLoggerConfig(),
+    serializerOpts: { encoding: "utf8" },
+  });
+  app.setErrorHandler(sendRouteError);
+  app.addHook("preHandler", async (request) => {
+    const raw = request.headers["x-test-user"];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (value === undefined) return;
+    const id = Number(value);
+    request.authUser = {
+      id,
+      username: `user-${id}`,
+      role: "user",
+    };
+  });
+  await app.register(mcpRoutes);
+  return app;
+};
+
 describe("mcp routes", () => {
   beforeEach(() => {
     fs.mkdirSync(tempRoot, { recursive: true });
@@ -163,6 +188,7 @@ describe("mcp routes", () => {
     resetHarnessRuntime();
     clearWorkspaceSelection();
     clearExternalMcpServers();
+    clearToolLabBrowserRuns();
     vi.unstubAllGlobals();
     stdioMockHandlers.length = 0;
     initializeModelConfigDatabase();
@@ -297,12 +323,23 @@ describe("mcp routes", () => {
     }).data.filter((tool) => tool.domain === "browser_action");
     expect(
       browserTools
-        .filter((tool) => tool.workbench?.groupId === "browser_computer_use")
+        .filter((tool) => tool.workbench?.groupId === "browser")
         .map((tool) => tool.id)
         .sort(),
-    ).toEqual(
-      ["browser_act", "browser_assert", "browser_observe"],
-    );
+    ).toEqual([
+      "browser_assert",
+      "browser_click",
+      "browser_fill",
+      "browser_navigate",
+      "browser_press_key",
+      "browser_screenshot",
+      "browser_scroll",
+      "browser_select_option",
+      "browser_snapshot",
+      "browser_tab_select",
+      "browser_tabs_list",
+      "browser_wait_for",
+    ]);
     expect(
       browserTools
         .filter((tool) => tool.workbench?.groupId === "browser_attached")
@@ -1961,5 +1998,610 @@ describe("mcp routes", () => {
     ).toBe(false);
 
     await app.close();
+  });
+
+  it("binds Browser Lab invocations to an owner-scoped run and rejects forged bindings", async () => {
+    createComputerUseBrowserTools({} as never).forEach(registerTool);
+    const app = await createToolLabApp();
+    const asUser = (id: number) => ({ "x-test-user": String(id) });
+
+    try {
+      const unauthenticated = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs",
+      });
+      expect(unauthenticated.statusCode).toBe(401);
+
+      const createdResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs",
+        headers: asUser(7),
+      });
+      expect(createdResponse.statusCode).toBe(200);
+      const created = (createdResponse.json() as {
+        data: { handle: string; expiresAt: string; activeStep: boolean };
+      }).data;
+      expect(created.handle).toMatch(/^blrun_[A-Za-z0-9_-]{43}$/);
+      expect(created).not.toHaveProperty("threadId");
+
+      const secondCreated = (await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs",
+        headers: asUser(7),
+      })).json() as { data: { handle: string } };
+
+      const statusResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/status",
+        headers: asUser(7),
+        payload: { handle: created.handle },
+      });
+      expect(statusResponse.statusCode).toBe(200);
+      expect((statusResponse.json() as { data: { handle: string } }).data.handle).toBe(
+        created.handle,
+      );
+
+      const foreignStatus = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/status",
+        headers: asUser(8),
+        payload: { handle: created.handle },
+      });
+      expect(foreignStatus.statusCode).toBe(404);
+
+      const invoke = async (browserRunHandle: string, body: Record<string, unknown> = {}) =>
+        app.inject({
+          method: "POST",
+          url: "/mcp/invocations",
+          headers: asUser(7),
+          payload: {
+            toolId: "browser_snapshot",
+            args: {},
+            browserRunHandle,
+            ...body,
+          },
+        });
+
+      const firstInvocation = await invoke(created.handle);
+      expect(firstInvocation.statusCode).toBe(200);
+      const firstData = (firstInvocation.json() as {
+        data: { id: string; status: string; threadId?: string };
+      }).data;
+      expect(firstData.status).toBe("completed");
+      expect(firstData).not.toHaveProperty("threadId");
+      const firstThreadId = getHarnessInvocation(firstData.id)?.threadId;
+      expect(firstThreadId).toMatch(/^tool-lab-browser-run:7:/);
+
+      const repeatedInvocation = await invoke(created.handle);
+      const repeatedData = (repeatedInvocation.json() as {
+        data: { id: string; threadId?: string };
+      }).data;
+      expect(repeatedData).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(repeatedData.id)?.threadId).toBe(firstThreadId);
+
+      const secondInvocation = await invoke(secondCreated.data.handle);
+      const secondData = (secondInvocation.json() as {
+        data: { id: string; threadId?: string };
+      }).data;
+      expect(secondData).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(secondData.id)?.threadId).not.toBe(firstThreadId);
+
+      const streamResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations/stream",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.handle,
+        },
+      });
+      expect(streamResponse.statusCode).toBe(200);
+      const streamEvents = streamResponse.body
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => JSON.parse(line.slice(6)) as {
+          type: string;
+          invocationId?: string;
+        });
+      const streamInvocationId = streamEvents.find(
+        (event) => event.type === "invocation:start",
+      )?.invocationId;
+      expect(streamInvocationId).toBeTruthy();
+      const streamInvocation = await app.inject({
+        method: "GET",
+        url: `/mcp/invocations/${streamInvocationId}`,
+      });
+      expect(
+        (streamInvocation.json() as { data: { threadId?: string } }).data,
+      ).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(streamInvocationId!)?.threadId).toBe(firstThreadId);
+
+      const missingHandle = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: { toolId: "browser_snapshot", args: {} },
+      });
+      expect(missingHandle.statusCode).toBe(400);
+
+      const nonBrowserHandle = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "glob",
+          args: { pattern: "*", path: "." },
+          browserRunHandle: created.handle,
+        },
+      });
+      expect(nonBrowserHandle.statusCode).toBe(400);
+
+      const forgedThreadId = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.handle,
+          threadId: "forged-thread",
+        },
+      });
+      expect(forgedThreadId.statusCode).toBe(400);
+
+      const forgedSessionId = await invoke(created.handle, {
+        args: { sessionId: "forged-session" },
+      });
+      expect(forgedSessionId.statusCode).toBe(400);
+
+      const governedNavigate = await invoke(created.handle, {
+        toolId: "browser_navigate",
+        args: { url: "https://example.com/" },
+      });
+      expect(governedNavigate.statusCode).toBe(200);
+      expect(
+        (governedNavigate.json() as {
+          data: { status: string; approval?: { required: boolean } };
+        }).data,
+      ).toMatchObject({
+        status: "awaiting_approval",
+        approval: { required: true },
+      });
+
+      const pendingStep = await invoke(created.handle);
+      expect(pendingStep.statusCode).toBe(400);
+      expect(pendingStep.json()).toMatchObject({
+        message: expect.stringMatching(/awaiting approval/i),
+      });
+
+      const resetResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/reset",
+        headers: asUser(7),
+        payload: { handle: created.handle },
+      });
+      expect(resetResponse.statusCode).toBe(200);
+      expect(
+        (resetResponse.json() as { data: { handle: string; reset: boolean } }).data,
+      ).toEqual({ handle: created.handle, reset: true });
+
+      const afterReset = await invoke(created.handle);
+      expect(afterReset.statusCode).toBe(404);
+
+      const foreignReset = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/reset",
+        headers: asUser(8),
+        payload: { handle: secondCreated.data.handle },
+      });
+      expect(foreignReset.statusCode).toBe(404);
+
+      const expiring = createToolLabBrowserRun({ userId: 7, ttlMs: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const expiredInvocation = await invoke(expiring.handle);
+      expect(expiredInvocation.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects a second concurrent Browser Lab step for the same run", async () => {
+    let signalStarted: (() => void) | undefined;
+    let releaseExecution: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseExecution = resolve;
+    });
+
+    registerTool({
+      definition: {
+        id: "browser_snapshot",
+        title: "Browser Snapshot",
+        description: "Test double for concurrency.",
+        domain: "browser_action",
+        source: "internal",
+        mode: "sync",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {},
+        },
+        tags: ["browser"],
+        capabilities: { sideEffect: "none", requiresApproval: false },
+      },
+      execute: async () => {
+        signalStarted?.();
+        await gate;
+        return { structuredContent: { ok: true } };
+      },
+    });
+
+    const app = await createToolLabApp();
+    const asUser = (id: number) => ({ "x-test-user": String(id) });
+
+    try {
+      const created = (await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs",
+        headers: asUser(7),
+      })).json() as { data: { handle: string } };
+
+      const firstInvocation = app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.data.handle,
+        },
+      });
+      await started;
+
+      const concurrent = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.data.handle,
+        },
+      });
+      expect(concurrent.statusCode).toBe(400);
+      expect(concurrent.json()).toMatchObject({
+        message: expect.stringMatching(/active step/i),
+      });
+
+      const runningReset = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/reset",
+        headers: asUser(7),
+        payload: { handle: created.data.handle },
+      });
+      expect(runningReset.statusCode).toBe(400);
+      expect(runningReset.json()).toMatchObject({
+        message: expect.stringMatching(/active step/i),
+      });
+
+      releaseExecution?.();
+      expect((await firstInvocation).statusCode).toBe(200);
+
+      const afterRelease = await app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: {
+          toolId: "browser_snapshot",
+          args: {},
+          browserRunHandle: created.data.handle,
+        },
+      });
+      expect(afterRelease.statusCode).toBe(200);
+    } finally {
+      releaseExecution?.();
+      await app.close();
+    }
+  });
+
+  it("resumes a Browser Lab navigate approval on the original run and keeps the next snapshot bound", async () => {
+    const browser = {
+      observe: vi.fn(async (input: { sessionId: string }) => ({
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId: "browser-observe",
+        page: {
+          url: "https://example.com/",
+          title: "Example",
+          snapshotHash: "hash-1",
+        },
+        observation: { snapshot: 'heading "Example"' },
+        artifacts: [],
+      })),
+      navigate: vi.fn(async (input: { sessionId: string; url: string }) => ({
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId: "browser-navigate",
+        page: {
+          url: input.url,
+          title: "Destination",
+          snapshotHash: "hash-nav",
+        },
+        observation: { snapshot: 'heading "Destination"' },
+        artifacts: [],
+      })),
+    };
+    const sessions = new Map<string, { info: { status: "ready" } }>();
+    const create = vi.fn(async () => {
+      const id = `browser-session-${sessions.size + 1}`;
+      sessions.set(id, { info: { status: "ready" as const } });
+      return { id, status: "ready" as const };
+    });
+    const sessionManager = {
+      create,
+      get: vi.fn((id: string) => sessions.get(id)),
+    };
+    createComputerUseBrowserTools(browser as never, {
+      sessionManager: sessionManager as never,
+    }).forEach(registerTool);
+
+    const app = await createToolLabApp();
+    const asUser = (id: number) => ({ "x-test-user": String(id) });
+    const navigateArgs = { url: "https://example.com/" };
+
+    const createRun = async () =>
+      (
+        (await app.inject({
+          method: "POST",
+          url: "/mcp/tool-lab/browser-runs",
+          headers: asUser(7),
+        })).json() as { data: { handle: string } }
+      ).data;
+    const invoke = async (
+      handle: string,
+      toolId: string,
+      args: Record<string, unknown>,
+    ) =>
+      app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: { toolId, args, browserRunHandle: handle },
+      });
+    const resolveApproval = (
+      invocationId: string,
+      userId: number,
+      decision: "approved" | "rejected",
+    ) =>
+      app.inject({
+        method: "POST",
+        url: `/mcp/invocations/${invocationId}/approval`,
+        headers: asUser(userId),
+        payload: { decision, toolId: "browser_navigate", args: navigateArgs },
+      });
+
+    try {
+      const run = await createRun();
+      const pendingResponse = await invoke(run.handle, "browser_navigate", navigateArgs);
+      expect(pendingResponse.statusCode).toBe(200);
+      const pending = (pendingResponse.json() as {
+        data: { id: string; status: string; approval?: { required: boolean }; threadId?: string };
+      }).data;
+      expect(pending).toMatchObject({
+        status: "awaiting_approval",
+        approval: { required: true },
+      });
+      expect(pending).not.toHaveProperty("threadId");
+      const pendingId = pending.id;
+      const trustedThreadId = getHarnessInvocation(pendingId)?.threadId;
+      expect(trustedThreadId).toMatch(/^tool-lab-browser-run:7:/);
+      const frozenArgs = structuredClone(getHarnessInvocation(pendingId)?.args);
+      expect(browser.navigate).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+
+      const foreignApproval = await resolveApproval(pendingId, 8, "approved");
+      expect(foreignApproval.statusCode).toBe(404);
+      expect(browser.navigate).not.toHaveBeenCalled();
+      expect(getHarnessInvocation(pendingId)?.status).toBe("awaiting_approval");
+
+      const approvedResponse = await resolveApproval(pendingId, 7, "approved");
+      expect(approvedResponse.statusCode).toBe(200);
+      const approved = (approvedResponse.json() as {
+        data: {
+          originalInvocation: { id: string; status: string; threadId?: string };
+          resumedInvocation: { id: string; status: string; threadId?: string } | null;
+        };
+      }).data;
+      expect(approved.originalInvocation).toMatchObject({
+        id: pendingId,
+        status: "completed",
+      });
+      expect(approved.originalInvocation).not.toHaveProperty("threadId");
+      expect(approved.resumedInvocation).not.toBeNull();
+      expect(approved.resumedInvocation).toMatchObject({ status: "completed" });
+      expect(approved.resumedInvocation).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(approved.resumedInvocation!.id)?.threadId).toBe(
+        trustedThreadId,
+      );
+      expect(getHarnessInvocation(pendingId)?.args).toEqual(frozenArgs);
+      expect(create).toHaveBeenCalledTimes(1);
+      const trustedSessionId = browser.navigate.mock.calls[0]![0].sessionId;
+      expect(trustedSessionId).toBe("browser-session-1");
+
+      const snapshotResponse = await invoke(run.handle, "browser_snapshot", {});
+      expect(snapshotResponse.statusCode).toBe(200);
+      const snapshot = (snapshotResponse.json() as {
+        data: { id: string; status: string; threadId?: string };
+      }).data;
+      expect(snapshot).toMatchObject({ status: "completed" });
+      expect(snapshot).not.toHaveProperty("threadId");
+      expect(getHarnessInvocation(snapshot.id)?.threadId).toBe(trustedThreadId);
+      expect(browser.observe).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: trustedSessionId }),
+      );
+
+      const duplicateApproval = await resolveApproval(pendingId, 7, "approved");
+      expect(duplicateApproval.statusCode).toBe(400);
+      expect(browser.navigate).toHaveBeenCalledTimes(1);
+
+      const secondRun = await createRun();
+      const secondPending = (await invoke(secondRun.handle, "browser_navigate", navigateArgs))
+        .json() as { data: { id: string; status: string } };
+      expect(secondPending.data.status).toBe("awaiting_approval");
+      const secondApproval = await resolveApproval(
+        secondPending.data.id,
+        7,
+        "approved",
+      );
+      expect(secondApproval.statusCode).toBe(200);
+      expect(create).toHaveBeenCalledTimes(2);
+      const secondSessionId = browser.navigate.mock.calls[1]![0].sessionId;
+      expect(secondSessionId).not.toBe(trustedSessionId);
+
+      const secondSnapshot = await invoke(secondRun.handle, "browser_snapshot", {});
+      expect(secondSnapshot.statusCode).toBe(200);
+      expect(browser.observe).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: secondSessionId }),
+      );
+
+      const firstSnapshotAgain = await invoke(run.handle, "browser_snapshot", {});
+      expect(firstSnapshotAgain.statusCode).toBe(200);
+      expect(browser.observe).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: trustedSessionId }),
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects a Browser Lab approval without page side effects and fails closed after reset", async () => {
+    const browser = {
+      observe: vi.fn(async (input: { sessionId: string }) => ({
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId: "browser-observe",
+        page: { url: "https://example.com/", title: "Example" },
+        artifacts: [],
+      })),
+      navigate: vi.fn(async (input: { sessionId: string; url: string }) => ({
+        ok: true,
+        sessionId: input.sessionId,
+        invocationId: "browser-navigate",
+        page: { url: input.url, title: "Destination" },
+        artifacts: [],
+      })),
+    };
+    const sessionManager = {
+      create: vi.fn(async () => ({ id: "unused-session", status: "ready" as const })),
+      get: vi.fn(() => undefined),
+    };
+    createComputerUseBrowserTools(browser as never, {
+      sessionManager: sessionManager as never,
+    }).forEach(registerTool);
+
+    const app = await createToolLabApp();
+    const asUser = (id: number) => ({ "x-test-user": String(id) });
+    const navigateArgs = { url: "https://example.com/" };
+
+    const createRun = async () =>
+      (
+        (await app.inject({
+          method: "POST",
+          url: "/mcp/tool-lab/browser-runs",
+          headers: asUser(7),
+        })).json() as { data: { handle: string } }
+      ).data;
+    const invoke = async (handle: string, toolId: string) =>
+      app.inject({
+        method: "POST",
+        url: "/mcp/invocations",
+        headers: asUser(7),
+        payload: { toolId, args: toolId === "browser_navigate" ? navigateArgs : {}, browserRunHandle: handle },
+      });
+    const resolveApproval = (
+      invocationId: string,
+      decision: "approved" | "rejected",
+    ) =>
+      app.inject({
+        method: "POST",
+        url: `/mcp/invocations/${invocationId}/approval`,
+        headers: asUser(7),
+        payload: { decision, toolId: "browser_navigate", args: navigateArgs },
+      });
+
+    try {
+      const run = await createRun();
+      const pending = (await invoke(run.handle, "browser_navigate")).json() as {
+        data: { id: string; status: string };
+      };
+      expect(pending.data.status).toBe("awaiting_approval");
+
+      const rejectedResponse = await resolveApproval(pending.data.id, "rejected");
+      expect(rejectedResponse.statusCode).toBe(200);
+      const rejected = (rejectedResponse.json() as {
+        data: {
+          originalInvocation: { id: string; status: string; threadId?: string };
+          resumedInvocation: unknown;
+        };
+      }).data;
+      expect(rejected.originalInvocation).toMatchObject({
+        id: pending.data.id,
+        status: "cancelled",
+      });
+      expect(rejected.originalInvocation).not.toHaveProperty("threadId");
+      expect(rejected.resumedInvocation).toBeNull();
+      expect(browser.navigate).not.toHaveBeenCalled();
+      expect(sessionManager.create).not.toHaveBeenCalled();
+
+      const nextStep = await invoke(run.handle, "browser_snapshot");
+      expect(nextStep.statusCode).toBe(200);
+      expect(
+        (nextStep.json() as {
+          data: { status: string; result?: { ok?: boolean; error?: { code?: string } } };
+        }).data,
+      ).toMatchObject({
+        status: "completed",
+        result: { ok: false, error: { code: "session_unavailable" } },
+      });
+
+      const resetRun = await createRun();
+      const resetPending = (await invoke(resetRun.handle, "browser_navigate")).json() as {
+        data: { id: string };
+      };
+      expect(getHarnessInvocation(resetPending.data.id)?.status).toBe(
+        "awaiting_approval",
+      );
+      const resetResponse = await app.inject({
+        method: "POST",
+        url: "/mcp/tool-lab/browser-runs/reset",
+        headers: asUser(7),
+        payload: { handle: resetRun.handle },
+      });
+      expect(resetResponse.statusCode).toBe(200);
+
+      const afterResetApproval = await resolveApproval(
+        resetPending.data.id,
+        "approved",
+      );
+      expect(afterResetApproval.statusCode).toBe(404);
+      expect(browser.navigate).not.toHaveBeenCalled();
+      expect(sessionManager.create).not.toHaveBeenCalled();
+      expect(getHarnessInvocation(resetPending.data.id)?.status).toBe(
+        "awaiting_approval",
+      );
+
+      const afterResetRejection = await resolveApproval(
+        resetPending.data.id,
+        "rejected",
+      );
+      expect(afterResetRejection.statusCode).toBe(200);
+      expect(getHarnessInvocation(resetPending.data.id)?.status).toBe("cancelled");
+      expect(browser.navigate).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
   });
 });

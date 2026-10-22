@@ -495,6 +495,12 @@ export interface AgentSchemaReplanDiagnostics {
   attemptCount: number;
 }
 
+export interface AgentToolSchemaDisclosure {
+  toolId: string;
+  status: "disclosed";
+  reason: string;
+}
+
 export interface CurrentTaskFrameConfirmedObject {
   type: "file" | "command" | "tool" | "script" | "knowledge" | "approval";
   id?: string;

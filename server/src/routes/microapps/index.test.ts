@@ -438,23 +438,6 @@ const createApp = async (
   await app.register(microappsRoute, {
     imageGenerationService: service,
     comfyUiStudioService,
-    computerUseService: {
-      async createPlan() {
-        throw new Error("not implemented");
-      },
-      async getTask() {
-        return null;
-      },
-      async startTask() {
-        throw new Error("not implemented");
-      },
-      async resolveApproval() {
-        throw new Error("not implemented");
-      },
-      async cancelTask() {
-        throw new Error("not implemented");
-      },
-    },
     computerUseRuntimeService: {
       async getRuntimeState() {
         return {

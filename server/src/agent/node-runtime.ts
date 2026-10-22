@@ -31,6 +31,7 @@ import type {
   AgentPolicyDecision,
   AgentRetrievalEvidence,
   AgentSchemaReplanDiagnostics,
+  AgentToolSchemaDisclosure,
   AgentToolCallRequest,
   AgentToolExecutionResult,
   AgentToolExposureState,
@@ -102,6 +103,7 @@ export interface AgentNodeState {
   errorMessage?: string;
   errorSourceNodeId?: string;
   schemaReplanDiagnostics?: AgentSchemaReplanDiagnostics;
+  toolSchemaDisclosure?: AgentToolSchemaDisclosure;
   generatedAnswerEmptyFallback?: boolean;
   iterationCount?: number;
   maxIterations?: number;

@@ -278,7 +278,7 @@ const settingsPending = {
         },
         computerUse: {
           title: "Computer Use",
-          description: "A browser task workspace for reviewing plans, approvals, execution progress, and evidence playback in one place.",
+          description: "Manage the managed browser runtime used by Computer Use web tasks and inspect the current browser environment.",
           actions: {
             open: "Open Studio",
           },
@@ -1333,27 +1333,13 @@ const settingsPending = {
           error: "Error",
         },
       },
-      computerUseDebugger: {
-        page: { miniTitle: "Computer Use", title: "Computer Use", description: "Inspect structured browser sessions and tool results." },
-        tabs: { playwright: "Playwright" },
+      computerUseRuntime: {
+        page: { miniTitle: "Computer Use", title: "Computer Use", description: "Manage the managed browser runtime used by Computer Use for web tasks." },
         runtime: { ready: "Runtime ready", not_installed: "Runtime unavailable", downloading: "Runtime downloading", broken: "Runtime broken" },
-        model: { unavailable: "Model: Not connected", connected: "Model connected", unavailableTitle: "Model Run unavailable" },
-        runConfig: { title: "Run Config", runtime: "Runtime", url: "Initial URL", allowedDomains: "Allowed domains", timeout: "Timeout", snapshot: "Snapshot limit", approvalPolicy: "Approval policy" },
-        browserState: { title: "Browser State", urlLabel: "URL", titleLabel: "Title", snapshotHashLabel: "Snapshot hash", visibleText: "Visible text", screenshot: "Screenshot", empty: "No observation yet." },
-        manual: { title: "Manual Debug", action: "Action", ref: "Element ref", value: "URL / value", assertion: "Assertion", expected: "Expected" },
-        feedback: { title: "Execution Feedback", events: "Events", json: "JSON", empty: "No invocations yet.", approval: "Approval", toolArgs: "Tool args", artifacts: "Artifacts", evidence: "Evidence", result: "Result" },
-        modelRun: { title: "AgentTaskModel", run: "Run model", result: "Model Run Result" },
-        actions: { newSession: "New Session", inspect: "Inspect", execute: "Execute Action", assert: "Assert", approve: "Approve Action", reject: "Reject Action", stop: "Stop", reset: "Reset", openGuide: "User guide", installRuntime: "Download browser runtime" },
+        actions: { openGuide: "User guide", installRuntime: "Download browser runtime" },
         runtimeCard: { title: "Browser Runtime", description: "Manage the browser environment used by Computer Use for web tasks.", status: "Current status", managed: "Managed Chromium", system: "System browser", detected: "Detected", notDetected: "Not detected", path: "Current executable", pathEmpty: "Executable path is not resolved", reinstallTitle: "Confirm managed Chromium re-download", reinstallDescription: "Managed Chromium is already installed. Continuing will verify and replace the current managed browser files.", systemBrowserTitle: "Confirm managed Chromium download", systemBrowserDescription: "A system browser is available. Continuing will also download a separate browser managed by the app.", confirmDownload: "Continue download", cancel: "Cancel" },
-        errors: { title: "Debugger error", requestFailed: "Request failed" },
-        common: { emptyValue: "-" },
-        runtimeOptions: { managed: "Managed Chromium", system: "System browser" },
-        approvalOptions: { always: "Always approve", writeActions: "Write actions", never: "No approval" },
-        placeholders: { url: "https://example.com", domain: "example.com", ref: "Element ref", value: "URL or value", expected: "Expected value" },
-        actionOptions: { navigate: "Navigate", click: "Click", type: "Type", select: "Select", press: "Press", scroll: "Scroll", wait: "Wait" },
-        assertionOptions: { title: "Title", url: "URL", text: "Text", visible: "Visibility", value: "Value" },
-        status: { idle: "Idle", running: "Running", failed: "Failed", succeeded: "Succeeded", awaiting_approval: "Awaiting approval", cancelled: "Cancelled", pending: "Pending" },
-        guide: { brandName: "Computer Use", title: "Computer Use user guide", intro: "Computer Use uses a controlled browser to perform observable, reviewable, and replayable web actions.", capabilityTitle: "Capabilities", capabilityBody: "Create browser sessions, inspect page structure and screenshots, perform navigation and page actions, validate page state, and retain invocation, trace, and evidence records for every call.", environmentTitle: "Environment configuration", environmentBody: "Managed Chromium is the preferred runtime. Provide an initial URL and allowed domains. The domain scope limits navigation, while the approval policy controls whether write actions require human confirmation.", setupTitle: "Before you start", setupBody: "Make sure the browser runtime is ready and AgentTaskModel is connected. Manual debugging remains available without a model, but model tasks cannot run.", stepsTitle: "How to use it", stepsBody: "Create a Session, then click Inspect to obtain the page snapshot and refs. Choose an action, provide its parameters, and execute it. After approval, inspect again and use an assertion to verify the result.", approvalTitle: "Approval and feedback", approvalBody: "Write actions enter an approval state. They run only after approval; rejection leaves an explicit cancelled result. The feedback panel shows tool arguments, status, artifacts, and evidence.", boundaryTitle: "Product boundaries", boundaryBody: "This capability is for controlled browser web actions. It does not include host desktop control, credential storage, browser extension takeover, or CAPTCHA bypass.", close: "Close user guide" },
+        errors: { title: "Computer Use error", requestFailed: "Request failed" },
+        guide: { brandName: "Computer Use", title: "Computer Use user guide", intro: "Computer Use gives the Agent observable, reviewable, and replayable web automation through a managed browser.", capabilityTitle: "Capabilities", capabilityBody: "The browser runtime is managed here: detect managed Chromium or a system browser, install or reinstall the managed runtime, and show the current executable path.", environmentTitle: "Environment configuration", environmentBody: "Managed Chromium is the preferred runtime; a system browser is used when the current platform has no managed package. Runtime readiness gates the Agent's browser capability.", setupTitle: "How the Agent uses it", setupBody: "Web tasks run through the Agent's browser capability and its atomic Browser Tools. This page no longer provides a manual debug session.", stepsTitle: "Recommended flow", stepsBody: "Confirm the runtime is ready; if not installed, download the browser runtime. Then ask the Agent in chat to open a page and complete the task.", approvalTitle: "Approval and feedback", approvalBody: "Write-capable atomic Browser Tools still pass through the existing approval flow; approval decisions and execution evidence are retained in the conversation.", boundaryTitle: "Product boundaries", boundaryBody: "This capability is for controlled browser web actions. It does not include host desktop control, credential storage, browser extension takeover, or CAPTCHA bypass.", close: "Close user guide" },
       },
     },
     tools: {
@@ -1456,7 +1442,7 @@ const settingsPending = {
         "Manage MCP marketplace discovery, third-party MCP servers, and future built-in MCP packages.",
       tabs: {
         marketplace: "Marketplace",
-        installed: "Installed",
+        installed: "My connectors",
       },
       marketplace: {
         description:
@@ -1558,17 +1544,17 @@ const settingsPending = {
         intro:
           "A quick walk-through of the MCP flow: find, install, configure, connect, discover capabilities, and understand the current boundary.",
         searchHint:
-          "Marketplace search is triggered by Enter. Typing alone will not fire the request, which keeps the UI usable even when the upstream registry is slow.",
+          "Expand search and press Enter to submit. The keyword persists across views. All and External also search the marketplace; Built-in and Installed filter local records.",
         sections: {
           search: {
             title: "Start with marketplace",
             body:
-              "Use the Marketplace tab, type a name/title/description keyword, then press Enter. Results come from the official MCP registry.",
+              "Browse marketplace entries in All or External, and open a card for details. The External view has a filter menu for categories and connection methods.",
           },
           install: {
             title: "Install",
             body:
-              "Both `streamable-http` and `stdio` servers can now be installed. A third-party disclaimer is required before enablement, and the server is then added to the installed list.",
+              "Open a marketplace card and install a supported `streamable-http` or `stdio` server from its details. Success opens management while retaining your view and search.",
           },
           config: {
             title: "Configure",
@@ -1588,7 +1574,7 @@ const settingsPending = {
           inspect: {
             title: "Inspect results",
             body:
-              "The installed list shows projected IDs, remote server info, capability summaries, error state, and current protocol status.",
+              "Installed cards show real connection state and separate Agent access. The management drawer contains projected IDs, remote server info, capabilities, and errors.",
           },
           boundary: {
             title: "Connect Agent mode",
@@ -1609,6 +1595,9 @@ const settingsPending = {
       },
       config: {
         title: "Configure {{name}}",
+        launcher: "Launcher",
+        packageLauncher: "Package launcher",
+        localLauncher: "Local launcher",
         loading: "Loading current configuration...",
         endpointUrl: "Endpoint URL",
         bearerToken: "Bearer Token",
@@ -2432,6 +2421,11 @@ const settingsPending = {
             label: "Web",
             description: "Access public web information.",
           },
+          browser: {
+            label: "Browser",
+            description:
+              "Inspect and operate an isolated Playwright session managed by Mira.",
+          },
         },
         detailTabs: {
           input: "Input",
@@ -2504,6 +2498,8 @@ const settingsPending = {
         },
         readinessReasons: {
           webSearchUnavailable: "Web Search runtime readiness is unavailable.",
+          browserUnavailable:
+            "Managed Browser runtime readiness is unavailable.",
         },
         invocation: {
           idle: "Not run",
@@ -2513,6 +2509,40 @@ const settingsPending = {
           completed: "Completed",
           failed: "Failed",
           cancelled: "Cancelled",
+        },
+        browserJourney: {
+          title: "Real Browser journey",
+          description:
+            "One Managed Browser run executes Navigate → Snapshot → Click → Snapshot → Assert. Navigate and Click stop at the real approval boundary, and Click only receives pageUrl, snapshotHash and ref from the live snapshot.",
+          steps: {
+            navigate: "Navigate",
+            snapshot: "Snapshot",
+            click: "Click",
+            observeAfterClick: "Observe after click",
+            assert: "Assert",
+          },
+          status: {
+            idle: "Not run",
+            pending: "Pending",
+            running: "Running",
+            awaiting_approval: "Awaiting Approval",
+            completed: "Completed",
+            failed: "Failed",
+            rejected: "Rejected",
+            skipped: "Skipped",
+          },
+          approval: {
+            approved: "approved",
+            rejected: "rejected",
+          },
+          actions: {
+            retry: "Retry journey",
+            reset: "Reset run",
+          },
+          labels: {
+            approval: "approval",
+            runStatus: "journey",
+          },
         },
         labels: {
           readiness: "Pre-run readiness",

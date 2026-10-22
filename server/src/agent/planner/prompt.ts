@@ -91,6 +91,7 @@ const summarizeToolSchemas = (toolExposure: AgentToolExposureState) =>
             ? "read-only or observation-only"
             : "may mutate state or spawn runtime side effects",
       },
+      disclosure: tool.inputSchema ? "schema" : "metadata",
       inputSchema: tool.inputSchema,
     };
   });
@@ -182,6 +183,7 @@ const buildProgressionRules = (input: {
     "如果上一次工具或检索失败但仍可恢复，不要默认输出 error。",
     "可恢复失败时，你可以：换参数重试同一工具、换另一个工具、先读取辅助文件或目录、ask_user，或在确实无法继续时选择 answer 并明确说明未完成项与失败影响。",
         "任何 use_tool 都只是提出动作，后续仍然必须经过 normalize / policy / approval；不要假装工具已经成功。",
+    "allowedTools 中 disclosure=metadata 且没有 inputSchema 的 Tool 只表示当前可发现、尚不可调用。如果它成为当前必要工具，可以用精确 toolId + args={} 提出 use_tool 来请求该 Tool 的 Schema；这一步只披露 Schema 并触发一次 bounded replan，不执行工具。拿到 inputSchema 后，必须在新一轮 use_tool 中提供真实参数，禁止在 Schema 披露前猜参数。",
         "不要把 WenShu Runtime invocation 改写成 terminal 命令；文档 Skill 的 Python 解释器、PYTHONPATH、脚本路径和依赖安装都不由 Planner 决定。",
     "不要无理由重复同一个失败调用；相同 toolId 只有在参数明显变化或理由明确时才能重试。",
   ];
@@ -234,7 +236,7 @@ const buildSchemaReplanMessages = (input: {
       "不要输出 Markdown，不要输出代码块，不要输出解释。",
       "当前 workspace 已绑定。",
       "如果问题明显在问本地 workspace 或本地文件，不要使用 web_search 代替本地证据路径。",
-      "如果选择 use_tool，toolId 必须来自允许工具列表，args 必须严格符合 schema。",
+      "如果选择 use_tool，toolId 必须来自 allowedTools。对 disclosure=schema 的 Tool，args 必须严格符合 inputSchema；对 disclosure=metadata 且没有 inputSchema 的 Tool，只允许用精确 toolId + args={} 请求 Schema，该请求不会执行 Tool，下一轮拿到 Schema 后再提供真实参数。",
       "toolSelectionHints 表示用户通过 @ 明确选择的工具包偏好；优先考虑其中当前已暴露的工具，但仍由你根据任务判断是否需要调用。",
       "工具包偏好不扩大允许工具列表、不绕过权限，也不保证必须调用。状态为 unavailable 或 unknown 时不得发明工具调用。",
       "Skill requirements 只是缺失条件事实；只有 Planner 可以在判断其阻塞完整目标后选择 ask_user 并组织用户问题。不要把 Skill stateRef 当作 workspace 路径。",

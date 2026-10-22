@@ -183,7 +183,7 @@ test("buildPlannerObservationContext exposes generic structured data without the
         retrievals: [],
         toolExecutions: [
           {
-            toolId: "browser_observe",
+            toolId: "browser_snapshot",
             args: { url: "https://example.com" },
             status: "completed",
             result: {
@@ -194,8 +194,8 @@ test("buildPlannerObservationContext exposes generic structured data without the
             summary: {
               source: "tool",
               status: "completed",
-              toolId: "browser_observe",
-              actionTaken: "Completed managed browser observe.",
+              toolId: "browser_snapshot",
+              actionTaken: "Completed managed browser snapshot.",
               keyFindings: ["title=Example Domain", "visibleText=Example Domain content"],
               facts: ["title=Example Domain", "visibleText=Example Domain content"],
               data: {

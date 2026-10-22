@@ -134,3 +134,37 @@ describe("planner structured output", () => {
     });
   });
 });
+
+it("lets native Planner output name a metadata-only Tool only with an empty schema-request payload", () => {
+  const progressiveExposure: AgentToolExposureState = {
+    exposedTools: ["read_open"],
+    eligibleTools: ["read_open", "later_tool"],
+    toolMeta: [
+      ...exposure.toolMeta,
+      {
+        toolId: "later_tool",
+        title: "Later Tool",
+        description: "A Tool that is discoverable but whose schema is not yet disclosed",
+        domain: "read",
+        source: "internal",
+      },
+    ],
+  };
+
+  const schema = buildPlannerStructuredOutputJsonSchema(progressiveExposure);
+  const properties = schema.properties as Record<string, any>;
+  expect(properties.toolId.anyOf[0].enum).toEqual([
+    "read_open",
+    "later_tool",
+  ]);
+
+  const argsVariants = properties.args.anyOf as Array<Record<string, any>>;
+  expect(argsVariants).toHaveLength(3);
+  expect(argsVariants[1]).toEqual({
+    type: "object",
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  });
+  expect(argsVariants[2]).toEqual({ type: "null" });
+});

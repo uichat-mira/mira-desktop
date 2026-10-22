@@ -36,11 +36,20 @@ import { computerUseRepository } from "@/db/repositories/computer-use/repository
 import { normalizeToolResult, projectToolEvidence } from "./tool-result.js";
 
 const COMPUTER_USE_TOOL_IDS = new Set([
-  "browser_observe",
-  "browser_act",
   "browser_assert",
+  "browser_navigate",
+  "browser_wait_for",
+  "browser_snapshot",
+  "browser_screenshot",
+  "browser_click",
+  "browser_fill",
+  "browser_press_key",
+  "browser_select_option",
+  "browser_scroll",
+  "browser_tabs_list",
+  "browser_tab_select",
 ]);
-const isComputerUseInvocation = (toolId: string) =>
+export const isComputerUseInvocation = (toolId: string) =>
   COMPUTER_USE_TOOL_IDS.has(toolId);
 
 const getStructuredInvocationError = (

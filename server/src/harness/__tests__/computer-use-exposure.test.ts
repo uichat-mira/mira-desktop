@@ -7,7 +7,7 @@ describe("Computer Use Harness exposure", () => {
   beforeEach(() => clearHarnessRegistry());
   afterEach(() => clearHarnessRegistry());
 
-  it("exposes browser tools for an explicit browser request without changing AgentGraph", async () => {
+  it("exposes only atomic Browser Tools to Agent intent", async () => {
     const browser = { observe: async () => ({ ok: true }), act: async () => ({ ok: true }), assert: async () => ({ ok: true }) };
     createComputerUseBrowserTools(browser as never).forEach(registerTool);
 
@@ -17,9 +17,24 @@ describe("Computer Use Harness exposure", () => {
       maxTools: 10,
     });
 
-    expect(result.toolExposure.exposedToolIds).toEqual(expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]));
-    expect(result.toolCandidates.map((candidate) => candidate.toolId)).toEqual(expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]));
-    expect(result.toolExposure.blockedCapabilityIds).not.toContain("browser_observe");
+    expect(result.toolExposure.exposedToolIds).toEqual(
+      expect.arrayContaining([
+        "browser_navigate",
+        "browser_snapshot",
+        "browser_fill",
+        "browser_click",
+        "browser_wait_for",
+        "browser_assert",
+      ]),
+    );
+    expect(result.toolExposure.exposedToolIds).not.toContain("browser_observe");
+    expect(result.toolExposure.exposedToolIds).not.toContain("browser_act");
+    expect(result.toolCandidates.map((candidate) => candidate.toolId)).not.toContain(
+      "browser_observe",
+    );
+    expect(result.toolCandidates.map((candidate) => candidate.toolId)).not.toContain(
+      "browser_act",
+    );
   });
 
   it("keeps registered browser tools visible to chat_surface", async () => {
@@ -28,7 +43,7 @@ describe("Computer Use Harness exposure", () => {
 
     const result = await resolveHarnessToolCandidatesForTurn({ source: "chat_surface", query: "打开网页读取标题" });
 
-    expect(result.toolExposure.exposedToolIds).toEqual(expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]));
+    expect(result.toolExposure.exposedToolIds).toEqual(expect.arrayContaining(["browser_navigate", "browser_snapshot", "browser_assert"]));
   });
 
   it("keeps browser tools available for a browser-intent Agent turn", async () => {
@@ -56,10 +71,22 @@ describe("Computer Use Harness exposure", () => {
     });
 
     expect(result.toolExposure.exposedToolIds).toEqual(
-      expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]),
+      expect.arrayContaining([
+        "browser_navigate",
+        "browser_snapshot",
+        "browser_fill",
+        "browser_click",
+        "browser_wait_for",
+        "browser_assert",
+      ]),
     );
-    expect(result.toolCandidates.map((candidate) => candidate.toolId)).toEqual(
-      expect.arrayContaining(["browser_observe", "browser_act", "browser_assert"]),
+    expect(result.toolExposure.exposedToolIds).not.toContain("browser_observe");
+    expect(result.toolExposure.exposedToolIds).not.toContain("browser_act");
+    expect(result.toolCandidates.map((candidate) => candidate.toolId)).not.toContain(
+      "browser_observe",
+    );
+    expect(result.toolCandidates.map((candidate) => candidate.toolId)).not.toContain(
+      "browser_act",
     );
   });
 });
