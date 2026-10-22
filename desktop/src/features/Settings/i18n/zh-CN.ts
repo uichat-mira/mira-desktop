@@ -286,7 +286,7 @@ const settingsPending = {
         },
         computerUse: {
           title: "智控",
-          description: "这是浏览器任务工作台，用来统一查看计划、审批、执行进度和证据回放。",
+          description: "管理智控网页任务使用的受管浏览器运行时，并查看当前浏览器环境状态。",
           actions: {
             open: "进入工作区",
           },
@@ -1329,27 +1329,13 @@ const settingsPending = {
           error: "错误信息",
         },
       },
-      computerUseDebugger: {
-        page: { miniTitle: "智控", title: "智控", description: "查看结构化浏览器 session 和工具执行结果。" },
-        tabs: { playwright: "Playwright" },
+      computerUseRuntime: {
+        page: { miniTitle: "智控", title: "智控", description: "管理智控执行网页任务所使用的受管浏览器运行时。" },
         runtime: { ready: "运行时已就绪", not_installed: "运行时不可用", downloading: "运行时下载中", broken: "运行时异常" },
-        model: { unavailable: "模型：未连接", connected: "模型已连接", unavailableTitle: "Model Run 不可用" },
-        runConfig: { title: "运行配置", runtime: "运行时", url: "初始 URL", allowedDomains: "允许的域名", timeout: "超时", snapshot: "快照上限", approvalPolicy: "审批策略" },
-        browserState: { title: "浏览器状态", urlLabel: "URL", titleLabel: "标题", snapshotHashLabel: "Snapshot hash", visibleText: "可见文本", screenshot: "截图", empty: "还没有观察结果。" },
-        manual: { title: "手动调试", action: "动作", ref: "元素 ref", value: "URL / 值", assertion: "断言", expected: "期望值" },
-        feedback: { title: "执行反馈", events: "事件", json: "JSON", empty: "还没有 invocation。", approval: "审批", toolArgs: "工具参数", artifacts: "产物", evidence: "证据", result: "结果" },
-        modelRun: { title: "AgentTaskModel", run: "运行模型", result: "模型运行结果" },
-        actions: { newSession: "新建 Session", inspect: "检查", execute: "执行动作", assert: "断言", approve: "批准动作", reject: "拒绝动作", stop: "停止", reset: "重置", openGuide: "使用说明", installRuntime: "下载浏览器运行时" },
+        actions: { openGuide: "使用说明", installRuntime: "下载浏览器运行时" },
         runtimeCard: { title: "浏览器运行时", description: "管理智控执行网页任务所使用的浏览器环境。", status: "当前状态", managed: "内置 Chromium", system: "系统浏览器", detected: "已检测", notDetected: "未检测到", path: "当前可执行文件", pathEmpty: "尚未解析可执行文件", reinstallTitle: "确认重新下载内置 Chromium", reinstallDescription: "已检测到内置 Chromium。继续下载会重新校验并替换当前内置浏览器文件。", systemBrowserTitle: "确认下载内置 Chromium", systemBrowserDescription: "当前环境已检测到系统浏览器。继续后仍会额外下载一份由应用管理的内置 Chromium。", confirmDownload: "继续下载", cancel: "取消" },
-        errors: { title: "Debugger 错误", requestFailed: "请求失败" },
-        common: { emptyValue: "-" },
-        runtimeOptions: { managed: "Managed Chromium", system: "系统浏览器" },
-        approvalOptions: { always: "始终审批", writeActions: "写入动作", never: "无需审批" },
-        placeholders: { url: "https://example.com", domain: "example.com", ref: "元素 ref", value: "URL 或值", expected: "期望值" },
-        actionOptions: { navigate: "导航", click: "点击", type: "输入", select: "选择", press: "按键", scroll: "滚动", wait: "等待" },
-        assertionOptions: { title: "标题", url: "URL", text: "文本", visible: "可见性", value: "值" },
-        status: { idle: "空闲", running: "运行中", failed: "失败", succeeded: "成功", awaiting_approval: "等待审批", cancelled: "已取消", pending: "处理中" },
-        guide: { brandName: "智控", title: "智控使用说明", intro: "智控通过受控浏览器完成可观察、可审批、可回放的网页操作。", capabilityTitle: "能力介绍", capabilityBody: "支持创建浏览器会话、读取页面结构和截图、执行导航与页面动作、进行页面断言，并为每次调用保留 invocation、trace 和 evidence。", environmentTitle: "环境配置", environmentBody: "运行时优先使用受管 Chromium；请填写初始 URL 和允许的域名。域名范围限制导航边界，审批策略决定写入动作是否需要人工确认。", setupTitle: "开始前准备", setupBody: "确认浏览器运行时已就绪，并连接可用的 AgentTaskModel。没有模型时仍可使用手动调试，但不能运行模型任务。", stepsTitle: "使用方法", stepsBody: "先新建 Session，再点击检查获取页面快照和 ref。选择动作并填写参数后执行；完成审批后继续观察，最后使用断言核对页面结果。", approvalTitle: "审批与反馈", approvalBody: "写入动作会进入等待审批状态。批准后才会执行，拒绝会留下明确的取消结果。右侧执行反馈可查看工具参数、状态、产物和证据。", boundaryTitle: "使用边界", boundaryBody: "当前能力面向受控浏览器网页操作，不包含宿主桌面控制、凭据托管、插件接管或 CAPTCHA 绕过。", close: "关闭使用说明" },
+        errors: { title: "智控错误", requestFailed: "请求失败" },
+        guide: { brandName: "智控", title: "智控使用说明", intro: "智控通过受管浏览器为 Agent 提供可观察、可审批、可回放的网页自动化能力。", capabilityTitle: "能力介绍", capabilityBody: "浏览器运行时由本页统一管理：检测受管 Chromium 或系统浏览器、安装或重新安装受管运行时，并展示当前可执行文件。", environmentTitle: "环境配置", environmentBody: "运行时优先使用受管 Chromium；当前平台没有托管包时可使用系统浏览器。运行时就绪是 Agent 使用浏览器能力的前置条件。", setupTitle: "Agent 使用方式", setupBody: "网页任务统一由 Agent 的 browser 能力与原子 Browser 工具执行；本页不再提供手动调试会话。", stepsTitle: "推荐流程", stepsBody: "先确认运行时已就绪；如未安装，点击下载浏览器运行时。随后在对话中让 Agent 打开网页并完成任务。", approvalTitle: "审批与反馈", approvalBody: "写入类原子 Browser 工具仍进入现有审批流程；审批决定与执行证据在对话链路中保留。", boundaryTitle: "使用边界", boundaryBody: "当前能力面向受控浏览器网页操作，不包含宿主桌面控制、凭据托管、插件接管或 CAPTCHA 绕过。", close: "关闭使用说明" },
       },
     },
     tools: {
@@ -1449,7 +1435,7 @@ const settingsPending = {
         "管理 MCP 市场、第三方 MCP server，以及后续内置 MCP 包。",
       tabs: {
         marketplace: "市场",
-        installed: "已安装",
+        installed: "我的连接器",
       },
       marketplace: {
         description:
@@ -1515,10 +1501,10 @@ const settingsPending = {
           "这里展示已经进入本地 runtime 的 third-party MCP server、连接状态和 discover 结果。",
         emptyTitle: "还没有已安装的 MCP Server",
         emptyDescription:
-          "从左侧市场选择支持 `streamable-http` 或 `stdio` 的 server 安装后，这里会显示生命周期状态。",
+          "在“市场”接入支持 streamable-http 或 stdio 的服务后，即可在这里管理。",
         refresh: "刷新",
         search: "筛选",
-        searchPlaceholder: "筛选名称、描述、Endpoint 或能力 ID",
+        searchPlaceholder: "搜索连接器名称、描述或能力 ID",
         configure: "配置",
         connect: "连接",
         discover: "Discover",
@@ -1550,15 +1536,15 @@ const settingsPending = {
         intro:
           "这里帮你快速走完一次完整的 MCP 使用流程：找、装、配、连、发现能力，再确认当前边界。",
         searchHint:
-          "市场搜索需要回车触发；输入后按 Enter 才会请求官方 registry，上游响应慢时也不会边打字边卡住。",
+          "点击搜索图标输入关键词，按 Enter 提交；切换视图保留关键词。全部和外部视图同时搜索市场，内置和已接入视图只筛选本地列表。",
         sections: {
           search: {
             title: "先找市场",
-            body: "切到“市场”页，输入名称、标题或描述关键词后按回车搜索。结果来自官方 MCP registry。",
+            body: "在“全部”或“外部”视图浏览市场条目，点击整张卡片查看详情。外部视图可通过筛选菜单选择分类和接入方式。",
           },
           install: {
             title: "再安装",
-            body: "现在支持安装 `streamable-http` 和 `stdio` 两类 server。安装前会做第三方免责确认，安装后会进入本地已安装列表。",
+            body: "支持接入 `streamable-http` 和 `stdio` 两类 server。在详情中点击接入，成功后打开管理抽屉，当前视图和搜索条件保持不变。",
           },
           config: {
             title: "配置参数",
@@ -1574,7 +1560,7 @@ const settingsPending = {
           },
           inspect: {
             title: "查看结果",
-            body: "已安装列表里可以看到 projected ID、远端 serverInfo、能力摘要、错误信息和当前协议状态。",
+            body: "已接入卡片展示真实连接状态和独立的 Agent 使用权限；管理抽屉中可查看 projected ID、远端 serverInfo、能力明细和错误。",
           },
           boundary: {
             title: "连接 Agent 模式",
@@ -1594,6 +1580,9 @@ const settingsPending = {
       },
       config: {
         title: "配置 {{name}}",
+        launcher: "启动器",
+        packageLauncher: "包启动器",
+        localLauncher: "本地启动器",
         loading: "正在读取当前配置...",
         endpointUrl: "Endpoint URL",
         bearerToken: "Bearer Token",
@@ -2391,6 +2380,10 @@ const settingsPending = {
             label: "网络",
             description: "访问公开 Web 信息。",
           },
+          browser: {
+            label: "浏览器",
+            description: "检查并操作由 Mira 管理的独立 Playwright 会话。",
+          },
         },
         detailTabs: {
           input: "输入",
@@ -2463,6 +2456,7 @@ const settingsPending = {
         },
         readinessReasons: {
           webSearchUnavailable: "Web Search 运行时状态不可用。",
+          browserUnavailable: "Managed Browser 运行时状态不可用。",
         },
         invocation: {
           idle: "Not run",
@@ -2472,6 +2466,40 @@ const settingsPending = {
           completed: "Completed",
           failed: "Failed",
           cancelled: "Cancelled",
+        },
+        browserJourney: {
+          title: "真实 Browser 连续流程",
+          description:
+            "同一个 Managed Browser run 依次执行 Navigate → Snapshot → Click → Snapshot → Assert。Navigate 与 Click 都停在真实审批边界；Click 只接收实时快照返回的 pageUrl、snapshotHash 与 ref。",
+          steps: {
+            navigate: "Navigate",
+            snapshot: "Snapshot",
+            click: "Click",
+            observeAfterClick: "点击后重新观察",
+            assert: "Assert",
+          },
+          status: {
+            idle: "未运行",
+            pending: "待执行",
+            running: "运行中",
+            awaiting_approval: "等待审批",
+            completed: "已完成",
+            failed: "失败",
+            rejected: "已拒绝",
+            skipped: "已跳过",
+          },
+          approval: {
+            approved: "已批准",
+            rejected: "已拒绝",
+          },
+          actions: {
+            retry: "重试流程",
+            reset: "重置 Run",
+          },
+          labels: {
+            approval: "审批",
+            runStatus: "流程",
+          },
         },
         labels: {
           readiness: "运行前状态",

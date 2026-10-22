@@ -11,11 +11,16 @@ import {
   projectCapabilityToolMetadata,
   promoteCapabilitySchema,
   type CapabilityDisclosureTransition,
+  type CapabilityToolMetadata,
 } from "@/harness/capability-disclosure";
 import { listToolDefinitions } from "@/harness/registry";
 import { reconcileWenshuOfficeHarnessCapabilities } from "@/harness/wenshu-office-capability";
-import { resolveHarnessCapabilityProfiles } from "@/harness/profiles";
 import {
+  createHarnessCapabilityProfileKeyIndex,
+  resolveHarnessCapabilityProfiles,
+} from "@/harness/profiles";
+import {
+  createCapabilityDisclosureToolIdResolver,
   createCapabilityToolIdResolver,
   createProgressiveResolutionState,
   readCapabilityDisclosure,
@@ -78,9 +83,19 @@ const resolveRequestedToolGroupHints = (
   definitions: ReturnType<typeof listToolDefinitions>,
   requestedGroupIds: string[] | undefined,
 ): AgentRequestedToolGroupHint[] => {
+  // Declared Profile aliases are compatibility identities, not separate
+  // toolkits: resolve them to the canonical profile before grouping so an older
+  // `requestedToolGroupIds` entry maps to the same workbench group and never
+  // creates a duplicate group.
+  const profileKeyIndex = createHarnessCapabilityProfileKeyIndex(
+    resolveHarnessCapabilityProfiles(definitions),
+  );
   const requested = [
     ...new Set(
-      (requestedGroupIds ?? []).map((groupId) => groupId.trim()).filter(Boolean),
+      (requestedGroupIds ?? [])
+        .map((groupId) => groupId.trim())
+        .filter(Boolean)
+        .map((groupId) => profileKeyIndex.get(groupId)?.id ?? groupId),
     ),
   ];
   if (requested.length === 0) return [];
@@ -149,32 +164,38 @@ const resolveRequestedToolGroupAvailability = (
 
 const toAgentToolExposureState = (
   exposedToolIds: string[],
-  exposedDefinitions: Array<
-    Awaited<ReturnType<typeof matchToolCandidatesByEmbedding>>["toolExposure"]["exposedDefinitions"][number]
-  >,
+  compactMetadata: readonly CapabilityToolMetadata[],
+  definitions: ReturnType<typeof listToolDefinitions>,
   requestedToolGroups: AgentRequestedToolGroupHint[],
   eligibleToolIds: string[],
   schemaDisclosedToolIds: ReadonlySet<string>,
-) => ({
-  exposedTools: exposedToolIds,
-  toolMeta: exposedDefinitions.map((definition) => ({
-    toolId: definition.id,
-    title: definition.title,
-    description: definition.description,
-    // Full schema is a disclosure stage, not an automatic property of exposure.
-    // Only Tools promoted to the schema stage carry their input schema; a Tool
-    // that never reached schema disclosure stays compact metadata only.
-    ...(schemaDisclosedToolIds.has(definition.id)
-      ? { inputSchema: definition.inputSchema }
-      : {}),
-    domain: definition.domain,
-    source: definition.source,
-    tags: definition.tags,
-    capabilities: definition.capabilities,
-  })),
-  eligibleTools: eligibleToolIds,
-  ...(requestedToolGroups.length > 0 ? { requestedToolGroups } : {}),
-});
+) => {
+  const definitionsById = new Map(
+    definitions.map((definition) => [definition.id, definition]),
+  );
+  return {
+    exposedTools: exposedToolIds,
+    toolMeta: compactMetadata.map((metadata) => {
+      const definition = definitionsById.get(metadata.capabilityId);
+      return {
+        toolId: metadata.capabilityId,
+        title: metadata.title,
+        description: metadata.description,
+        // Compact metadata remains Planner-visible even before schema
+        // disclosure. Only schema-stage Tools become callable.
+        ...(schemaDisclosedToolIds.has(metadata.capabilityId) && definition
+          ? { inputSchema: definition.inputSchema }
+          : {}),
+        domain: metadata.domain,
+        source: metadata.source,
+        tags: [...metadata.tags],
+        capabilities: { ...metadata.capabilities },
+      };
+    }),
+    eligibleTools: eligibleToolIds,
+    ...(requestedToolGroups.length > 0 ? { requestedToolGroups } : {}),
+  };
+};
 
 const mergeCapabilityDefinitions = (
   registryDefinitions: ReturnType<typeof listToolDefinitions>,
@@ -495,6 +516,8 @@ export const prepareContextNode = async (
   const capabilityProfiles = resolveHarnessCapabilityProfiles(capabilityDefinitions);
   const resolveCapabilityToolIds =
     createCapabilityToolIdResolver(capabilityProfiles);
+  const resolveCapabilityDisclosureToolIds =
+    createCapabilityDisclosureToolIdResolver(capabilityProfiles);
 
   const initialMainAgentCapabilityView = projectAgentCapabilityView({
     scope: createMainAgentCapabilityScope({
@@ -575,9 +598,9 @@ export const prepareContextNode = async (
   // View, but schema disclosure is on demand:
   //
   // - the deterministic-first resolver selects the capability this turn needs;
-  //   exactly that capability's supporting Tools are promoted and each newly
-  //   disclosed Tool spends one budget step. This holds whether the eligible
-  //   surface is larger or smaller than the Planner disclosure limit: a small
+  //   exactly that capability's declared disclosure Tools are promoted and each
+  //   newly disclosed Tool spends one budget step. This holds whether the
+  //   eligible surface is larger or smaller than the Planner disclosure limit: a small
   //   catalog is cheap to *discover*, not automatically *selected*, so a <=20
   //   surface never eager-materializes every schema for free;
   // - Tools already disclosed are idempotent and free, so ordinary continuation
@@ -614,13 +637,14 @@ export const prepareContextNode = async (
   // disclosure. Ranked candidates below the selection are retained for trace /
   // metadata / diagnostics only and must never be materialized or charged: the
   // resolver reports grouped capability ids (for example `workspace_lookup`),
-  // so the selected capability is expanded to its canonical supporting Tool ids
-  // through the same Profile -> supportingToolIds mapping used for
-  // reconciliation. A turn without a confident selection discloses nothing new
-  // instead of eagerly materializing the whole catalog.
+  // so the selected capability expands through its declared disclosure subset.
+  // Profiles without an explicit subset keep the existing supporting-Tool
+  // behavior; opt-in profiles such as `browser` can own a large family without
+  // eagerly materializing the whole catalog. A turn without a confident
+  // selection discloses nothing new.
   const selectedCapabilityId = matcherResult.resolution?.selectedCapabilityId;
   const resolutionSelectedToolIds = selectedCapabilityId
-    ? resolveCapabilityToolIds(selectedCapabilityId)
+    ? resolveCapabilityDisclosureToolIds(selectedCapabilityId)
     : [];
   for (const toolId of resolutionSelectedToolIds) addSchemaTarget(toolId);
 
@@ -659,18 +683,10 @@ export const prepareContextNode = async (
     capabilityDefinitions,
   );
 
-  const capabilityDefinitionsById = new Map(
-    capabilityDefinitions.map((definition) => [definition.id, definition]),
-  );
-  const schemaDisclosedDefinitions = [...schemaDisclosedToolIds].flatMap(
-    (toolId) => {
-      const definition = capabilityDefinitionsById.get(toolId);
-      return definition ? [definition] : [];
-    },
-  );
   const toolExposure = toAgentToolExposureState(
     [...schemaDisclosedToolIds],
-    schemaDisclosedDefinitions,
+    compactCapabilityMetadata,
+    capabilityDefinitions,
     requestedToolGroupsWithAvailability,
     currentEligibleToolIds,
     schemaDisclosedToolIds,

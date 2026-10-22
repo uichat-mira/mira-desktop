@@ -1,5 +1,21 @@
 import type { ExternalMcpServerRecord } from "@/shared/api/tools";
-import type { CapabilityAcceptanceCase } from "./types";
+import type {
+  BrowserJourneySpec,
+  CapabilityAcceptanceCase,
+} from "./types";
+
+// Selenium's maintained web-form page is an automation fixture with a stable
+// heading, Submit button and same-origin target page. The journey never edits
+// pageUrl/ref by hand: both come from the live snapshot result.
+export const BROWSER_JOURNEY_SOURCE_URL =
+  "https://www.selenium.dev/selenium/web/web-form.html";
+
+export const browserJourneySpec: BrowserJourneySpec = {
+  startUrl: BROWSER_JOURNEY_SOURCE_URL,
+  snapshot: { includeVisibleText: true, maxSnapshotChars: 4000 },
+  clickTarget: { role: "button", name: "Submit" },
+  assertion: { kind: "title", expected: "Web form - target page" },
+};
 
 const fixturePath = (fixtureId: string, relativePath: string) =>
   `.tool-lab-fixtures/${fixtureId}/${relativePath}`;
@@ -580,6 +596,21 @@ export const nativeCapabilityAcceptanceCases: CapabilityAcceptanceCase[] = [
     },
     group: "Universal Web",
     workspace: "none",
+  },
+  {
+    id: "browser-approval-journey",
+    toolId: "browser_navigate",
+    title: "Browser 连续验收",
+    purpose:
+      "在同一个 Managed Browser run 中执行 Navigate → Snapshot → Click → 重新 Snapshot → Assert，并使用真实页面事实。",
+    expectedObservation:
+      "Navigate 与 Click 各自停在真实 Approval；批准后 Snapshot 返回真实 pageUrl/snapshotHash/ref，Click 只使用该快照的 ref，重新观察后 Assert 验证最终页面标题。",
+    args: {
+      url: browserJourneySpec.startUrl,
+    },
+    group: "Browser",
+    workspace: "none",
+    browserJourney: browserJourneySpec,
   },
 ];
 

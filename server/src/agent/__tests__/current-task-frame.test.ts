@@ -261,6 +261,15 @@ test("prepareContextNode initializes runtime toolExposure independently from too
           tags: ["read"],
           capabilities: { sideEffect: "none", requiresApproval: false },
         },
+        {
+          toolId: "diagnostic_tool",
+          title: "diagnostic_tool",
+          description: "diagnostic_tool",
+          domain: "research",
+          source: "internal",
+          tags: ["research"],
+          capabilities: { sideEffect: "none", requiresApproval: false },
+        },
       ],
       eligibleTools: ["read_open", "diagnostic_tool"],
     });
@@ -294,7 +303,7 @@ test("prepareContextNode initializes runtime toolExposure independently from too
     assert.deepEqual(payload.toolExposure.exposedTools, ["read_open"]);
     assert.deepEqual(
       payload.toolExposure.toolMeta.map((tool) => tool.toolId),
-      ["read_open"],
+      ["read_open", "diagnostic_tool"],
     );
   } finally {
     matcherSpy.mockRestore();
@@ -337,9 +346,10 @@ test("prepareContextNode discloses metadata for every eligible Tool but material
     assert.deepEqual(patch.toolExposure?.exposedTools, ["read_open"]);
     assert.deepEqual(
       patch.toolExposure?.toolMeta.map((tool) => tool.toolId),
-      ["read_open"],
+      ["read_open", "web_search"],
     );
     assert.ok(patch.toolExposure?.toolMeta[0]?.inputSchema);
+    assert.equal(patch.toolExposure?.toolMeta[1]?.inputSchema, undefined);
 
     const details = events[events.length - 1]?.details ?? {};
     assert.equal(details.capabilityMetadataDisclosedCount, 2);

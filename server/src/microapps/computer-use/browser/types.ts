@@ -22,6 +22,7 @@ export type BrowserInspectInput = {
 export type BrowserAction =
   | { kind: "navigate"; url: string }
   | { kind: "click"; ref: string }
+  | { kind: "fill"; ref: string; value: string }
   | { kind: "type"; ref: string; text: string }
   | { kind: "select"; ref: string; value: string }
   | { kind: "press"; ref: string; key: string }
@@ -33,6 +34,38 @@ export type BrowserActInput = {
   pageUrl: string;
   snapshotHash: string;
   action: BrowserAction;
+};
+
+export type BrowserNavigateInput = {
+  sessionId: string;
+  url: string;
+};
+
+export type BrowserTabsListInput = {
+  sessionId: string;
+};
+
+export type BrowserTabSelectInput = {
+  sessionId: string;
+  tabId: string;
+};
+
+export type BrowserTab = {
+  id: string;
+  title: string;
+  url: string;
+  selected: boolean;
+};
+
+export type BrowserWaitCondition =
+  | { kind: "text"; value: string }
+  | { kind: "url"; value: string }
+  | { kind: "visible"; ref: string; pageUrl: string; snapshotHash: string };
+
+export type BrowserWaitInput = {
+  sessionId: string;
+  condition: BrowserWaitCondition;
+  timeoutMs?: number;
 };
 
 export type BrowserAssertion =
@@ -71,12 +104,20 @@ export type BrowserToolResult = {
   sessionId: string;
   invocationId: string;
   page: BrowserPageState;
+  tabs?: BrowserTab[];
+  tabsTruncated?: boolean;
   observation?: {
     snapshot?: string;
     visibleText?: string;
     truncated?: boolean;
   };
   assertion?: { kind: BrowserAssertion["kind"]; passed: boolean };
+  scroll?: {
+    requested: { x: number; y: number };
+    before: { x: number; y: number };
+    after: { x: number; y: number };
+    moved: boolean;
+  };
   artifacts: BrowserArtifact[];
   error?: BrowserToolError;
 };

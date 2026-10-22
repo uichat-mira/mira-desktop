@@ -9,22 +9,13 @@ import swaggerUi from "@fastify/swagger-ui";
 import fs from "node:fs/promises";
 import path from "node:path";
 import fsSync from "node:fs";
-import crypto from "node:crypto";
 import {
-  createComputerUsePlan,
-  createComputerUseService,
-  type ComputerUseExecutor,
   type ComputerUseRuntimeState,
-  type ComputerUseTask,
-  type ComputerUseTaskError,
 } from "@/microapps/computer-use/index.js";
 import { ComputerUseRuntimeManager } from "@/microapps/computer-use/runtime/manager.js";
 import { BrowserSessionManager } from "@/microapps/computer-use/session/manager.js";
 import { BrowserService } from "@/microapps/computer-use/browser/service.js";
-import { createComputerUseDebuggerService } from "@/routes/microapps/computer-use/debugger-service.js";
 import { createComputerUseBrowserTools } from "@/mcp/tools/browser-tools.tool.js";
-import { ComputerUseModelExecutor } from "@/agent/computer-use/model-loop.js";
-import { runComputerUseActions } from "@/microapps/computer-use/executor/runner.js";
 import {
   createComfyUiLocalAdapter,
   createOpenAiImagesAdapter,
@@ -114,7 +105,6 @@ import { managedMediaCleanupService } from "@/services/managed-media-cleanup.ser
 import { microAppCapabilityBindingsRepository } from "@/db/repositories/micro-app-capability-bindings.repository.js";
 import { ttsRefAudiosRepository } from "@/db/repositories/tts-ref-audios.repository.js";
 import { ttsRefAudioBindingsRepository } from "@/db/repositories/tts-ref-audio-bindings.repository.js";
-import { resolveAgentTaskProvider } from "@/services/provider-proxy.service/resolution.js";
 import { initializeVectorStore } from "@/db";
 import CONFIG from "@/config";
 import { isAuthExemptPath, OPENAPI_PUBLIC_TAGS } from "@/config/public-api.js";
@@ -135,9 +125,10 @@ import {
   migrateLegacyMicroAppBindings,
 } from "@/microapps/legacy-sync.js";
 import { reconcileCodeGraphHarnessCapability } from "@/harness/codegraph-capability.js";
+import { createManagedBrowserRuntimeReadinessResolver } from "@/harness/managed-browser-readiness.js";
 import { getToolImplementation } from "@/harness/registry.js";
 import { registerTool } from "@/harness/registry.js";
-import { computerUseRepository, createPersistentComputerUseTaskStore, createPersistentComputerUseEvidenceStore } from "@/db/repositories/computer-use/repository.js";
+import { computerUseRepository } from "@/db/repositories/computer-use/repository.js";
 import {
   initializeForgeRuntime,
   shutdownForgeRuntime,
@@ -254,8 +245,10 @@ const computerUseBrowserSessions = new BrowserSessionManager({
   artifactRoot: path.join(computerUseArtifactRoot, "browser"),
 });
 const computerUseBrowserService = new BrowserService(computerUseBrowserSessions);
+const resolveComputerUseBrowserReadiness =
+  createManagedBrowserRuntimeReadinessResolver(computerUseRuntimeManager);
 for (const tool of createComputerUseBrowserTools(computerUseBrowserService, { sessionManager: computerUseBrowserSessions })) {
-  registerTool(tool);
+  registerTool(tool, { resolveReadiness: resolveComputerUseBrowserReadiness });
 }
 const nowIso = () => new Date().toISOString();
 
@@ -289,260 +282,6 @@ const toComputerUseRuntimeState = (
     },
   };
 };
-
-const extractFirstUrl = (input: string) => {
-  const matched = input.match(/https?:\/\/[^\s]+/i);
-  return matched?.[0];
-};
-
-const normalizeSiteTarget = (value?: string) => {
-  if (!value) {
-    return undefined;
-  }
-  if (/^https?:\/\//i.test(value)) {
-    return value;
-  }
-  return `https://${value}`;
-};
-
-const resolveTargetUrl = (task: ComputerUseTask) =>
-  extractFirstUrl(task.goal) ?? normalizeSiteTarget(task.siteScope[0]);
-
-const createApprovalRequest = (task: ComputerUseTask) => ({
-  id: `approval_${crypto.randomUUID()}`,
-  stepId: "step-submit",
-  status: "pending" as const,
-  title: "Approve browser task execution",
-  reason:
-    "This browser task may navigate, click, or submit data on an external site.",
-  requestedAt: nowIso(),
-  requestedBy: task.requestedBy,
-});
-
-const createBlockedResult = (
-  summary: string,
-  error: ComputerUseTaskError,
-  completedAt: string,
-) => ({
-  status: "blocked" as const,
-  summary,
-  completedAt,
-  error,
-});
-
-const executeBrowserTask = async (
-  task: ComputerUseTask,
-  runtime: ComputerUseRuntimeState,
-) => {
-  const checkedAt = nowIso();
-  const executablePath =
-    typeof runtime.details?.executablePath === "string"
-      ? runtime.details.executablePath
-      : undefined;
-  const targetUrl = resolveTargetUrl(task);
-
-  if (!executablePath || !targetUrl) {
-    const completedAt = nowIso();
-    return {
-      status: "blocked" as const,
-      currentStepId: "step-open",
-      evidenceEntries: [
-        {
-          id: `evidence_${crypto.randomUUID()}`,
-          kind: "error" as const,
-          message: !targetUrl
-            ? "Task is missing a concrete target URL or site scope."
-            : "Runtime is ready but executablePath is unavailable.",
-          createdAt: checkedAt,
-          stepId: "step-open",
-        },
-      ],
-      result: createBlockedResult(
-        !targetUrl
-          ? "Task is blocked because no target URL or site scope was provided."
-          : "Task is blocked because the runtime executable path is unavailable.",
-        {
-          code: !targetUrl
-            ? "COMPUTER_USE_TARGET_REQUIRED"
-            : "COMPUTER_USE_RUNTIME_EXECUTABLE_MISSING",
-          message: !targetUrl
-            ? "Provide a URL in the goal or a siteScope entry before starting the task."
-            : "Runtime executablePath is missing from the resolved runtime state.",
-        },
-        completedAt,
-      ),
-      meta: {
-        checkedAt,
-      },
-    };
-  }
-
-  const artifactDir = path.join(computerUseArtifactRoot, "tasks", task.id);
-  const execution = await runComputerUseActions(
-    [
-      { kind: "navigate", url: targetUrl, waitUntil: "load" },
-      {
-        kind: "capture",
-        artifactPath: path.join(task.id, "landing-page.png"),
-      },
-      {
-        kind: "finish",
-        summary: `Opened ${targetUrl} and captured the landing page.`,
-      },
-    ],
-    {
-      artifactRoot: artifactDir,
-      executablePath,
-      headless: true,
-    },
-  );
-
-  const finishedAt = nowIso();
-  const capturePath = execution.captures[0];
-
-  return {
-    status: "succeeded" as const,
-    currentStepId: "step-open",
-    evidenceEntries: execution.steps.map((step, index) => ({
-      id: `evidence_${crypto.randomUUID()}`,
-      kind: "action" as const,
-      message: step.detail,
-      createdAt: checkedAt,
-      stepId: index === execution.steps.length - 1 ? "step-capture" : "step-open",
-    })),
-    artifacts: capturePath
-      ? [
-          {
-            id: `artifact_${crypto.randomUUID()}`,
-            kind: "screenshot" as const,
-            label: "Landing page capture",
-            filePath: capturePath,
-            createdAt: finishedAt,
-          },
-        ]
-      : [],
-    result: {
-      status: "succeeded" as const,
-      summary:
-        execution.finishSummary ??
-        `Opened ${targetUrl} and captured the landing page.`,
-      completedAt: finishedAt,
-      finalUrl: execution.finalUrl,
-    },
-  };
-};
-
-const fixedRuleComputerUseExecutor: ComputerUseExecutor = {
-  async createPlan({ goal, siteScope }) {
-    const targetUrl = extractFirstUrl(goal) ?? normalizeSiteTarget(siteScope[0]);
-    return createComputerUsePlan({
-      createdAt: nowIso(),
-      summary: targetUrl
-        ? `Open ${targetUrl}, observe the page state, and capture a screenshot.`
-        : "Resolve the target site, open it in the managed browser, and capture a screenshot.",
-      steps: [
-        {
-          id: "step-open",
-          title: "Open target page",
-          description: targetUrl
-            ? `Navigate to ${targetUrl}.`
-            : "Navigate to the requested target page.",
-          status: "pending",
-          requiresApproval: false,
-        },
-        {
-          id: "step-capture",
-          title: "Capture evidence",
-          description: "Capture a screenshot after the page loads.",
-          status: "pending",
-          requiresApproval: false,
-        },
-        {
-          id: "step-submit",
-          title: "Approve high-risk browser actions",
-          description:
-            "If the task needs clicks, typing, or data submission, require explicit approval before continuing.",
-          status: "pending",
-          requiresApproval: true,
-          approvalReason:
-            "Browser tasks may trigger clicks or send data to an external site.",
-        },
-      ],
-      riskSummary:
-        "第一阶段 server 只自动执行受控打开页和截图；后续点击、输入、提交属于需要审批的高风险动作。",
-    });
-  },
-  async runTask({ task, runtime }) {
-    const goalLower = task.goal.toLowerCase();
-    const needsApproval =
-      goalLower.includes("submit") ||
-      goalLower.includes("send") ||
-      goalLower.includes("login") ||
-      goalLower.includes("purchase") ||
-      goalLower.includes("delete");
-
-    if (needsApproval) {
-      return {
-        status: "awaiting_approval" as const,
-        currentStepId: "step-submit",
-        evidenceEntries: [
-          {
-            id: `evidence_${crypto.randomUUID()}`,
-            kind: "approval" as const,
-            message:
-              "Task paused before high-risk browser actions and is waiting for approval.",
-            createdAt: nowIso(),
-            stepId: "step-submit",
-          },
-        ],
-        approvalRequest: createApprovalRequest(task),
-      };
-    }
-
-    return executeBrowserTask(task, runtime);
-  },
-  async resumeTask({ task, runtime }) {
-    return executeBrowserTask(task, runtime);
-  },
-  async cancelTask() {
-    return;
-  },
-};
-
-const computerUseDebuggerService = createComputerUseDebuggerService({
-  sessions: computerUseBrowserSessions,
-  browser: computerUseBrowserService,
-  runtimeStatus: () => toComputerUseRuntimeState(nowIso()),
-  modelStatus: () => {
-    try {
-      const provider = resolveAgentTaskProvider("default");
-      return { status: "connected" as const, message: `AgentTaskModel: ${provider.providerCode} / ${provider.model}` };
-    } catch (error) {
-      return { status: "unavailable" as const, message: error instanceof Error ? error.message : "AgentTaskModel is not configured." };
-    }
-  },
-});
-
-const computerUseExecutor: ComputerUseExecutor = new ComputerUseModelExecutor({
-  browserSessionManager: computerUseBrowserSessions,
-  approvedInvocations: (task) => task.approvals.flatMap((approval) => {
-    const meta = approval.meta;
-    return approval.status === "approved" && typeof meta?.toolId === "string" && typeof meta.inputHash === "string"
-      ? [{ toolId: meta.toolId, inputHash: meta.inputHash }]
-      : [];
-  }),
-});
-
-const computerUseService = createComputerUseService({
-  runtimeManager: {
-    async getRuntimeState() {
-      return toComputerUseRuntimeState(nowIso());
-    },
-  },
-  executor: computerUseExecutor,
-  evidenceStore: createPersistentComputerUseEvidenceStore(),
-  taskStore: createPersistentComputerUseTaskStore(),
-});
 
 const computerUseRuntimeService = {
   async getRuntimeState() {
@@ -759,9 +498,7 @@ const setupRoutes = async () => {
   await app.register(microappsRoute, {
     imageGenerationService,
     comfyUiStudioService,
-    computerUseService,
     computerUseRuntimeService,
-    computerUseDebuggerService,
     codeGraphStudioService,
     mailCenterService,
     newsHubService,

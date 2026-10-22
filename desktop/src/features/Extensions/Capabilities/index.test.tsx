@@ -17,6 +17,7 @@ const resolveApproval = vi.fn();
 const runTerminalContinuation = vi.fn();
 const runTerminalStatus = vi.fn();
 const runTerminalStop = vi.fn();
+const resetBrowserJourneyRun = vi.fn();
 const webSearchConfigState = {
   config: { apiKey: "saved-key", baseUrl: "", maxResults: 4 },
   isLoading: false,
@@ -26,6 +27,36 @@ const webSearchConfigState = {
 };
 
 const capabilities = {
+  browserJourney: {
+    status: "idle" as
+      | "idle"
+      | "running"
+      | "awaiting_approval"
+      | "completed"
+      | "failed"
+      | "rejected",
+    handle: null as string | null,
+    spec: null as null | {
+      startUrl: string;
+      clickTarget: { role: "button" | "link"; name: string };
+      assertion: { kind: "title" | "url" | "text"; expected: string };
+    },
+    steps: [] as Array<{
+      id: string;
+      toolId: string;
+      status: string;
+      invocationId: string | null;
+      approvalInvocationId: string | null;
+      approvalDecision: string | null;
+      resultOk: boolean | null;
+      sessionId: string | null;
+      page: { url: string; title: string; snapshotHash?: string } | null;
+      ref: string | null;
+      assertion: { kind: string; passed: boolean } | null;
+      error: { code: string; message: string } | null;
+    }>,
+    error: null as null | { code: string; message: string },
+  },
   canOpenManual: true,
   cases: [
     {
@@ -128,6 +159,7 @@ const capabilities = {
     source: "selected" as const,
   },
   refresh: vi.fn(),
+  resetBrowserJourneyRun,
   resolveApproval,
   runCase,
   runSelectedCase,
@@ -149,6 +181,8 @@ vi.mock("react-i18next", () => ({
       "settings.development.capabilities.groups.terminal.description": "Run governed terminal operations.",
       "settings.development.capabilities.groups.web.label": "Web",
       "settings.development.capabilities.groups.web.description": "Access public web information.",
+      "settings.development.capabilities.groups.browser.label": "Browser",
+      "settings.development.capabilities.groups.browser.description": "Inspect and operate an isolated Playwright session managed by Mira.",
       "settings.development.capabilities.console.toolRun": "tool run",
       "settings.development.capabilities.console.status": "status",
       "settings.development.capabilities.console.scope": "scope",
@@ -248,7 +282,7 @@ describe("CapabilitiesPage", () => {
       sourceInfo: {
         kind: "external_mcp" as const,
         label: "External MCP · GitHub",
-        settingsPath: "/settings/mcp",
+        settingsPath: "/extensions/connectors",
       },
       externalServerId: "github",
     };
@@ -288,6 +322,292 @@ describe("CapabilitiesPage", () => {
       label: "Read",
       description: "Read and inspect workspace content.",
     });
+  });
+
+  it("keeps Browser Tool navigation and details usable without a preset acceptance case", async () => {
+    const browserTool = {
+      ...capabilities.selectedTool,
+      id: "browser_navigate",
+      title: "Browser Navigate",
+      description: "Navigate within a managed browser session.",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Managed Browser tools.",
+        groupOrder: 50,
+        icon: "mouse-pointer",
+      },
+    };
+    capabilities.tools = [browserTool];
+    capabilities.selectedTool = browserTool;
+    capabilities.cases = [];
+    capabilities.toolCases = [];
+    capabilities.selectedCase = null as never;
+
+    const user = userEvent.setup();
+    render(<MemoryRouter><CapabilitiesPage /></MemoryRouter>);
+
+    expect(screen.getByText("Browser")).toBeInTheDocument();
+    expect(screen.getAllByText("Browser Navigate").length).toBeGreaterThan(0);
+    expect(screen.getByText("settings.development.capabilities.noCases")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "工具详情" }));
+    expect(screen.getByText("Navigate within a managed browser session.")).toBeInTheDocument();
+  });
+
+  it("groups Managed Browser from backend Workbench ownership, separate from Web and 触界", () => {
+    const translate = (key: string) =>
+      ({
+        "settings.development.capabilities.groups.web.label": "Web",
+        "settings.development.capabilities.groups.web.description":
+          "Access public web information.",
+        "settings.development.capabilities.groups.browser.label": "Browser",
+        "settings.development.capabilities.groups.browser.description":
+          "Inspect and operate an isolated Playwright session managed by Mira.",
+      })[key] ?? key;
+    const browserTool = {
+      ...capabilities.selectedTool,
+      id: "browser_snapshot",
+      title: "Browser Snapshot",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Playwright / Managed Browser 浏览器自动化工具。",
+        groupOrder: 50,
+        icon: "mouse-pointer",
+      },
+    };
+    const webTool = {
+      ...capabilities.selectedTool,
+      id: "web_search",
+      title: "Web Search",
+      domain: "web_search",
+      workbench: {
+        groupId: "web_search",
+        groupLabel: "网络搜索",
+        groupDescription: "公网实时搜索。",
+        groupOrder: 30,
+        icon: "globe",
+      },
+    };
+    const attachedTool = {
+      ...capabilities.selectedTool,
+      id: "browser_attached_look",
+      title: "Attached Browser Look",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser_attached",
+        groupLabel: "触界",
+        groupDescription: "通过 Chrome Extension 操作用户已连接的真实浏览器。",
+        groupOrder: 60,
+        icon: "globe",
+      },
+    };
+
+    const groups = buildCapabilityGroups(
+      [browserTool, webTool, attachedTool],
+      translate,
+    );
+    const browserGroup = groups.find((group) => group.id === "native:browser");
+    const webGroup = groups.find((group) => group.id === "native:web_search");
+    const attachedGroup = groups.find(
+      (group) => group.id === "native:browser_attached",
+    );
+
+    expect(browserGroup).toMatchObject({
+      label: "Browser",
+      icon: "mouse-pointer",
+      kind: "native",
+    });
+    expect(browserGroup?.tools.map((tool) => tool.id)).toEqual([
+      "browser_snapshot",
+    ]);
+    expect(webGroup).toMatchObject({ label: "Web" });
+    expect(attachedGroup).toMatchObject({ label: "触界" });
+    expect(new Set(groups.map((group) => group.id)).size).toBe(groups.length);
+  });
+
+  it("renders the real Browser journey steps with invocation ids, approvals and page facts", async () => {
+    const navigateTool = {
+      ...capabilities.selectedTool,
+      id: "browser_navigate",
+      title: "Browser Navigate",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Managed Browser tools.",
+        groupOrder: 50,
+        icon: "mouse-pointer",
+      },
+    };
+    const journeyCase = {
+      ...capabilities.selectedCase,
+      id: "browser-approval-journey",
+      toolId: "browser_navigate",
+      title: "Browser 连续验收",
+      group: "Browser",
+      args: {
+        url: "https://www.selenium.dev/selenium/web/web-form.html",
+      },
+      browserJourney: {
+        startUrl: "https://www.selenium.dev/selenium/web/web-form.html",
+        clickTarget: { role: "button" as const, name: "Submit" },
+        assertion: { kind: "title" as const, expected: "Web form - target page" },
+      },
+    };
+    capabilities.tools = [navigateTool];
+    capabilities.selectedTool = navigateTool;
+    capabilities.cases = [journeyCase];
+    capabilities.toolCases = [journeyCase];
+    capabilities.selectedCase = journeyCase;
+    capabilities.browserJourney = {
+      status: "failed",
+      handle: null,
+      spec: journeyCase.browserJourney,
+      steps: [
+        {
+          id: "navigate",
+          toolId: "browser_navigate",
+          status: "completed",
+          invocationId: "inv-navigate",
+          approvalInvocationId: "inv-navigate-pending",
+          approvalDecision: "approved",
+          resultOk: true,
+          sessionId: "session-1",
+          page: {
+            url: "https://www.selenium.dev/selenium/web/web-form.html",
+            title: "Web form",
+            snapshotHash: "snapshot-hash",
+          },
+          ref: null,
+          assertion: null,
+          error: null,
+        },
+        {
+          id: "snapshot",
+          toolId: "browser_snapshot",
+          status: "completed",
+          invocationId: "inv-snapshot",
+          approvalInvocationId: null,
+          approvalDecision: null,
+          resultOk: true,
+          sessionId: "session-1",
+          page: {
+            url: "https://www.selenium.dev/selenium/web/web-form.html",
+            title: "Web form",
+            snapshotHash: "snapshot-hash",
+          },
+          ref: "e40",
+          assertion: null,
+          error: null,
+        },
+        {
+          id: "click",
+          toolId: "browser_click",
+          status: "failed",
+          invocationId: null,
+          approvalInvocationId: "inv-click-pending",
+          approvalDecision: "rejected",
+          resultOk: false,
+          sessionId: null,
+          page: null,
+          ref: null,
+          assertion: null,
+          error: {
+            code: "navigation_blocked",
+            message: "Navigation domain is not allowed",
+          },
+        },
+      ],
+      error: {
+        code: "navigation_blocked",
+        message: "Navigation domain is not allowed",
+      },
+    };
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    const panel = screen.getByTestId("browser-journey-panel");
+    expect(panel).toHaveTextContent("browser_navigate");
+    expect(panel).toHaveTextContent("invocation :: inv-snapshot");
+    expect(panel).toHaveTextContent("approval_invocation :: inv-navigate-pending");
+    expect(panel).toHaveTextContent("result.ok :: true");
+    expect(panel).toHaveTextContent("page.title :: Web form");
+    expect(panel).toHaveTextContent("snapshot.ref :: e40");
+    expect(panel).toHaveTextContent("navigation_blocked");
+    expect(panel).toHaveTextContent("Navigation domain is not allowed");
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.browserJourney.actions.retry",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.browserJourney.actions.reset",
+      }),
+    );
+    expect(runSelectedCase).toHaveBeenCalledOnce();
+    expect(resetBrowserJourneyRun).toHaveBeenCalledOnce();
+  });
+
+  it("shows Managed Browser readiness reason and disables an unavailable case", () => {
+    const browserTool = {
+      ...capabilities.selectedTool,
+      id: "browser_snapshot",
+      title: "Browser Snapshot",
+      description: "Read a bounded snapshot from the Managed Browser session.",
+      domain: "browser_action",
+      workbench: {
+        groupId: "browser",
+        groupLabel: "智控",
+        groupDescription: "Playwright / Managed Browser 浏览器自动化工具。",
+        groupOrder: 50,
+        icon: "mouse-pointer",
+      },
+      runtimeReadiness: {
+        state: "unavailable" as const,
+        reason: "No managed Chromium was found.",
+        code: "browser_runtime_unavailable",
+      },
+    };
+    const browserCase = {
+      ...capabilities.selectedCase,
+      id: "browser-snapshot-observe",
+      toolId: "browser_snapshot",
+      title: "读取当前页面快照",
+      group: "Browser",
+    };
+    capabilities.tools = [browserTool];
+    capabilities.cases = [browserCase];
+    capabilities.toolCases = [browserCase];
+    capabilities.selectedTool = browserTool;
+    capabilities.selectedCase = browserCase;
+    capabilities.readiness = {
+      state: "unavailable" as const,
+      reason: "No managed Chromium was found.",
+    };
+
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("Browser").length).toBeGreaterThan(0);
+    expect(screen.getByText("No managed Chromium was found.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "settings.development.capabilities.actions.run",
+      }),
+    ).toBeDisabled();
   });
 
   it("exposes source filters for all, native, and extensions", async () => {
@@ -331,7 +651,7 @@ describe("CapabilitiesPage", () => {
       sourceInfo: {
         kind: "external_mcp" as const,
         label: "External MCP · GitHub",
-        settingsPath: "/settings/mcp",
+        settingsPath: "/extensions/connectors",
       },
       externalServerId: "github",
     };
@@ -485,8 +805,10 @@ describe("CapabilitiesPage", () => {
     );
 
     expect(
-      screen.getByLabelText("settings.development.capabilities.readiness.ready"),
-    ).toBeInTheDocument();
+      screen
+        .getAllByLabelText("settings.development.capabilities.readiness.ready")
+        .some((element) => !element.closest('[aria-hidden="true"]')),
+    ).toBe(true);
     expect(screen.queryByText("Write workspace files.", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
     expect(

@@ -459,13 +459,13 @@ test("generateNode gives generic non-empty structured results to the model and d
   assert.doesNotMatch(result.answer ?? "", /没有数据/);
 });
 
-test("generateNode includes browser_observe page fields in the answer context", async () => {
+test("generateNode includes browser_snapshot page fields in the answer context", async () => {
   const state = createBaseState("页面上显示了什么？");
   const summary = {
     source: "tool" as const,
     status: "completed" as const,
-    toolId: "browser_observe",
-    actionTaken: "Completed managed browser observe.",
+    toolId: "browser_snapshot",
+    actionTaken: "Completed managed browser snapshot.",
     keyFindings: [
       "url=https://example.com",
       "title=Example Domain",
@@ -478,7 +478,7 @@ test("generateNode includes browser_observe page fields in the answer context", 
     ],
     data: {
       kind: "computer_use_browser",
-      operation: "observe",
+      operation: "snapshot",
       page: { url: "https://example.com", title: "Example Domain", snapshotHash: "snapshot-1" },
       observation: { visibleText: "Example Domain content" },
     } as never,
@@ -486,7 +486,7 @@ test("generateNode includes browser_observe page fields in the answer context", 
   state.evidence = {
     observations: [],
     toolExecutions: [{
-      toolId: "browser_observe",
+      toolId: "browser_snapshot",
       args: { url: "https://example.com" },
       status: "completed",
       summary,

@@ -1,25 +1,19 @@
-export type ComputerUseAction =
-  | { kind: "navigate"; url: string; waitUntil?: "load" | "domcontentloaded" | "networkidle" }
-  | { kind: "click"; selector: string }
-  | { kind: "type"; selector: string; text: string; delayMs?: number }
-  | { kind: "scroll"; x?: number; y?: number }
-  | { kind: "wait_for"; selector?: string; timeoutMs?: number; state?: "attached" | "visible" | "hidden"; loadState?: "load" | "domcontentloaded" | "networkidle" }
-  | { kind: "capture"; artifactPath: string }
-  | { kind: "finish"; summary?: string };
-
-export type ComputerUseExecutionResult = {
-  steps: Array<{
-    action: ComputerUseAction["kind"];
-    status: "completed";
-    detail: string;
-  }>;
-  captures: string[];
-  finalUrl: string;
-  finishSummary?: string;
+export type PlaywrightLocatorLike = {
+  click(options?: { timeout?: number }): Promise<unknown>;
+  fill(value: string, options?: { timeout?: number }): Promise<unknown>;
+  type(text: string, options?: { timeout?: number }): Promise<unknown>;
+  selectOption(value: string, options?: { timeout?: number }): Promise<unknown>;
+  press(key: string, options?: { timeout?: number }): Promise<unknown>;
+  count(): Promise<number>;
+  isVisible(): Promise<boolean>;
+  inputValue(): Promise<string>;
 };
 
 export type PlaywrightPageLike = {
   goto(url: string, options?: { waitUntil?: "load" | "domcontentloaded" | "networkidle"; timeout?: number }): Promise<unknown>;
+  close?(): Promise<unknown>;
+  isClosed?(): boolean;
+  bringToFront?(): Promise<unknown>;
   click(selector: string, options?: { timeout?: number }): Promise<unknown>;
   fill(selector: string, value: string, options?: { timeout?: number }): Promise<unknown>;
   type(
@@ -37,11 +31,14 @@ export type PlaywrightPageLike = {
     arg?: TArg,
   ): Promise<R>;
   screenshot(options: { path: string; fullPage?: boolean }): Promise<unknown>;
+  ariaSnapshot(options?: { mode?: "ai" | "default"; timeout?: number }): Promise<string>;
+  getByRef(ref: string): PlaywrightLocatorLike;
   url(): string;
 };
 
 export type PlaywrightContextLike = {
   newPage(): Promise<PlaywrightPageLike>;
+  pages(): PlaywrightPageLike[];
   close(): Promise<unknown>;
 };
 
@@ -55,11 +52,4 @@ export type PlaywrightChromiumLauncherLike = {
     executablePath?: string;
     headless?: boolean;
   }): Promise<PlaywrightBrowserLike>;
-};
-
-export type ComputerUseExecutorOptions = {
-  launcher?: PlaywrightChromiumLauncherLike;
-  executablePath?: string;
-  headless?: boolean;
-  artifactRoot: string;
 };

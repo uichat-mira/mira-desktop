@@ -6,7 +6,7 @@ import DevelopmentDatabasePage from "@/features/Development/pages/Database/index
 import DevelopmentClientTestsPage from "@/features/Development/pages/ClientTests/index";
 import DevelopmentServerTestsPage from "@/features/Development/pages/ServerTests/index";
 import CapabilitiesPage from "@/features/Extensions/Capabilities/index";
-import McpPage from "@/features/Extensions/Mcp/index";
+import ConnectorsPage from "@/features/Extensions/Connectors/index";
 import StandaloneWorkspace from "@/app/Layouts/StandaloneWorkspace";
 import KnowledgeBaseSettings from "@/features/KnowledgeBase/index";
 import KnowledgeBaseAddWizard from "@/features/KnowledgeBase/Add";
@@ -57,7 +57,8 @@ export const standaloneRoutes = [
     children: [
       { index: true, element: <Navigate to="capabilities" replace /> },
       { path: "capabilities", element: <CapabilitiesPage /> },
-      { path: "mcp", element: <McpPage /> },
+      { path: "connectors", element: <ConnectorsPage /> },
+      { path: "mcp", element: <Navigate to="/extensions/connectors?view=installed" replace /> },
       { path: "skills", element: <SkillsPage /> },
       { path: "tools", element: <Navigate to="/extensions/capabilities" replace /> },
     ],

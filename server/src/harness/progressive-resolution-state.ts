@@ -2,6 +2,7 @@ import type { ToolDefinition } from "../mcp/core/definitions.js";
 import type { CapabilityDisclosure } from "./capability-view.js";
 import type { CapabilityResolutionPath } from "./candidates-core/capability-resolution.js";
 import type { HarnessCapabilityProfile } from "./profiles/types.js";
+import { createHarnessCapabilityProfileKeyIndex } from "./profiles/resolver.js";
 import {
   resolveToolRuntimeReadiness,
   type HarnessToolRuntimeReadiness,
@@ -261,15 +262,36 @@ export const resolveAndDiscloseCapability = (
  * the Tool identity used by reconciliation, schema disclosure and Planner
  * exposure, instead of silently dropping a grouped snapshot on resume. A key
  * that is already a canonical Tool id (including one-to-one fallback profiles)
- * maps to itself.
+ * maps to itself, and a declared Profile compatibility alias resolves to the
+ * same canonical profile and Tools.
  */
 export const createCapabilityToolIdResolver = (
   profiles: readonly HarnessCapabilityProfile[],
 ): ((capabilityId: string) => readonly string[]) => {
-  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const profileByKey = createHarnessCapabilityProfileKeyIndex(profiles);
   return (capabilityId: string) => {
-    const profile = profileById.get(capabilityId);
+    const profile = profileByKey.get(capabilityId);
     return profile ? profile.supportingToolIds : [capabilityId];
+  };
+};
+
+/**
+ * Maps a resolved capability profile to the concrete Tool ids eligible for
+ * initial schema disclosure.
+ *
+ * Ownership (`supportingToolIds`) and disclosure are deliberately separate:
+ * a capability may own a large Tool family while opting out of eager schema
+ * expansion. Profiles without an explicit `disclosureToolIds` keep the existing
+ * grouped behavior of disclosing their supporting Tools.
+ */
+export const createCapabilityDisclosureToolIdResolver = (
+  profiles: readonly HarnessCapabilityProfile[],
+): ((capabilityId: string) => readonly string[]) => {
+  const profileByKey = createHarnessCapabilityProfileKeyIndex(profiles);
+  return (capabilityId: string) => {
+    const profile = profileByKey.get(capabilityId);
+    if (!profile) return [capabilityId];
+    return profile.disclosureToolIds ?? profile.supportingToolIds;
   };
 };
 

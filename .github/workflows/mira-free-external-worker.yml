@@ -1,0 +1,35 @@
+name: Mira Free External Worker
+
+# Separate from mira-external-worker.yml: the Go workhorse remains pinned and unchanged.
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Authorized open GitHub Issue number to implement on dev
+        required: true
+        type: string
+      model:
+        description: Verified official OpenCode free model
+        required: true
+        type: choice
+        default: mimo-v2.6-flash-free
+        options:
+          - mimo-v2.6-flash-free
+          - deepseek-v4.1-flash-free
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  free-worker:
+    uses: uichat-mira/.github/.github/workflows/mira-free-external-worker.yml@e692f848cc6137d0e390285278fa6ac0fa080acd
+    with:
+      issue_number: ${{ fromJSON(inputs.issue_number) }}
+      base_branch: dev
+      model: ${{ inputs.model }}
+      verification_command: |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm check

@@ -247,6 +247,9 @@
 - `NavigationCardTabs` 可基于 Radix Tabs primitives 实现交互与可访问性，但视觉仍需保持紧凑、低噪音
 - tab trigger 默认用 `surface-* + border + text-*` 建层，激活态只做轻量顶部强调，不铺满高饱和主色
 - 若只是局部模式切换或小范围过滤，优先使用 `SegmentedTabs`，不要把页面级 tabs 缩成胶囊按钮
+- `NavigationCardTabs` 按容器宽度响应式折叠：宽屏最多 5 项、中等宽度最多 4 项，更窄时继续按实际空间递减；溢出项进入右端无边框竖向三点 `⋮` 菜单
+- 不要用横向滚动、半个 Tab 或裁切隐藏溢出项；容器极窄时也要保留可收缩截断的可见 Tab 或完整菜单按钮
+- 当前选中项优先留在可见区域，切换到折叠项后可见窗口随之移动；右侧操作按钮由业务页用 `shrink-0` 保留空间
 
 ## 8. Typography
 

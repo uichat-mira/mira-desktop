@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: runtime / tooling
-Last verified: 2026-10-05
+Last verified: 2026-10-21
 Layer: raw-source
 Module: Tools
 Feature: ToolLabManagedWorkspace
@@ -148,6 +148,49 @@ fixture-backed / workspace-bound acceptance Case 使用 `tool_lab_managed`；bac
 - Policy/Approval 不复制；
 - Tool runtime 不复制；
 - renderer 不获得“指定任意执行根”的能力。
+
+## Browser run context
+
+Managed Browser Tool 需要 `threadId` 才能把一次 Tool Lab run 的多个步骤绑定到同一个内部 Browser session。该绑定不能由客户端直接提交，因此 Tool Lab 增加一套专用于 Browser 的短期 run handle：
+
+```text
+POST /mcp/tool-lab/browser-runs          -> { handle, expiresAt, activeStep }
+POST /mcp/tool-lab/browser-runs/status   -> { handle, expiresAt, activeStep }
+POST /mcp/tool-lab/browser-runs/reset    -> { handle, reset: true }
+```
+
+- handle 由 backend 使用加密随机数生成，格式为 `blrun_` 前缀的不透明字符串；
+- 每个 handle 只属于创建它的 authenticated user，并映射到一个独立命名空间的内部 `threadId`（包含 user 与 run 标识）；同一 run 复用同一 thread，不同 run 永不共用 thread；
+- handle 默认 10 分钟固定 TTL；过期、reset、跨 user 或未知 handle 均按 not found 处理，不泄露其他 run 是否存在；
+- 每个 user 最多 4 个 active run，全局最多 64 个；过期记录在下一次创建/访问时惰性清理；
+- 同一 run 同一时间只允许一个活动步骤；第二个并发步骤返回受控 400；
+- 步骤进入审批等待时保留 run 级 pending 标记，未决期间拒绝新的 Browser 步骤；reset 在 pending 期间仍可撤销该 run；
+- 活动步骤期间拒绝 reset（返回可诊断的 400），等步骤结束后才允许 reset；过期 run 不再授权任何新调用；
+- Managed Browser Tool 必须携带有效 handle。非 Browser Tool 携带 handle、Browser Tool 缺少 handle、客户端提交 `threadId`/`sessionId` 或 `args.sessionId` 均被拒绝；
+- Tool Lab 路由只把 backend 解析出的内部 `threadId` 注入现有 Harness invocation，不新增第二套 SessionManager，也不改变原有 Policy/Approval 门槛；
+- POST `/mcp/invocations` 与 GET `/mcp/invocations/:id` 的 Browser Lab 响应会投影掉内部 `threadId`；服务端保存的原 invocation 仍保留该字段，供后续审批恢复卡使用。
+
+审批恢复（`resolveHarnessInvocationApproval`）只从服务端 original invocation 继承内部 `threadId`、`turnId`、`userId` 以及冻结的 toolId/args/inputHash，不接受客户端指定这些上下文。批准 Browser Lab 步骤前必须校验该内部 thread 仍属于同一 user、run 未过期且未 reset、并且正等待对应步骤的审批；任一项不满足即 fail closed，不执行页面操作。批准后复用原内部线程执行既定 Browser 工具，完成后同一 run 的下一步（例如 Snapshot）仍复用该线程；明确拒绝不执行页面操作，并结束该 run 的 pending 状态。审批响应与 invocation 响应一致，投影掉内部 `threadId`，服务端 original record 保留绑定。
+
+## Tool Lab Browser journey
+
+Tool Lab 的 Browser 验收入口是一条固定顺序、有限步骤的真实旅程，而不是静态 Ref/Hash 示例：
+
+```text
+create / reset Browser Lab run handle
+  -> browser_navigate (Approval)
+  -> browser_snapshot (real pageUrl / snapshotHash / ref)
+  -> browser_click (Approval; uses only the accepted snapshot facts)
+  -> browser_snapshot (re-observe the changed page)
+  -> browser_assert (real final page fact)
+```
+
+- Journey 只声明起始 URL、快照上限、快照中要查找的角色/名称以及最终断言；Step 的 `pageUrl`、`snapshotHash` 与 `ref` 全部来自同一次 run 的 Snapshot Result，不由客户端手填。
+- Navigate 与 Click 仍经过既有 Harness Approval。待批时旅程暂停；拒绝后立即终止，不执行后续 Snapshot/Click/Assert。
+- Click 后不沿用 Click Result 中的 Hash，而是强制重新 Snapshot，再使用新的页面事实进行 Assert。
+- 每一步在 UI 中显示 Invocation Id、审批结果、`result.ok`、session、页面事实、Ref、断言结果和结构化错误；`ok=false`、`session_unavailable`、stale 或 `navigation_blocked` 都按失败终止，不显示成功。
+- Run 完成或失败后客户端尝试 reset 对应 handle；重试会先 reset 旧 handle 再创建新 handle，不复用旧页面、审批或其他用户会话。
+- 当前 journey 使用 Selenium 维护的公开 web-form 自动化页面作为稳定受控页面，不修改导航 allowlist 或授予本地文件导航特权；自动化测试使用本地 HTTP fixture 验证同一 Approval/Session 主链。
 
 ## Approval / resume
 
