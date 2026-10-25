@@ -257,7 +257,7 @@ copyPath(
   path.join(electronArtifactsRoot, "cloud-account.cjs"),
   "Electron Cloud OAuth controller",
 );
-copyRequired(
+copyPath(
   path.join(projectRoot, "electron", "preload.cjs"),
   path.join(electronArtifactsRoot, "preload.cjs"),
   "Electron preload entry",
