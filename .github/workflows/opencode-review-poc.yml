@@ -13,8 +13,8 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read
-  issues: write # The Action uses PR issue comments for advisory results.
+  pull-requests: write # The Action's PR conversation/reaction publication requires PR write.
+  issues: write # GitHub's PR issue-comment API also requires issue write.
 
 jobs:
   review-poc:
