@@ -1,10 +1,55 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, safeStorage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn, execFileSync } = require("child_process");
+const { createCloudAccountController } = require("./cloud-account.cjs");
 
 let mainWindow;
 let backendProcess;
+
+let cloudAccount;
+const queuedCloudCallbacks = [];
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+
+function receiveCloudCallback(url) {
+  if (typeof url !== "string" || !url.startsWith("mira-desktop://oauth/callback?")) return;
+  if (cloudAccount) void cloudAccount.handleCallback(url);
+  else if (queuedCloudCallbacks.length < 4) queuedCloudCallbacks.push(url);
+}
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  receiveCloudCallback(url);
+});
+app.on("second-instance", (_event, args) => {
+  const candidate = args.find((arg) => arg.startsWith("mira-desktop://oauth/callback?"));
+  if (candidate) receiveCloudCallback(candidate);
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
+function cloudIpcAuth(event) {
+  if (!mainWindow || event.sender !== mainWindow.webContents) {
+    throw new Error("Cloud Account IPC is only available to Mira's main window");
+  }
+}
+ipcMain.handle("cloud-account:status", (event) => {
+  cloudIpcAuth(event);
+  return cloudAccount?.status() ?? { status: "checking", account: null, hostId: null, scopes: [], message: "", expiresAt: null, permissionsConfigured: false };
+});
+ipcMain.handle("cloud-account:login", (event, scopes) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  return cloudAccount.begin(scopes);
+});
+ipcMain.handle("cloud-account:logout", (event) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  return cloudAccount.signOut();
+});
+
 const BACKEND_START_TIMEOUT_MS = 15000;
 const BACKEND_START_POLL_INTERVAL_MS = 300;
 
@@ -449,6 +494,27 @@ async function startBackend() {
 }
 
 app.whenReady().then(async () => {
+
+  // Electron owns the Cloud credential, browser callback and network exchange.
+  // No bearer, PKCE verifier, password, or callback code is exposed to React.
+  cloudAccount = createCloudAccountController({
+    app, shell, safeStorage,
+    notify: (snapshot) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("cloud-account:changed", snapshot);
+      }
+    },
+  });
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient("mira-desktop");
+  } else if (process.platform !== "darwin" && process.argv[1]) {
+    app.setAsDefaultProtocolClient("mira-desktop", process.execPath, [path.resolve(process.argv[1])]);
+  }
+  const initialCallback = process.argv.find((arg) =>
+    arg.startsWith("mira-desktop://oauth/callback?"));
+  if (initialCallback) queuedCloudCallbacks.push(initialCallback);
+  for (const url of queuedCloudCallbacks.splice(0)) receiveCloudCallback(url);
+
   console.log("App ready, isDev:", isDev);
   console.log("__dirname:", __dirname);
   console.log("app.getAppPath():", app.getAppPath());
@@ -459,6 +525,7 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
+  void cloudAccount.initialize(); // never block local UI on Cloud availability
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
