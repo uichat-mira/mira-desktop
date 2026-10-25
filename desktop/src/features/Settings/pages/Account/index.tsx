@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Cloud, LockKeyhole, RefreshCw } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import SectionCard, { SectionCardRow } from "@/shared/ui/SectionCard";
@@ -26,7 +27,8 @@ const emptyView: CloudView = {
 
 export default function AccountSettings() {
   const api = window.cloudAccount;
-  const english = navigator.language.toLowerCase().startsWith("en");
+  const { i18n } = useTranslation();
+  const english = i18n.resolvedLanguage?.toLowerCase().startsWith("en") ?? false;
   const [view, setView] = useState<CloudView>(emptyView);
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
