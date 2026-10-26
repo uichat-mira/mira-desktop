@@ -30,7 +30,7 @@ describe("DSK-005 Cloud Account settings", () => {
     const signOut = vi.fn().mockResolvedValue(empty);
     const status = vi.fn().mockResolvedValue(empty);
     const subscribe = vi.fn().mockReturnValue(() => {});
-    window.cloudAccount = { signIn, signOut, status, subscribe };
+    window.cloudAccount = { signIn, cancelSignIn: vi.fn(), signOut, status, subscribe };
     render(<AccountSettings />);
     await screen.findByText("当前未登录云账号");
     fireEvent.click(screen.getByLabelText("读取会话"));
@@ -38,6 +38,24 @@ describe("DSK-005 Cloud Account settings", () => {
     await waitFor(() => expect(signIn).toHaveBeenCalledWith(["threads:read"]));
     expect(signIn.mock.calls[0][0]).not.toContain("tools:invoke");
     expect(subscribe).toHaveBeenCalled();
+  });
+
+  it("provides a cancel action during browser authorization and returns to sign-in", async () => {
+    const signIn = vi.fn().mockResolvedValue({ ...empty, status: "authorizing" });
+    const cancelSignIn = vi.fn().mockResolvedValue(empty);
+    window.cloudAccount = {
+      status: vi.fn().mockResolvedValue(empty),
+      signIn, cancelSignIn,
+      signOut: vi.fn().mockResolvedValue(empty),
+      subscribe: vi.fn().mockReturnValue(() => {}),
+    };
+    render(<AccountSettings />);
+    await screen.findByText("当前未登录云账号");
+    fireEvent.click(screen.getByRole("button", { name: /使用系统浏览器登录云账号/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "取消本次授权" }));
+    await waitFor(() => expect(cancelSignIn).toHaveBeenCalledOnce());
+    expect(await screen.findByText("当前未登录云账号")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /使用系统浏览器登录云账号/ })).toBeEnabled();
   });
 
   it("shows existing cloud account without reusing local credentials", async () => {
@@ -50,7 +68,7 @@ describe("DSK-005 Cloud Account settings", () => {
       permissionsConfigured: true,
     });
     window.cloudAccount = {
-      status, signIn: vi.fn(), signOut: vi.fn().mockResolvedValue(empty),
+      status, signIn: vi.fn(), cancelSignIn: vi.fn(), signOut: vi.fn().mockResolvedValue(empty),
       subscribe: vi.fn().mockReturnValue(() => {}),
     };
     render(<AccountSettings />);
