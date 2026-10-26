@@ -6,6 +6,7 @@ import {
 } from "@/services/remote-access-pairing.service.js";
 import {
   RemoteRelayConnectorService,
+  resolveCloudRelayConnectorConfig,
   type RelaySocketFactory,
 } from "@/services/remote-relay-connector.service.js";
 import {
@@ -16,6 +17,7 @@ import {
   updateRemoteRelayUserConfig,
 } from "@/services/remote-relay-config.service.js";
 import { tailscaleRemoteAccessService } from "@/services/tailscale-remote-access.service.js";
+import { CloudRelayTicketIpcClient } from "@/services/cloud-relay-ticket-ipc.service.js";
 import { threadService } from "@/services/thread.service.js";
 import {
   HostNotificationBindingError,
@@ -154,16 +156,31 @@ const createRelaySocketFactory = (app: FastifyInstance): RelaySocketFactory => {
 };
 
 const remoteAccessRoute: FastifyPluginAsync = async (app) => {
+  const socketFactory = createRelaySocketFactory(app);
   const remoteRelayConnectorService = new RemoteRelayConnectorService(
     resolvePersistedRemoteRelayConnectorConfig,
-    createRelaySocketFactory(app),
+    socketFactory,
+  );
+  // Completely independent from user-configured/self-hosted Relay and Tailscale.
+  // This provider uses Electron's private child IPC, never an HTTP credential API.
+  const cloudTicketIpc = new CloudRelayTicketIpcClient();
+  const cloudRelayConnectorService = new RemoteRelayConnectorService(
+    resolveCloudRelayConnectorConfig,
+    socketFactory,
+    fetch,
+    undefined,
+    Math.random,
+    cloudTicketIpc,
   );
 
   app.addHook("onListen", async () => {
     remoteRelayConnectorService.start();
+    cloudRelayConnectorService.start();
   });
 
   app.addHook("onClose", async () => {
+    cloudRelayConnectorService.stop();
+    cloudTicketIpc.dispose();
     remoteRelayConnectorService.stop();
   });
 
@@ -252,6 +269,30 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
         throw forbidden("Desktop authentication is required");
       }
       return success(remoteRelayConnectorService.getSnapshot());
+    }),
+  );
+
+  app.get(
+    "/remote/admin/cloud-relay/status",
+    {
+      schema: {
+        tags: ["Remote Access"],
+        summary: "Get Cloud Relay transport status (no credentials)",
+        operationId: "getCloudRelayTransportStatus",
+        response: {
+          200: successEnvelope(looseObjectSchema),
+          401: errorEnvelope,
+          500: errorEnvelope,
+        },
+      },
+    },
+    routeHandler("Failed to get Cloud Relay transport status", async (request) => {
+      if (!request.authUser) {
+        throw forbidden("Desktop authentication is required");
+      }
+      const snapshot = cloudRelayConnectorService.getSnapshot();
+      // Deliberately do not report the Cloud Host room or bearer ticket.
+      return success({ ...snapshot, relayId: null });
     }),
   );
 

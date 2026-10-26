@@ -86,6 +86,40 @@ describe("CloudRelayTicketIpcClient", () => {
     client.dispose();
   });
 
+  it("does not invoke listeners added during a revocation-triggered reconnect", () => {
+    const parent = new FakeParent();
+    const client = new CloudRelayTicketIpcClient(parent);
+    const onRevoke = vi.fn();
+    let unbind: () => void = () => undefined;
+    unbind = client.onRevoked(() => {
+      onRevoke();
+      unbind();
+      // Connector restart re-registers here. Do not invoke the new listener
+      // in the same revocation event (or recurse until the process hangs).
+      unbind = client.onRevoked(() => { onRevoke(); });
+    });
+    parent.emit("message", {
+      channel: CHANNEL, type: "revoked", reason: "signout",
+    });
+    expect(onRevoke).toHaveBeenCalledTimes(1);
+    parent.emit("message", {
+      channel: CHANNEL, type: "revoked", reason: "signout",
+    });
+    expect(onRevoke).toHaveBeenCalledTimes(2);
+    client.dispose();
+  });
+
+  it("invalidates established subscribers when Electron parent IPC disconnects", () => {
+    const parent = new FakeParent();
+    const client = new CloudRelayTicketIpcClient(parent);
+    const handler = vi.fn();
+    client.onRevoked(handler);
+    parent.emit("disconnect");
+    expect(handler).toHaveBeenCalledWith("bridge_disconnected");
+    expect(handler).toHaveBeenCalledTimes(1);
+    client.dispose();
+  });
+
   it("untrusted result errors do not include raw server messages", async () => {
     const parent = new FakeParent();
     const client = new CloudRelayTicketIpcClient(parent);

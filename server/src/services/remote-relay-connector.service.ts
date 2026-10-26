@@ -1,4 +1,8 @@
 import CONFIG from "@/config/index.js";
+import type {
+  CloudRelayHostTicket,
+  CloudRelayRevocationReason,
+} from "@/services/cloud-relay-ticket-ipc.service.js";
 import {
   RELAY_MAX_REQUEST_BODY_BYTES,
   RELAY_MAX_RESPONSE_BYTES,
@@ -57,6 +61,20 @@ export type RemoteRelayConnectorConfig = {
   hostToken: string | null;
   clientToken: string | null;
 };
+
+// Official Cloud is an independent, opt-in transport, never a legacy token fallback.
+export type CloudRelayConnectorConfig = {
+  kind: "cloud";
+  enabled: boolean;
+  relayUrl: string | null;
+};
+export type AnyRelayConnectorConfig = RemoteRelayConnectorConfig | CloudRelayConnectorConfig;
+export type CloudRelayTicketSource = {
+  withHostTicket<T>(consumer: (ticket: CloudRelayHostTicket) => Promise<T> | T): Promise<T>;
+  onRevoked(listener: (reason: CloudRelayRevocationReason) => void): () => void;
+};
+const isCloud = (config: AnyRelayConnectorConfig): config is CloudRelayConnectorConfig =>
+  "kind" in config && config.kind === "cloud";
 
 export type RemoteRelayConnectorSnapshot = {
   enabled: boolean;
@@ -149,6 +167,16 @@ const normalizeRelayUrl = (
   }
 };
 
+export const resolveCloudRelayConnectorConfig = (
+  env: NodeJS.ProcessEnv = process.env,
+): CloudRelayConnectorConfig => ({
+  kind: "cloud",
+  enabled: env.UI_CHAT_CLOUD_RELAY_ENABLED === "1",
+  // Explicit deployment setting until REL-001 publishes its hosted URL.
+  // Cloud bearer admission must never travel over plaintext even in dev.
+  relayUrl: normalizeRelayUrl(env.UI_CHAT_CLOUD_RELAY_URL, "production"),
+});
+
 export const resolveRemoteRelayConnectorConfig = (
   env: NodeJS.ProcessEnv = process.env,
 ): RemoteRelayConnectorConfig => {
@@ -162,8 +190,11 @@ export const resolveRemoteRelayConnectorConfig = (
   };
 };
 
-const configError = (config: RemoteRelayConnectorConfig) => {
+const configError = (config: AnyRelayConnectorConfig) => {
   if (!config.enabled) return null;
+  if (isCloud(config)) {
+    return config.relayUrl ? null : "cloud_relay_endpoint_unavailable";
+  }
   if (!config.relayUrl) return "UI_CHAT_REMOTE_RELAY_URL is missing or invalid";
   if (!config.relayId) return "UI_CHAT_REMOTE_RELAY_ID is missing or invalid";
   if (!config.hostToken) {
@@ -240,7 +271,9 @@ const abortError = (error: unknown) =>
 export class RemoteRelayConnectorService {
   private state: RemoteRelayConnectorState = "disabled";
   private socket: RelaySocket | null = null;
-  private currentConfig: RemoteRelayConnectorConfig | null = null;
+  private currentConfig: AnyRelayConnectorConfig | null = null;
+  private currentRelayId: string | null = null;
+  private unsubscribeRevocation: (() => void) | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null;
   private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
@@ -252,17 +285,28 @@ export class RemoteRelayConnectorService {
   private readonly activeRequests = new Map<string, ActiveLocalRequest>();
 
   constructor(
-    private readonly configProvider = resolveRemoteRelayConnectorConfig,
+    private readonly configProvider: () => AnyRelayConnectorConfig =
+      resolveRemoteRelayConnectorConfig,
     private readonly socketFactory: RelaySocketFactory = missingSocketFactory,
     private readonly localFetch: RelayLocalFetch = fetch,
     private readonly localBaseUrl = `http://127.0.0.1:${CONFIG.PORT}`,
     private readonly random = Math.random,
+    private readonly cloudTicketSource?: CloudRelayTicketSource,
   ) {}
 
   start() {
     this.stopTimers();
     this.stopped = false;
     this.currentConfig = this.configProvider();
+    this.currentRelayId = null;
+    this.unsubscribeRevocation?.();
+    this.unsubscribeRevocation = null;
+    if (isCloud(this.currentConfig) && this.cloudTicketSource) {
+      this.unsubscribeRevocation = this.cloudTicketSource.onRevoked(() => {
+        // Never retain a socket admitted under a revoked Cloud account.
+        this.restart();
+      });
+    }
     this.connectedAt = null;
     this.lastError = null;
     this.reconnectAttempt = 0;
@@ -287,6 +331,9 @@ export class RemoteRelayConnectorService {
     this.generation += 1;
     this.stopTimers();
     this.abortAllRequests();
+    this.currentRelayId = null;
+    this.unsubscribeRevocation?.();
+    this.unsubscribeRevocation = null;
 
     const socket = this.socket;
     this.socket = null;
@@ -312,7 +359,9 @@ export class RemoteRelayConnectorService {
       enabled: this.currentConfig?.enabled ?? false,
       state: this.state,
       relayUrl: this.currentConfig?.relayUrl ?? null,
-      relayId: this.currentConfig?.relayId ?? null,
+      // Cloud rooms are not exposed via the legacy pairing/status contract.
+      relayId: this.currentConfig && !isCloud(this.currentConfig)
+        ? this.currentConfig.relayId : null,
       connectedAt: this.connectedAt,
       lastError: this.lastError,
       activeRequests: this.activeRequests.size,
@@ -322,43 +371,90 @@ export class RemoteRelayConnectorService {
 
   private connect() {
     const config = this.currentConfig;
-    if (
-      this.stopped ||
-      !config?.enabled ||
-      !config.relayUrl ||
-      !config.relayId ||
-      !config.hostToken ||
-      !config.clientToken
-    ) {
-      return;
-    }
+    if (this.stopped || !config?.enabled || !config.relayUrl) return;
 
     this.stopTimers();
     this.state = "connecting";
     this.connectedAt = null;
     const generation = ++this.generation;
 
+    if (isCloud(config)) {
+      if (!this.cloudTicketSource) {
+        this.handleConnectionFailure(generation, "relay_ticket_bridge_unavailable");
+        return;
+      }
+      // Every socket generation must request a fresh, native-owned ticket.
+      void this.cloudTicketSource.withHostTicket((ticket) => {
+        if (this.stopped || generation !== this.generation) return;
+        this.openSocket(config.relayUrl!, ticket.room, ticket.token, generation, true);
+      }).catch((error: unknown) => {
+        const code = error instanceof Error && "code" in error &&
+          typeof error.code === "string" ? error.code : "relay_ticket_unavailable";
+        this.handleConnectionFailure(generation, code);
+      });
+      return;
+    }
+    if (!config.relayId || !config.hostToken || !config.clientToken) return;
+    this.openSocket(config.relayUrl, config.relayId,
+      config.hostToken, generation, false, config.clientToken);
+  }
+
+  private handleConnectionFailure(generation: number, code: string) {
+    if (this.stopped || generation !== this.generation) return;
+    // Only bounded codes reach status; never serialize upstream error messages.
+    this.lastError = code.startsWith("relay_ticket_")
+      ? code : "cloud_relay_transport_unavailable";
+    this.state = "disconnected";
+    this.scheduleReconnect();
+  }
+
+  private openSocket(
+    url: string,
+    relayId: string,
+    token: string,
+    generation: number,
+    cloud: boolean,
+    clientToken?: string,
+  ) {
+    if (this.stopped || generation !== this.generation) return;
+    this.currentRelayId = relayId;
     let socket: RelaySocket;
     try {
-      socket = this.socketFactory(buildSocketUrl(config.relayUrl, config.relayId));
+      socket = this.socketFactory(buildSocketUrl(url, relayId));
     } catch (error) {
-      this.lastError = error instanceof Error ? error.message : String(error);
-      this.state = "disconnected";
-      this.scheduleReconnect();
+      if (cloud) {
+        this.handleConnectionFailure(generation, "cloud_relay_transport_unavailable");
+      } else {
+        // Preserve legacy/self-hosted Relay diagnostics.
+        this.lastError = error instanceof Error ? error.message : String(error);
+        this.state = "disconnected";
+        this.scheduleReconnect();
+      }
       return;
     }
     this.socket = socket;
-
+    // Discard the captured transport credential immediately after hello; it is
+    // admission-only and must not be kept for the lifetime of the healthy socket.
+    let pendingToken: string | null = token;
     socket.addEventListener("open", () => {
-      if (!this.isCurrent(socket, generation)) return;
-      this.send({
+      if (!this.isCurrent(socket, generation) || !pendingToken) return;
+      const hello = {
         version: RELAY_PROTOCOL_VERSION,
         type: "hello",
         role: "host",
-        relayId: config.relayId!,
-        token: config.hostToken!,
-        clientToken: config.clientToken!,
-      });
+        relayId,
+        token: pendingToken,
+        ...(cloud ? {} : { clientToken }),
+      };
+      pendingToken = null;
+      try {
+        socket.send(JSON.stringify(hello));
+      } catch {
+        this.lastError = cloud ? "cloud_relay_transport_unavailable"
+          : "Mira Relay hello failed";
+        socket.close(1008, "Relay hello send failed");
+        return;
+      }
       this.handshakeTimer = setTimeout(() => {
         if (!this.isCurrent(socket, generation) || this.state === "connected") {
           return;
@@ -398,7 +494,9 @@ export class RemoteRelayConnectorService {
       this.abortAllRequests();
       if (this.stopped) return;
       if (event.reason) {
-        this.lastError = `Mira Relay disconnected: ${event.reason}`;
+        this.lastError = this.currentConfig && isCloud(this.currentConfig)
+          ? "cloud_relay_transport_disconnected"
+          : `Mira Relay disconnected: ${event.reason}`;
       }
       this.state = "disconnected";
       this.scheduleReconnect();
@@ -418,8 +516,8 @@ export class RemoteRelayConnectorService {
       if (
         frame.role !== "host" ||
         frame.protocolVersion !== RELAY_PROTOCOL_VERSION ||
-        !config?.relayId ||
-        frame.relayId !== config.relayId
+        !this.currentRelayId ||
+        frame.relayId !== this.currentRelayId
       ) {
         this.lastError =
           "Mira Relay hello acknowledgement does not match this host";
@@ -440,6 +538,12 @@ export class RemoteRelayConnectorService {
     }
 
     if (frame.type === "request") {
+      if (this.currentConfig && isCloud(this.currentConfig)) {
+        // DSK-007 owns verified Cloud Grants. Transport ticket ≠ Tool Grant.
+        this.sendError(frame.requestId, "CLOUD_GRANT_REQUIRED",
+          "Cloud Host Grant is not available for business requests", false);
+        return;
+      }
       void this.handleLocalRequest(frame);
       return;
     }
@@ -454,7 +558,11 @@ export class RemoteRelayConnectorService {
     }
 
     if (frame.type === "error") {
-      this.lastError = `${frame.code}: ${frame.message}`;
+      // Hosted Relay messages are remote input; never reflect raw text into local status.
+      this.lastError = this.currentConfig && isCloud(this.currentConfig)
+        ? (frame.code.endsWith("AUTH_FAILED")
+          ? "cloud_relay_admission_denied" : "cloud_relay_transport_error")
+        : `${frame.code}: ${frame.message}`;
       if (!frame.requestId && frame.code.endsWith("AUTH_FAILED")) {
         socket.close(1008, "Relay authentication failed");
       }
@@ -632,7 +740,9 @@ export class RemoteRelayConnectorService {
       socket.send(serializeRelayFrame(frame));
       return true;
     } catch (error) {
-      this.lastError = error instanceof Error ? error.message : String(error);
+      this.lastError = this.currentConfig && isCloud(this.currentConfig)
+        ? "cloud_relay_transport_unavailable"
+        : error instanceof Error ? error.message : String(error);
       return false;
     }
   }
