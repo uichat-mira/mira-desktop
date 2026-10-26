@@ -44,7 +44,7 @@ jobs:
         run: pnpm check
 
       - name: Run DSK-005 Cloud Account UI and navigation regressions
-        run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/Settings/pages/Account/__tests__/index.test.tsx src/app/routes/settingsRoutes.test.tsx
+        run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/CloudAccount/__tests__/index.test.tsx src/app/routes/settingsRoutes.test.tsx src/app/Layouts/AppNavigationRail.test.tsx src/app/ChatApplicationStateBoundary.test.tsx
 
       - name: Run Terminal Capability Lab regressions
         run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/Extensions/Capabilities/cases.test.ts src/features/Extensions/Capabilities/hooks/useCapabilities.test.tsx src/features/Extensions/Capabilities/index.test.tsx src/features/Settings/pages/Tools/__tests__/useToolsWorkbench.test.tsx src/features/Settings/pages/Tools/components/ToolsPackagePanel.test.tsx src/features/Settings/pages/Tools/utils.test.ts
