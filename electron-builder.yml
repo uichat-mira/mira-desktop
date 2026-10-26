@@ -19,6 +19,7 @@ files:
   - desktop/dist/**/*
   - main.cjs
   - cloud-account.cjs
+  - cloud-relay-ticket-ipc.cjs
   - preload.cjs
   - runtime.config.cjs
   - package.json
