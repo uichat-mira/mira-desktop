@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, safeStorage } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, safeStorage, net } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn, execFileSync } = require("child_process");
@@ -524,6 +524,13 @@ app.whenReady().then(async () => {
   // No bearer, PKCE verifier, password, or callback code is exposed to React.
   cloudAccount = createCloudAccountController({
     app, shell, safeStorage,
+    // Cloud Auth's edge resets TLS 1.3 ClientHellos that advertise only
+    // classical key exchange: it requires a post-quantum hybrid group to be
+    // offered (Chromium 126 offers the legacy Kyber768 draft; Electron's
+    // bundled Node stack offers none), and the reset happens before any HTTP
+    // status. All Cloud traffic therefore uses Electron's Chromium network
+    // stack. Certificate verification remains enabled with platform defaults.
+    fetcher: (input, init) => net.fetch(input, init),
     notify: (snapshot) => {
       if (snapshot.status === "rejected" || snapshot.status === "signed_out") {
         cloudRelayTicketBridge?.notifyRevoked(
