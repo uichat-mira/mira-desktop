@@ -57,13 +57,15 @@ function createCloudAccountController(options) {
   let pending = null;
   let authorizationTimer = null;
   let revision = 0;
+  let credentialRecoveryAvailable = false;
   function clearPending() {
     if (authorizationTimer) clearTimeout(authorizationTimer);
     authorizationTimer = null;
     pending = null;
   }
   let view = { status: "signed_out", account: null, hostId: null,
-    scopes: [], message: "", expiresAt: null, permissionsConfigured: false };
+    scopes: [], message: "", expiresAt: null, permissionsConfigured: false,
+    canResetCredentials: false };
 
   function publish(patch) {
     view = { ...view, ...patch };
@@ -133,6 +135,14 @@ function createCloudAccountController(options) {
       typeof result.account.username !== "string" ||
       typeof result.expiresAt !== "string") throw new Error("Cloud Auth 会话响应无效");
   }
+  function resetRejectedSession() {
+    record = { installationId: record.installationId };
+    persist(record);
+    return publish({ status: "rejected", account: null, scopes: [],
+      hostId: null, permissionsConfigured: false, expiresAt: null,
+      canResetCredentials: false,
+      message: "云账号会话已撤销或过期，请重新登录；本地 Mira 不受影响。" });
+  }
   async function initialize() {
     try {
       record = load();
@@ -151,18 +161,17 @@ function createCloudAccountController(options) {
         validateAccount(result);
         record = { ...record, account: result.account, expiresAt: result.expiresAt };
         persist(record);
-        return publish({ status: "signed_in", account: result.account,
-          hostId: record.hostId || null, scopes: record.scopes || [],
-          permissionsConfigured: Boolean(record.permissionsConfigured),
-          expiresAt: result.expiresAt, message: "" });
+        const complete = Boolean(record.permissionsConfigured && record.hostId);
+        return publish({ status: complete ? "signed_in" : "setup_failed",
+          account: result.account, hostId: complete ? record.hostId : null,
+          scopes: complete ? (record.scopes || []) : [],
+          permissionsConfigured: complete, expiresAt: result.expiresAt,
+          message: complete ? "" :
+            "云账号会话已恢复，但 Host 权限设置尚未完成。可直接重试，无需重新登录。" });
       } catch (error) {
         if (restoreRevision !== revision) return status();
         if (error.code === "reauth") {
-          record = { installationId: record.installationId };
-          persist(record);
-          return publish({ status: "rejected", account: null, scopes: [],
-            hostId: null, permissionsConfigured: false, expiresAt: null,
-            message: "云账号会话已撤销或过期，请重新登录；本地 Mira 不受影响。" });
+          return resetRejectedSession();
         }
         return publish({ status: "unavailable", account: record.account || null,
           hostId: record.hostId || null, scopes: record.scopes || [],
@@ -171,8 +180,31 @@ function createCloudAccountController(options) {
           message: "无法联系 Cloud Auth；保留原会话，本地功能不受影响。" });
       }
     } catch {
-      return publish({ status: "unavailable", message: "系统安全凭据存储不可用或记录无法读取；本地 Mira 不受影响。" });
+      credentialRecoveryAvailable = !record && secureAvailable() && fs.existsSync(storagePath);
+      return publish({ status: "unavailable", account: null, hostId: null, scopes: [],
+        permissionsConfigured: false, expiresAt: null,
+        canResetCredentials: credentialRecoveryAvailable,
+        message: credentialRecoveryAvailable
+          ? "本机加密 Cloud 凭据无法读取；可明确重置本机记录，旧云端会话不会自动撤销。"
+          : "系统安全凭据存储不可用；本地 Mira 不受影响。" });
     }
+  }
+  function resetLocalCredentials() {
+    if (!credentialRecoveryAvailable || record || !secureAvailable()) {
+      throw new Error("当前不允许重置 Cloud 凭据");
+    }
+    // This explicit recovery may rotate the device identity. Never silently
+    // overwrite an unreadable record or claim the remote session was revoked.
+    const fresh = { installationId: crypto.randomUUID() };
+    persist(fresh);
+    ++revision;
+    clearPending();
+    record = fresh;
+    credentialRecoveryAvailable = false;
+    return publish({ status: "signed_out", account: null, hostId: null,
+      scopes: [], permissionsConfigured: false, expiresAt: null,
+      canResetCredentials: false,
+      message: "已重置本机 Cloud 凭据；旧云端会话未确认撤销，请在 Cloud Portal 检查并撤销旧设备。" });
   }
   async function begin(scopes) {
     const selected = validateScopes(scopes);
@@ -216,6 +248,65 @@ function createCloudAccountController(options) {
     clearPending();
     return publish({ status: "signed_out", message: "已取消云账号授权，可重新发起登录。" });
   }
+  async function configureHost(token, selected, expectedRevision) {
+    const host = await request("/v1/hosts", "POST", token, {});
+    if (expectedRevision !== revision) return null;
+    if (!host || typeof host.id !== "string") throw new Error("Cloud Host 注册响应无效");
+    const snapshot = await request("/v1/hosts/" + encodeURIComponent(host.id) + "/grants",
+      "GET", token);
+    if (expectedRevision !== revision) return null;
+    if (!snapshot || snapshot.hostId !== host.id ||
+        !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
+        typeof snapshot.policyConfigured !== "boolean" ||
+        !Array.isArray(snapshot.policyScopes)) {
+      throw new Error("云端 Host 权限快照无效");
+    }
+    // Server-owned policy wins over previously selected local scopes, on retry too.
+    const existingPolicy = snapshot.policyConfigured;
+    const scopes = existingPolicy ? validateScopes(snapshot.policyScopes) : selected;
+    if (!existingPolicy) {
+      const policy = await request("/v1/hosts/" + encodeURIComponent(host.id) + "/grant-policy",
+        "PUT", token, { expectedRevision: snapshot.revision, scopes });
+      if (expectedRevision !== revision) return null;
+      if (!policy || !Number.isSafeInteger(policy.revision) || policy.hostId !== host.id) {
+        throw new Error("云端权限保存响应无效");
+      }
+    }
+    if (expectedRevision !== revision) return null;
+    const { requestedScopes: _completedSelection, ...saved } = record;
+    record = { ...saved, hostId: host.id, scopes, permissionsConfigured: true };
+    persist(record);
+    return { hostId: host.id, scopes, existingPolicy };
+  }
+  function publishConfiguredHost(result) {
+    return publish({ status: "signed_in", account: record.account,
+      expiresAt: record.expiresAt, hostId: result.hostId,
+      scopes: result.scopes, permissionsConfigured: true,
+      message: result.existingPolicy
+        ? "云账号已登录，已保留云端原有 Host 权限设置；修改请前往 Cloud Portal。"
+        : "云账号已登录，Host 权限范围已保存。实际调用仍由 Desktop Gateway 决定。" });
+  }
+  async function retryHostSetup() {
+    if (view.status !== "setup_failed" || !record?.sessionToken ||
+        record.permissionsConfigured) {
+      throw new Error("没有待恢复的 Host 权限设置");
+    }
+    const selected = validateScopes(record.requestedScopes || []);
+    const expectedRevision = ++revision;
+    const token = record.sessionToken;
+    publish({ status: "checking", message: "正在重试 Host 权限设置…" });
+    try {
+      const result = await configureHost(token, selected, expectedRevision);
+      if (result) return publishConfiguredHost(result);
+    } catch (error) {
+      if (expectedRevision !== revision) return status();
+      if (error.code === "reauth") return resetRejectedSession();
+      return publish({ status: "setup_failed", account: record.account || null,
+        hostId: null, scopes: [], permissionsConfigured: false,
+        message: "Host 权限设置仍未完成：" + error.message });
+    }
+    return status();
+  }
   async function handleCallback(rawUrl) {
     const parsed = parseCallback(rawUrl);
     if (!parsed || !pending || parsed.state !== pending.state) return false;
@@ -246,45 +337,20 @@ function createCloudAccountController(options) {
       }
       const sessionToken = result.sessionToken;
       record = { installationId: record.installationId,
-        sessionToken, account: result.account, expiresAt: result.expiresAt };
-      persist(record); // token never reaches React or local JWT/DB
-      // Keep the exchanged bearer local to this transaction: signOut may reset
-      // record while one of the following Cloud requests is in flight.
-      const host = await request("/v1/hosts", "POST", sessionToken, {});
-      if (transaction.revision !== revision) return true;
-      if (!host || typeof host.id !== "string") throw new Error("Cloud Host 注册响应无效");
-      const snapshot = await request("/v1/hosts/" + encodeURIComponent(host.id) + "/grants",
-        "GET", sessionToken);
-      if (transaction.revision !== revision) return true;
-      if (!snapshot || snapshot.hostId !== host.id ||
-          !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
-          typeof snapshot.policyConfigured !== "boolean" ||
-          !Array.isArray(snapshot.policyScopes)) {
-        throw new Error("云端 Host 权限快照无效");
-      }
-      // Existing owner policy (including Portal restrictions) is authoritative.
-      // Re-login must not silently replace it with the pre-login default [].
-      const existingPolicy = snapshot.policyConfigured;
-      const scopes = existingPolicy ? validateScopes(snapshot.policyScopes) : transaction.selected;
-      if (!existingPolicy) {
-        const policy = await request("/v1/hosts/" + encodeURIComponent(host.id) + "/grant-policy",
-          "PUT", sessionToken,
-          { expectedRevision: snapshot.revision, scopes });
-        if (transaction.revision !== revision) return true;
-        if (!policy || !Number.isSafeInteger(policy.revision) ||
-            policy.hostId !== host.id) throw new Error("云端权限保存响应无效");
-      }
-      if (transaction.revision !== revision) return true;
-      record = { ...record, hostId: host.id, scopes, permissionsConfigured: true };
-      persist(record);
-      publish({ status: "signed_in", account: result.account, expiresAt: result.expiresAt,
-        hostId: host.id, scopes, permissionsConfigured: true,
-        message: existingPolicy
-          ? "云账号已登录，已保留云端原有 Host 权限设置；修改请前往 Cloud Portal。"
-          : "云账号已登录，Host 权限范围已保存。实际调用仍由 Desktop Gateway 决定。" });
+        sessionToken, account: result.account, expiresAt: result.expiresAt,
+        requestedScopes: transaction.selected };
+      persist(record); // token and pending Host selection never reach React or local JWT/DB
+      // A successful code exchange is durable even if Host setup is interrupted.
+      // The owner's initial choice stays in the same encrypted native record.
+      const hostSetup = await configureHost(sessionToken, transaction.selected, transaction.revision);
+      if (hostSetup) publishConfiguredHost(hostSetup);
     } catch (error) {
       if (transaction.revision !== revision) return true;
       if (record && record.sessionToken) {
+        if (error.code === "reauth") {
+          resetRejectedSession();
+          return true;
+        }
         publish({ status: "setup_failed", account: record.account || null,
           expiresAt: record.expiresAt || null, hostId: null,
           scopes: [], permissionsConfigured: false,
@@ -312,7 +378,8 @@ function createCloudAccountController(options) {
     }
     return status();
   }
-  return { initialize, begin, cancelAuthorization, handleCallback, signOut, status };
+  return { initialize, begin, cancelAuthorization, handleCallback, retryHostSetup,
+    resetLocalCredentials, signOut, status };
 }
 
 module.exports = { createCloudAccountController, parseCallback, validateScopes, SCOPES };
