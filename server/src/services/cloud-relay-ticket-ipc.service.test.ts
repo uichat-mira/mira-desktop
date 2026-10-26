@@ -101,13 +101,14 @@ describe("CloudRelayTicketIpcClient", () => {
     const parent = new FakeParent();
     const client = new CloudRelayTicketIpcClient(parent, 100);
     const requests = Array.from({ length: 4 }, () => client.withHostTicket(() => true));
+    // Attach rejection handlers before the fake clock advances.
+    const results = Promise.all(requests.map((promise) =>
+      promise.then(() => "unexpected-success", (error: { code: string }) => error.code)));
     await expect(client.withHostTicket(() => true))
       .rejects.toMatchObject({ code: "relay_ticket_bridge_busy" });
     expect(parent.sent).toHaveLength(4);
     await vi.advanceTimersByTimeAsync(100);
-    for (const operation of requests) {
-      await expect(operation).rejects.toMatchObject({ code: "relay_ticket_bridge_timeout" });
-    }
+    expect(await results).toEqual(Array(4).fill("relay_ticket_bridge_timeout"));
     const disconnected = client.withHostTicket(() => true);
     parent.connected = false;
     parent.emit("disconnect");
