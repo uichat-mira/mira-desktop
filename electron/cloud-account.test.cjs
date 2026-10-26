@@ -49,13 +49,14 @@ function fixture() {
     if (url.endsWith("/v1/auth/logout")) return new Response(null, { status: 204 });
     throw new Error("unexpected route " + url);
   };
-  const build = () => createCloudAccountController({
+  const build = (overrides = {}) => createCloudAccountController({
     app: { getPath: () => dir }, safeStorage: storage,
     shell: { openExternal: async (url) => {
       opened.push(url);
       if (beforeOpenExternal) await beforeOpenExternal();
     } },
     notify: () => {}, fetcher, storagePath: store,
+    ...overrides,
   });
   return { dir, store, opened, calls, build,
     setOffline: (yes) => { offline = yes; },
@@ -206,4 +207,72 @@ test("a delayed system-browser launch cannot undo sign-out", async (t) => {
   await begin;
   assert.equal(controller.status().status, "signed_out");
   assert.equal(controller.status().account, null);
+});
+
+test("abandoned browser authorization is cancellable; stale callbacks cannot exchange a token", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await controller.initialize();
+  await controller.begin(["tools:invoke"]);
+  const stateOne = new URL(f.opened[0]).searchParams.get("state");
+  assert.equal(controller.status().status, "authorizing");
+  assert.equal(controller.cancelAuthorization().status, "signed_out");
+  assert.match(controller.status().message, /已取消/);
+  assert.equal(await controller.handleCallback(
+    "mira-desktop://oauth/callback?state=" + stateOne + "&code=mca_v1.id.secret"), false);
+  assert.equal(f.calls.some((call) => call.url.endsWith("/v1/oauth/token")), false);
+  await controller.begin([]);
+  const stateTwo = new URL(f.opened[1]).searchParams.get("state");
+  assert.notEqual(stateTwo, stateOne);
+  assert.equal(await controller.handleCallback(
+    "mira-desktop://oauth/callback?state=" + stateOne + "&code=mca_v1.id.secret"), false);
+  assert.equal(await controller.handleCallback(
+    "mira-desktop://oauth/callback?state=" + stateTwo +
+    "&error=access_denied&error_description=User%20cancelled"), true);
+  assert.equal(controller.status().status, "signed_out");
+  assert.equal(controller.cancelAuthorization().status, "signed_out");
+  await controller.begin([]);
+  assert.equal(controller.status().status, "authorizing");
+  assert.equal(f.calls.some((call) => call.url.endsWith("/v1/oauth/token")), false);
+});
+
+test("OAuth authorization expires and allows retry without process restart", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build({ authorizationTimeoutMs: 20 });
+  await controller.initialize();
+  await controller.begin([]);
+  const expiredState = new URL(f.opened[0]).searchParams.get("state");
+  await new Promise((resolve) => setTimeout(resolve, 75));
+  assert.equal(controller.status().status, "signed_out");
+  assert.match(controller.status().message, /超时/);
+  assert.equal(await controller.handleCallback(
+    "mira-desktop://oauth/callback?state=" + expiredState + "&code=mca_v1.x.y"), false);
+  await controller.begin([]);
+  assert.equal(controller.status().status, "authorizing");
+  assert.notEqual(new URL(f.opened[1]).searchParams.get("state"), expiredState);
+  controller.cancelAuthorization();
+});
+
+test("cancel while shell.openExternal is pending cannot reinstate authorizing state", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  let entered;
+  const opening = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  f.setBeforeOpenExternal(async () => { entered(); await gate; });
+  const controller = f.build();
+  await controller.initialize();
+  const openingPromise = controller.begin(["threads:read"]);
+  await opening;
+  assert.equal(controller.status().status, "authorizing");
+  assert.equal(controller.cancelAuthorization().status, "signed_out");
+  release();
+  assert.equal((await openingPromise).status, "signed_out");
+  assert.equal(controller.status().status, "signed_out");
+  const fresh = f.build();
+  await fresh.initialize();
+  assert.equal(fresh.status().status, "signed_out");
 });
