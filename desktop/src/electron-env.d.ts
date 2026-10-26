@@ -8,10 +8,13 @@ declare global {
         scopes: string[];
         expiresAt: string | null;
         permissionsConfigured: boolean;
+        canResetCredentials?: boolean;
         message: string;
       }>;
       signIn: (scopes: string[]) => Promise<unknown>;
       cancelSignIn: () => Promise<unknown>;
+      retryHostSetup: () => Promise<unknown>;
+      resetLocalCredentials: () => Promise<unknown>;
       signOut: () => Promise<unknown>;
       subscribe: (listener: (state: Awaited<ReturnType<NonNullable<Window["cloudAccount"]>["status"]>>) => void) => () => void;
     };
