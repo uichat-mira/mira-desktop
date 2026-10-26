@@ -21,6 +21,8 @@ function fixture() {
   let offline = false;
   let storedPolicy = null;
   let beforePolicyPut = null;
+  let beforeSessionRestore = null;
+  let beforeOpenExternal = null;
   const fetcher = async (url, opts) => {
     calls.push({ url, opts });
     if (offline) throw new Error("connection reset");
@@ -39,20 +41,27 @@ function fixture() {
       if (beforePolicyPut) await beforePolicyPut();
       return Response.json({ hostId: "host-1", revision: 1 });
     }
-    if (url.endsWith("/v1/auth/session"))
+    if (url.endsWith("/v1/auth/session")) {
+      if (beforeSessionRestore) await beforeSessionRestore();
       return Response.json({ account: { id: "account-a", username: "test-a" }, expiresAt: "2026-12-12T00:00:00.000Z" });
+    }
     if (url.endsWith("/v1/auth/logout")) return new Response(null, { status: 204 });
     throw new Error("unexpected route " + url);
   };
   const build = () => createCloudAccountController({
     app: { getPath: () => dir }, safeStorage: storage,
-    shell: { openExternal: async (url) => { opened.push(url); } },
+    shell: { openExternal: async (url) => {
+      opened.push(url);
+      if (beforeOpenExternal) await beforeOpenExternal();
+    } },
     notify: () => {}, fetcher, storagePath: store,
   });
   return { dir, store, opened, calls, build,
     setOffline: (yes) => { offline = yes; },
     setStoredPolicy: (scopes) => { storedPolicy = scopes; },
-    setBeforePolicyPut: (hook) => { beforePolicyPut = hook; } };
+    setBeforePolicyPut: (hook) => { beforePolicyPut = hook; },
+    setBeforeSessionRestore: (hook) => { beforeSessionRestore = hook; },
+    setBeforeOpenExternal: (hook) => { beforeOpenExternal = hook; } };
 }
 
 test("rejects wrong protocols, duplicate parameters, fragments and invalid scopes", () => {
@@ -149,4 +158,51 @@ test("logout wins when an in-flight Host grant write finishes later", async (t) 
   await restored.initialize();
   assert.equal(restored.status().status, "signed_out");
   assert.equal(f.calls.some((call) => call.url.endsWith("/v1/auth/logout")), true);
+});
+
+test("logout wins over a pending startup Cloud Session restore", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const first = f.build();
+  await first.initialize();
+  await first.begin([]);
+  const state = new URL(f.opened[0]).searchParams.get("state");
+  await first.handleCallback("mira-desktop://oauth/callback?state=" + state + "&code=mca_v1.id.secret");
+
+  let entered;
+  const restoring = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  f.setBeforeSessionRestore(async () => { entered(); await gate; });
+  const second = f.build();
+  const initialize = second.initialize();
+  await restoring;
+  assert.equal(second.status().status, "checking");
+  await second.signOut();
+  release();
+  await initialize;
+  assert.equal(second.status().status, "signed_out");
+  assert.equal(second.status().account, null);
+  const third = f.build();
+  await third.initialize();
+  assert.equal(third.status().status, "signed_out");
+});
+
+test("a delayed system-browser launch cannot undo sign-out", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  let entered;
+  const opening = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  f.setBeforeOpenExternal(async () => { entered(); await gate; });
+  const controller = f.build();
+  await controller.initialize();
+  const begin = controller.begin(["threads:read"]);
+  await opening;
+  await controller.signOut();
+  release();
+  await begin;
+  assert.equal(controller.status().status, "signed_out");
+  assert.equal(controller.status().account, null);
 });
