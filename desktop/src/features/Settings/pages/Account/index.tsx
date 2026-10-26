@@ -133,8 +133,8 @@ export default function AccountSettings() {
             icon={<LockKeyhole size={16} />}>
             <div className="space-y-4 p-4">
               <p className="text-sm leading-6 text-text-secondary">
-                {english ? "Choose allowed scopes before sign-in. All are disabled by default. Your browser will ask you to authorize Mira Desktop; no QR pairing is needed."
-                  : "请先选择手机可调用的范围，默认全部关闭。系统浏览器将完成 OAuth 2.0 授权，不需要二维码或现场配对。"}
+                {english ? "Choose initial Mobile scopes before sign-in; all start disabled. If this Host already has a Cloud policy, its existing scopes are preserved. Change them later in Cloud Portal. No QR pairing is needed."
+                  : "首次登录可选择手机可调用的权限，默认全部关闭；若云端已有此 Host 的权限策略，将保留原设置，后续可在 Cloud Portal 修改。不需要二维码或现场配对。"}
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {SCOPE_OPTIONS.map(([id, zh, en]) => (
