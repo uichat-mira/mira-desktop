@@ -88,7 +88,7 @@ export class CloudRelayTicketIpcClient {
         (message.reason === "signout" || message.reason === "reauth")) {
       const reason = message.reason;
       this.failAll(reason === "reauth" ? "relay_ticket_reauth" : "relay_ticket_revoked");
-      for (const subscriber of this.revoked) {
+      for (const subscriber of [...this.revoked]) {
         try {
           subscriber(reason);
         } catch {
@@ -125,7 +125,7 @@ export class CloudRelayTicketIpcClient {
     this.failAll("relay_ticket_bridge_disconnected");
     // A surviving Backend must not retain an authorized socket after its
     // native credential owner has become unreachable.
-    for (const subscriber of this.revoked) {
+    for (const subscriber of [...this.revoked]) {
       try {
         subscriber("bridge_disconnected");
       } catch {
