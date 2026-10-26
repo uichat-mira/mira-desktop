@@ -1,6 +1,8 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { EventEmitter } = require("node:events");
 const { randomUUID } = require("node:crypto");
 const { attachCloudRelayTicketIpc, CHANNEL } = require("./cloud-relay-ticket-ipc.cjs");
@@ -138,4 +140,14 @@ test("malformed ticket fails closed without forwarding secrets", async () => {
     errorCode: "relay_ticket_invalid_response",
   }]);
   bridge.dispose();
+});
+
+test("both Electron staging paths include the native IPC module", () => {
+  const root = path.resolve(__dirname, "..");
+  const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
+  assert.match(read("electron-builder.yml"), /^  - cloud-relay-ticket-ipc\.cjs$/m);
+  assert.match(read("scripts/prepare-desktop-artifacts.js"),
+    /path\.join\(projectRoot, "electron", "cloud-relay-ticket-ipc\.cjs"\)/);
+  assert.match(read("scripts/release/package-electron-from-payload.mjs"),
+    /"cloud-relay-ticket-ipc\.cjs"/);
 });
