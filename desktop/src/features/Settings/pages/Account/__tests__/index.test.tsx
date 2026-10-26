@@ -102,7 +102,7 @@ describe("DSK-005 Cloud Account settings", () => {
   });
 
   it("clears prior user's selected scopes before a second Cloud sign-in", async () => {
-    let notify: ((state: any) => void) | undefined;
+    let notify: ((state: Awaited<ReturnType<NonNullable<Window["cloudAccount"]>["status"]>>) => void) | undefined;
     const signIn = vi.fn().mockResolvedValue({ ...empty, status: "authorizing" });
     const signOut = vi.fn().mockResolvedValue(empty);
     window.cloudAccount = {
