@@ -544,7 +544,8 @@ export class RemoteRelayConnectorService {
     if (frame.type === "error" && this.currentConfig &&
         isCloud(this.currentConfig) && this.state === "connecting" &&
         !frame.requestId) {
-      if (frame.code === "CLIENT_TOKEN_REQUIRED") {
+      if (frame.code === "CLIENT_TOKEN_REQUIRED" ||
+          frame.code === "HOST_AUTH_REQUIRED") {
         this.lastError = "cloud_relay_protocol_unavailable";
         socket.close(1008, "Hosted Relay protocol not available");
         return;
