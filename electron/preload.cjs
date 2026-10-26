@@ -31,6 +31,7 @@ const desktopRuntime = {
 contextBridge.exposeInMainWorld("cloudAccount", {
   status: () => ipcRenderer.invoke("cloud-account:status"),
   signIn: (scopes) => ipcRenderer.invoke("cloud-account:login", scopes),
+  cancelSignIn: () => ipcRenderer.invoke("cloud-account:cancel-login"),
   signOut: () => ipcRenderer.invoke("cloud-account:logout"),
   subscribe: (callback) => {
     if (typeof callback !== "function") return () => {};
