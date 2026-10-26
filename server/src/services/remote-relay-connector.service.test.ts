@@ -7,6 +7,8 @@ vi.mock("@/config/index.js", () => ({
 import {
   RemoteRelayConnectorService,
   resolveRemoteRelayConnectorConfig,
+  resolveCloudRelayConnectorConfig,
+  type CloudRelayTicketSource,
   type RelayLocalFetch,
   type RelaySocketFactory,
 } from "./remote-relay-connector.service.js";
@@ -380,5 +382,212 @@ describe("RemoteRelayConnectorService", () => {
       enabled: true,
     });
     expect(socketFactory).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Cloud Relay connector — DSK-010 Round 2", () => {
+  const cloudRoom = "room_dGVzdC1yb29t";
+  const cloudUrl = "wss://cloud-relay.example.test";
+  const cloudConfig = () => ({
+    kind: "cloud" as const,
+    enabled: true,
+    relayUrl: cloudUrl,
+  });
+  const ticket = (token: string) => ({
+    token, tokenType: "Bearer" as const,
+    audience: "mira:cloud-relay-transport" as const,
+    room: cloudRoom, role: "host" as const,
+    expiresAt: new Date(Date.now() + 300_000).toISOString(),
+  });
+
+  it("is opt-in and never inherits self-hosted/legacy Relay token settings", () => {
+    expect(resolveCloudRelayConnectorConfig({
+      UI_CHAT_REMOTE_RELAY_ENABLED: "1",
+      UI_CHAT_REMOTE_RELAY_URL: "https://legacy.example.test",
+      UI_CHAT_REMOTE_RELAY_HOST_TOKEN: "h".repeat(48),
+    })).toEqual({ kind: "cloud", enabled: false, relayUrl: null });
+    expect(resolveCloudRelayConnectorConfig({
+      UI_CHAT_CLOUD_RELAY_ENABLED: "1",
+      UI_CHAT_CLOUD_RELAY_URL: "https://official.example.test",
+      NODE_ENV: "production",
+    })).toEqual({ kind: "cloud", enabled: true,
+      relayUrl: "wss://official.example.test" });
+    expect(resolveCloudRelayConnectorConfig({
+      UI_CHAT_CLOUD_RELAY_ENABLED: "1",
+      UI_CHAT_CLOUD_RELAY_URL: "ws://insecure.example.test",
+      NODE_ENV: "production",
+    }).relayUrl).toBeNull();
+  });
+
+  it("uses the native ticket for Host hello, never sends a legacy clientToken and blocks all business", async () => {
+    const sockets: FakeRelaySocket[] = [];
+    const urls: string[] = [];
+    const localFetch = vi.fn();
+    let ticketCount = 0;
+    const source: CloudRelayTicketSource = {
+      withHostTicket: async (consumer) => {
+        ticketCount++;
+        return consumer(ticket("cloud.jwt.signature"));
+      },
+      onRevoked: () => () => undefined,
+    };
+    const service = new RemoteRelayConnectorService(
+      cloudConfig,
+      (url) => {
+        urls.push(url);
+        const socket = new FakeRelaySocket();
+        sockets.push(socket);
+        return socket;
+      },
+      localFetch as unknown as RelayLocalFetch,
+      "http://127.0.0.1:8787",
+      () => 0,
+      source,
+    );
+    service.start();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(urls).toEqual([
+      cloudUrl + "/v1/relay/" + cloudRoom + "/socket",
+    ]);
+    const socket = sockets[0]!;
+    socket.open();
+    expect(parsedSent(socket)[0]).toEqual({
+      version: 1, type: "hello", role: "host",
+      relayId: cloudRoom, token: "cloud.jwt.signature",
+    });
+    socket.message({
+      version: 1, type: "hello_ack", role: "host",
+      relayId: cloudRoom, protocolVersion: 1,
+    });
+    expect(service.getSnapshot()).toMatchObject({
+      enabled: true, state: "connected", relayId: null, lastError: null,
+    });
+    socket.message({
+      version: 1, type: "request", requestId: "untrusted-client",
+      method: "POST", path: "/remote/v1/tool/invoke",
+      headers: { authorization: "Bearer mira_device_legacy" },
+    });
+    expect(parsedSent(socket).at(-1)).toMatchObject({
+      type: "error", requestId: "untrusted-client", code: "CLOUD_GRANT_REQUIRED",
+      retryable: false,
+    });
+    expect(localFetch).not.toHaveBeenCalled();
+    expect(ticketCount).toBe(1);
+    service.stop();
+  });
+
+  it("refreshes the ticket for every reconnect, not when a healthy socket ticket expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: FakeRelaySocket[] = [];
+      let ticketCount = 0;
+      const source: CloudRelayTicketSource = {
+        withHostTicket: async (consumer) => {
+          ticketCount++;
+          return consumer(ticket("cloud.jwt.ticket-" + ticketCount));
+        },
+        onRevoked: () => () => undefined,
+      };
+      const service = new RemoteRelayConnectorService(
+        cloudConfig, () => {
+          const s = new FakeRelaySocket();
+          sockets.push(s);
+          return s;
+        }, fetch, "http://127.0.0.1:8787", () => 0, source,
+      );
+      service.start();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(sockets).toHaveLength(1);
+      const first = sockets[0]!;
+      first.open();
+      first.message({ version: 1, type: "hello_ack", role: "host",
+        relayId: cloudRoom, protocolVersion: 1 });
+      await vi.advanceTimersByTimeAsync(301_000);
+      expect(service.getSnapshot().state).toBe("connected");
+      expect(ticketCount).toBe(1);
+      first.close(1001, "transport lost");
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sockets).toHaveLength(2);
+      expect(ticketCount).toBe(2);
+      sockets[1]!.open();
+      expect(parsedSent(sockets[1]!)[0]).toMatchObject({
+        token: "cloud.jwt.ticket-2",
+      });
+      service.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("revocation stops the live socket and cannot reconnect with an old ticket", async () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: FakeRelaySocket[] = [];
+      let revoked: ((reason: "signout" | "reauth" | "bridge_disconnected") => void)
+        | undefined;
+      let available = true;
+      let issuance = 0;
+      const source: CloudRelayTicketSource = {
+        withHostTicket: async (consumer) => {
+          issuance++;
+          if (!available) throw Object.assign(
+            new Error("never forward raw cloud token"), { code: "relay_ticket_reauth" });
+          return consumer(ticket("cloud.jwt.ticket-" + issuance));
+        },
+        onRevoked(listener) {
+          revoked = listener;
+          return () => { revoked = undefined; };
+        },
+      };
+      const service = new RemoteRelayConnectorService(
+        cloudConfig, () => {
+          const s = new FakeRelaySocket();
+          sockets.push(s);
+          return s;
+        }, fetch, "http://127.0.0.1:8787", () => 0, source,
+      );
+      service.start();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(sockets).toHaveLength(1);
+      sockets[0]!.open();
+      sockets[0]!.message({ version: 1, type: "hello_ack", role: "host",
+        relayId: cloudRoom, protocolVersion: 1 });
+      available = false;
+      revoked?.("signout");
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(sockets[0]!.closeCalls.length).toBeGreaterThan(0);
+      expect(service.getSnapshot().state).toBe("disconnected");
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sockets).toHaveLength(1);
+      expect(service.getSnapshot().lastError).toBe("relay_ticket_reauth");
+      expect(issuance).toBeGreaterThanOrEqual(2);
+      service.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails closed without native IPC, never attempts the configured legacy Relay", async () => {
+    const factory = vi.fn();
+    const source: CloudRelayTicketSource = {
+      withHostTicket: async () => { throw Object.assign(
+        new Error("native IPC unavailable"), { code: "relay_ticket_bridge_unavailable" }); },
+      onRevoked: () => () => undefined,
+    };
+    const service = new RemoteRelayConnectorService(
+      cloudConfig, factory, fetch, "http://127.0.0.1:8787", () => 0, source,
+    );
+    service.start();
+    await vi.waitFor(() => {
+      expect(service.getSnapshot()).toMatchObject({
+        state: "disconnected", lastError: "relay_ticket_bridge_unavailable",
+      });
+    });
+    expect(factory).not.toHaveBeenCalled();
+    service.stop();
   });
 });
