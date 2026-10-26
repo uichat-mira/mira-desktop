@@ -418,6 +418,11 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
       UI_CHAT_CLOUD_RELAY_URL: "ws://insecure.example.test",
       NODE_ENV: "production",
     }).relayUrl).toBeNull();
+    expect(resolveCloudRelayConnectorConfig({
+      UI_CHAT_CLOUD_RELAY_ENABLED: "1",
+      UI_CHAT_CLOUD_RELAY_URL: "http://insecure.example.test",
+      NODE_ENV: "development",
+    }).relayUrl).toBeNull();
   });
 
   it("uses the native ticket for Host hello, never sends a legacy clientToken and blocks all business", async () => {
