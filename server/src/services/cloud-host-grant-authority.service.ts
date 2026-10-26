@@ -101,9 +101,11 @@ export function parseCloudHostGrantSnapshot(
       validUntil - issuedAt > raw.maxStalenessSeconds * 1000 + 1000 ||
       (!raw.policyConfigured && raw.policyScopes.length > 0)) return bad();
 
+  // Capture validated scopes in a stable local value before callback evaluation.
+  const policyScopes = raw.policyScopes;
   const grants: Array<{
     mobileDeviceId: string;
-    scopes: RemoteDeviceScope[];
+    scopes: readonly RemoteDeviceScope[];
     status: "active" | "revoked";
   }> = [];
   const seen = new Set<string>();
@@ -115,7 +117,7 @@ export function parseCloudHostGrantSnapshot(
         (grant.status !== "active" && grant.status !== "revoked") ||
         (grant.status === "revoked" && grant.scopes.length !== 0) ||
         (!raw.policyConfigured && grant.scopes.length !== 0) ||
-        grant.scopes.some((scope) => !raw.policyScopes.includes(scope))) return bad();
+        grant.scopes.some((scope) => !policyScopes.includes(scope))) return bad();
     seen.add(grant.mobileDeviceId);
     grants.push(Object.freeze({
       mobileDeviceId: grant.mobileDeviceId,
