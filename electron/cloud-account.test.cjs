@@ -19,6 +19,8 @@ function fixture() {
     decryptString: (b) => Buffer.from(b.toString().slice("encrypted:".length), "base64").toString(),
   };
   let offline = false;
+  let storedPolicy = null;
+  let beforePolicyPut = null;
   const fetcher = async (url, opts) => {
     calls.push({ url, opts });
     if (offline) throw new Error("connection reset");
@@ -30,9 +32,13 @@ function fixture() {
     if (url.endsWith("/v1/hosts") && opts.method === "POST")
       return Response.json({ id: "host-1" });
     if (url.endsWith("/v1/hosts/host-1/grants"))
-      return Response.json({ revision: 0, policyConfigured: false });
-    if (url.endsWith("/v1/hosts/host-1/grant-policy"))
+      return Response.json({ hostId: "host-1", accountId: "account-a",
+        revision: storedPolicy ? 7 : 0, policyConfigured: Boolean(storedPolicy),
+        policyScopes: storedPolicy || [] });
+    if (url.endsWith("/v1/hosts/host-1/grant-policy")) {
+      if (beforePolicyPut) await beforePolicyPut();
       return Response.json({ hostId: "host-1", revision: 1 });
+    }
     if (url.endsWith("/v1/auth/session"))
       return Response.json({ account: { id: "account-a", username: "test-a" }, expiresAt: "2026-12-12T00:00:00.000Z" });
     if (url.endsWith("/v1/auth/logout")) return new Response(null, { status: 204 });
@@ -43,7 +49,10 @@ function fixture() {
     shell: { openExternal: async (url) => { opened.push(url); } },
     notify: () => {}, fetcher, storagePath: store,
   });
-  return { dir, store, opened, calls, build, setOffline: (yes) => { offline = yes; } };
+  return { dir, store, opened, calls, build,
+    setOffline: (yes) => { offline = yes; },
+    setStoredPolicy: (scopes) => { storedPolicy = scopes; },
+    setBeforePolicyPut: (hook) => { beforePolicyPut = hook; } };
 }
 
 test("rejects wrong protocols, duplicate parameters, fragments and invalid scopes", () => {
@@ -99,4 +108,45 @@ test("Cloud offline preserves native session rather than invalidating local Mira
   await two.initialize();
   assert.equal(two.status().status, "unavailable");
   assert.equal(two.status().account.username, "test-a");
+});
+
+test("re-login keeps the Cloud owner's existing Host ceiling instead of overwriting it", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await controller.initialize();
+  await controller.begin(["tools:invoke"]);
+  const state = new URL(f.opened[0]).searchParams.get("state");
+  await controller.handleCallback("mira-desktop://oauth/callback?state=" + state + "&code=mca_v1.id.secret");
+  assert.equal(controller.status().status, "signed_in");
+  assert.deepEqual(controller.status().scopes, ["threads:read"]);
+  assert.match(controller.status().message, /保留云端原有/);
+  assert.equal(f.calls.some((call) => call.url.endsWith("/grant-policy")), false);
+});
+
+test("logout wins when an in-flight Host grant write finishes later", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  let entered;
+  const writeStarted = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const writeGate = new Promise((resolve) => { release = resolve; });
+  f.setBeforePolicyPut(async () => { entered(); await writeGate; });
+  const controller = f.build();
+  await controller.initialize();
+  await controller.begin(["threads:read"]);
+  const state = new URL(f.opened[0]).searchParams.get("state");
+  const callback = controller.handleCallback(
+    "mira-desktop://oauth/callback?state=" + state + "&code=mca_v1.id.secret");
+  await writeStarted;
+  await controller.signOut();
+  release();
+  await callback;
+  assert.equal(controller.status().status, "signed_out");
+  assert.equal(controller.status().account, null);
+  const restored = f.build();
+  await restored.initialize();
+  assert.equal(restored.status().status, "signed_out");
+  assert.equal(f.calls.some((call) => call.url.endsWith("/v1/auth/logout")), true);
 });
