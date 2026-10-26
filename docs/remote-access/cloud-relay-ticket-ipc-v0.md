@@ -52,3 +52,20 @@ The positive ticket contains only `token`, `tokenType`, `audience`, `expiresAt`,
 - A read-only authenticated `GET /remote/admin/cloud-relay/status` reports sanitized transport state (no room, ticket, account or user credential). Legacy `/remote/admin/relay/*` continues to mean the independently configured Relay.
 - Standalone development Backend without Electron parent IPC fails with `relay_ticket_bridge_unavailable`. This is a known Round 1 limitation, not license to add localhost secret endpoints.
 - Connection/hello/ack details, production endpoint deployment and actual Relay service verification remain a **Round 3** dependency. Tests of this Round 2 connector use a fake socket and native ticket-provider fixture; do not mark end-to-end complete.
+
+## DSK-010 Round 3 — REL-001 compatibility gate (2026-10-26)
+
+**Repository evidence as of this review:**
+
+| Source | Checked contract | Reality |
+| --- | --- | --- |
+| `uichat-mira/cloud-auth@dev`, `packages/contracts/src/service-credential.ts` | Relay admission ticket with issuer `mira:cloud-auth`, audience `mira:cloud-relay-transport`, `relay:transport`, room and `host` role | Implemented and scoped |
+| `uichat-mira/cloud-auth@dev`, `apps/api/src/service-credentials/service.ts` / `relay-admission.ts` | Server-owned room/Host/device binding checked before issue | Implemented for ticket issuance |
+| `uichat-mira/uichat-mira-relay@a41ada783cde4cd94e17d9beb9cf4e3108ac52e7`, `src/index.ts` | WebSocket Host `hello` accepts short-lived, JWT-signed Cloud ticket | **Not implemented**: legacy SHA-256 room token comparison; first Host `hello` requires a separate legacy `clientToken` |
+| [REL-001 #2](https://github.com/uichat-mira/uichat-mira-relay/issues/2) | Hosted Cloud ticket verification, role/room/context binding, authenticated Host ack | **Open**, no implementation PR in `uichat-mira-relay` at time of review |
+
+**Desktop fail-closed hardening:** The current legacy Relay sends `CLIENT_TOKEN_REQUIRED` **before** `hello_ack`. Desktop now classifies known legacy Host-hello errors as `cloud_relay_protocol_incompatible`, terminates that Cloud socket and suppresses automatic attempts to the same incompatible endpoint until an explicit connector restart. Generic hosted admission denial is classified `cloud_relay_admission_denied` rather than overwritten by WebSocket close reason. Mismatched room acknowledgements and handshake timeout retain distinct diagnostic codes. None of these errors may cause legacy Token or Tailscale fallback. Independent self-hosted protocol behavior remains untouched.
+
+**Blocking for genuine T3:** After REL-001 lands, compare its actual outbound URL, Host `hello` and `hello_ack` fields, JWT verifier expectations (issuer, audience, EdDSA/JWKS, expiry, room/role, current entitlement) and rejection frames with this provisional Desktop shape, and make only the necessary contract edits. Require runtime/service fixture or staged hosted proof for a valid Host ticket, invalid/mismatched ticket cases, new ticket on reconnect, successful authenticated socket retained past ticket expiry, and no business forwarding before DSK-007 Grant. Verify no raw ticket logging.
+
+**Not certified:** Current deterministic Desktop tests validate client behavior against fixtures and known *legacy* rejection frames, not a Cloud-enabled Relay runtime. They do **not** certify Relay-side JWT signature verification, issuer pinning, account/Host-room entitlement or production Mobile-to-Desktop E2E. Leave DSK-010/DSK-006 open until REL-001 delivers a trustworthy implementation and T3 evidence.
