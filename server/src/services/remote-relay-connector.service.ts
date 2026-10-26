@@ -420,9 +420,15 @@ export class RemoteRelayConnectorService {
     let socket: RelaySocket;
     try {
       socket = this.socketFactory(buildSocketUrl(url, relayId));
-    } catch {
-      this.handleConnectionFailure(generation, cloud
-        ? "cloud_relay_transport_unavailable" : "relay_ticket_unavailable");
+    } catch (error) {
+      if (cloud) {
+        this.handleConnectionFailure(generation, "cloud_relay_transport_unavailable");
+      } else {
+        // Preserve legacy/self-hosted Relay diagnostics.
+        this.lastError = error instanceof Error ? error.message : String(error);
+        this.state = "disconnected";
+        this.scheduleReconnect();
+      }
       return;
     }
     this.socket = socket;
@@ -549,7 +555,11 @@ export class RemoteRelayConnectorService {
     }
 
     if (frame.type === "error") {
-      this.lastError = `${frame.code}: ${frame.message}`;
+      // Hosted Relay messages are remote input; never reflect raw text into local status.
+      this.lastError = this.currentConfig && isCloud(this.currentConfig)
+        ? (frame.code.endsWith("AUTH_FAILED")
+          ? "cloud_relay_admission_denied" : "cloud_relay_transport_error")
+        : `${frame.code}: ${frame.message}`;
       if (!frame.requestId && frame.code.endsWith("AUTH_FAILED")) {
         socket.close(1008, "Relay authentication failed");
       }
