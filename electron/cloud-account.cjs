@@ -203,27 +203,44 @@ function createCloudAccountController(options) {
         catch { /* no bearer is retained; server TTL remains the upper bound */ }
         return true;
       }
+      const sessionToken = result.sessionToken;
       record = { installationId: record.installationId,
-        sessionToken: result.sessionToken, account: result.account,
-        expiresAt: result.expiresAt };
+        sessionToken, account: result.account, expiresAt: result.expiresAt };
       persist(record); // token never reaches React or local JWT/DB
-      // Only OAuth provenance is accepted for Host registration. Do not forge a Host ID.
-      const host = await request("/v1/hosts", "POST", record.sessionToken, {});
+      // Keep the exchanged bearer local to this transaction: signOut may reset
+      // record while one of the following Cloud requests is in flight.
+      const host = await request("/v1/hosts", "POST", sessionToken, {});
+      if (transaction.revision !== revision) return true;
       if (!host || typeof host.id !== "string") throw new Error("Cloud Host 注册响应无效");
       const snapshot = await request("/v1/hosts/" + encodeURIComponent(host.id) + "/grants",
-        "GET", record.sessionToken);
-      if (!snapshot || !Number.isSafeInteger(snapshot.revision)) throw new Error("云端权限版本缺失");
-      const policy = await request("/v1/hosts/" + encodeURIComponent(host.id) + "/grant-policy",
-        "PUT", record.sessionToken,
-        { expectedRevision: snapshot.revision, scopes: transaction.selected });
-      if (!policy || !Number.isSafeInteger(policy.revision) ||
-          policy.hostId !== host.id) throw new Error("云端权限保存响应无效");
-      record = { ...record, hostId: host.id, scopes: transaction.selected,
-        permissionsConfigured: true };
+        "GET", sessionToken);
+      if (transaction.revision !== revision) return true;
+      if (!snapshot || snapshot.hostId !== host.id ||
+          !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
+          typeof snapshot.policyConfigured !== "boolean" ||
+          !Array.isArray(snapshot.policyScopes)) {
+        throw new Error("云端 Host 权限快照无效");
+      }
+      // Existing owner policy (including Portal restrictions) is authoritative.
+      // Re-login must not silently replace it with the pre-login default [].
+      const existingPolicy = snapshot.policyConfigured;
+      const scopes = existingPolicy ? validateScopes(snapshot.policyScopes) : transaction.selected;
+      if (!existingPolicy) {
+        const policy = await request("/v1/hosts/" + encodeURIComponent(host.id) + "/grant-policy",
+          "PUT", sessionToken,
+          { expectedRevision: snapshot.revision, scopes });
+        if (transaction.revision !== revision) return true;
+        if (!policy || !Number.isSafeInteger(policy.revision) ||
+            policy.hostId !== host.id) throw new Error("云端权限保存响应无效");
+      }
+      if (transaction.revision !== revision) return true;
+      record = { ...record, hostId: host.id, scopes, permissionsConfigured: true };
       persist(record);
       publish({ status: "signed_in", account: result.account, expiresAt: result.expiresAt,
-        hostId: host.id, scopes: transaction.selected, permissionsConfigured: true,
-        message: "云账号已登录，Host 权限范围已保存。实际调用仍由 Desktop Gateway 决定。" });
+        hostId: host.id, scopes, permissionsConfigured: true,
+        message: existingPolicy
+          ? "云账号已登录，已保留云端原有 Host 权限设置；修改请前往 Cloud Portal。"
+          : "云账号已登录，Host 权限范围已保存。实际调用仍由 Desktop Gateway 决定。" });
     } catch (error) {
       if (transaction.revision !== revision) return true;
       if (record && record.sessionToken) {
