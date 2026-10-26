@@ -401,3 +401,49 @@ test("missing OS encryption must not offer credential reset or plaintext recover
   assert.equal(disabled.status().canResetCredentials, false);
   assert.throws(() => disabled.resetLocalCredentials(), /不允许重置/);
 });
+
+test("OAuth callback tolerates standard optional metadata but pins the issuer", () => {
+  const state = "a".repeat(32);
+  const callback = (params) => "mira-desktop://oauth/callback?" +
+    new URLSearchParams({ state, ...params }).toString();
+  assert.deepEqual(parseCallback(callback({
+    code: "mca_v1.id.secret", iss: "https://cloud-auth.tomzlab.cn",
+  })), { state, code: "mca_v1.id.secret", error: null });
+  assert.deepEqual(parseCallback(callback({
+    error: "access_denied", error_description: "User declined",
+    error_uri: "https://cloud-auth.tomzlab.cn/help/oauth",
+    iss: "https://cloud-auth.tomzlab.cn",
+  })), { state, code: null, error: "access_denied" });
+  assert.equal(parseCallback(callback({
+    code: "mca_v1.id.secret", iss: "https://attacker.example",
+  })), null);
+  assert.equal(parseCallback(callback({
+    code: "mca_v1.id.secret", error_uri: "https://cloud-auth.tomzlab.cn/help",
+  })), null);
+  assert.equal(parseCallback(callback({
+    code: "mca_v1.id.secret", unexpected: "ignored",
+  })), null);
+  assert.equal(parseCallback(callback({ code: "mca_v1.id.secret" }) +
+    "&iss=https%3A%2F%2Fcloud-auth.tomzlab.cn&iss=https%3A%2F%2Fcloud-auth.tomzlab.cn"), null);
+});
+
+test("OAuth denial with optional error_uri and issuer returns to signed-out without token exchange", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await controller.initialize();
+  await controller.begin([]);
+  const state = new URL(f.opened[0]).searchParams.get("state");
+  const query = new URLSearchParams({
+    state, error: "access_denied", error_description: "User declined",
+    error_uri: "https://cloud-auth.tomzlab.cn/help/oauth",
+    iss: "https://cloud-auth.tomzlab.cn",
+  });
+  assert.equal(await controller.handleCallback(
+    "mira-desktop://oauth/callback?" + query.toString()), true);
+  assert.equal(controller.status().status, "signed_out");
+  assert.equal(f.calls.some((call) => call.url.endsWith("/v1/oauth/token")), false);
+  await controller.begin([]);
+  assert.equal(controller.status().status, "authorizing");
+  controller.cancelAuthorization();
+});
