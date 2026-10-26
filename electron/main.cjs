@@ -3,9 +3,11 @@ const path = require("path");
 const fs = require("fs");
 const { spawn, execFileSync } = require("child_process");
 const { createCloudAccountController } = require("./cloud-account.cjs");
+const { attachCloudRelayTicketIpc } = require("./cloud-relay-ticket-ipc.cjs");
 
 let mainWindow;
 let backendProcess;
+let cloudRelayTicketBridge = null;
 
 let cloudAccount;
 let cloudCallbackRegistered = false;
@@ -478,9 +480,11 @@ async function startBackend() {
       LOCAL_MODEL_USER_DATA_DIR: userDataDir,
       LOCAL_ONNX_WASM_ROOT: localOnnxWasmRoot,
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    // Private parent/child IPC: never exposed via HTTP, preload or Renderer.
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
     windowsHide: true,
   });
+  cloudRelayTicketBridge = attachCloudRelayTicketIpc(backendProcess, () => cloudAccount);
 
   if (backendProcess.stdout) {
     backendProcess.stdout.on("data", (data) => {
@@ -495,6 +499,8 @@ async function startBackend() {
   }
 
   backendProcess.on("close", (code) => {
+    cloudRelayTicketBridge?.dispose();
+    cloudRelayTicketBridge = null;
     console.log(`Backend process exited with code ${code}`);
   });
 
@@ -519,6 +525,11 @@ app.whenReady().then(async () => {
   cloudAccount = createCloudAccountController({
     app, shell, safeStorage,
     notify: (snapshot) => {
+      if (snapshot.status === "rejected" || snapshot.status === "signed_out") {
+        cloudRelayTicketBridge?.notifyRevoked(
+          snapshot.status === "rejected" ? "reauth" : "signout",
+        );
+      }
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("cloud-account:changed", snapshot);
       }
@@ -566,6 +577,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  cloudRelayTicketBridge?.dispose();
   if (backendProcess) {
     backendProcess.kill();
   }
