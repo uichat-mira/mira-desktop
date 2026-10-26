@@ -596,3 +596,137 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
     service.stop();
   });
 });
+
+
+describe("Cloud Relay T3 contract boundary — REL-001 pending", () => {
+  const cloudRoom = "room_dGVzdC1yb29t";
+  const makeSource = () => {
+    let tickets = 0;
+    const source: CloudRelayTicketSource = {
+      withHostTicket: async (consumer) => consumer({
+        token: "header.payload.signature-" + (++tickets),
+        tokenType: "Bearer",
+        audience: "mira:cloud-relay-transport",
+        room: cloudRoom,
+        role: "host",
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      }),
+      onRevoked: () => () => undefined,
+    };
+    return { source, count: () => tickets };
+  };
+  const makeCloud = (socketFactory: RelaySocketFactory, source: CloudRelayTicketSource) =>
+    new RemoteRelayConnectorService(
+      () => ({ kind: "cloud", enabled: true, relayUrl: "wss://official.example.test" }),
+      socketFactory, fetch, "http://127.0.0.1:8787", () => 0, source,
+    );
+
+  it("recognizes the real V1 legacy CLIENT_TOKEN_REQUIRED rejection before hello_ack and stops retrying", async () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: FakeRelaySocket[] = [];
+      const { source, count } = makeSource();
+      const service = makeCloud(() => {
+        const socket = new FakeRelaySocket();
+        sockets.push(socket);
+        return socket;
+      }, source);
+      service.start();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(sockets).toHaveLength(1);
+      const socket = sockets[0]!;
+      socket.open();
+      // From uichat-mira-relay@a41ada7: an unprovisioned Host room
+      // rejects the cloud hello because it lacks a legacy clientToken.
+      socket.message({
+        version: 1, type: "error",
+        code: "CLIENT_TOKEN_REQUIRED",
+        message: "The first host connection must provision a client relay token",
+        retryable: false,
+      });
+      expect(socket.closeCalls.at(-1)?.code).toBe(1008);
+      expect(service.getSnapshot()).toMatchObject({
+        state: "disconnected",
+        lastError: "cloud_relay_protocol_incompatible",
+      });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(sockets).toHaveLength(1);
+      expect(count()).toBe(1);
+      service.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves a cloud admission denial instead of replacing it with close reason", async () => {
+    const sockets: FakeRelaySocket[] = [];
+    const { source } = makeSource();
+    const service = makeCloud(() => {
+      const socket = new FakeRelaySocket();
+      sockets.push(socket);
+      return socket;
+    }, source);
+    service.start();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0]!.open();
+    sockets[0]!.message({
+      version: 1, type: "error", code: "HOST_AUTH_FAILED",
+      message: "cloud session or jwt was rejected: do not expose",
+      retryable: false,
+    });
+    expect(service.getSnapshot()).toMatchObject({
+      state: "disconnected", lastError: "cloud_relay_admission_denied",
+    });
+    expect(JSON.stringify(service.getSnapshot())).not.toContain("jwt was rejected");
+    service.stop();
+  });
+
+  it("refuses a Host hello_ack with a wrong room without marking cloud connected", async () => {
+    const sockets: FakeRelaySocket[] = [];
+    const { source } = makeSource();
+    const service = makeCloud(() => {
+      const socket = new FakeRelaySocket();
+      sockets.push(socket);
+      return socket;
+    }, source);
+    service.start();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0]!.open();
+    sockets[0]!.message({
+      version: 1, type: "hello_ack", role: "host",
+      relayId: "room_other_account", protocolVersion: 1,
+    });
+    expect(service.getSnapshot()).toMatchObject({
+      state: "disconnected", connectedAt: null,
+      lastError: "cloud_relay_handshake_mismatch",
+    });
+    expect(sockets[0]!.closeCalls.at(-1)?.code).toBe(1008);
+    service.stop();
+  });
+
+  it("classifies hello timeout distinctly from a credential/admission rejection", async () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: FakeRelaySocket[] = [];
+      const { source } = makeSource();
+      const service = makeCloud(() => {
+        const socket = new FakeRelaySocket();
+        sockets.push(socket);
+        return socket;
+      }, source);
+      service.start();
+      await Promise.resolve();
+      await Promise.resolve();
+      sockets[0]!.open();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(service.getSnapshot()).toMatchObject({
+        state: "disconnected",
+        lastError: "cloud_relay_handshake_timeout",
+      });
+      service.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
