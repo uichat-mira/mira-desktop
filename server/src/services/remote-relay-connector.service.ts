@@ -173,7 +173,8 @@ export const resolveCloudRelayConnectorConfig = (
   kind: "cloud",
   enabled: env.UI_CHAT_CLOUD_RELAY_ENABLED === "1",
   // Explicit deployment setting until REL-001 publishes its hosted URL.
-  relayUrl: normalizeRelayUrl(env.UI_CHAT_CLOUD_RELAY_URL, env.NODE_ENV),
+  // Cloud bearer admission must never travel over plaintext even in dev.
+  relayUrl: normalizeRelayUrl(env.UI_CHAT_CLOUD_RELAY_URL, "production"),
 });
 
 export const resolveRemoteRelayConnectorConfig = (
