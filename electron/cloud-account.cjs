@@ -28,13 +28,17 @@ function parseCallback(value) {
       url.pathname !== "/callback" || url.username || url.password ||
       url.port || url.hash) return null;
   const keys = [...url.searchParams.keys()];
-  const allowed = ["state", "code", "error", "error_description"];
-  if (keys.length < 2 || keys.length > 3 ||
-      keys.some((key) => !allowed.includes(key) || keys.filter((item) => item === key).length !== 1) ||
+  // Accept standard optional OAuth error metadata and RFC 9207 issuer, but
+  // continue to reject duplicate, unknown, or untrusted callback parameters.
+  const allowed = ["state", "code", "error", "error_description", "error_uri", "iss"];
+  if (keys.length < 2 || keys.length > allowed.length ||
+      keys.some((key) => !allowed.includes(key) || url.searchParams.getAll(key).length !== 1) ||
       keys.filter((key) => key === "state").length !== 1 ||
       keys.filter((key) => key === "code" || key === "error").length !== 1 ||
-      (keys.includes("error_description") && !keys.includes("error")) ||
-      (url.searchParams.get("error_description") || "").length > 512) return null;
+      ((keys.includes("error_description") || keys.includes("error_uri")) && !keys.includes("error")) ||
+      (url.searchParams.get("error_description") || "").length > 512 ||
+      (url.searchParams.get("error_uri") || "").length > 1024 ||
+      (keys.includes("iss") && url.searchParams.get("iss") !== ORIGIN)) return null;
   const state = url.searchParams.get("state");
   if (!state || !/^[A-Za-z0-9._~-]{16,512}$/.test(state)) return null;
   const code = url.searchParams.get("code");
