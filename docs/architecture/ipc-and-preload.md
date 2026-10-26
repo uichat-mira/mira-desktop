@@ -80,6 +80,16 @@ Remote V1 Tailscale pairing and cloud account remain separate.
   explicit user action**, which cannot claim remote session revocation.
 - Cloud Auth source: `https://cloud-auth.tomzlab.cn`; credentials must never
   be written to React storage, the backend SQLite database, or logs.
+- Cloud Auth requests run on Electron's Chromium network stack (`net.fetch`),
+  not the Node/undici `fetch`: the edge resets TLS 1.3 ClientHellos that
+  advertise only classical key exchange and requires a post-quantum hybrid
+  group to be offered. Chromium 126 offers the legacy Kyber768 draft (and
+  negotiates X25519), while Electron 31's bundled Node TLS stack offers no PQ
+  group at all, so its socket is reset before any HTTP status. Certificate
+  verification stays enabled with platform defaults. Revisit when the edge
+  accepts classical groups again, when the edge requires ML-KEM final (upgrade
+  to a Chromium that offers `X25519MLKEM768`), or when the bundled Node stack
+  supports the same key exchange groups.
 - Desktop sign-in requests the external system browser, exchanges the OAuth code,
   registers its installation as a Cloud Desktop Host, and sets the owner's initial
   Host scope ceiling. No hosted Relay ticket or Tool execution authority is
