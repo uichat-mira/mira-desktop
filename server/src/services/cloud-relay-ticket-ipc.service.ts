@@ -27,7 +27,7 @@ export type CloudRelayHostTicket = Readonly<{
   role: "host";
 }>;
 
-export type CloudRelayRevocationReason = "signout" | "reauth";
+export type CloudRelayRevocationReason = "signout" | "reauth" | "bridge_disconnected";
 
 export type CloudRelayTicketIpcTransport = {
   readonly connected?: boolean;
@@ -77,6 +77,7 @@ export class CloudRelayTicketIpcClient {
   private readonly pending = new Map<string, PendingTicket>();
   private readonly revoked = new Set<(reason: CloudRelayRevocationReason) => void>();
   private closed = false;
+  private disconnected = false;
   private readonly onMessage = (message?: unknown) => {
     if (this.closed || !isRecord(message) ||
         message.channel !== CLOUD_RELAY_TICKET_IPC_CHANNEL) {
@@ -120,7 +121,17 @@ export class CloudRelayTicketIpcClient {
     pending.reject(new CloudRelayTicketBridgeError("relay_ticket_invalid_response"));
   };
   private readonly onDisconnect = () => {
+    this.disconnected = true;
     this.failAll("relay_ticket_bridge_disconnected");
+    // A surviving Backend must not retain an authorized socket after its
+    // native credential owner has become unreachable.
+    for (const subscriber of this.revoked) {
+      try {
+        subscriber("bridge_disconnected");
+      } catch {
+        // A consumer callback cannot crash IPC control flow.
+      }
+    }
   };
 
   constructor(
@@ -150,7 +161,8 @@ export class CloudRelayTicketIpcClient {
   }
 
   private request(): Promise<CloudRelayHostTicket> {
-    if (this.closed || typeof this.transport.send !== "function" ||
+    if (this.closed || this.disconnected ||
+        typeof this.transport.send !== "function" ||
         this.transport.connected === false) {
       return Promise.reject(new CloudRelayTicketBridgeError("relay_ticket_bridge_unavailable"));
     }
