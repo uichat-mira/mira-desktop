@@ -57,6 +57,12 @@ export default function AccountSettings() {
       setBusy(false);
     }
   };
+  const cancelSignIn = async () => {
+    if (!api) return;
+    setError("");
+    try { setView(await api.cancelSignIn() as CloudView); }
+    catch (err) { setError(err instanceof Error ? err.message : "无法取消云账号授权"); }
+  };
   const signOut = async () => {
     if (!api) return;
     setBusy(true); setError("");
@@ -104,6 +110,10 @@ export default function AccountSettings() {
             {signedIn ?
               <Button variant="outline" disabled={busy} onClick={() => void signOut()}>
                 {english ? "Sign out" : "退出云账号"}
+              </Button> :
+              view.status === "authorizing" && hasNative ?
+              <Button variant="outline" onClick={() => void cancelSignIn()}>
+                {english ? "Cancel sign-in" : "取消本次授权"}
               </Button> :
               <span className="text-xs text-text-secondary">
                 <LockKeyhole size={16} aria-hidden="true" />
