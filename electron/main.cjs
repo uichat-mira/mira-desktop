@@ -8,6 +8,7 @@ let mainWindow;
 let backendProcess;
 
 let cloudAccount;
+let cloudCallbackRegistered = false;
 const queuedCloudCallbacks = [];
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
@@ -42,6 +43,9 @@ ipcMain.handle("cloud-account:status", (event) => {
 ipcMain.handle("cloud-account:login", (event, scopes) => {
   cloudIpcAuth(event);
   if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  if (!cloudCallbackRegistered) {
+    throw new Error("当前桌面构建无法接收 Mira Cloud OAuth 回调；请使用已安装并注册协议的 Electron 版本。");
+  }
   return cloudAccount.begin(scopes);
 });
 ipcMain.handle("cloud-account:logout", (event) => {
@@ -505,10 +509,16 @@ app.whenReady().then(async () => {
       }
     },
   });
-  if (app.isPackaged) {
-    app.setAsDefaultProtocolClient("mira-desktop");
-  } else if (process.platform !== "darwin" && process.argv[1]) {
-    app.setAsDefaultProtocolClient("mira-desktop", process.execPath, [path.resolve(process.argv[1])]);
+  // Failure to register Cloud OAuth must never prevent local Mira startup.
+  // Dev-mode macOS cannot register a protocol without a packaged .app bundle.
+  try {
+    if (app.isPackaged) {
+      cloudCallbackRegistered = app.setAsDefaultProtocolClient("mira-desktop");
+    } else if (process.platform !== "darwin" && process.argv[1]) {
+      cloudCallbackRegistered = app.setAsDefaultProtocolClient("mira-desktop", process.execPath, [path.resolve(process.argv[1])]);
+    }
+  } catch {
+    cloudCallbackRegistered = false;
   }
   const initialCallback = process.argv.find((arg) =>
     arg.startsWith("mira-desktop://oauth/callback?"));
