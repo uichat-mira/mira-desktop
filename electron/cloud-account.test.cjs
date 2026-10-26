@@ -7,6 +7,22 @@ const path = require("node:path");
 const { createCloudAccountController, parseCallback, validateScopes,
   RELAY_TICKET_ERROR_CODES } = require("./cloud-account.cjs");
 
+// Keep the production entrypoint bound to Chromium networking. Controller
+// fixtures alone cannot detect a regression to Electron's Node/undici fetch.
+test("Electron main wires native Cloud Auth to Chromium net.fetch", () => {
+  const main = fs.readFileSync(path.join(__dirname, "main.cjs"), "utf8");
+  assert.match(main, /\bnet\b[^}]*\}\s*=\s*require\(["']electron["']\)/);
+  const start = main.indexOf("cloudAccount = createCloudAccountController({");
+  assert.notEqual(start, -1, "native Cloud Account controller must be constructed");
+  const end = main.indexOf("notify:", start);
+  assert.ok(end > start, "Cloud Account controller must have a notify boundary");
+  assert.match(
+    main.slice(start, end),
+    /\bfetcher:\s*\(input,\s*init\)\s*=>\s*net\.fetch\(input,\s*init\)\s*,/,
+    "Cloud Auth must not silently fall back to Electron's Node fetch",
+  );
+});
+
 const RELAY_AUDIENCE = "mira:cloud-relay-transport";
 const RELAY_SCOPE = "relay:transport";
 const RELAY_ROOM = "room_dGVzdC1yb29t";
