@@ -34,6 +34,9 @@ export default function AccountSettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // Different Cloud accounts never inherit a previous user's initial Host scope choices.
+  useEffect(() => { setSelected([]); }, [view.account?.id]);
+
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -63,10 +66,24 @@ export default function AccountSettings() {
     try { setView(await api.cancelSignIn() as CloudView); }
     catch (err) { setError(err instanceof Error ? err.message : "无法取消云账号授权"); }
   };
+  const retryHostSetup = async () => {
+    if (!api) return;
+    setBusy(true); setError("");
+    try { setView(await api.retryHostSetup() as CloudView); }
+    catch (err) { setError(err instanceof Error ? err.message : "Host 权限重试失败"); }
+    finally { setBusy(false); }
+  };
+  const resetLocalCredentials = async () => {
+    if (!api) return;
+    setBusy(true); setError("");
+    try { setView(await api.resetLocalCredentials() as CloudView); setSelected([]); }
+    catch (err) { setError(err instanceof Error ? err.message : "无法重置本机 Cloud 凭据"); }
+    finally { setBusy(false); }
+  };
   const signOut = async () => {
     if (!api) return;
     setBusy(true); setError("");
-    try { setView(await api.signOut() as CloudView); }
+    try { setView(await api.signOut() as CloudView); setSelected([]); }
     catch (err) { setError(err instanceof Error ? err.message : "云账号退出失败"); }
     finally { setBusy(false); }
   };
@@ -80,7 +97,7 @@ export default function AccountSettings() {
     (view.status === "signed_out" || view.status === "rejected");
   const signedIn = Boolean(view.account) &&
     (view.status === "signed_in" || view.status === "unavailable" ||
-     view.status === "setup_failed");
+     view.status === "setup_failed" || view.status === "checking");
 
   return (
     <SettingsPageLayout miniTitle="Mira Cloud" title={english ? "Cloud Account" : "云账号"}
@@ -108,9 +125,16 @@ export default function AccountSettings() {
               </p>
             </div>
             {signedIn ?
-              <Button variant="outline" disabled={busy} onClick={() => void signOut()}>
-                {english ? "Sign out" : "退出云账号"}
-              </Button> :
+              <div className="flex flex-wrap gap-2">
+                {view.status === "setup_failed" ? (
+                  <Button variant="primary" disabled={busy} onClick={() => void retryHostSetup()}>
+                    {english ? "Retry Host setup" : "重试 Host 权限设置"}
+                  </Button>
+                ) : null}
+                <Button variant="outline" disabled={busy} onClick={() => void signOut()}>
+                  {english ? "Sign out" : "退出云账号"}
+                </Button>
+              </div> :
               view.status === "authorizing" && hasNative ?
               <Button variant="outline" onClick={() => void cancelSignIn()}>
                 {english ? "Cancel sign-in" : "取消本次授权"}
@@ -120,6 +144,13 @@ export default function AccountSettings() {
               </span>}
           </SectionCardRow>
           {view.message ? <p role="status" className="px-4 pb-3 text-sm text-text-secondary">{view.message}</p> : null}
+          {view.canResetCredentials && !view.account && hasNative ? (
+            <div className="px-4 pb-3">
+              <Button variant="outline" disabled={busy} onClick={() => void resetLocalCredentials()}>
+                {english ? "Reset local Cloud credentials" : "重置本机 Cloud 凭据"}
+              </Button>
+            </div>
+          ) : null}
           {error ? <p role="alert" className="px-4 pb-3 text-sm text-danger-text">{error}</p> : null}
         </SectionCard>
 
