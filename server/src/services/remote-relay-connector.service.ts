@@ -23,6 +23,13 @@ const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 const KEEPALIVE_INTERVAL_MS = 30_000;
 const KEEPALIVE_TIMEOUT_MS = 45_000;
+// Verified against uichat-mira-relay@a41ada7 (pre-REL-001 legacy protocol).
+// These are evidence of a legacy handshake, not a Cloud ticket verifier.
+const LEGACY_HOST_PROTOCOL_ERRORS = new Set([
+  "CLIENT_TOKEN_REQUIRED",
+  "CLIENT_TOKEN_MISMATCH",
+  "HOST_AUTH_REQUIRED",
+]);
 
 const BLOCKED_REQUEST_HEADERS = new Set([
   "connection",
@@ -273,6 +280,7 @@ export class RemoteRelayConnectorService {
   private socket: RelaySocket | null = null;
   private currentConfig: AnyRelayConnectorConfig | null = null;
   private currentRelayId: string | null = null;
+  private cloudProtocolBlocked = false;
   private unsubscribeRevocation: (() => void) | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -299,6 +307,7 @@ export class RemoteRelayConnectorService {
     this.stopped = false;
     this.currentConfig = this.configProvider();
     this.currentRelayId = null;
+    this.cloudProtocolBlocked = false;
     this.unsubscribeRevocation?.();
     this.unsubscribeRevocation = null;
     if (isCloud(this.currentConfig) && this.cloudTicketSource) {
@@ -459,7 +468,8 @@ export class RemoteRelayConnectorService {
         if (!this.isCurrent(socket, generation) || this.state === "connected") {
           return;
         }
-        this.lastError = "Mira Relay hello acknowledgement timed out";
+        this.lastError = cloud ? "cloud_relay_handshake_timeout"
+          : "Mira Relay hello acknowledgement timed out";
         try {
           socket.close(1008, "Relay hello timeout");
         } catch {
@@ -473,7 +483,8 @@ export class RemoteRelayConnectorService {
       if (!this.isCurrent(socket, generation)) return;
       const text = toTextMessage(event.data);
       if (!text) {
-        this.lastError = "Mira Relay sent a non-text frame";
+        this.lastError = cloud ? "cloud_relay_invalid_frame"
+          : "Mira Relay sent a non-text frame";
         socket.close(1003, "Text relay frames required");
         return;
       }
@@ -494,9 +505,12 @@ export class RemoteRelayConnectorService {
       this.abortAllRequests();
       if (this.stopped) return;
       if (event.reason) {
-        this.lastError = this.currentConfig && isCloud(this.currentConfig)
-          ? "cloud_relay_transport_disconnected"
-          : `Mira Relay disconnected: ${event.reason}`;
+        if (this.currentConfig && isCloud(this.currentConfig)) {
+          // Preserve admission/protocol failure over a generic close reason.
+          this.lastError ??= "cloud_relay_transport_disconnected";
+        } else {
+          this.lastError = `Mira Relay disconnected: ${event.reason}`;
+        }
       }
       this.state = "disconnected";
       this.scheduleReconnect();
@@ -506,7 +520,9 @@ export class RemoteRelayConnectorService {
   private handleMessage(socket: RelaySocket, generation: number, raw: string) {
     const frame = parseRelayInboundHostFrame(raw);
     if (!frame) {
-      this.lastError = "Mira Relay returned an invalid protocol frame";
+      this.lastError = this.currentConfig && isCloud(this.currentConfig)
+        ? "cloud_relay_invalid_frame"
+        : "Mira Relay returned an invalid protocol frame";
       socket.close(1002, "Invalid Mira Relay frame");
       return;
     }
@@ -519,8 +535,9 @@ export class RemoteRelayConnectorService {
         !this.currentRelayId ||
         frame.relayId !== this.currentRelayId
       ) {
-        this.lastError =
-          "Mira Relay hello acknowledgement does not match this host";
+        this.lastError = config && isCloud(config)
+          ? "cloud_relay_handshake_mismatch"
+          : "Mira Relay hello acknowledgement does not match this host";
         socket.close(1008, "Relay identity mismatch");
         return;
       }
@@ -530,6 +547,25 @@ export class RemoteRelayConnectorService {
       this.lastError = null;
       this.reconnectAttempt = 0;
       this.startKeepalive(socket, generation);
+      return;
+    }
+
+    // The actual legacy Relay reports authentication errors *before* hello_ack.
+    // Previously those frames were ignored until state=connected, masking
+    // authorization/protocol failures as generic WebSocket disconnects.
+    if (frame.type === "error" && this.currentConfig && isCloud(this.currentConfig)) {
+      if (LEGACY_HOST_PROTOCOL_ERRORS.has(frame.code) && !frame.requestId) {
+        this.lastError = "cloud_relay_protocol_incompatible";
+        // No point retrying a known old-token server with new Cloud tickets.
+        // An explicit connector restart can retry after REL-001 deployment.
+        this.cloudProtocolBlocked = true;
+        socket.close(1008, "Cloud Relay protocol incompatible");
+      } else if (!frame.requestId && frame.code.endsWith("AUTH_FAILED")) {
+        this.lastError = "cloud_relay_admission_denied";
+        socket.close(1008, "Cloud Relay admission denied");
+      } else {
+        this.lastError = "cloud_relay_transport_error";
+      }
       return;
     }
 
@@ -752,7 +788,8 @@ export class RemoteRelayConnectorService {
   }
 
   private scheduleReconnect() {
-    if (this.stopped || !this.currentConfig?.enabled || this.reconnectTimer) {
+    if (this.stopped || this.cloudProtocolBlocked ||
+        !this.currentConfig?.enabled || this.reconnectTimer) {
       return;
     }
 
