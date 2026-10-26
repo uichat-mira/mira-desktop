@@ -128,9 +128,12 @@ function createCloudAccountController(options) {
         return status();
       }
       if (!record.sessionToken) return status();
+      const restoreRevision = revision;
+      const restoreToken = record.sessionToken;
       publish({ status: "checking", message: "正在验证云账号会话" });
       try {
-        const result = await request("/v1/auth/session", "GET", record.sessionToken);
+        const result = await request("/v1/auth/session", "GET", restoreToken);
+        if (restoreRevision !== revision) return status();
         validateAccount(result);
         record = { ...record, account: result.account, expiresAt: result.expiresAt };
         persist(record);
@@ -139,6 +142,7 @@ function createCloudAccountController(options) {
           permissionsConfigured: Boolean(record.permissionsConfigured),
           expiresAt: result.expiresAt, message: "" });
       } catch (error) {
+        if (restoreRevision !== revision) return status();
         if (error.code === "reauth") {
           record = { installationId: record.installationId };
           persist(record);
@@ -165,7 +169,8 @@ function createCloudAccountController(options) {
     const verifier = crypto.randomBytes(32).toString("base64url");
     const state = crypto.randomBytes(32).toString("base64url");
     const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
-    pending = { state, verifier, selected, revision: ++revision };
+    const transaction = { state, verifier, selected, revision: ++revision };
+    pending = transaction;
     const params = new URLSearchParams({
       response_type: "code", client_id: "mira-desktop", redirect_uri: CALLBACK,
       state, code_challenge: challenge, code_challenge_method: "S256",
@@ -173,9 +178,13 @@ function createCloudAccountController(options) {
     try {
       await shell.openExternal(origin + "/v1/oauth/authorize?" + params.toString());
     } catch {
+      if (pending !== transaction) return status();
       pending = null;
       throw new Error("无法打开系统浏览器");
     }
+    // A fast callback or concurrent sign-out can finish this transaction
+    // before the OS resolves openExternal; never restore an obsolete UI state.
+    if (pending !== transaction || transaction.revision !== revision) return status();
     return publish({ status: "authorizing", message: "请在系统浏览器完成授权，完成后会自动返回 Mira。" });
   }
   async function handleCallback(rawUrl) {
