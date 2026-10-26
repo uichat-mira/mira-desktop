@@ -493,7 +493,9 @@ export class RemoteRelayConnectorService {
       this.abortAllRequests();
       if (this.stopped) return;
       if (event.reason) {
-        this.lastError = `Mira Relay disconnected: ${event.reason}`;
+        this.lastError = this.currentConfig && isCloud(this.currentConfig)
+          ? "cloud_relay_transport_disconnected"
+          : `Mira Relay disconnected: ${event.reason}`;
       }
       this.state = "disconnected";
       this.scheduleReconnect();
@@ -737,7 +739,9 @@ export class RemoteRelayConnectorService {
       socket.send(serializeRelayFrame(frame));
       return true;
     } catch (error) {
-      this.lastError = error instanceof Error ? error.message : String(error);
+      this.lastError = this.currentConfig && isCloud(this.currentConfig)
+        ? "cloud_relay_transport_unavailable"
+        : error instanceof Error ? error.message : String(error);
       return false;
     }
   }
