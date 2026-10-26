@@ -23,6 +23,7 @@ vi.mock("react-i18next", () => ({
         "app.navigation.primary": "主导航",
         "app.navigation.home": "主页",
         "app.navigation.remoteAccess": "远程连接",
+        "app.navigation.cloudAccount": "云账号",
         "app.navigation.dashboard": "工作台",
         "app.navigation.projects": "知识与评测",
         "app.navigation.knowledgeBase": "知识库",
@@ -67,6 +68,8 @@ describe("AppNavigationRail extensions menu", () => {
   });
 
   it.each([
+    ["远程连接", "远程连接", "/remote-access"],
+    ["远程连接", "云账号", "/cloud-account"],
     ["扩展", "能力", "/extensions/capabilities"],
     ["扩展", "连接器", "/extensions/connectors"],
     ["扩展", "技能", "/extensions/skills"],
@@ -82,5 +85,25 @@ describe("AppNavigationRail extensions menu", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: item }));
 
     expect(screen.getByTestId("location")).toHaveTextContent(expectedPath);
+  });
+});
+
+describe("AppNavigationRail remote access menu", () => {
+  it("opens the phone menu without navigating away", async () => {
+    renderRail();
+    await userEvent.click(screen.getByRole("button", { name: "远程连接" }));
+
+    expect(screen.getByRole("menuitem", { name: "远程连接" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "云账号" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/chat");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "远程连接" })).toHaveFocus();
+  });
+
+  it.each(["/remote-access", "/cloud-account"])("highlights the phone entry at %s", (path) => {
+    renderRail(path);
+    expect(screen.getByRole("button", { name: "远程连接" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "设置" })).not.toHaveAttribute("aria-current");
   });
 });

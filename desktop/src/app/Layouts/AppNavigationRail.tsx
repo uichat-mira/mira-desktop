@@ -1,7 +1,9 @@
 import {
   Braces,
+  Cable,
   PlugZap,
   CircleHelp,
+  Cloud,
   ExternalLink,
   FolderKanban,
   GitBranch,
@@ -25,7 +27,7 @@ import DropdownMenu from "@/shared/ui/DropdownMenu";
 import { message } from "@/shared/ui/Message";
 import { openExternalUrl } from "@/shared/platform/desktopRuntime";
 
-type RailLinkId = "home" | "remote-access" | "dashboard" | "forge" | "settings";
+type RailLinkId = "home" | "dashboard" | "forge" | "settings";
 
 type RailLinkItem = {
   id: RailLinkId;
@@ -34,7 +36,7 @@ type RailLinkItem = {
   to: string;
 };
 
-type RailMenuItem = { id: "projects" } | { id: "extensions" };
+type RailMenuItem = { id: "projects" } | { id: "extensions" } | { id: "remote-access" };
 
 type PrimaryRailItem = RailLinkItem | RailMenuItem;
 
@@ -45,12 +47,7 @@ const primaryItems: PrimaryRailItem[] = [
     icon: MessageSquareText,
     to: "/chat",
   },
-  {
-    id: "remote-access",
-    label: "app.navigation.remoteAccess",
-    icon: Smartphone,
-    to: "/remote-access",
-  },
+  { id: "remote-access" },
   {
     id: "dashboard",
     label: "app.navigation.dashboard",
@@ -78,7 +75,6 @@ function resolveActiveItem(pathname: string): RailLinkId | null {
   }
   if (matchesRoute(pathname, "/settings")) return "settings";
   if (matchesRoute(pathname, "/forge")) return "forge";
-  if (matchesRoute(pathname, "/remote-access")) return "remote-access";
   if (matchesRoute(pathname, "/dashboard")) return "dashboard";
   return null;
 }
@@ -342,6 +338,52 @@ function ResourceMenu({
   );
 }
 
+function RemoteAccessMenu({ pathname }: { pathname: string }) {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const remoteActive = matchesRoute(pathname, "/remote-access");
+  const cloudActive = matchesRoute(pathname, "/cloud-account");
+  const active = remoteActive || cloudActive;
+
+  return (
+    <DropdownMenu
+      align="start"
+      side="right"
+      sideOffset={8}
+      trigger={
+        <button
+          type="button"
+          aria-label={t("app.navigation.remoteAccess")}
+          title={t("app.navigation.remoteAccess")}
+          aria-current={active ? "page" : undefined}
+          className={`group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+            active
+              ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+              : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
+          }`}
+        >
+          <Smartphone className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />
+        </button>
+      }
+      items={[
+        {
+          id: "remote-access",
+          label: t("app.navigation.remoteAccess"),
+          leadingIcon: <Cable className="h-4 w-4" />,
+          selected: remoteActive,
+        },
+        {
+          id: "cloud-account",
+          label: t("app.navigation.cloudAccount"),
+          leadingIcon: <Cloud className="h-4 w-4" />,
+          selected: cloudActive,
+        },
+      ]}
+      onSelect={(item) => void navigate(`/${item.id}`)}
+    />
+  );
+}
+
 function LibraryMenu({
   active = false,
   pathname,
@@ -425,7 +467,9 @@ export function AppNavigationRail() {
       <div className="flex flex-col items-center gap-1">
         {primaryItems.map((item) => (
           <div key={item.id}>
-            {item.id === "projects" ? (
+            {item.id === "remote-access" ? (
+              <RemoteAccessMenu pathname={pathname} />
+            ) : item.id === "projects" ? (
               <LibraryMenu active={isLibraryRoute(pathname)} pathname={pathname} />
             ) : item.id === "extensions" ? (
               <ExtensionsMenu

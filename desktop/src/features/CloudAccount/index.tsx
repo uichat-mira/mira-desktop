@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Cloud, LockKeyhole, RefreshCw } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import SectionCard, { SectionCardRow } from "@/shared/ui/SectionCard";
-import SettingsPageLayout from "../../components/SettingsPageLayout";
+import AppPageLayout from "@/app/Layouts/AppPageLayout";
 
 const SCOPE_OPTIONS = [
   ["threads:read", "读取会话", "Read threads"],
@@ -25,7 +25,7 @@ const emptyView: CloudView = {
   message: "", expiresAt: null, permissionsConfigured: false,
 };
 
-export default function AccountSettings() {
+export default function CloudAccountPage() {
   const api = window.cloudAccount;
   const { i18n } = useTranslation();
   const english = i18n.resolvedLanguage?.toLowerCase().startsWith("en") ?? false;
@@ -100,7 +100,7 @@ export default function AccountSettings() {
      view.status === "setup_failed" || view.status === "checking");
 
   return (
-    <SettingsPageLayout miniTitle="Mira Cloud" title={english ? "Cloud Account" : "云账号"}
+    <AppPageLayout miniTitle="Mira Cloud" title={english ? "Cloud Account" : "云账号"}
       description={english
         ? "Optional cloud identity, separate from your local Mira sign-in."
         : "可选的云端身份，与 Mira 本地账户和工作空间完全独立。"}
@@ -196,6 +196,6 @@ export default function AccountSettings() {
           </SectionCard>
         ) : null}
       </div>
-    </SettingsPageLayout>
+    </AppPageLayout>
   );
 }

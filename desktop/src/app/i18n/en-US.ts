@@ -99,6 +99,7 @@ const app = {
       projects: "Knowledge and Evaluation",
       forge: "Forge",
       remoteAccess: "Remote connection",
+      cloudAccount: "Cloud Account",
       dashboard: "Workbench",
       extensions: "Extensions",
       capabilities: "Capabilities",

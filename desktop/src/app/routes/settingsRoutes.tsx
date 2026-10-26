@@ -7,7 +7,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   Blend,
   Bolt,
-  Cloud,
   PanelsTopLeft,
   SlidersHorizontal,
   ShieldCheck,
@@ -16,7 +15,6 @@ import {
 } from "lucide-react";
 import GeneralSettings from "@/features/Settings/pages/General/index";
 import PersonalizationSettings from "@/features/Settings/pages/Personalization/index";
-import AccountSettings from "@/features/Settings/pages/Account/index";
 import ModelSettings from "@/features/Settings/pages/ModelSetting";
 import IntegrationsSettings from "@/features/Settings/pages/Integrations/index";
 import ToolsSettings from "@/features/Settings/pages/Tools/index";
@@ -183,11 +181,6 @@ const settingsRouteTree: SettingsRouteConfig[] = [
     path: "tools",
     element: <ToolsSettings />,
     nav: { labelKey: "settings.navigation.tools", icon: Wrench, group: "basic", order: 20 },
-  },
-  {
-    path: "account",
-    element: <AccountSettings />,
-    nav: { labelKey: "settings.navigation.account", icon: Cloud, group: "general", order: 30 },
   },
 ];
 
