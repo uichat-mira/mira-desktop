@@ -53,6 +53,16 @@ ipcMain.handle("cloud-account:cancel-login", (event) => {
   if (!cloudAccount) throw new Error("Cloud Account not initialized");
   return cloudAccount.cancelAuthorization();
 });
+ipcMain.handle("cloud-account:retry-host", (event) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  return cloudAccount.retryHostSetup();
+});
+ipcMain.handle("cloud-account:reset-credentials", (event) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  return cloudAccount.resetLocalCredentials();
+});
 ipcMain.handle("cloud-account:logout", (event) => {
   cloudIpcAuth(event);
   if (!cloudAccount) throw new Error("Cloud Account not initialized");
