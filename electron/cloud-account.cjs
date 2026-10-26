@@ -196,7 +196,13 @@ function createCloudAccountController(options) {
       if (!result || typeof result.sessionToken !== "string" ||
           !result.sessionToken.startsWith("mcs_v1.")) throw new Error("Cloud Auth 凭据响应无效");
       validateAccount(result);
-      if (transaction.revision !== revision) return true;
+      if (transaction.revision !== revision) {
+        // A sign-out during the network exchange must not leave a newly
+        // issued Cloud Session usable, even though React never saw the token.
+        try { await request("/v1/auth/logout", "POST", result.sessionToken); }
+        catch { /* no bearer is retained; server TTL remains the upper bound */ }
+        return true;
+      }
       record = { installationId: record.installationId,
         sessionToken: result.sessionToken, account: result.account,
         expiresAt: result.expiresAt };
