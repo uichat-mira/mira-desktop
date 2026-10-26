@@ -721,3 +721,55 @@ test("DSK-009 sign-out during ticket acquisition discards the late ticket", asyn
   assert.equal(consumed, false);
   assert.equal(controller.status().status, "signed_out");
 });
+
+test("DSK-009 Cloud reauth invalidates another in-flight Relay ticket request", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await signIn(f, controller);
+
+  // Hold the second response while the first call reports a revoked session.
+  // Both calls have already passed the original Cloud Session check.
+  let secondEntered;
+  const secondReady = new Promise((resolve) => { secondEntered = resolve; });
+  let releaseSecond;
+  const secondBlocked = new Promise((resolve) => { releaseSecond = resolve; });
+  let requested = 0;
+  f.setBeforeServiceCredential(async () => {
+    requested += 1;
+    if (requested === 1) {
+      await secondReady;
+    } else {
+      secondEntered();
+      await secondBlocked;
+    }
+  });
+
+  let responded = 0;
+  f.setServiceCredentialHandler(() => {
+    responded += 1;
+    if (responded === 1) {
+      return Response.json({
+        error: { code: "SERVICE_CREDENTIAL_REAUTH_REQUIRED",
+          message: "Re-authentication is required" },
+      }, { status: 401 });
+    }
+    return Response.json(issuedTicket());
+  });
+
+  let consumed = 0;
+  const first = controller.withRelayHostTicket(() => { consumed += 1; });
+  const second = controller.withRelayHostTicket(() => { consumed += 1; });
+
+  await rejectsCode(first, RELAY_TICKET_ERROR_CODES.REAUTH);
+  assert.equal(controller.status().status, "rejected");
+  releaseSecond();
+  await rejectsCode(second, RELAY_TICKET_ERROR_CODES.ABORTED);
+  assert.equal(consumed, 0);
+  assert.equal(requested, 2);
+  assert.equal(responded, 2);
+
+  const restarted = f.build();
+  await restarted.initialize();
+  assert.equal(restarted.status().status, "signed_out");
+});
