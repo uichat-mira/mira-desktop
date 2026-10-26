@@ -4,6 +4,17 @@ import { randomUUID } from "node:crypto";
 // may request transport credentials. No HTTP route, renderer or local JWT access.
 export const CLOUD_RELAY_TICKET_IPC_CHANNEL = "mira:cloud-relay:host-ticket:v1";
 const MAX_PENDING = 4;
+const NATIVE_ERROR_CODES = new Set([
+  "relay_ticket_not_configured",
+  "relay_ticket_host_mismatch",
+  "relay_ticket_unavailable",
+  "relay_ticket_reauth",
+  "relay_ticket_not_authorized",
+  "relay_ticket_device_required",
+  "relay_ticket_invalid_response",
+  "relay_ticket_aborted",
+  "relay_ticket_bridge_busy",
+]);
 const ROOM = /^[A-Za-z0-9._:-]{1,128}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
@@ -76,7 +87,13 @@ export class CloudRelayTicketIpcClient {
         (message.reason === "signout" || message.reason === "reauth")) {
       const reason = message.reason;
       this.failAll(reason === "reauth" ? "relay_ticket_reauth" : "relay_ticket_revoked");
-      for (const subscriber of this.revoked) subscriber(reason);
+      for (const subscriber of this.revoked) {
+        try {
+          subscriber(reason);
+        } catch {
+          // A consumer callback cannot crash the IPC control plane.
+        }
+      }
       return;
     }
     if (message.type !== "result" ||
@@ -96,7 +113,7 @@ export class CloudRelayTicketIpcClient {
     if (message.ok === false &&
         exactKeys(message, ["channel", "type", "requestId", "ok", "errorCode"]) &&
         typeof message.errorCode === "string" &&
-        /^relay_ticket_[a-z_]{1,40}$/u.test(message.errorCode)) {
+        NATIVE_ERROR_CODES.has(message.errorCode)) {
       pending.reject(new CloudRelayTicketBridgeError(message.errorCode));
       return;
     }
