@@ -576,6 +576,85 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
     }
   });
 
+
+  it("classifies real REL-001 legacy pre-ack refusal without retrying or falling back", async () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: FakeRelaySocket[] = [];
+      let issued = 0;
+      const source: CloudRelayTicketSource = {
+        withHostTicket: async (consumer) => {
+          issued++;
+          return consumer(ticket("cloud.jwt." + issued));
+        },
+        onRevoked: () => () => undefined,
+      };
+      const service = new RemoteRelayConnectorService(
+        cloudConfig,
+        () => {
+          const socket = new FakeRelaySocket();
+          sockets.push(socket);
+          return socket;
+        }, fetch, "http://127.0.0.1:8787", () => 0, source,
+      );
+      service.start();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(sockets).toHaveLength(1);
+      const oldRelay = sockets[0]!;
+      oldRelay.open();
+      expect(parsedSent(oldRelay)[0]).toEqual({
+        version: 1, type: "hello", role: "host", relayId: cloudRoom,
+        token: "cloud.jwt.1",
+      });
+      // uichat-mira-relay/src/index.ts rejects first-use Host without
+      // clientToken before it can issue hello_ack. It never verifies Cloud JWTs.
+      oldRelay.message({
+        version: 1, type: "error", code: "CLIENT_TOKEN_REQUIRED",
+        message: "A legacy client relay token is required", retryable: false,
+      });
+      expect(oldRelay.closeCalls).toHaveLength(1);
+      expect(service.getSnapshot()).toMatchObject({
+        state: "disconnected", lastError: "cloud_relay_protocol_unavailable",
+      });
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(issued).toBe(1);
+      expect(sockets).toHaveLength(1);
+      service.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves Cloud authorization denial even if the remote socket closes", async () => {
+    const sockets: FakeRelaySocket[] = [];
+    const source: CloudRelayTicketSource = {
+      withHostTicket: async (consumer) => consumer(ticket("cloud.jwt.sig")),
+      onRevoked: () => () => undefined,
+    };
+    const service = new RemoteRelayConnectorService(
+      cloudConfig, () => {
+        const socket = new FakeRelaySocket();
+        sockets.push(socket);
+        return socket;
+      }, fetch, "http://127.0.0.1:8787", () => 0, source,
+    );
+    service.start();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({
+      version: 1, type: "error", code: "HOST_AUTH_FAILED",
+      message: "sensitive rejected token mcs_v1.no-echo",
+      retryable: false,
+    });
+    expect(service.getSnapshot()).toMatchObject({
+      state: "disconnected", lastError: "cloud_relay_admission_denied",
+    });
+    expect(JSON.stringify(service.getSnapshot())).not.toContain("mcs_v1.no-echo");
+    service.stop();
+  });
+
   it("fails closed without native IPC, never attempts the configured legacy Relay", async () => {
     const factory = vi.fn();
     const source: CloudRelayTicketSource = {
