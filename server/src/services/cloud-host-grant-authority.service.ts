@@ -38,7 +38,7 @@ export type CloudHostGrantBinding = Readonly<{
 }>;
 
 const SCOPE_SET = new Set<string>(REMOTE_DEVICE_SCOPES);
-const ISO_DATE_TIME = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/u;
+const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const CLOCK_SKEW_MS = 30_000;
 const MAX_TTL_SECONDS = 3600;
 const MAX_GRANTS = 1024;
