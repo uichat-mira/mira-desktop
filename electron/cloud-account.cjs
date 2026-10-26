@@ -225,6 +225,9 @@ function createCloudAccountController(options) {
       publish({ status: "signed_out", message: "浏览器授权未完成，请重新发起。" });
       return true;
     }
+    // The browser transaction is complete; token/Host setup is a separate in-flight step.
+    // Do not keep displaying a cancel action that cannot cancel an exchanged bearer.
+    publish({ status: "checking", message: "正在完成云账号登录…" });
     try {
       const result = await request("/v1/oauth/token", "POST", null, {
         grant_type: "authorization_code", client_id: "mira-desktop",
