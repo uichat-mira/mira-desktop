@@ -24,6 +24,7 @@ function fixture() {
   let beforePolicyPut = null;
   let beforeSessionRestore = null;
   let beforeOpenExternal = null;
+  let hostFailuresRemaining = 0;
   const fetcher = async (url, opts) => {
     calls.push({ url, opts });
     if (offline) throw new Error("connection reset");
@@ -32,8 +33,13 @@ function fixture() {
       account: { id: "account-a", username: "test-a" },
       expiresAt: "2026-12-12T00:00:00.000Z",
     });
-    if (url.endsWith("/v1/hosts") && opts.method === "POST")
+    if (url.endsWith("/v1/hosts") && opts.method === "POST") {
+      if (hostFailuresRemaining > 0) {
+        --hostFailuresRemaining;
+        return Response.json({ code: "TEMPORARILY_UNAVAILABLE" }, { status: 503 });
+      }
       return Response.json({ id: "host-1" });
+    }
     if (url.endsWith("/v1/hosts/host-1/grants"))
       return Response.json({ hostId: "host-1", accountId: "account-a",
         revision: storedPolicy ? 7 : 0, policyConfigured: Boolean(storedPolicy),
@@ -61,6 +67,7 @@ function fixture() {
   return { dir, store, opened, calls, build,
     setOffline: (yes) => { offline = yes; },
     setStoredPolicy: (scopes) => { storedPolicy = scopes; },
+    failHostRegistration: (count = 1) => { hostFailuresRemaining = count; },
     setBeforePolicyPut: (hook) => { beforePolicyPut = hook; },
     setBeforeSessionRestore: (hook) => { beforeSessionRestore = hook; },
     setBeforeOpenExternal: (hook) => { beforeOpenExternal = hook; } };
@@ -275,4 +282,122 @@ test("cancel while shell.openExternal is pending cannot reinstate authorizing st
   const fresh = f.build();
   await fresh.initialize();
   assert.equal(fresh.status().status, "signed_out");
+});
+
+test("failed Host registration restores as setup_failed and retries with original encrypted scope choice", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.failHostRegistration();
+  const first = f.build();
+  await first.initialize();
+  await first.begin(["threads:read", "tools:read"]);
+  const state = new URL(f.opened[0]).searchParams.get("state");
+  await first.handleCallback("mira-desktop://oauth/callback?state=" + state + "&code=mca_v1.id.secret");
+  assert.equal(first.status().status, "setup_failed");
+  assert.equal(first.status().permissionsConfigured, false);
+  assert.equal(first.status().hostId, null);
+  assert.equal(JSON.stringify(first.status()).includes("mcs_v1."), false);
+
+  const second = f.build(); // restart with persisted Cloud Session, no OAuth browser flow
+  await second.initialize();
+  assert.equal(second.status().status, "setup_failed");
+  assert.match(second.status().message, /重试/);
+  assert.equal(f.opened.length, 1);
+  const result = await second.retryHostSetup();
+  assert.equal(result.status, "signed_in");
+  assert.equal(result.hostId, "host-1");
+  assert.deepEqual(result.scopes, ["threads:read", "tools:read"]);
+  assert.equal(result.permissionsConfigured, true);
+  const puts = f.calls.filter((call) => call.url.endsWith("/grant-policy"));
+  assert.equal(puts.length, 1);
+  assert.deepEqual(JSON.parse(puts[0].opts.body).scopes, ["threads:read", "tools:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/v1/oauth/token")).length, 1);
+  assert.equal(fs.readFileSync(f.store, "utf8").includes("tools:read"), false);
+  const third = f.build();
+  await third.initialize();
+  assert.equal(third.status().status, "signed_in");
+});
+
+test("Host retry preserves a server policy that completed despite the earlier failure", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.failHostRegistration();
+  const first = f.build();
+  await first.initialize();
+  await first.begin(["tools:control"]);
+  const state = new URL(f.opened[0]).searchParams.get("state");
+  await first.handleCallback("mira-desktop://oauth/callback?state=" + state + "&code=mca_v1.x.y");
+  assert.equal(first.status().status, "setup_failed");
+  f.setStoredPolicy(["threads:read"]); // Portal now owns the ceiling
+  const second = f.build();
+  await second.initialize();
+  const result = await second.retryHostSetup();
+  assert.equal(result.status, "signed_in");
+  assert.deepEqual(result.scopes, ["threads:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
+});
+
+test("sign-out during Host retry prevents late setup from restoring the signed-in state", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.failHostRegistration();
+  const first = f.build();
+  await first.initialize();
+  await first.begin(["threads:read"]);
+  const state = new URL(f.opened[0]).searchParams.get("state");
+  await first.handleCallback("mira-desktop://oauth/callback?state=" + state + "&code=mca_v1.x.y");
+  const resumed = f.build();
+  await resumed.initialize();
+  let entering;
+  const entered = new Promise((resolve) => { entering = resolve; });
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  f.setBeforePolicyPut(async () => { entering(); await blocked; });
+  const retry = resumed.retryHostSetup();
+  await entered;
+  await resumed.signOut();
+  release();
+  await retry;
+  assert.equal(resumed.status().status, "signed_out");
+  const restarted = f.build();
+  await restarted.initialize();
+  assert.equal(restarted.status().status, "signed_out");
+});
+
+test("unreadable encrypted record is only replaced by explicit credential reset", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const first = f.build();
+  await first.initialize();
+  const corrupted = "corrupted-keychain-record";
+  fs.writeFileSync(f.store, corrupted);
+  const second = f.build();
+  await second.initialize();
+  assert.equal(second.status().status, "unavailable");
+  assert.equal(second.status().canResetCredentials, true);
+  assert.equal(fs.readFileSync(f.store, "utf8"), corrupted);
+  const recovered = second.resetLocalCredentials();
+  assert.equal(recovered.status, "signed_out");
+  assert.equal(recovered.canResetCredentials, false);
+  assert.match(recovered.message, /旧云端会话未确认撤销/);
+  assert.equal(fs.readFileSync(f.store, "utf8").includes("installationId"), false);
+  const third = f.build();
+  await third.initialize();
+  assert.equal(third.status().status, "signed_out");
+  assert.equal(third.status().canResetCredentials, false);
+});
+
+test("missing OS encryption must not offer credential reset or plaintext recovery", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const first = f.build();
+  await first.initialize();
+  const disabled = f.build({ safeStorage: {
+    isEncryptionAvailable: () => false,
+    getSelectedStorageBackend: () => "basic_text",
+  } });
+  await disabled.initialize();
+  assert.equal(disabled.status().status, "unavailable");
+  assert.equal(disabled.status().canResetCredentials, false);
+  assert.throws(() => disabled.resetLocalCredentials(), /不允许重置/);
 });
