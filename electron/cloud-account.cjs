@@ -28,8 +28,13 @@ function parseCallback(value) {
       url.pathname !== "/callback" || url.username || url.password ||
       url.port || url.hash) return null;
   const keys = [...url.searchParams.keys()];
-  if (keys.length !== 2 || keys.filter((k) => k === "state").length !== 1 ||
-      keys.filter((k) => k === "code" || k === "error").length !== 1) return null;
+  const allowed = ["state", "code", "error", "error_description"];
+  if (keys.length < 2 || keys.length > 3 ||
+      keys.some((key) => !allowed.includes(key) || keys.filter((item) => item === key).length !== 1) ||
+      keys.filter((key) => key === "state").length !== 1 ||
+      keys.filter((key) => key === "code" || key === "error").length !== 1 ||
+      (keys.includes("error_description") && !keys.includes("error")) ||
+      (url.searchParams.get("error_description") || "").length > 512) return null;
   const state = url.searchParams.get("state");
   if (!state || !/^[A-Za-z0-9._~-]{16,512}$/.test(state)) return null;
   const code = url.searchParams.get("code");
@@ -42,12 +47,21 @@ function parseCallback(value) {
 function createCloudAccountController(options) {
   const { app, safeStorage, shell, notify, fetcher = globalThis.fetch,
     storagePath = path.join(app.getPath("userData"), "cloud-account.v1.enc"),
-    origin = ORIGIN } = options;
+    origin = ORIGIN, authorizationTimeoutMs = 10 * 60 * 1000 } = options;
   // Origin is controlled by native code, never supplied by renderer.
   if (origin !== ORIGIN && !options.allowTestOrigin) throw new Error("Invalid Cloud Auth origin");
+  if (!Number.isSafeInteger(authorizationTimeoutMs) || authorizationTimeoutMs < 1) {
+    throw new Error("Invalid OAuth authorization timeout");
+  }
   let record = null;
   let pending = null;
+  let authorizationTimer = null;
   let revision = 0;
+  function clearPending() {
+    if (authorizationTimer) clearTimeout(authorizationTimer);
+    authorizationTimer = null;
+    pending = null;
+  }
   let view = { status: "signed_out", account: null, hostId: null,
     scopes: [], message: "", expiresAt: null, permissionsConfigured: false };
 
@@ -171,27 +185,42 @@ function createCloudAccountController(options) {
     const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
     const transaction = { state, verifier, selected, revision: ++revision };
     pending = transaction;
+    authorizationTimer = setTimeout(() => {
+      if (pending !== transaction || transaction.revision !== revision) return;
+      ++revision;
+      clearPending();
+      publish({ status: "signed_out", message: "云账号授权等待超时，请重新发起登录。" });
+    }, authorizationTimeoutMs);
+    authorizationTimer.unref?.();
     const params = new URLSearchParams({
       response_type: "code", client_id: "mira-desktop", redirect_uri: CALLBACK,
       state, code_challenge: challenge, code_challenge_method: "S256",
     });
+    // Show an immediate cancel action even if the OS takes time to launch the browser.
+    publish({ status: "authorizing", message: "请在系统浏览器完成授权，完成后会自动返回 Mira。" });
     try {
       await shell.openExternal(origin + "/v1/oauth/authorize?" + params.toString());
     } catch {
-      if (pending !== transaction) return status();
-      pending = null;
+      if (pending !== transaction || transaction.revision !== revision) return status();
+      ++revision;
+      clearPending();
+      publish({ status: "signed_out", message: "无法打开系统浏览器，请重试。" });
       throw new Error("无法打开系统浏览器");
     }
-    // A fast callback or concurrent sign-out can finish this transaction
-    // before the OS resolves openExternal; never restore an obsolete UI state.
-    if (pending !== transaction || transaction.revision !== revision) return status();
-    return publish({ status: "authorizing", message: "请在系统浏览器完成授权，完成后会自动返回 Mira。" });
+    // An early callback, timeout or cancellation may finish before openExternal resolves.
+    return status();
+  }
+  function cancelAuthorization() {
+    if (!pending) return status();
+    ++revision;
+    clearPending();
+    return publish({ status: "signed_out", message: "已取消云账号授权，可重新发起登录。" });
   }
   async function handleCallback(rawUrl) {
     const parsed = parseCallback(rawUrl);
     if (!parsed || !pending || parsed.state !== pending.state) return false;
     const transaction = pending;
-    pending = null; // single-use even if code exchange fails
+    clearPending(); // single-use; also cancel the authorization timeout
     if (parsed.error || !parsed.code) {
       publish({ status: "signed_out", message: "浏览器授权未完成，请重新发起。" });
       return true;
@@ -265,7 +294,7 @@ function createCloudAccountController(options) {
   }
   async function signOut() {
     ++revision;
-    pending = null;
+    clearPending();
     const token = record && record.sessionToken;
     const installationId = (record && record.installationId) || crypto.randomUUID();
     record = { installationId };
@@ -280,7 +309,7 @@ function createCloudAccountController(options) {
     }
     return status();
   }
-  return { initialize, begin, handleCallback, signOut, status };
+  return { initialize, begin, cancelAuthorization, handleCallback, signOut, status };
 }
 
 module.exports = { createCloudAccountController, parseCallback, validateScopes, SCOPES };
