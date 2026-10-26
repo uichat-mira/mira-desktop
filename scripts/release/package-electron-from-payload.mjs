@@ -40,7 +40,7 @@ removePath(outputRoot);
 fs.mkdirSync(electronRoot, { recursive: true });
 fs.mkdirSync(outputRoot, { recursive: true });
 
-for (const filename of ["main.cjs", "preload.cjs", "package.json"]) {
+for (const filename of ["main.cjs", "cloud-account.cjs", "preload.cjs", "package.json"]) {
   copyRequired(
     path.join(projectRoot, "electron", filename),
     path.join(electronRoot, filename),

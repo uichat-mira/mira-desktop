@@ -1,5 +1,23 @@
 declare global {
   interface Window {
+    cloudAccount?: {
+      status: () => Promise<{
+        status: "signed_out" | "signed_in" | "checking" | "authorizing" | "unavailable" | "rejected" | "setup_failed";
+        account: { id: string; username: string } | null;
+        hostId: string | null;
+        scopes: string[];
+        expiresAt: string | null;
+        permissionsConfigured: boolean;
+        canResetCredentials?: boolean;
+        message: string;
+      }>;
+      signIn: (scopes: string[]) => Promise<unknown>;
+      cancelSignIn: () => Promise<unknown>;
+      retryHostSetup: () => Promise<unknown>;
+      resetLocalCredentials: () => Promise<unknown>;
+      signOut: () => Promise<unknown>;
+      subscribe: (listener: (state: Awaited<ReturnType<NonNullable<Window["cloudAccount"]>["status"]>>) => void) => () => void;
+    };
     desktopRuntime?: {
       hostKind: "browser" | "electron" | "tauri";
       platform: string;

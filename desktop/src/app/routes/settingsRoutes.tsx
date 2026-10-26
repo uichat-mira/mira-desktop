@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Blend,
   Bolt,
+  Cloud,
   PanelsTopLeft,
   SlidersHorizontal,
   ShieldCheck,
@@ -186,6 +187,7 @@ const settingsRouteTree: SettingsRouteConfig[] = [
   {
     path: "account",
     element: <AccountSettings />,
+    nav: { labelKey: "settings.navigation.account", icon: Cloud, group: "general", order: 30 },
   },
 ];
 

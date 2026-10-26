@@ -28,6 +28,21 @@ const desktopRuntime = {
   backendUrl,
 };
 
+contextBridge.exposeInMainWorld("cloudAccount", {
+  status: () => ipcRenderer.invoke("cloud-account:status"),
+  signIn: (scopes) => ipcRenderer.invoke("cloud-account:login", scopes),
+  cancelSignIn: () => ipcRenderer.invoke("cloud-account:cancel-login"),
+  retryHostSetup: () => ipcRenderer.invoke("cloud-account:retry-host"),
+  resetLocalCredentials: () => ipcRenderer.invoke("cloud-account:reset-credentials"),
+  signOut: () => ipcRenderer.invoke("cloud-account:logout"),
+  subscribe: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, snapshot) => callback(snapshot);
+    ipcRenderer.on("cloud-account:changed", listener);
+    return () => ipcRenderer.removeListener("cloud-account:changed", listener);
+  },
+});
+
 contextBridge.exposeInMainWorld("desktopRuntime", desktopRuntime);
 
 contextBridge.exposeInMainWorld("desktopApi", {

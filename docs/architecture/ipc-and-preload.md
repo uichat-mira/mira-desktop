@@ -59,6 +59,40 @@ Rust 平台字符串。
 
 返回状态为 `installed`、`not_installed`、`repair_needed` 或 `unsupported`。检查会验证 Chrome 注册表、Native manifest、Host exe 和同目录 `host.mjs`；页面进入、安装和解除注册后都重新读取该状态。
 
+## DSK-005 Cloud Account native boundary
+
+Electron main process exclusively owns the Mira Cloud OAuth 2.0 Authorization
+Code + PKCE transaction and the OS-encrypted Cloud Session record. The
+renderer only receives redacted status and the user-selected Remote V1 scope
+labels; it never receives a bearer token, authorization code or PKCE verifier.
+The local Desktop JWT, user database, workspace ownership, Provider/MCP keys,
+Remote V1 Tailscale pairing and cloud account remain separate.
+
+- Native callback: `mira-desktop://oauth/callback`, registered by the packaged
+  Electron app and checked for exact URI, one pending state, and single use.
+- Native Electron IPC: `cloud-account:status`, `cloud-account:login`,
+  `cloud-account:cancel-login`, `cloud-account:retry-host`,
+  `cloud-account:reset-credentials`, `cloud-account:logout`; preload
+  exposes only the narrow `window.cloudAccount` wrapper and redacted
+  subscription. Host-setup retry uses the existing encrypted Cloud Session
+  and the original encrypted scope selection; server-side Host policy remains
+  authoritative. A broken encrypted local record can be reset **only by an
+  explicit user action**, which cannot claim remote session revocation.
+- Cloud Auth source: `https://cloud-auth.tomzlab.cn`; credentials must never
+  be written to React storage, the backend SQLite database, or logs.
+- Desktop sign-in requests the external system browser, exchanges the OAuth code,
+  registers its installation as a Cloud Desktop Host, and sets the owner's initial
+  Host scope ceiling. No hosted Relay ticket or Tool execution authority is
+  derived from this alone.
+- The OS secret store must be available; plaintext fallbacks are forbidden. If
+  Cloud is unreachable, the local Desktop account and its other transports remain
+  usable. Cloud credential revocation is not reported as confirmed if the server
+  could not be contacted.
+- Tauri remains a separately implemented shell and must fail visibly rather than
+  storing tokens in WebView storage as an implicit fallback.
+- Manual packaged-app callback smoke remains required on Windows/macOS before
+  claiming native end-to-end acceptance.
+
 ## 什么时候该走 HTTP
 
 这些场景优先走 backend HTTP：
