@@ -264,6 +264,8 @@ function createCloudAccountController(options) {
       typeof result.expiresAt !== "string") throw new Error("Cloud Auth 会话响应无效");
   }
   function resetRejectedSession() {
+    // Revocation invalidates every in-flight Host/Relay request using this session.
+    ++revision;
     record = { installationId: record.installationId };
     persist(record);
     return publish({ status: "rejected", account: null, scopes: [],
