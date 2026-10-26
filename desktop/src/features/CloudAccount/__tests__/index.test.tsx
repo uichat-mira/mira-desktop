@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import AccountSettings from "../index";
+import CloudAccountPage from "../index";
 
 const empty = {
   status: "signed_out" as const,
@@ -18,9 +18,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("DSK-005 Cloud Account settings", () => {
+describe("DSK-005 Cloud Account page", () => {
   it("fails closed in a non-native shell without prompting for a password or local JWT", () => {
-    render(<AccountSettings />);
+    render(<CloudAccountPage />);
     expect(screen.getByText(/此构建尚不支持原生 Cloud OAuth/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /系统浏览器登录/ })).not.toBeInTheDocument();
   });
@@ -32,7 +32,7 @@ describe("DSK-005 Cloud Account settings", () => {
     const subscribe = vi.fn().mockReturnValue(() => {});
     window.cloudAccount = { signIn, cancelSignIn: vi.fn(), retryHostSetup: vi.fn(),
       resetLocalCredentials: vi.fn(), signOut, status, subscribe };
-    render(<AccountSettings />);
+    render(<CloudAccountPage />);
     await screen.findByText("当前未登录云账号");
     fireEvent.click(screen.getByLabelText("读取会话"));
     fireEvent.click(screen.getByRole("button", { name: /使用系统浏览器登录云账号/ }));
@@ -50,7 +50,7 @@ describe("DSK-005 Cloud Account settings", () => {
       signOut: vi.fn().mockResolvedValue(empty),
       subscribe: vi.fn().mockReturnValue(() => {}),
     };
-    render(<AccountSettings />);
+    render(<CloudAccountPage />);
     await screen.findByText("当前未登录云账号");
     fireEvent.click(screen.getByRole("button", { name: /使用系统浏览器登录云账号/ }));
     fireEvent.click(await screen.findByRole("button", { name: "取消本次授权" }));
@@ -75,7 +75,7 @@ describe("DSK-005 Cloud Account settings", () => {
       cancelSignIn: vi.fn(), retryHostSetup, resetLocalCredentials: vi.fn(),
       signOut: vi.fn(), subscribe: vi.fn().mockReturnValue(() => {}),
     };
-    render(<AccountSettings />);
+    render(<CloudAccountPage />);
     fireEvent.click(await screen.findByRole("button", { name: "重试 Host 权限设置" }));
     await waitFor(() => expect(retryHostSetup).toHaveBeenCalledOnce());
     expect(await screen.findByText("已保存的手机访问权限")).toBeInTheDocument();
@@ -94,7 +94,7 @@ describe("DSK-005 Cloud Account settings", () => {
       resetLocalCredentials, signOut: vi.fn(),
       subscribe: vi.fn().mockReturnValue(() => {}),
     };
-    render(<AccountSettings />);
+    render(<CloudAccountPage />);
     fireEvent.click(await screen.findByRole("button", { name: "重置本机 Cloud 凭据" }));
     await waitFor(() => expect(resetLocalCredentials).toHaveBeenCalledOnce());
     expect(await screen.findByText("当前未登录云账号")).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("DSK-005 Cloud Account settings", () => {
         return () => {};
       }),
     };
-    render(<AccountSettings />);
+    render(<CloudAccountPage />);
     await screen.findByText("当前未登录云账号");
     fireEvent.click(screen.getByLabelText("控制工具"));
     notify?.({ ...empty, status: "signed_in",
@@ -140,7 +140,7 @@ describe("DSK-005 Cloud Account settings", () => {
       resetLocalCredentials: vi.fn(), signOut: vi.fn().mockResolvedValue(empty),
       subscribe: vi.fn().mockReturnValue(() => {}),
     };
-    render(<AccountSettings />);
+    render(<CloudAccountPage />);
     expect(await screen.findByText("cloud-owner")).toBeInTheDocument();
     expect(screen.getByText("读取会话")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /使用系统浏览器登录云账号/ })).not.toBeInTheDocument();

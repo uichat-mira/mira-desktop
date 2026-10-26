@@ -61,6 +61,7 @@ Related:
 | `/` | 认证后首页 | `desktop/src/app/router.tsx` |
 | `/chat` | 聊天工作区 | `desktop/src/app/router.tsx` |
 | `/settings` | 设置工作区壳层 | `desktop/src/app/router.tsx` |
+| `/cloud-account` | 独立云账号页面，从手机图标菜单进入 | `desktop/src/app/routes/standaloneRoutes.tsx` |
 | `/login` | 游客态登录页 | `desktop/src/app/router.tsx` |
 
 ### 设置工作区路由
@@ -89,7 +90,12 @@ Related:
 | `/settings/integrations` | 是 | 顶层入口 |
 | `/settings/tools` | 是 | 顶层入口 |
 | `/settings/about` | 是 | 顶层入口 |
-| `/settings/account` | 否 | 重定向/过渡页 |
+
+### 手机图标菜单（2026-10-26）
+
+手机图标复用知识库入口的 `DropdownMenu` 交互，包含“远程连接”（`/remote-access`）和“云账号”（`/cloud-account`）。任一页面激活时，手机图标高亮，菜单对应项目显示选中状态。
+
+云账号页面及测试位于 `desktop/src/features/CloudAccount/`，使用应用级 `AppPageLayout` 和 `StandaloneWorkspace`。设置导航及 `/settings/account` 路由已移除，原 `Settings/pages/Account/` 目录不再保留。此迁移只改变前端入口和页面归属，不改变云账号登录、权限或连接协议。
 
 ## 协议目标
 

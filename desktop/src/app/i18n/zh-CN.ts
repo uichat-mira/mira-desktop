@@ -98,6 +98,7 @@ const app = {
       projects: "知识与评测",
       forge: "淬行",
       remoteAccess: "远程连接",
+      cloudAccount: "云账号",
       dashboard: "工作台",
       extensions: "扩展",
       capabilities: "能力",

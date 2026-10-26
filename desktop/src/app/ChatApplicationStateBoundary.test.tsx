@@ -118,6 +118,7 @@ test("production routes place home, chat, dashboard, and settings below one appl
       "forge",
       "dashboard",
       "remote-access",
+      "cloud-account",
       "knowledge-base",
       "evaluation",
       "about",
