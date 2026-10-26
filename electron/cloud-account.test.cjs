@@ -3,12 +3,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const { createCloudAccountController, parseCallback, validateScopes } = require("./cloud-account.cjs");
 
 function fixture() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mira-cloud-"));
+  const artifactRoot = path.resolve(__dirname, "..", ".test-artifact");
+  fs.mkdirSync(artifactRoot, { recursive: true });
+  const dir = fs.mkdtempSync(path.join(artifactRoot, "mira-cloud-"));
   const store = path.join(dir, "cloud.v1.enc");
   const opened = [];
   const calls = [];
