@@ -12,6 +12,109 @@ const SCOPES = Object.freeze([
   "tools:approve", "tools:control", "artifacts:read",
 ]);
 const SAFE_ERROR = "Mira Cloud 请求失败。请检查网络或稍后重试。";
+// DSK-009: mirrored from @uichat-mira/cloud-auth-contracts. Relay tickets are
+// transport-only; they never grant Host tools or business capabilities.
+const SERVICE_CREDENTIAL_ISSUER = "mira:cloud-auth";
+const RELAY_TRANSPORT_AUDIENCE = "mira:cloud-relay-transport";
+const RELAY_TRANSPORT_SCOPE = "relay:transport";
+const RELAY_ROOM = /^[A-Za-z0-9._:-]{1,128}$/;
+const SERVICE_CREDENTIAL_KID = /^[A-Za-z0-9._-]{1,64}$/;
+const RELAY_TICKET_LIFETIME_SECONDS = 600;
+const RELAY_TICKET_CLOCK_SKEW_SECONDS = 30;
+const RELAY_TICKET_ERROR_CODES = Object.freeze({
+  NOT_CONFIGURED: "relay_ticket_not_configured",
+  HOST_MISMATCH: "relay_ticket_host_mismatch",
+  UNAVAILABLE: "relay_ticket_unavailable",
+  REAUTH: "relay_ticket_reauth",
+  NOT_AUTHORIZED: "relay_ticket_not_authorized",
+  DEVICE_REQUIRED: "relay_ticket_device_required",
+  INVALID_RESPONSE: "relay_ticket_invalid_response",
+  ABORTED: "relay_ticket_aborted",
+});
+
+function relayTicketError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasExactKeys(value, keys) {
+  if (!isRecord(value)) return false;
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index]);
+}
+
+function decodeJwtSegment(segment) {
+  if (typeof segment !== "string" || !/^[A-Za-z0-9_-]+$/.test(segment)) return null;
+  try {
+    return JSON.parse(Buffer.from(segment, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function validateRelayTicket(ticket, host, accountId) {
+  const invalid = () => relayTicketError(RELAY_TICKET_ERROR_CODES.INVALID_RESPONSE,
+    "Cloud Relay 票据响应无效，已拒绝使用。");
+  if (!hasExactKeys(ticket, ["audience", "expiresAt", "token", "tokenType"]) ||
+      typeof ticket.token !== "string" || ticket.token.length < 16 ||
+      ticket.token.length > 8192 ||
+      ticket.tokenType !== "Bearer" ||
+      ticket.audience !== RELAY_TRANSPORT_AUDIENCE ||
+      typeof ticket.expiresAt !== "string") throw invalid();
+
+  const parts = ticket.token.split(".");
+  if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) {
+    throw invalid();
+  }
+  const header = decodeJwtSegment(parts[0]);
+  const claims = decodeJwtSegment(parts[1]);
+  if (!hasExactKeys(header, ["alg", "kid", "typ"]) || header.alg !== "EdDSA" ||
+      header.typ !== "JWT" || !SERVICE_CREDENTIAL_KID.test(header.kid) ||
+      !hasExactKeys(claims, ["aud", "device_id", "exp", "iat", "iss", "nbf",
+        "relay", "scope", "sub"]) ||
+      claims.iss !== SERVICE_CREDENTIAL_ISSUER ||
+      claims.sub !== accountId ||
+      claims.device_id !== host.deviceId ||
+      claims.aud !== RELAY_TRANSPORT_AUDIENCE ||
+      !Array.isArray(claims.scope) || claims.scope.length !== 1 ||
+      claims.scope[0] !== RELAY_TRANSPORT_SCOPE ||
+      !hasExactKeys(claims.relay, ["room", "role"]) ||
+      claims.relay.room !== host.relayRoom ||
+      claims.relay.role !== "host" ||
+      !Number.isSafeInteger(claims.iat) || claims.iat < 0 ||
+      !Number.isSafeInteger(claims.nbf) || claims.nbf < claims.iat ||
+      !Number.isSafeInteger(claims.exp) || claims.exp <= claims.nbf) {
+    throw invalid();
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (claims.iat > now + RELAY_TICKET_CLOCK_SKEW_SECONDS ||
+      claims.nbf > now + RELAY_TICKET_CLOCK_SKEW_SECONDS ||
+      claims.exp <= now ||
+      claims.exp - claims.iat > RELAY_TICKET_LIFETIME_SECONDS) {
+    throw invalid();
+  }
+  const expiresAt = Date.parse(ticket.expiresAt);
+  if (!Number.isFinite(expiresAt) ||
+      Math.abs(claims.exp * 1000 - expiresAt) > 2000 ||
+      expiresAt <= Date.now()) {
+    throw invalid();
+  }
+  return Object.freeze({
+    token: ticket.token,
+    tokenType: ticket.tokenType,
+    audience: ticket.audience,
+    expiresAt: ticket.expiresAt,
+    room: claims.relay.room,
+    role: claims.relay.role,
+  });
+}
 
 function validateScopes(input) {
   if (!Array.isArray(input) || input.length > SCOPES.length ||
@@ -117,22 +220,43 @@ function createCloudAccountController(options) {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(12000),
       });
-    } catch { throw new Error(SAFE_ERROR); }
+    } catch {
+      const err = new Error(SAFE_ERROR);
+      err.code = "network";
+      throw err;
+    }
     if (!response.ok) {
+      let serverCode = null;
+      try {
+        const payload = await response.json();
+        if (isRecord(payload) && isRecord(payload.error)) serverCode = payload.error.code;
+      } catch { /* bounded error envelope is optional */ }
       if (response.status === 401) {
         const err = new Error("云账号认证已失效，需要重新登录");
         err.code = "reauth";
+        err.status = 401;
+        if (serverCode) err.serverCode = serverCode;
         throw err;
       }
       if (response.status === 409) {
         const err = new Error("云端权限版本发生变化，请重新登录并确认权限");
         err.code = "conflict";
+        err.status = 409;
         throw err;
       }
-      throw new Error(response.status === 403 ? "云端拒绝此操作或设备已被撤销" : SAFE_ERROR);
+      const err = new Error(response.status === 403 ? "云端拒绝此操作或设备已被撤销" : SAFE_ERROR);
+      err.status = response.status;
+      if (serverCode) err.serverCode = serverCode;
+      throw err;
     }
     if (response.status === 204) return null;
-    try { return await response.json(); } catch { throw new Error("Cloud Auth 返回数据无法识别"); }
+    try {
+      return await response.json();
+    } catch {
+      const err = new Error("Cloud Auth 返回数据无法识别");
+      err.code = "invalid_response";
+      throw err;
+    }
   }
   function validateAccount(result) {
     if (!result || !result.account || typeof result.account.id !== "string" ||
@@ -140,6 +264,8 @@ function createCloudAccountController(options) {
       typeof result.expiresAt !== "string") throw new Error("Cloud Auth 会话响应无效");
   }
   function resetRejectedSession() {
+    // Revocation invalidates every in-flight Host/Relay request using this session.
+    ++revision;
     record = { installationId: record.installationId };
     persist(record);
     return publish({ status: "rejected", account: null, scopes: [],
@@ -311,6 +437,92 @@ function createCloudAccountController(options) {
     }
     return status();
   }
+  function relayFailure(error, expectedRevision) {
+    if (expectedRevision !== revision) {
+      return relayTicketError(RELAY_TICKET_ERROR_CODES.ABORTED,
+        "云账号状态已变化，已丢弃过期的 Relay 票据请求。");
+    }
+    if (error?.code === "reauth" || error?.status === 401) {
+      resetRejectedSession();
+      return relayTicketError(RELAY_TICKET_ERROR_CODES.REAUTH,
+        "云账号会话已失效，请重新登录；本地 Mira 不受影响。");
+    }
+    if (error?.status === 403) {
+      return relayTicketError(
+        error.serverCode === "SERVICE_CREDENTIAL_DEVICE_REQUIRED"
+          ? RELAY_TICKET_ERROR_CODES.DEVICE_REQUIRED
+          : RELAY_TICKET_ERROR_CODES.NOT_AUTHORIZED,
+        "云端未授权当前 Host 使用 Mira Relay 传输；本地功能不受影响。");
+    }
+    if (error?.code === "invalid_response") {
+      return relayTicketError(RELAY_TICKET_ERROR_CODES.INVALID_RESPONSE,
+        "Cloud Relay 票据响应无效，已拒绝使用。");
+    }
+    return relayTicketError(RELAY_TICKET_ERROR_CODES.UNAVAILABLE,
+      "Cloud Relay 票据暂时不可用；本地功能与已恢复的会话不受影响。");
+  }
+  function validateHostPresence(host, expectedHostId) {
+    const invalid = () => relayTicketError(RELAY_TICKET_ERROR_CODES.INVALID_RESPONSE,
+      "Cloud Host 归属响应无效，已拒绝申请 Relay 票据。");
+    if (!isRecord(host) || typeof host.id !== "string" ||
+        typeof host.deviceId !== "string" ||
+        host.deviceId.length < 1 || host.deviceId.length > 128 ||
+        typeof host.relayRoom !== "string" || !RELAY_ROOM.test(host.relayRoom) ||
+        (host.availability !== "available" && host.availability !== "offline")) {
+      throw invalid();
+    }
+    if (host.id !== expectedHostId) {
+      throw relayTicketError(RELAY_TICKET_ERROR_CODES.HOST_MISMATCH,
+        "云端返回的 Host 归属与本机 Cloud Host 不匹配，已拒绝申请 Relay 票据。");
+    }
+    if (host.availability !== "available") {
+      throw relayTicketError(RELAY_TICKET_ERROR_CODES.NOT_AUTHORIZED,
+        "当前 Host 在云端不可用，暂时无法申请 Relay 票据；本地功能不受影响。");
+    }
+    return host;
+  }
+  async function requestRelayHostTicket() {
+    if (!record?.sessionToken || !isRecord(record.account) ||
+        typeof record.account.id !== "string" || !record.account.id ||
+        typeof record.hostId !== "string" || !record.hostId ||
+        !record.permissionsConfigured) {
+      throw relayTicketError(RELAY_TICKET_ERROR_CODES.NOT_CONFIGURED,
+        "当前没有已完成 Host 配置的 Cloud Session，无法申请 Relay 票据。");
+    }
+    const token = record.sessionToken;
+    const accountId = record.account.id;
+    const expectedRevision = revision;
+    let host;
+    try {
+      // Refresh the server-owned Host lease and read the authoritative room.
+      // The renderer never supplies an account, room, role, or audience.
+      host = await request("/v1/hosts", "POST", token, {});
+    } catch (error) {
+      throw relayFailure(error, expectedRevision);
+    }
+    if (expectedRevision !== revision) throw relayFailure(null, expectedRevision);
+    host = validateHostPresence(host, record.hostId);
+    let ticket;
+    try {
+      ticket = await request("/v1/service-credentials", "POST", token, {
+        audience: RELAY_TRANSPORT_AUDIENCE,
+        relay: { room: host.relayRoom, role: "host" },
+      });
+    } catch (error) {
+      throw relayFailure(error, expectedRevision);
+    }
+    if (expectedRevision !== revision) throw relayFailure(null, expectedRevision);
+    return validateRelayTicket(ticket, host, accountId);
+  }
+  async function withRelayHostTicket(consumer) {
+    if (typeof consumer !== "function") {
+      throw new Error("Relay 票据只能交给受信任的原生连接消费接口");
+    }
+    const ticket = await requestRelayHostTicket();
+    // The ticket is delivered only to trusted native code. It is never stored
+    // in the renderer-visible status, local JWT/DB, or logs.
+    await consumer(ticket);
+  }
   async function handleCallback(rawUrl) {
     const parsed = parseCallback(rawUrl);
     if (!parsed || !pending || parsed.state !== pending.state) return false;
@@ -383,7 +595,8 @@ function createCloudAccountController(options) {
     return status();
   }
   return { initialize, begin, cancelAuthorization, handleCallback, retryHostSetup,
-    resetLocalCredentials, signOut, status };
+    resetLocalCredentials, signOut, status, withRelayHostTicket };
 }
 
-module.exports = { createCloudAccountController, parseCallback, validateScopes, SCOPES };
+module.exports = { createCloudAccountController, parseCallback, validateScopes, SCOPES,
+  RELAY_TICKET_ERROR_CODES };

@@ -4,7 +4,61 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { createCloudAccountController, parseCallback, validateScopes } = require("./cloud-account.cjs");
+const { createCloudAccountController, parseCallback, validateScopes,
+  RELAY_TICKET_ERROR_CODES } = require("./cloud-account.cjs");
+
+const RELAY_AUDIENCE = "mira:cloud-relay-transport";
+const RELAY_SCOPE = "relay:transport";
+const RELAY_ROOM = "room_dGVzdC1yb29t";
+
+function base64urlJson(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function makeTicket(options = {}) {
+  const now = options.now ?? Math.floor(Date.now() / 1000);
+  const ttl = options.ttl ?? 300;
+  const header = {
+    alg: "EdDSA", typ: "JWT", kid: "cloud-auth-2026-10",
+    ...(options.header || {}),
+  };
+  const claims = {
+    iss: "mira:cloud-auth",
+    sub: "account-a",
+    device_id: "device-a",
+    aud: RELAY_AUDIENCE,
+    scope: [RELAY_SCOPE],
+    relay: { room: RELAY_ROOM, role: "host" },
+    iat: now,
+    nbf: now,
+    exp: now + ttl,
+    ...(options.claims || {}),
+  };
+  if (options.omit) for (const key of options.omit) delete claims[key];
+  return [base64urlJson(header), base64urlJson(claims), "c2lnbmF0dXJl"].join(".");
+}
+
+function issuedTicket(options = {}) {
+  const now = options.now ?? Math.floor(Date.now() / 1000);
+  const ttl = options.ttl ?? 300;
+  return {
+    token: options.token ?? makeTicket({ ...options, now, ttl }),
+    tokenType: options.tokenType ?? "Bearer",
+    audience: options.responseAudience ?? RELAY_AUDIENCE,
+    expiresAt: options.responseExpiresAt ?? new Date((now + ttl) * 1000).toISOString(),
+  };
+}
+
+function hostPayload(overrides = {}) {
+  return {
+    id: "host-1", deviceId: "device-a", displayName: "Mira Desktop",
+    clientVersion: "1.0.0", availability: "available", relayRoom: RELAY_ROOM,
+    registeredAt: "2026-10-25T12:00:00.000Z",
+    lastAdvertisedAt: "2026-10-25T12:00:30.000Z",
+    leaseExpiresAt: "2026-10-25T12:02:30.000Z",
+    ...overrides,
+  };
+}
 
 function fixture() {
   const artifactRoot = path.resolve(__dirname, "..", ".test-artifact");
@@ -24,7 +78,10 @@ function fixture() {
   let beforePolicyPut = null;
   let beforeSessionRestore = null;
   let beforeOpenExternal = null;
+  let beforeServiceCredential = null;
   let hostFailuresRemaining = 0;
+  let hostHandler = null;
+  let serviceCredentialHandler = null;
   const fetcher = async (url, opts) => {
     calls.push({ url, opts });
     if (offline) throw new Error("connection reset");
@@ -38,7 +95,24 @@ function fixture() {
         --hostFailuresRemaining;
         return Response.json({ code: "TEMPORARILY_UNAVAILABLE" }, { status: 503 });
       }
-      return Response.json({ id: "host-1" });
+      if (hostHandler) {
+        const custom = await hostHandler({ url, opts });
+        if (custom) return custom;
+      }
+      return Response.json({ id: "host-1", deviceId: "device-a",
+        displayName: "Mira Desktop", clientVersion: "1.0.0",
+        availability: "available", relayRoom: RELAY_ROOM,
+        registeredAt: "2026-10-25T12:00:00.000Z",
+        lastAdvertisedAt: "2026-10-25T12:00:30.000Z",
+        leaseExpiresAt: "2026-10-25T12:02:30.000Z" });
+    }
+    if (url.endsWith("/v1/service-credentials") && opts.method === "POST") {
+      if (beforeServiceCredential) await beforeServiceCredential();
+      if (serviceCredentialHandler) {
+        const custom = await serviceCredentialHandler({ url, opts });
+        if (custom) return custom;
+      }
+      return Response.json(issuedTicket());
     }
     if (url.endsWith("/v1/hosts/host-1/grants"))
       return Response.json({ hostId: "host-1", accountId: "account-a",
@@ -70,7 +144,23 @@ function fixture() {
     failHostRegistration: (count = 1) => { hostFailuresRemaining = count; },
     setBeforePolicyPut: (hook) => { beforePolicyPut = hook; },
     setBeforeSessionRestore: (hook) => { beforeSessionRestore = hook; },
-    setBeforeOpenExternal: (hook) => { beforeOpenExternal = hook; } };
+    setBeforeOpenExternal: (hook) => { beforeOpenExternal = hook; },
+    setBeforeServiceCredential: (hook) => { beforeServiceCredential = hook; },
+    setHostHandler: (handler) => { hostHandler = handler; },
+    setServiceCredentialHandler: (handler) => { serviceCredentialHandler = handler; } };
+}
+
+async function signIn(f, controller, scopes = ["threads:read"]) {
+  await controller.initialize();
+  await controller.begin(scopes);
+  const state = new URL(f.opened.at(-1)).searchParams.get("state");
+  await controller.handleCallback(
+    "mira-desktop://oauth/callback?state=" + state + "&code=mca_v1.id.secret");
+  assert.equal(controller.status().status, "signed_in");
+}
+
+function rejectsCode(promise, code) {
+  return assert.rejects(promise, (error) => error.code === code);
 }
 
 test("rejects wrong protocols, duplicate parameters, fragments and invalid scopes", () => {
@@ -446,4 +536,240 @@ test("OAuth denial with optional error_uri and issuer returns to signed-out with
   await controller.begin([]);
   assert.equal(controller.status().status, "authorizing");
   controller.cancelAuthorization();
+});
+
+test("DSK-009 acquires a host Relay ticket only through a trusted native consumer", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await signIn(f, controller);
+  let delivered = null;
+  await controller.withRelayHostTicket((ticket) => { delivered = ticket; });
+  assert.ok(delivered);
+  assert.equal(delivered.audience, RELAY_AUDIENCE);
+  assert.equal(delivered.room, RELAY_ROOM);
+  assert.equal(delivered.role, "host");
+  assert.equal(Object.isFrozen(delivered), true);
+
+  const credentialCall = f.calls.find((call) => call.url.endsWith("/v1/service-credentials"));
+  assert.equal(credentialCall.opts.headers.authorization, "Bearer mcs_v1.session.secret");
+  assert.deepEqual(JSON.parse(credentialCall.opts.body), {
+    audience: RELAY_AUDIENCE,
+    relay: { room: RELAY_ROOM, role: "host" },
+  });
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length, 2);
+
+  const status = JSON.stringify(controller.status());
+  assert.equal(status.includes(delivered.token), false);
+  assert.equal(status.includes("mcs_v1."), false);
+  const stored = fs.readFileSync(f.store, "utf8");
+  assert.equal(stored.includes(delivered.token), false);
+  assert.equal(stored.includes("mcs_v1."), false);
+  assert.equal(await controller.withRelayHostTicket(() => {}), undefined);
+});
+
+test("DSK-009 fails closed without a configured session or on foreign Host ownership", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await controller.initialize();
+  let consumed = false;
+  await rejectsCode(controller.withRelayHostTicket(() => { consumed = true; }),
+    RELAY_TICKET_ERROR_CODES.NOT_CONFIGURED);
+  assert.equal(consumed, false);
+  assert.equal(f.calls.some((call) => call.url.endsWith("/v1/service-credentials")), false);
+
+  await signIn(f, controller);
+  f.setHostHandler(() => Response.json(hostPayload({ id: "host-2" })));
+  await rejectsCode(controller.withRelayHostTicket(() => { consumed = true; }),
+    RELAY_TICKET_ERROR_CODES.HOST_MISMATCH);
+  assert.equal(consumed, false);
+  assert.equal(f.calls.some((call) => call.url.endsWith("/v1/service-credentials")), false);
+
+  f.setHostHandler(() => Response.json(hostPayload({ availability: "offline" })));
+  await rejectsCode(controller.withRelayHostTicket(() => { consumed = true; }),
+    RELAY_TICKET_ERROR_CODES.NOT_AUTHORIZED);
+  assert.equal(consumed, false);
+
+  f.setHostHandler(() => Response.json(hostPayload({ relayRoom: "invalid room" })));
+  await rejectsCode(controller.withRelayHostTicket(() => { consumed = true; }),
+    RELAY_TICKET_ERROR_CODES.INVALID_RESPONSE);
+  assert.equal(consumed, false);
+  assert.equal(controller.status().status, "signed_in");
+});
+
+test("DSK-009 distinguishes relay denial from revoked Cloud Session and keeps recoverable session", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await signIn(f, controller);
+
+  f.setServiceCredentialHandler(() => Response.json({
+    error: { code: "SERVICE_CREDENTIAL_RELAY_NOT_AUTHORIZED",
+      message: "Relay transport ticket is not authorized for this device" },
+  }, { status: 403 }));
+  let consumed = false;
+  await rejectsCode(controller.withRelayHostTicket(() => { consumed = true; }),
+    RELAY_TICKET_ERROR_CODES.NOT_AUTHORIZED);
+  assert.equal(consumed, false);
+  assert.equal(controller.status().status, "signed_in");
+  const restarted = f.build();
+  await restarted.initialize();
+  assert.equal(restarted.status().status, "signed_in");
+
+  f.setServiceCredentialHandler(() => Response.json({
+    error: { code: "SERVICE_CREDENTIAL_DEVICE_REQUIRED",
+      message: "A device-bound Mira Cloud Session is required" },
+  }, { status: 403 }));
+  await rejectsCode(restarted.withRelayHostTicket(() => { consumed = true; }),
+    RELAY_TICKET_ERROR_CODES.DEVICE_REQUIRED);
+  assert.equal(consumed, false);
+  assert.equal(restarted.status().status, "signed_in");
+
+  f.setServiceCredentialHandler(() => Response.json({
+    error: { code: "SERVICE_CREDENTIAL_REAUTH_REQUIRED",
+      message: "Re-authentication is required" },
+  }, { status: 401 }));
+  await rejectsCode(restarted.withRelayHostTicket(() => { consumed = true; }),
+    RELAY_TICKET_ERROR_CODES.REAUTH);
+  assert.equal(consumed, false);
+  assert.equal(restarted.status().status, "rejected");
+  assert.equal(restarted.status().account, null);
+  const after = f.build();
+  await after.initialize();
+  assert.equal(after.status().status, "signed_out");
+});
+
+test("DSK-009 temporary Cloud outage is distinct from denial and preserves the session", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await signIn(f, controller);
+  f.setOffline(true);
+  let consumed = false;
+  await rejectsCode(controller.withRelayHostTicket(() => { consumed = true; }),
+    RELAY_TICKET_ERROR_CODES.UNAVAILABLE);
+  assert.equal(consumed, false);
+  assert.equal(controller.status().status, "signed_in");
+
+  const offline = f.build();
+  await offline.initialize();
+  assert.equal(offline.status().status, "unavailable");
+  assert.equal(offline.status().account.username, "test-a");
+
+  f.setOffline(false);
+  const restored = f.build();
+  await restored.initialize();
+  assert.equal(restored.status().status, "signed_in");
+  let delivered = null;
+  await restored.withRelayHostTicket((ticket) => { delivered = ticket; });
+  assert.ok(delivered);
+});
+
+test("DSK-009 rejects malformed, expired, foreign and mismatched Relay tickets", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await signIn(f, controller);
+  const now = Math.floor(Date.now() / 1000);
+  const variants = [
+    ["malformed token", { ...issuedTicket(), token: "not-a-jwt" }],
+    ["wrong header algorithm", issuedTicket({ header: { alg: "HS256" } })],
+    ["wrong issuer", issuedTicket({ claims: { iss: "attacker" } })],
+    ["wrong account", issuedTicket({ claims: { sub: "account-b" } })],
+    ["wrong device", issuedTicket({ claims: { device_id: "device-b" } })],
+    ["wrong audience claim", issuedTicket({ claims: { aud: "mira:cloud-shiyan" } })],
+    ["wrong response audience", issuedTicket({ responseAudience: "mira:cloud-shiyan" })],
+    ["wrong scope", issuedTicket({ claims: { scope: ["shiyan:authenticate"] } })],
+    ["wrong room", issuedTicket({ claims: { relay: { room: "room_other", role: "host" } } })],
+    ["wrong role", issuedTicket({ claims: { relay: { room: RELAY_ROOM, role: "client" } } })],
+    ["expired", issuedTicket({ now: now - 600, ttl: 300 })],
+    ["expiresAt mismatch", issuedTicket({
+      responseExpiresAt: new Date((now + 100) * 1000).toISOString(),
+    })],
+    ["extra claim", issuedTicket({ claims: { admin: true } })],
+    ["missing relay", issuedTicket({ omit: ["relay"] })],
+    ["extra response field", { ...issuedTicket(), hostToken: "leak" }],
+  ];
+  for (const [name, payload] of variants) {
+    f.setServiceCredentialHandler(() => Response.json(payload));
+    let consumed = false;
+    await rejectsCode(controller.withRelayHostTicket(() => { consumed = true; }),
+      RELAY_TICKET_ERROR_CODES.INVALID_RESPONSE);
+    assert.equal(consumed, false, name);
+    assert.equal(controller.status().status, "signed_in", name);
+  }
+});
+
+test("DSK-009 sign-out during ticket acquisition discards the late ticket", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await signIn(f, controller);
+  let entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  f.setBeforeServiceCredential(async () => { entered(); await gate; });
+  let consumed = false;
+  const operation = controller.withRelayHostTicket(() => { consumed = true; });
+  await started;
+  await controller.signOut();
+  release();
+  await rejectsCode(operation, RELAY_TICKET_ERROR_CODES.ABORTED);
+  assert.equal(consumed, false);
+  assert.equal(controller.status().status, "signed_out");
+});
+
+test("DSK-009 Cloud reauth invalidates another in-flight Relay ticket request", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await signIn(f, controller);
+
+  // Hold the second response while the first call reports a revoked session.
+  // Both calls have already passed the original Cloud Session check.
+  let secondEntered;
+  const secondReady = new Promise((resolve) => { secondEntered = resolve; });
+  let releaseSecond;
+  const secondBlocked = new Promise((resolve) => { releaseSecond = resolve; });
+  let requested = 0;
+  f.setBeforeServiceCredential(async () => {
+    requested += 1;
+    if (requested === 1) {
+      await secondReady;
+    } else {
+      secondEntered();
+      await secondBlocked;
+    }
+  });
+
+  let responded = 0;
+  f.setServiceCredentialHandler(() => {
+    responded += 1;
+    if (responded === 1) {
+      return Response.json({
+        error: { code: "SERVICE_CREDENTIAL_REAUTH_REQUIRED",
+          message: "Re-authentication is required" },
+      }, { status: 401 });
+    }
+    return Response.json(issuedTicket());
+  });
+
+  let consumed = 0;
+  const first = controller.withRelayHostTicket(() => { consumed += 1; });
+  const second = controller.withRelayHostTicket(() => { consumed += 1; });
+
+  await rejectsCode(first, RELAY_TICKET_ERROR_CODES.REAUTH);
+  assert.equal(controller.status().status, "rejected");
+  releaseSecond();
+  await rejectsCode(second, RELAY_TICKET_ERROR_CODES.ABORTED);
+  assert.equal(consumed, 0);
+  assert.equal(requested, 2);
+  assert.equal(responded, 2);
+
+  const restarted = f.build();
+  await restarted.initialize();
+  assert.equal(restarted.status().status, "signed_out");
 });
