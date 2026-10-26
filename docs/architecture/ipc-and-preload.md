@@ -71,8 +71,13 @@ Remote V1 Tailscale pairing and cloud account remain separate.
 - Native callback: `mira-desktop://oauth/callback`, registered by the packaged
   Electron app and checked for exact URI, one pending state, and single use.
 - Native Electron IPC: `cloud-account:status`, `cloud-account:login`,
-  `cloud-account:logout`; preload exposes only the narrow
-  `window.cloudAccount` wrapper and redacted subscription.
+  `cloud-account:cancel-login`, `cloud-account:retry-host`,
+  `cloud-account:reset-credentials`, `cloud-account:logout`; preload
+  exposes only the narrow `window.cloudAccount` wrapper and redacted
+  subscription. Host-setup retry uses the existing encrypted Cloud Session
+  and the original encrypted scope selection; server-side Host policy remains
+  authoritative. A broken encrypted local record can be reset **only by an
+  explicit user action**, which cannot claim remote session revocation.
 - Cloud Auth source: `https://cloud-auth.tomzlab.cn`; credentials must never
   be written to React storage, the backend SQLite database, or logs.
 - Desktop sign-in requests the external system browser, exchanges the OAuth code,
