@@ -48,6 +48,11 @@ ipcMain.handle("cloud-account:login", (event, scopes) => {
   }
   return cloudAccount.begin(scopes);
 });
+ipcMain.handle("cloud-account:cancel-login", (event) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  return cloudAccount.cancelAuthorization();
+});
 ipcMain.handle("cloud-account:logout", (event) => {
   cloudIpcAuth(event);
   if (!cloudAccount) throw new Error("Cloud Account not initialized");
