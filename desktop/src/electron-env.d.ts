@@ -11,6 +11,7 @@ declare global {
         message: string;
       }>;
       signIn: (scopes: string[]) => Promise<unknown>;
+      cancelSignIn: () => Promise<unknown>;
       signOut: () => Promise<unknown>;
       subscribe: (listener: (state: Awaited<ReturnType<NonNullable<Window["cloudAccount"]>["status"]>>) => void) => () => void;
     };
