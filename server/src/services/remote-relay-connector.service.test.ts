@@ -626,6 +626,34 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
     }
   });
 
+  it("handles old Relay HOST_AUTH_REQUIRED before ack without connection success", async () => {
+    const sockets: FakeRelaySocket[] = [];
+    const source: CloudRelayTicketSource = {
+      withHostTicket: async (consumer) => consumer(ticket("cloud.jwt.signature")),
+      onRevoked: () => () => undefined,
+    };
+    const service = new RemoteRelayConnectorService(
+      cloudConfig, () => {
+        const socket = new FakeRelaySocket();
+        sockets.push(socket);
+        return socket;
+      }, fetch, "http://127.0.0.1:8787", () => 0, source,
+    );
+    service.start();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({
+      version: 1, type: "error", code: "HOST_AUTH_REQUIRED",
+      message: "Token does not satisfy legacy length contract",
+      retryable: false,
+    });
+    expect(service.getSnapshot()).toMatchObject({
+      state: "disconnected", lastError: "cloud_relay_protocol_unavailable",
+    });
+    service.stop();
+  });
+
   it("preserves Cloud authorization denial even if the remote socket closes", async () => {
     const sockets: FakeRelaySocket[] = [];
     const source: CloudRelayTicketSource = {
