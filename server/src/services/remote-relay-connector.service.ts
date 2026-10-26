@@ -493,13 +493,18 @@ export class RemoteRelayConnectorService {
       this.connectedAt = null;
       this.abortAllRequests();
       if (this.stopped) return;
-      if (event.reason) {
+      // A legacy Relay cannot admit a Cloud ticket. Do not retry the same
+      // unsupported handshake forever or obscure an authorization denial.
+      const admissionBlocked = this.currentConfig && isCloud(this.currentConfig) &&
+        (this.lastError === "cloud_relay_protocol_unavailable" ||
+         this.lastError === "cloud_relay_admission_denied");
+      if (event.reason && !admissionBlocked) {
         this.lastError = this.currentConfig && isCloud(this.currentConfig)
           ? "cloud_relay_transport_disconnected"
           : `Mira Relay disconnected: ${event.reason}`;
       }
       this.state = "disconnected";
-      this.scheduleReconnect();
+      if (!admissionBlocked) this.scheduleReconnect();
     });
   }
 
@@ -531,6 +536,25 @@ export class RemoteRelayConnectorService {
       this.reconnectAttempt = 0;
       this.startKeepalive(socket, generation);
       return;
+    }
+
+    // The actual Relay V1 server rejects a Cloud Host hello with
+    // CLIENT_TOKEN_REQUIRED before hello_ack. The legacy pre-ack error must
+    // not be swallowed and retried as a transient network failure.
+    if (frame.type === "error" && this.currentConfig &&
+        isCloud(this.currentConfig) && this.state === "connecting" &&
+        !frame.requestId) {
+      if (frame.code === "CLIENT_TOKEN_REQUIRED" ||
+          frame.code === "HOST_AUTH_REQUIRED") {
+        this.lastError = "cloud_relay_protocol_unavailable";
+        socket.close(1008, "Hosted Relay protocol not available");
+        return;
+      }
+      if (frame.code.endsWith("AUTH_FAILED")) {
+        this.lastError = "cloud_relay_admission_denied";
+        socket.close(1008, "Cloud Relay admission denied");
+        return;
+      }
     }
 
     if (this.state !== "connected" || !this.isCurrent(socket, generation)) {
