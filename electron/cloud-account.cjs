@@ -288,7 +288,7 @@ function createCloudAccountController(options) {
   }
   async function retryHostSetup() {
     if (view.status !== "setup_failed" || !record?.sessionToken ||
-        record.permissionsConfigured) {
+        (record.permissionsConfigured && record.hostId)) {
       throw new Error("没有待恢复的 Host 权限设置");
     }
     const selected = validateScopes(record.requestedScopes || []);
