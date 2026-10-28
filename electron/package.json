@@ -15,8 +15,8 @@
     "build": "echo 'Electron packaging is handled by the root package:electron:win script'"
   },
   "devDependencies": {
-    "electron": "31.7.7",
     "concurrently": "^9.0.1",
+    "electron": "45.1.0",
     "electron-builder": "^24.13.3",
     "wait-on": "^8.0.1"
   }

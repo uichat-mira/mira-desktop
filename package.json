@@ -101,7 +101,7 @@
     "@tauri-apps/cli": "^2.11.2",
     "concurrently": "^9.0.1",
     "cross-env": "^7.0.3",
-    "electron": "31.7.7",
+    "electron": "45.1.0",
     "electron-builder": "^24.13.3",
     "jimp": "^1.6.1",
     "onnxruntime-web": "^1.27.0",
