@@ -17,7 +17,7 @@ type RuntimeTool = {
 
 // Display-only metadata mirrors the versions pinned by the terminal runtime package.
 const runtimeTools: RuntimeTool[] = [
-  { name: "Node.js", version: "22.23.1", logo: nodejsLogo },
+  { name: "Node.js", version: "24.22.1", logo: nodejsLogo },
   { name: "npm / npx", version: "10.9.8", logo: npmLogo },
   { name: "MinGit", version: "2.55.0.windows.3", logo: gitLogo },
   { name: "uv", version: "0.11.31", logo: uvLogo },

@@ -20,7 +20,7 @@ describe("DevelopmentEnvironmentSuiteCard", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Windows x64")).toBeInTheDocument();
     expect(screen.getByText("Node.js")).toBeInTheDocument();
-    expect(screen.getByText("v22.23.1")).toBeInTheDocument();
+    expect(screen.getByText("v24.22.1")).toBeInTheDocument();
     expect(screen.getByText("npm / npx")).toBeInTheDocument();
     expect(screen.getByText("v10.9.8")).toBeInTheDocument();
     expect(screen.getByText("MinGit")).toBeInTheDocument();
