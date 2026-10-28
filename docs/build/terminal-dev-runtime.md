@@ -101,7 +101,7 @@ system PATH
 
 现有 `grep` 与 read content locate 共用内部 ripgrep provider：优先 `bundled-ripgrep`，bundled 缺失或完整性校验失败时由 Terminal Dev Runtime resolver 选择 `system-ripgrep`，两者都不可用或执行失败时使用 `node-content-scan`。实际 provider 会写入搜索结果 artifact metadata；这不会新增 Planner-facing Tool，也不改变现有 grep/read Tool Contract。
 
-Electron 在 bundled Node 缺失时保留现有 Electron-as-Node fallback。Tauri 先使用 bundled Node，再查找系统 `node.exe`，都不存在时返回明确错误。
+Electron 生产 Backend 必须使用随包独立 Node；若该运行时缺失，显示启动错误并退出，不再回退到 Electron-as-Node。Tauri 先使用 bundled Node，再查找系统 `node.exe`，都不存在时返回明确错误。
 
 ## 分层验证
 

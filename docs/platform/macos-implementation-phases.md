@@ -46,7 +46,7 @@ Related:
 
 - 使用 `process.resourcesPath` 解析生产资源，天然符合 `.app/Contents/Resources` 布局
 - 已处理 Darwin 的窗口关闭生命周期
-- backend 在没有独立 Node runtime 时，可以通过 `ELECTRON_RUN_AS_NODE=1` 使用 Electron 自身执行 `server.cjs`
+- 历史初版方案允许没有独立 Node runtime 时通过 `ELECTRON_RUN_AS_NODE=1` 使用 Electron 自身执行 `server.cjs`；当前 Electron 45 已移除此回退
 - `electron-builder.yml` 已存在 `mac.target: dmg` 与 ICNS 图标入口
 
 Tauri 当前额外存在以下阻塞：
@@ -58,13 +58,13 @@ Tauri 当前额外存在以下阻塞：
 
 因此，Electron 更适合作为验证共享 runtime 平台化成果的第一条 macOS 产品链；Tauri 应在共享输入稳定后复用同一套能力合同，而不是先在 Rust 壳层里复制一套临时方案。
 
-## 当前代码事实
+## 初期代码事实（历史快照）
 
-| 子系统 | 当前实现 | 对 macOS 的影响 |
+| 子系统 | 当时实现 | 对 macOS 的影响 |
 | --- | --- | --- |
 | 根命令 | `dev:*:win`、`package:*:win`、`release:*:win` | 缺少平台中立入口和 macOS 命令 |
 | Electron Builder | 已声明 DMG 与 ICNS | 只能说明有目标配置，不能证明运行时资源可用 |
-| Electron 主进程 | Darwin 生命周期、`process.resourcesPath`、Electron-as-Node fallback 已存在 | 适合作为首版壳层；Native Messaging 仍是 Windows-only |
+| Electron 主进程 | Darwin 生命周期、`process.resourcesPath` 已存在；Electron-as-Node fallback 是已废弃的历史实现 | 适合作为首版壳层；Native Messaging 仍是 Windows-only |
 | Tauri 配置 | `targets: all`，资源列表完整 | 配置层看似跨平台，实际资源内容仍是 Windows 产物 |
 | Tauri 主进程 | 数据、日志、Workspace 目录使用 Tauri path API | 基础目录逻辑可复用；资源根、Node、Native Messaging 需改造 |
 | Shared artifacts | 强制构建 `.exe` Native Host、Windows Terminal Runtime、Windows Piper | 是当前最大总阻塞，不应绕过 |
@@ -350,9 +350,9 @@ Phase 2 不强制立即提供 Piper macOS 包，但必须做到：
 - 新增或平台化 Electron package script
 - macOS smoke workflow
 
-### Backend 启动策略
+### Backend 启动策略（历史方案）
 
-首版优先复用 Electron-as-Node：
+以下是历史首版方案，现已被生产 Backend 的独立 Node 要求取代：
 
 1. 若 payload 中存在 `node-runtime/node`，使用独立 Node
 2. 否则使用 `process.execPath` 并注入 `ELECTRON_RUN_AS_NODE=1`
