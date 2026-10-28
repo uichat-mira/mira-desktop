@@ -15,6 +15,10 @@ Related:
   - ../build/README.md
   - ../developments/release-management.md
 
+> **Version evidence:** references below to Electron 31.7.7 are historical
+> observations from original macOS implementation runs, not the current
+> Electron runtime version. Electron 45 requires its own acceptance evidence.
+
 ## 单点真相范围
 
 这份文档统一说明：

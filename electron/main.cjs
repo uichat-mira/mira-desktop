@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, safeStorage, net } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, safeStorage, net } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn, execFileSync } = require("child_process");
@@ -429,10 +429,13 @@ async function startBackend() {
     "model-runtime",
     "onnxruntime-web",
   );
-  const backendRuntime = fs.existsSync(bundledNodePath)
-    ? bundledNodePath
-    : process.execPath;
-  const usesBundledNode = backendRuntime === bundledNodePath;
+  if (!fs.existsSync(bundledNodePath)) {
+    throw new Error(
+      `Required bundled Node runtime is missing: ${bundledNodePath}. ` +
+      "Reinstall Mira; refusing to run native backend modules under Electron Node."
+    );
+  }
+  const backendRuntime = bundledNodePath;
 
   console.log("Starting backend from:", backendPath);
   console.log("Working directory:", cwd);
@@ -464,7 +467,6 @@ async function startBackend() {
     cwd,
     env: {
       ...process.env,
-      ...(usesBundledNode ? {} : { ELECTRON_RUN_AS_NODE: "1" }),
       NODE_ENV: "production",
       HOST: runtimeConfig.backend.host,
       PORT: String(runtimeConfig.backend.port),
@@ -526,10 +528,10 @@ app.whenReady().then(async () => {
     app, shell, safeStorage,
     // Cloud Auth's edge resets TLS 1.3 ClientHellos that advertise only
     // classical key exchange: it requires a post-quantum hybrid group to be
-    // offered (Chromium 126 offers the legacy Kyber768 draft; Electron's
-    // bundled Node stack offers none), and the reset happens before any HTTP
-    // status. All Cloud traffic therefore uses Electron's Chromium network
-    // stack. Certificate verification remains enabled with platform defaults.
+    // offered. This was diagnosed under Electron 31 / Chromium 126 / Node 20;
+    // do not assume those TLS capabilities apply to Electron 45 / Node 24.
+    // Cloud traffic continues using Chromium net.fetch, with platform-default
+    // certificate verification enabled.
     fetcher: (input, init) => net.fetch(input, init),
     notify: (snapshot) => {
       if (snapshot.status === "rejected" || snapshot.status === "signed_out") {
@@ -575,6 +577,11 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+}).catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error("Electron startup failed:", error);
+  dialog.showErrorBox("UIChat Mira cannot start", message);
+  app.quit();
 });
 
 app.on("window-all-closed", () => {
