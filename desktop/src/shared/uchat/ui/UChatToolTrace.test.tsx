@@ -292,7 +292,7 @@ test("a Browser screenshot without an authorized preview URL shows Artifact iden
   );
 
   assert.ok(screen.getByText("Capture screenshot"));
-  assert.ok(screen.getByText("Screenshot preview unavailable"));
+  assert.ok(screen.getByText(/Screenshot preview unavailable/));
   assert.equal(screen.queryByText(/shot-1\.png/), null);
   assert.equal(container.querySelector("img"), null);
 
