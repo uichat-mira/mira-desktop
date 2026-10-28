@@ -711,7 +711,7 @@ pnpm package:electron:win
 Electron 另有一条独立的 Intel macOS CI / GitHub Release 路径：
 
 - GitHub-hosted `macos-15-intel` runner 上执行 `node scripts/build-dist.js mac`；
-- server native module、bundled Node 22.23.1 与 staged runtime smoke 按 `darwin-x64` 真实验证；
+- server native module、bundled Node 24.22.1 与 staged runtime smoke 应按 `darwin-x64` 实际验收；Node 22 的历史验收不代表 Node 24 已验证通过；
 - `dev/test/prod` 保存短期 Actions DMG artifact；其中 `dev/test` 为降低重复 CI 成本跳过 release test-report 重生成，`prod` 保持完整打包；
 - `v*` tag 使用完整 Intel macOS 打包并把 DMG 追加到 GitHub Release；
 - Intel DMG 当前**未做 Developer ID 签名与公证**；成功的 `prod` / `v*` 构建会同步到独立 R2 前缀 `mira/macos-intel/latest/`；

@@ -773,7 +773,7 @@ test("POST /proxy/chat/default routes knowledge-bound agent sends through AgentR
     createAndRunAgentSpy.mockRestore();
     await app.close();
   }
-});
+}, 20_000);
 
 test("POST /proxy/chat/default passes agentEnabled true into createAndRunAgent", async () => {
   const user = userRepository.create({

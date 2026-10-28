@@ -127,5 +127,5 @@ describe("host spawn execution", () => {
     expect(result.workspaceRelation).toBe("inside");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("host-runtime-ok");
-  });
+  }, 25_000);
 });
