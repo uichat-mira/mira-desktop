@@ -44,6 +44,41 @@ returns `CLOUD_GRANT_REQUIRED` until this is solved.
    then real Cloud/Relay/Mobile T4 under OPS-005. Unit tests alone are not
    integration acceptance.
 
+## Verified Relay identity loss (2026-10-29, Relay `dev` source)
+
+- `uichat-mira-relay/src/cloud-relay-verifier.ts` derives a trusted
+  `CloudRelayTicketIdentity` with `accountId`, `deviceId`, `room` and
+  `role` from the Cloud Auth-signed ticket.
+- `src/cloud-room-admission.ts` currently awaits
+  `verifyCloudTicket(...)` but **discards its returned identity**.
+  `src/room-state.ts` stores no attested account or device identity.
+- `src/room-forwarding.ts` sends `{ ...frame, requestId: ... }` to the
+  Host, so extra client-provided request fields cannot be treated as a
+  server assertion. The Desktop `RelayRequestFrame` has no trusted Mobile
+  identity field.
+
+The **Relay owner (REL-001), not DSK-007**, must first define and verify a
+service-stamped per-request identity contract. Its source must be the
+verified Client WebSocket admission, never a Client `request` field.
+The Relay must remove/overwrite spoofed identity fields; preserve isolation
+between multiple Mobile sockets sharing a room; and verify host replacement,
+cancel, disconnect, and Legacy separation in the real Worker/DO runtime.
+
+Only then may DSK-007's Cloud-only ingress adapter accept that assertion
+from the explicitly configured authenticated official Relay transport,
+intersect the matching Mobile's current effective Host Grant with the
+active Desktop-local owner, and preserve Gateway/Harness exact-call checks.
+Until that cross-repo contract and T2/T3 tests exist,
+`CLOUD_GRANT_REQUIRED` must remain the only Cloud business response.
+
+## Revision-watermark regression (2026-10-29)
+
+The grant cache now retains the highest accepted Host grant revision after
+a malformed response or rollback attempt clears the usable snapshot.
+Repeated stale snapshots cannot resurrect an older scope. An explicit
+native signout `clear()` resets the local cache lifecycle. This is T1
+hardening only; it does not assert that Native IPC or Relay ingress exists.
+
 ## Evidence boundary
 
 The included Vitest tests are **T1 only**; no T2/T3/T4, real sign-in,
