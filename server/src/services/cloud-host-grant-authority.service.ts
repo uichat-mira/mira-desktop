@@ -146,14 +146,19 @@ export function parseCloudHostGrantSnapshot(
  */
 export class CloudHostGrantCache {
   private snapshot: CloudHostGrantSnapshot | null = null;
+  // Retain the highest trusted revision even after a failed refresh clears the
+  // usable snapshot; otherwise a later replay could resurrect older grants.
+  private highestObservedRevision: number | null = null;
   constructor(private readonly binding: CloudHostGrantBinding) {}
 
   replaceFromTrustedNative(input: unknown, nowMs = Date.now()): void {
     try {
       const candidate = parseCloudHostGrantSnapshot(input, this.binding, nowMs);
-      if (this.snapshot && candidate.revision < this.snapshot.revision) {
+      if (this.highestObservedRevision !== null &&
+          candidate.revision < this.highestObservedRevision) {
         throw new CloudHostGrantContractError();
       }
+      this.highestObservedRevision = candidate.revision;
       this.snapshot = candidate;
     } catch (error) {
       // A malformed/mismatched/replayed response cannot keep an old positive
@@ -170,6 +175,8 @@ export class CloudHostGrantCache {
 
   clear(): void {
     this.snapshot = null;
+    // An explicit local signout ends the bound native Session lifecycle.
+    this.highestObservedRevision = null;
   }
 
   allows(
