@@ -75,9 +75,10 @@ Until that cross-repo contract and T2/T3 tests exist,
 
 The grant cache now retains the highest accepted Host grant revision after
 a malformed response or rollback attempt clears the usable snapshot.
-Repeated stale snapshots cannot resurrect an older scope. An explicit
-native signout `clear()` resets the local cache lifecycle. This is T1
-hardening only; it does not assert that Native IPC or Relay ingress exists.
+Repeated stale snapshots cannot resurrect an older scope. The explicit
+`clear()` API resets the cache watermark; wiring it to native logout and
+local-owner teardown is still pending. This is T1 hardening only; it does
+not assert that Native IPC or Relay ingress exists.
 
 ## Evidence boundary
 
