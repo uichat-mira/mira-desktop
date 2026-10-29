@@ -90,6 +90,26 @@ describe("DSK-007 Cloud Host grant verification (T1; not Relay ingress)", () => 
     expect(() => cache.replaceFromTrustedNative(valid({ revision: 4 }), NOW))
       .toThrow(CloudHostGrantContractError);
     expect(cache.allows("phone-1", 7, "GET", "/remote/v1/tools", NOW)).toBe(false);
+    // A rejected rollback must not discard the monotonic version watermark.
+    expect(() => cache.replaceFromTrustedNative(valid({ revision: 4 }), NOW))
+      .toThrow(CloudHostGrantContractError);
+    expect(cache.allows("phone-1", 7, "GET", "/remote/v1/tools", NOW)).toBe(false);
+    // A freshly authenticated snapshot at the observed revision can recover.
+    cache.replaceFromTrustedNative(valid({ revision: 5 }), NOW);
+    expect(cache.allows("phone-1", 7, "GET", "/remote/v1/tools", NOW)).toBe(true);
+  });
+
+  it("never resurrects an older grant after an invalid refresh", () => {
+    const cache = new CloudHostGrantCache(binding);
+    cache.replaceFromTrustedNative(valid({ revision: 6 }), NOW);
+    expect(() => cache.replaceFromTrustedNative(valid({
+      revision: 7, accountId: "wrong-account",
+    }), NOW)).toThrow(CloudHostGrantContractError);
+    expect(() => cache.replaceFromTrustedNative(valid({ revision: 5 }), NOW))
+      .toThrow(CloudHostGrantContractError);
+    expect(cache.getRevision(NOW)).toBeNull();
+    cache.replaceFromTrustedNative(valid({ revision: 7 }), NOW);
+    expect(cache.getRevision(NOW)).toBe(7);
   });
 
   it("rejects unconfigured Host and supports explicit logout clear", () => {
