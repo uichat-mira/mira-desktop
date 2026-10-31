@@ -41,6 +41,8 @@ jobs:
           key: ${{ runner.os }}-local-model-packs-v1-${{ hashFiles('scripts/prepare-local-model-packs.mjs') }}
           restore-keys: |
             ${{ runner.os }}-local-model-packs-v1-
+      - name: Install dependencies from pnpm-generated lock
+        run: pnpm install --frozen-lockfile
       - name: Verify active workflow and Tauri removal contract
         shell: pwsh
         run: |
@@ -62,8 +64,6 @@ jobs:
           console.log('Windows Electron-only build/release dependency graph: PASS');
           '@
           node -e $js
-      - name: Install dependencies from pnpm-generated lock
-        run: pnpm install --frozen-lockfile
       - name: Sync versions
         run: pnpm version:sync
       - name: Install extension dependencies
