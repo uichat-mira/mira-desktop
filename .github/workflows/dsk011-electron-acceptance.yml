@@ -1,0 +1,108 @@
+name: DSK-011 Electron Windows Package Acceptance
+
+# One-time independent Windows CI for a desktop-shell retirement PR.
+# Does not publish, tag, touch R2, or change dev/test/prod.
+on:
+  push:
+    branches:
+      - feat/dsk-011-tauri-retirement-recovery
+
+permissions:
+  contents: read
+
+jobs:
+  windows-package:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron-builder/Cache
+            ~/.cache/electron-builder
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-builder-
+      - uses: actions/cache@v4
+        with:
+          path: .local-runtimes/terminal-dev
+          key: ${{ runner.os }}-terminal-dev-${{ hashFiles('scripts/terminal-runtime.lock.json') }}
+      - uses: actions/cache@v4
+        with:
+          path: .local-models/raw
+          key: ${{ runner.os }}-local-model-packs-v1-${{ hashFiles('scripts/prepare-local-model-packs.mjs') }}
+          restore-keys: |
+            ${{ runner.os }}-local-model-packs-v1-
+      - name: Verify active workflow and Tauri removal contract
+        shell: pwsh
+        run: |
+          foreach ($path in @('tauri', 'scripts/build-tauri-dist.js', 'scripts/prepare-tauri-assets.js', 'scripts/release/package-tauri-from-payload.mjs')) {
+            if (Test-Path $path) { throw "Tauri path remains: $path" }
+          }
+          $js = @'
+          const fs=require('node:fs'), yaml=require('yaml');
+          const load=(name)=>yaml.parse(fs.readFileSync('.github/workflows/'+name,'utf8'));
+          const build=load('build-desktop.yml');
+          const factory=load('release-factory-v2.yml');
+          const production=load('release-production.yml');
+          if (build.jobs['build-tauri'] || factory.jobs['package-tauri-from-payload']) throw Error('Tauri jobs remain');
+          if (JSON.stringify(build.jobs['publish-prod-r2'].needs)!=='["build-electron"]') throw Error('R2 dependency changed unexpectedly');
+          if (JSON.stringify(factory.jobs['release-readiness'].needs)!=='["assemble-validation","build-windows-payload","package-electron-from-payload"]') throw Error('Release readiness graph invalid');
+          for (const [name,w] of Object.entries({build,factory,production})) {
+            if (/release-factory-tauri|download tauri package|tauri-windows/i.test(JSON.stringify(w))) throw Error('Live Tauri release dependency in '+name);
+          }
+          console.log('Windows Electron-only build/release dependency graph: PASS');
+          '@
+          node -e $js
+      - name: Install dependencies from pnpm-generated lock
+        run: pnpm install --frozen-lockfile
+      - name: Sync versions
+        run: pnpm version:sync
+      - name: Install extension dependencies
+        run: npm ci --prefix mira-clipper-ext --ignore-scripts
+      - name: Configure extension signing key
+        env:
+          MIRA_CLIPPER_CRX_PROD_PEM: ${{ secrets.MIRA_CLIPPER_CRX_PROD_PEM }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force mira-clipper-ext/.keys | Out-Null
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Resolve-Path mira-clipper-ext/.keys) 'mira-clipper-prod.pem'),
+            $env:MIRA_CLIPPER_CRX_PROD_PEM,
+            [System.Text.UTF8Encoding]::new($false)
+          )
+      - name: Focused Desktop runtime and external link regressions
+        run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/shared/platform/__tests__/desktopRuntime.test.ts src/shared/platform/__tests__/externalLinks.test.ts src/shared/ui/__tests__/ExternalLink.test.tsx src/features/About/__tests__/index.test.tsx
+      - name: Prepare local models as in canonical Windows build
+        env:
+          LOCAL_MODEL_RAW_ROOT: .local-models/raw
+          LOCAL_MODEL_ALLOW_NETWORK: '1'
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: pnpm prepare:local-model-packs
+      - name: Package Windows Electron only
+        run: node scripts/build-dist.js win
+        env:
+          RELEASE_KEEP_COUNT: 3
+      - name: Verify Setup executable and blockmap
+        shell: pwsh
+        run: |
+          $exe = @(Get-ChildItem release -Recurse -File -Filter '*Setup*.exe')
+          $blocks = @(Get-ChildItem release -Recurse -File -Filter '*Setup*.exe.blockmap')
+          if ($exe.Count -lt 1 -or $blocks.Count -lt 1) { throw "Windows installer or blockmap missing" }
+          Write-Host "Electron Setup executables: $($exe.Count); blockmaps: $($blocks.Count)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsk011-electron-win-${{ github.sha }}
+          path: |
+            release/**/electron/*Setup*.exe
+            release/**/electron/*Setup*.exe.blockmap
+          if-no-files-found: error
+          retention-days: 3
