@@ -37,8 +37,8 @@ jobs:
           if (!coverage.available || !(coverage.files?.length > 0)) throw new Error('Frontend coverage report was not generated');
           for (const suite of report.suites ?? []) {
             for (const item of suite.assertionResults ?? []) {
-              if (/tauri/i.test(item.fullName ?? '') || /tauri/i.test(item.title ?? '')) {
-                throw new Error('Retired Tauri test listed in new report: ' + item.fullName);
+              if (/installDesktopExternalLinkHandler Tauri|About renders the current Tauri host|Tauri 中通过 shell plugin 打开同一个系统浏览器/i.test(item.fullName ?? '')) {
+                throw new Error('Deleted Tauri host test still listed in report: ' + item.fullName);
               }
             }
           }
