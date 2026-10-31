@@ -60,6 +60,7 @@ test("wrong tag, GitHub size, or Tauri asset cannot pass preflight", () => {
   const f = fixture();
   try {
     assert.throws(() => verify("win", "v0.107.0", f.dir), /unexpected file name/);
+    assert.throws(() => verify("win", "v0.106.0-beta.1", f.dir), /invalid release tag/);
     assert.throws(() => verify("win", f.tag, f.dir, { ...f.github, tag_name: "v0.105.0" }), /expected published tag/);
     const wrongSize = { ...f.github, assets: [{ ...f.github.assets[0], size: 2 }, f.github.assets[1]] };
     assert.throws(() => verify("win", f.tag, f.dir, wrongSize), /size mismatch/);
