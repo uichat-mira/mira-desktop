@@ -36,7 +36,7 @@ jobs:
         run: git fetch --no-tags origin '+refs/heads/prod:refs/remotes/origin/prod'
 
       - name: Reject mismatched or unpromoted stable tag
-        run: node scripts/release/verify-prod-tag.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
+        run: node scripts/release/verify-prod-tag-cli.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
   factory:
     name: Build and validate release
