@@ -68,8 +68,13 @@ labels; it never receives a bearer token, authorization code or PKCE verifier.
 The local Desktop JWT, user database, workspace ownership, Provider/MCP keys,
 Remote V1 Tailscale pairing and cloud account remain separate.
 
-- Native callback: `mira-desktop://oauth/callback`, registered by the packaged
-  Electron app and checked for exact URI, one pending state, and single use.
+- Native callback: `mira-desktop://oauth/callback`, checked for exact URI,
+  one pending state, and single use. Packaged Electron declares the scheme via
+  `electron-builder.yml`. The supported macOS development entry
+  (`pnpm dev:electron:mac`) prepares Electron.app with a dev-only Mira bundle
+  identity and the same `CFBundleURLTypes` scheme, re-signs it ad hoc, refreshes
+  LaunchServices, and then registers the handler in Electron main. Bypassing that
+  preparation fails closed instead of starting an OAuth flow that cannot return.
 - Native Electron IPC: `cloud-account:status`, `cloud-account:login`,
   `cloud-account:cancel-login`, `cloud-account:retry-host`,
   `cloud-account:reset-credentials`, `cloud-account:logout`; preload
