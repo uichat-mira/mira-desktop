@@ -80,7 +80,7 @@ Windows 典型路径：
 C:\Users\<user>\Documents\UIChat Mira\Default Workspace
 ```
 
-打包后的 Electron 与 Tauri 都应由桌面启动器解析该路径，并通过：
+打包后的 Electron 都应由桌面启动器解析该路径，并通过：
 
 ```text
 UI_CHAT_WORKSPACE_ROOT
@@ -108,7 +108,7 @@ rootPath = UI_CHAT_WORKSPACE_ROOT
 内置默认目录属于桌面宿主拥有的 bootstrap 资源。
 
 ```text
-Electron / Tauri launcher
+Electron launcher
   -> resolve Documents/UIChat Mira/Default Workspace
   -> create directory recursively
   -> verify it is a directory
@@ -258,14 +258,14 @@ GitHub remote operations
 
 截至 `dev` 的已确认缺陷：
 
-1. Electron / Tauri 生产启动器计算并传递默认路径，但没有在 backend spawn 前显式创建 `Default Workspace`。
+1. Electron 生产启动器计算并传递默认路径，但没有在 backend spawn 前显式创建 `Default Workspace`。
 2. Terminal 消费 Harness snapshot 时会把该路径当成真实 cwd，首次使用可能报 `terminal cwd does not exist`。
 3. 在通用 `getWorkspaceSelection()` 中隐式 mkdir 虽能掩盖默认目录缺失，却会误伤自定义 Workspace 语义，因此不是可接受修复。
 4. MiraDocs GitHub 路由声明了远程 GitHub 能力和本地构建完成标准，但此前没有定义独立 staging path。
 
 本次整改只应：
 
-- 在 Electron / Tauri 及对应 dev launcher 中创建宿主拥有的默认目录；
+- 在 Electron 及对应 dev launcher 中创建宿主拥有的默认目录；
 - 保持 Workspace selection / snapshot 纯读取；
 - 对自定义缺失路径明确失败；
 - 为 MiraDocs GitHub 模式建立受管 staging 合同；

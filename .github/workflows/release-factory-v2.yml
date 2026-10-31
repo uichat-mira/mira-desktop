@@ -53,7 +53,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install workspace dependencies
@@ -105,7 +105,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install client test dependencies
@@ -147,7 +147,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install client merge dependencies
@@ -266,7 +266,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - uses: actions/setup-python@v5
@@ -326,7 +326,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install server merge dependencies
@@ -374,7 +374,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Download typecheck fragment
         uses: actions/download-artifact@v4
@@ -440,7 +440,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Stage repository into hostile Windows path
@@ -536,7 +536,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Cache Electron builder
@@ -572,53 +572,6 @@ jobs:
           retention-days: 2
           compression-level: 0
 
-  package-tauri-from-payload:
-    name: Package Tauri
-    needs: build-windows-payload
-    runs-on: windows-2022
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 9.12.0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust and Tauri build outputs
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: tauri
-          cache-on-failure: true
-
-      - name: Install Tauri packaging tools
-        run: pnpm install --frozen-lockfile --prefer-offline --filter ui-chat-mira
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-payload-windows-x64-${{ github.sha }}
-          path: .artifacts/release-payload/windows-x64
-
-      - name: Package Tauri from frozen payload
-        run: pnpm release:package:tauri:win
-
-      - name: Upload Tauri package
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-factory-tauri-${{ github.sha }}
-          path: |
-            .artifacts/release-packages/tauri/**/*.msi
-            .artifacts/release-packages/tauri/**/*setup.exe
-            .artifacts/release-packages/tauri/package-manifest.json
-          if-no-files-found: error
-          retention-days: 2
-          compression-level: 0
 
   release-readiness:
     name: Release readiness gate
@@ -626,7 +579,6 @@ jobs:
       - assemble-validation
       - build-windows-payload
       - package-electron-from-payload
-      - package-tauri-from-payload
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -636,12 +588,11 @@ jobs:
           VALIDATION_RESULT: ${{ needs.assemble-validation.result }}
           PAYLOAD_RESULT: ${{ needs.build-windows-payload.result }}
           ELECTRON_RESULT: ${{ needs.package-electron-from-payload.result }}
-          TAURI_RESULT: ${{ needs.package-tauri-from-payload.result }}
         shell: bash
         run: |
           state='success'
           description='Release Factory V2 passed'
-          for result in "$VALIDATION_RESULT" "$PAYLOAD_RESULT" "$ELECTRON_RESULT" "$TAURI_RESULT"; do
+          for result in "$VALIDATION_RESULT" "$PAYLOAD_RESULT" "$ELECTRON_RESULT"; do
             if [[ "$result" != 'success' ]]; then
               state='failure'
               description='Release Factory V2 is not release-ready'
@@ -664,12 +615,11 @@ jobs:
             echo "- Validation: ${VALIDATION_RESULT}"
             echo "- Shared payload: ${PAYLOAD_RESULT}"
             echo "- Electron: ${ELECTRON_RESULT}"
-            echo "- Tauri: ${TAURI_RESULT}"
             echo '- Tests: fresh for this commit'
             echo '- Coverage: fresh and merged'
             echo '- Publishing: disabled'
           } >> "$GITHUB_STEP_SUMMARY"
 
-          for result in "$VALIDATION_RESULT" "$PAYLOAD_RESULT" "$ELECTRON_RESULT" "$TAURI_RESULT"; do
+          for result in "$VALIDATION_RESULT" "$PAYLOAD_RESULT" "$ELECTRON_RESULT"; do
             [[ "$result" == 'success' ]] || exit 1
           done

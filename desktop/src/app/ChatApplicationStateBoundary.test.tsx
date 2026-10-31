@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { transferableAbortController } from "node:util";
 import type { ReactNode } from "react";
 import React from "react";
 import { act, render, screen } from "@testing-library/react";
@@ -7,7 +8,7 @@ import {
   RouterProvider,
   useLocation,
 } from "react-router-dom";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChatApplicationStateBoundary } from "./ChatApplicationStateBoundary";
 import { router as appRouter } from "./router";
 import { RequireAuth } from "./route-guards/RequireAuth";
@@ -69,10 +70,14 @@ const createWorkspaceRouter = () =>
   );
 
 beforeEach(() => {
+  // Node 24 Request requires its own AbortSignal implementation, not jsdom's.
+  vi.stubGlobal("AbortController", transferableAbortController().constructor);
   boundaryState.mounts = 0;
   boundaryState.unmounts = 0;
   boundaryState.sessionUserId = 7;
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 test("keeps the application chat state boundary mounted across workspace routes", async () => {
   const router = createWorkspaceRouter();
@@ -118,6 +123,7 @@ test("production routes place home, chat, dashboard, and settings below one appl
       "forge",
       "dashboard",
       "remote-access",
+      "cloud-account",
       "knowledge-base",
       "evaluation",
       "about",

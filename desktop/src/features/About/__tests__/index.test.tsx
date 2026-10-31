@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import About from "../index";
 
 const runtimeMock = vi.hoisted(() => ({
-  hostKind: "electron" as "browser" | "electron" | "tauri",
+  hostKind: "electron" as "browser" | "electron",
   platform: "win32",
   isPackaged: true,
   backendUrl: "http://127.0.0.1:8787",
@@ -88,15 +88,15 @@ describe("About", () => {
     expect(getAppMetaMock).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the current Tauri host and operating system beside the version", async () => {
-    runtimeMock.hostKind = "tauri";
+  it("renders the current macOS Electron host beside the version", async () => {
+    runtimeMock.hostKind = "electron";
     runtimeMock.platform = "darwin";
 
     render(<About />);
 
     await waitFor(() => {
       expect(
-        screen.getByText("v0.7.1 · macOS · Tauri"),
+        screen.getByText("v0.7.1 · macOS · Electron"),
       ).toBeInTheDocument();
     });
   });

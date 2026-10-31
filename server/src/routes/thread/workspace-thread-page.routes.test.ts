@@ -79,11 +79,18 @@ const rows = [
   },
 ];
 
-const createApp = async (paired = true) => {
+const createApp = async (paired = true, cloud = false) => {
   const app = Fastify();
   app.setErrorHandler(sendRouteError);
   app.addHook("preHandler", async (request) => {
     request.authUser = user;
+    if (cloud) {
+      request.cloudRemoteCaller = {
+        kind: "cloud", accountId: "account-1", hostId: "host-1",
+        mobileDeviceId: "mobile-1", revision: 3,
+        scopes: ["threads:read"], owner: user,
+      };
+    }
     if (paired) {
       request.remoteDevice = {
         id: "device-1",
@@ -211,6 +218,26 @@ describe("remote workspace thread pages", () => {
 
     assert.equal(response.statusCode, 404, response.body);
     expect(mocks.threads.listPage).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("accepts a Cloud-authorized caller and preserves local owner isolation", async () => {
+    const app = await createApp(false, true);
+    const allowed = await app.inject({
+      method: "GET",
+      url: `/remote/v1/workspaces/${workspace.id}/threads?limit=2`,
+    });
+    assert.equal(allowed.statusCode, 200, allowed.body);
+    expect(mocks.workspaces.findById).toHaveBeenCalledWith(workspace.id, user.id);
+    expect(mocks.threads.listPage).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: user.id, workspaceId: workspace.id }),
+    );
+
+    mocks.workspaces.findById.mockReturnValueOnce(null);
+    const crossOwner = await app.inject({
+      method: "GET", url: "/remote/v1/workspaces/other-owner/threads",
+    });
+    assert.equal(crossOwner.statusCode, 404, crossOwner.body);
     await app.close();
   });
 

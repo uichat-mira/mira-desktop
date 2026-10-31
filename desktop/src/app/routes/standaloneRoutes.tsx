@@ -14,6 +14,7 @@ import KnowledgeBaseDetail from "@/features/KnowledgeBase/Detail";
 import EvaluationCenter from "@/features/Evaluation/Center";
 import EvaluationNew from "@/features/Evaluation/New";
 import RemoteAccessSettings from "@/features/RemoteAccess/index";
+import CloudAccountPage from "@/features/CloudAccount/index";
 import SkillsPage from "@/features/Skills/index";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 
@@ -27,6 +28,11 @@ export const standaloneRoutes = [
     path: "remote-access",
     element: <StandaloneWorkspace />,
     children: [{ index: true, element: <RemoteAccessSettings /> }],
+  },
+  {
+    path: "cloud-account",
+    element: <StandaloneWorkspace />,
+    children: [{ index: true, element: <CloudAccountPage /> }],
   },
   {
     path: "knowledge-base",

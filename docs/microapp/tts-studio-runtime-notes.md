@@ -72,7 +72,6 @@ Related:
 
 ```text
 .artifacts/micro-apps/tts/piper/
-tauri/resources/micro-apps/tts/piper/
 ```
 
 当前支持：

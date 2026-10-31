@@ -11,18 +11,16 @@ Related:
   - README.md
   - ../architecture/context-budget-runtime.md
   - ../../scripts/prepare-desktop-artifacts.js
-  - ../../scripts/prepare-tauri-assets.js
   - ../../scripts/build-dist.js
-  - ../../scripts/build-tauri-dist.js
 
 ## 单点真相范围
 
-这页定义本地 embedding / rerank 模型在 Electron 和 Tauri release 中的资源打包、运行时定位和首次解压策略。
+这页定义本地 embedding / rerank 模型在 Electron release 中的资源打包、运行时定位和首次解压策略。
 
 它主要回答：
 
 - 默认模型资源怎么进入安装包
-- Electron / Tauri 分别放在哪里
+- Electron 分别放在哪里
 - backend 如何在开发态和生产态解析模型路径
 - 首次启动如何解压、校验和标记 ready
 - 哪些 runtime 是默认内置，哪些只能做可选下载
@@ -133,14 +131,13 @@ userData/models/
 当前 release 走 `.github/workflows/build-desktop.yml`：
 
 - Electron：Windows runner 执行 `node scripts/build-dist.js win`
-- Tauri：Windows runner 执行 `pnpm package:tauri:win`
-- 最终只上传 Electron 安装程序及其 `.blockmap`，以及 Tauri 的 MSI 和 NSIS 安装程序；不会上传 `win-unpacked` 或其他目录细节
+- 最终只上传 Electron 安装程序及其 `.blockmap`；不会上传 `win-unpacked` 或其他目录细节
 
 因此 GitHub 构建环境必须被视为干净 checkout：
 
 - 不能依赖开发机已有的 `.artifacts/model-packs/raw`。
 - 不能把 `.artifacts` 作为 Actions cache 的最终语义位置。
-- 模型资源必须在 CI 内通过明确步骤准备出来，再进入 Electron / Tauri staging。
+- 模型资源必须在 CI 内通过明确步骤准备出来，再进入 Electron staging。
 
 推荐 CI 流程：
 
@@ -150,7 +147,7 @@ checkout
   -> restore model cache
   -> prepare local model sources
        output: .local-models/raw
-  -> package Electron / Tauri
+  -> package Electron
        copy staged model resources into release resources
   -> cleanup .artifacts
 ```
@@ -159,10 +156,6 @@ checkout
 
 ```text
 Electron:
-  resources/model-packs
-  resources/model-runtime
-
-Tauri:
   resources/model-packs
   resources/model-runtime
 ```
@@ -270,7 +263,7 @@ download script hash
 - `Xenova/multilingual-e5-small`
 - `Xenova/ms-marco-MiniLM-L-6-v2`
 
-当前 workflow 已在 Electron / Tauri job 中执行：
+当前 workflow 已在 Electron job 中执行：
 
 ```text
 Cache local model packs
@@ -318,27 +311,6 @@ resources/model-runtime/
 - backend 通过 Electron main 注入的 `LOCAL_MODEL_RESOURCE_ROOT`、`LOCAL_MODEL_USER_DATA_DIR`、`LOCAL_ONNX_WASM_ROOT` 定位。
 - 生产态只打包 `tar.br + manifest`，不复制 raw 模型目录。
 
-### Tauri
-
-Tauri 构建应复用共享 artifact 结果，再复制到：
-
-```text
-tauri/resources/model-packs/
-tauri/resources/model-runtime/
-```
-
-入口候选：
-
-- `scripts/prepare-tauri-assets.js`
-- `tauri/tauri.conf.json` resources 配置
-
-约束：
-
-- 不要写死开发态路径。
-- backend / sidecar 应通过 Tauri resource dir 定位。
-- 当前 release 仍按 Windows-only 维护。
-- backend 通过 Tauri 注入的 `LOCAL_MODEL_RESOURCE_ROOT`、`LOCAL_MODEL_USER_DATA_DIR`、`LOCAL_ONNX_WASM_ROOT` 定位。
-- 生产态只打包 `tar.br + manifest`，不复制 raw 模型目录。
 
 ## Runtime Resolver
 
@@ -352,7 +324,6 @@ server/src/services/local-model-runtime/resource-resolver.ts
 
 - 接收显式注入的开发态模型路径，不在 backend 内部默认指向 `.artifacts`
 - Electron 生产态读取 `resources/model-packs` 和 `resources/model-runtime`
-- Tauri 生产态读取 Tauri resources
 - 解压模型包到 userData
 - 校验 manifest checksum
 - 写入 `.ready`
@@ -386,7 +357,7 @@ LOCAL_ONNX_WASM_ROOT
 3. 生产态才读取 LOCAL_MODEL_RESOURCE_ROOT 下的打包 manifest + tar.br
 ```
 
-生产态由 Electron / Tauri 注入：
+生产态由 Electron 注入：
 
 ```text
 LOCAL_MODEL_RESOURCE_ROOT=<resources>/model-packs
@@ -436,8 +407,6 @@ Node 运行时解压：
 
 - embedding raw：约 134MB
 - embedding `tar.br`：`81,285,741` bytes，约 77.5MB
-- Tauri NSIS 安装包：`155,338,434` bytes
-- Tauri MSI 安装包：`185,383,983` bytes
 
 注意：
 
@@ -467,21 +436,7 @@ pnpm package:electron:win
 - 本地 embedding 可输出 384 维向量
 - reranker 未安装时标准检索不报错
 
-Tauri release 验证：
-
-```bash
-pnpm package:tauri:win
-```
-
-需要额外检查：
-
-- `tauri/resources/model-packs`
-- `tauri/resources/model-runtime`
-- sidecar backend 能解析 resource dir
-- 生产态不访问 Hugging Face
-
 ## 后续改进
 
 - [ ] UI 增加模型资源状态：可用、缺失、解压中、校验失败。
 - [ ] Electron packaged smoke test。
-- [x] Tauri packaged build 验证。

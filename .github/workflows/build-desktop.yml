@@ -28,7 +28,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -42,6 +42,12 @@ jobs:
 
       - name: Type check
         run: pnpm check
+
+      - name: Run DSK-005 Cloud Account UI and navigation regressions
+        run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/CloudAccount/__tests__/index.test.tsx src/app/routes/settingsRoutes.test.tsx src/app/Layouts/AppNavigationRail.test.tsx src/app/ChatApplicationStateBoundary.test.tsx
+
+      - name: Verify release mirror and prod tag provenance contracts
+        run: node --test scripts/release/verify-release-mirror.test.mjs scripts/release/verify-prod-tag.test.mjs
 
       - name: Run Terminal Capability Lab regressions
         run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/Extensions/Capabilities/cases.test.ts src/features/Extensions/Capabilities/hooks/useCapabilities.test.tsx src/features/Extensions/Capabilities/index.test.tsx src/features/Settings/pages/Tools/__tests__/useToolsWorkbench.test.tsx src/features/Settings/pages/Tools/components/ToolsPackagePanel.test.tsx src/features/Settings/pages/Tools/utils.test.ts
@@ -80,7 +86,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: 'pnpm'
 
       - name: Cache Electron builder
@@ -151,189 +157,3 @@ jobs:
             release/**/electron/*Setup*.exe.blockmap
           if-no-files-found: error
           retention-days: 3
-
-  build-tauri:
-    name: Build Tauri (Windows)
-    if: github.event_name != 'pull_request' && contains(fromJSON('["dev","test","prod"]'), github.ref_name)
-    runs-on: windows-2022
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9.12.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'pnpm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust / Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: tauri
-          cache-targets: false
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Sync package versions
-        run: pnpm version:sync
-
-      - name: Install clipper extension dependencies
-        run: npm ci --prefix mira-clipper-ext --ignore-scripts
-
-      - name: Configure clipper extension signing key
-        env:
-          MIRA_CLIPPER_CRX_PROD_PEM: ${{ secrets.MIRA_CLIPPER_CRX_PROD_PEM }}
-        run: |
-          New-Item -ItemType Directory -Force mira-clipper-ext/.keys | Out-Null
-          [System.IO.File]::WriteAllText(
-            (Join-Path (Resolve-Path mira-clipper-ext/.keys) 'mira-clipper-prod.pem'),
-            $env:MIRA_CLIPPER_CRX_PROD_PEM,
-            [System.Text.UTF8Encoding]::new($false)
-          )
-
-      - name: Cache local model packs
-        uses: actions/cache@v4
-        with:
-          path: .local-models/raw
-          key: ${{ runner.os }}-local-model-packs-v1-${{ hashFiles('scripts/prepare-local-model-packs.mjs') }}
-          restore-keys: |
-            ${{ runner.os }}-local-model-packs-v1-
-
-      - name: Cache Terminal Dev Runtime
-        uses: actions/cache@v4
-        with:
-          path: .local-runtimes/terminal-dev
-          key: ${{ runner.os }}-terminal-dev-${{ hashFiles('scripts/terminal-runtime.lock.json') }}
-
-      - name: Type check
-        run: pnpm check
-
-      - name: Prepare local model packs
-        run: pnpm prepare:local-model-packs
-        env:
-          LOCAL_MODEL_RAW_ROOT: .local-models/raw
-          LOCAL_MODEL_ALLOW_NETWORK: '1'
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-
-      - name: Build Tauri (Windows)
-        run: pnpm package:tauri:win
-        env:
-          CARGO_BUILD_JOBS: 1
-          CARGO_INCREMENTAL: '0'
-          RELEASE_KEEP_COUNT: 3
-
-      - name: Upload Tauri artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: tauri-windows
-          path: |
-            release/**/tauri/msi/*.msi
-            release/**/tauri/nsis/*setup.exe
-          if-no-files-found: error
-          retention-days: 3
-
-
-
-  publish-prod-r2:
-    name: Publish prod package to Cloudflare R2
-    needs: [build-electron, build-tauri]
-    if: github.ref == 'refs/heads/prod'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Download Electron package
-        uses: actions/download-artifact@v4
-        with:
-          name: electron-win
-          path: release-assets/electron
-
-      - name: Download Tauri package
-        uses: actions/download-artifact@v4
-        with:
-          name: tauri-windows
-          path: release-assets/tauri
-
-      - name: Flatten release assets
-        shell: bash
-        run: |
-          mkdir -p dist
-          for dir in release-assets/*/; do
-            prefix=$(basename "$dir")
-            find "$dir" -type f | while read -r file; do
-              relative_path="${file#"$dir"}"
-              safe_name=$(printf '%s' "$relative_path" | tr '/\\ ' '___')
-              cp "$file" "dist/${prefix}_${safe_name}"
-            done
-          done
-          test -n "$(find dist -maxdepth 1 -type f -print -quit)"
-          ls -lah dist/
-
-      - name: Validate R2 secrets
-        env:
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        shell: bash
-        run: |
-          missing=0
-          for name in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ACCOUNT_ID R2_BUCKET R2_PUBLIC_BASE_URL; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing required release secret: ${name}"
-              missing=1
-            fi
-          done
-          [ "$missing" -eq 0 ]
-
-      - name: Upload prod package to Cloudflare R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_RETRY_MODE: standard
-          AWS_MAX_ATTEMPTS: 5
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        shell: bash
-        run: |
-          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          latest_prefix="mira/latest"
-          legacy_previous_prefix="mira/previous"
-
-          aws s3 rm "s3://${R2_BUCKET}/${legacy_previous_prefix}/" \
-            --recursive \
-            --endpoint-url "$endpoint" \
-            --only-show-errors || true
-
-          for attempt in 1 2 3; do
-            if aws s3 sync dist/ "s3://${R2_BUCKET}/${latest_prefix}/" \
-              --delete \
-              --endpoint-url "$endpoint" \
-              --only-show-errors; then
-              break
-            fi
-
-            if [ "$attempt" -eq 3 ]; then
-              echo "R2 upload failed after ${attempt} attempts." >&2
-              exit 1
-            fi
-
-            sleep $((attempt * 10))
-          done
-
-          public_base="${R2_PUBLIC_BASE_URL%/}"
-          {
-            echo '### Cloudflare R2'
-            echo "Uploaded prod branch assets to: ${public_base}/${latest_prefix}/"
-            echo 'Retention: latest successful prod/tag publish wins'
-          } >> "$GITHUB_STEP_SUMMARY"
