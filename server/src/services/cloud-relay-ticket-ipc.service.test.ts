@@ -17,7 +17,7 @@ class FakeParent extends EventEmitter implements CloudRelayTicketIpcTransport {
     return true;
   }
   result(index: number, value: Record<string, unknown>) {
-    const requestId = this.sent[index]?.requestId;
+    const requestId = this.sent.filter((item) => item.type === "request")[index]?.requestId;
     expect(typeof requestId).toBe("string");
     this.emit("message", { channel: CHANNEL, type: "result", requestId, ...value });
   }
@@ -48,17 +48,53 @@ describe("CloudRelayTicketIpcClient", () => {
     const client = new CloudRelayTicketIpcClient(parent);
     const consumer = vi.fn((value) => value.room);
     const wait = client.withHostTicket(consumer);
-    expect(parent.sent).toHaveLength(1);
-    expect(Object.keys(parent.sent[0]!).sort()).toEqual(["channel", "requestId", "type"]);
-    expect(parent.sent[0]).toMatchObject({ channel: CHANNEL, type: "request" });
+    expect(parent.sent).toHaveLength(2);
+    expect(parent.sent[0]).toEqual({ channel: CHANNEL, type: "state_request" });
+    expect(Object.keys(parent.sent[1]!).sort()).toEqual(["channel", "requestId", "type"]);
+    expect(parent.sent[1]).toMatchObject({ channel: CHANNEL, type: "request" });
     parent.emit("message", { channel: "another-channel", type: "result",
-      requestId: parent.sent[0]!.requestId, ok: true, ticket: ticket() });
+      requestId: parent.sent[1]!.requestId, ok: true, ticket: ticket() });
     expect(consumer).not.toHaveBeenCalled();
     parent.result(0, { ok: true, ticket: ticket() });
     await expect(wait).resolves.toBe("room_accepted");
     expect(consumer).toHaveBeenCalledTimes(1);
     parent.result(0, { ok: true, ticket: ticket() }); // duplicate result
     expect(consumer).toHaveBeenCalledTimes(1);
+    client.dispose();
+  });
+
+  it("starts unavailable, accepts only exact native availability and drops stale work on logout", async () => {
+    const parent = new FakeParent();
+    const client = new CloudRelayTicketIpcClient(parent);
+    const changes = vi.fn();
+    client.onAvailabilityChanged(changes);
+    expect(client.isHostAvailable()).toBe(false);
+    parent.emit("message", { channel: CHANNEL, type: "availability",
+      available: true, accountId: "forged" });
+    expect(client.isHostAvailable()).toBe(false);
+    parent.emit("message", { channel: CHANNEL, type: "availability",
+      available: true });
+    expect(client.isHostAvailable()).toBe(true);
+    expect(changes).toHaveBeenCalledExactlyOnceWith(true);
+
+    const pending = client.withHostTicket(() => "must-not-run");
+    parent.emit("message", { channel: CHANNEL, type: "availability",
+      available: false });
+    await expect(pending).rejects.toMatchObject({ code: "relay_ticket_not_configured" });
+    expect(client.isHostAvailable()).toBe(false);
+    expect(changes).toHaveBeenLastCalledWith(false);
+    parent.result(0, { ok: true, ticket: ticket() });
+    client.dispose();
+  });
+
+  it("requests a fresh native state when Backend starts after Session restore", () => {
+    const parent = new FakeParent();
+    const client = new CloudRelayTicketIpcClient(parent);
+    expect(parent.sent).toEqual([{ channel: CHANNEL, type: "state_request" }]);
+    parent.emit("message", { channel: CHANNEL, type: "availability", available: true });
+    expect(client.isHostAvailable()).toBe(true);
+    parent.emit("disconnect");
+    expect(client.isHostAvailable()).toBe(false);
     client.dispose();
   });
 
@@ -140,7 +176,7 @@ describe("CloudRelayTicketIpcClient", () => {
       promise.then(() => "unexpected-success", (error: { code: string }) => error.code)));
     await expect(client.withHostTicket(() => true))
       .rejects.toMatchObject({ code: "relay_ticket_bridge_busy" });
-    expect(parent.sent).toHaveLength(4);
+    expect(parent.sent.filter((item) => item.type === "request")).toHaveLength(4);
     await vi.advanceTimersByTimeAsync(100);
     expect(await results).toEqual(Array(4).fill("relay_ticket_bridge_timeout"));
     const disconnected = client.withHostTicket(() => true);
