@@ -4,6 +4,7 @@ import { Cloud, LockKeyhole, RefreshCw } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import SectionCard, { SectionCardRow } from "@/shared/ui/SectionCard";
 import AppPageLayout from "@/app/Layouts/AppPageLayout";
+import { useAuth } from "@/app/providers/AuthProvider";
 
 const SCOPE_OPTIONS = [
   ["threads:read", "读取会话", "Read threads"],
@@ -27,6 +28,7 @@ const emptyView: CloudView = {
 
 export default function CloudAccountPage() {
   const api = window.cloudAccount;
+  const { session, isCheckingSession } = useAuth();
   const { i18n } = useTranslation();
   const english = i18n.resolvedLanguage?.toLowerCase().startsWith("en") ?? false;
   const [view, setView] = useState<CloudView>(emptyView);
@@ -50,7 +52,10 @@ export default function CloudAccountPage() {
     if (!api) return;
     setBusy(true); setError("");
     try {
-      const result = await api.signIn(selected);
+      if (isCheckingSession || !session?.token) {
+        throw new Error("请先登录 Mira 本地账户，再关联云账号");
+      }
+      const result = await api.signIn(selected, session.token);
       if (result && typeof result === "object" && "status" in result) {
         setView(result as CloudView);
       }
@@ -93,7 +98,8 @@ export default function CloudAccountPage() {
       : [...current, scope]);
   };
   const hasNative = Boolean(api);
-  const canSignIn = hasNative && !busy &&
+  const canSignIn = hasNative && !busy && !isCheckingSession &&
+    Boolean(session?.token) &&
     (view.status === "signed_out" || view.status === "rejected");
   const signedIn = Boolean(view.account) &&
     (view.status === "signed_in" || view.status === "unavailable" ||
@@ -166,6 +172,11 @@ export default function CloudAccountPage() {
                     </span>
                   ))}
               </div>
+              {view.localOwnerBound !== true ? (
+                <p role="alert" className="text-xs text-danger-text">
+                  此云登录早于本地用户绑定，手机访问仍被拒绝。请退出云账号，再以当前 Mira 本地账户重新登录云账号。
+                </p>
+              ) : null}
               <p className="text-xs text-text-secondary">修改或撤销某台手机的权限，请前往 Mira Cloud Account Portal。</p>
             </div>
           </SectionCard>

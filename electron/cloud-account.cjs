@@ -176,10 +176,21 @@ function createCloudAccountController(options) {
 
   function publish(patch) {
     view = { ...view, ...patch };
-    notify({ ...view, scopes: [...view.scopes] });
+    notify(status());
     return status();
   }
-  function status() { return { ...view, scopes: [...view.scopes] }; }
+  const validLocalOwner = (id) => Number.isSafeInteger(id) && id > 0;
+  function status() {
+    return { ...view, scopes: [...view.scopes],
+      localOwnerBound: Boolean(record?.sessionToken &&
+        validLocalOwner(record.localOwnerUserId)) };
+  }
+  function getBoundLocalOwnerUserId() {
+    if (view.status !== "signed_in" || !record?.sessionToken ||
+        !record.permissionsConfigured || !record.hostId ||
+        !validLocalOwner(record.localOwnerUserId)) return null;
+    return record.localOwnerUserId;
+  }
   function secureAvailable() {
     return safeStorage.isEncryptionAvailable() &&
       (!safeStorage.getSelectedStorageBackend ||
@@ -336,8 +347,11 @@ function createCloudAccountController(options) {
       canResetCredentials: false,
       message: "已重置本机 Cloud 凭据；旧云端会话未确认撤销，请在 Cloud Portal 检查并撤销旧设备。" });
   }
-  async function begin(scopes) {
+  async function begin(scopes, localOwnerUserId = null) {
     const selected = validateScopes(scopes);
+    if (localOwnerUserId !== null && !validLocalOwner(localOwnerUserId)) {
+      throw new Error("本地 Mira 用户 ID 无效");
+    }
     if (!secureAvailable()) throw new Error("系统安全凭据存储不可用，无法安全登录");
     if (pending) throw new Error("已有登录流程正在等待浏览器授权");
     if (record && record.sessionToken) throw new Error("请先退出当前云账号");
@@ -345,7 +359,9 @@ function createCloudAccountController(options) {
     const verifier = crypto.randomBytes(32).toString("base64url");
     const state = crypto.randomBytes(32).toString("base64url");
     const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
-    const transaction = { state, verifier, selected, revision: ++revision };
+    const transaction = {
+      state, verifier, selected, localOwnerUserId, revision: ++revision,
+    };
     pending = transaction;
     authorizationTimer = setTimeout(() => {
       if (pending !== transaction || transaction.revision !== revision) return;
@@ -520,7 +536,8 @@ function createCloudAccountController(options) {
     if (view.status !== "signed_in" || !record?.sessionToken ||
         !isRecord(record.account) || typeof record.account.id !== "string" ||
         typeof record.hostId !== "string" || !record.hostId ||
-        !record.permissionsConfigured) {
+        !record.permissionsConfigured ||
+        !validLocalOwner(record.localOwnerUserId)) {
       const error = new Error("Cloud Host grant snapshot is not configured");
       error.code = "cloud_grant_not_configured";
       throw error;
@@ -610,7 +627,9 @@ function createCloudAccountController(options) {
       const sessionToken = result.sessionToken;
       record = { installationId: record.installationId,
         sessionToken, account: result.account, expiresAt: result.expiresAt,
-        requestedScopes: transaction.selected };
+        requestedScopes: transaction.selected,
+        ...(validLocalOwner(transaction.localOwnerUserId)
+          ? { localOwnerUserId: transaction.localOwnerUserId } : {}) };
       persist(record); // token and pending Host selection never reach React or local JWT/DB
       // A successful code exchange is durable even if Host setup is interrupted.
       // The owner's initial choice stays in the same encrypted native record.
@@ -651,7 +670,8 @@ function createCloudAccountController(options) {
     return status();
   }
   return { initialize, begin, cancelAuthorization, handleCallback, retryHostSetup,
-    resetLocalCredentials, signOut, status, withRelayHostTicket, requestHostGrantSnapshot };
+    resetLocalCredentials, signOut, status, withRelayHostTicket,
+    requestHostGrantSnapshot, getBoundLocalOwnerUserId };
 }
 
 module.exports = { createCloudAccountController, parseCallback, validateScopes, SCOPES,

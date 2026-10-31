@@ -10,6 +10,10 @@ import { errorResponse, ErrorCodes } from "@/utils/index.js";
 import { forbidden } from "@/utils/route-errors.js";
 import CONFIG from "@/config/index.js";
 import {
+  CLOUD_INTERNAL_REQUEST_HEADER,
+  claimCloudRemoteUser,
+} from "@/services/cloud-local-request-authority.service.js";
+import {
   getRequiredRemoteScope,
   remoteDeviceHasScope,
   verifyRemoteDeviceToken,
@@ -325,6 +329,14 @@ export const getAuthUserFromRequest = (
 ): AuthenticatedUser | null => {
   if (request.authUser) {
     return request.authUser;
+  }
+
+  // Native Cloud Gateway carries a one-shot local capability, never a JWT.
+  // A malformed supplied header cannot fall back to normal user auth.
+  if (request.headers[CLOUD_INTERNAL_REQUEST_HEADER] !== undefined) {
+    const cloudUser = claimCloudRemoteUser(request);
+    if (!cloudUser) throw forbidden("Invalid internal Cloud request authority");
+    return cloudUser;
   }
 
   const authHeader = request.headers.authorization;

@@ -1,6 +1,6 @@
 # DSK-007 · Cloud Host Grant secure adapter handoff
 
-Status: **implementation started, not accepted**. Branch: `feat/dsk-007-cloud-host-grant`.
+Status: **implementation in progress, not accepted**. Latest native-owner slice: `feat/dsk-007-cloud-host-owner-binding-423`.
 
 ## Current scope
 
@@ -66,6 +66,58 @@ not a business permission or local owner binding.
 user or the Remote V1/Harness route execution context. Do not infer a local
 owner from a Cloud account or a request header. Grant freshness, per-route
 scope and exact-call Harness checks must be proved before enabling execution.
+
+## 2026-10-31 trusted local owner association (native slice, not yet accepted)
+
+Desktop Cloud sign-in now carries the **existing local Mira session token only to
+Electron main**. Native main validates it against the owned loopback Fastify
+`GET /me`, validates the response shape, and binds the resulting numeric
+local user ID into its encrypted Cloud OAuth transaction at successful callback.
+A renderer-supplied `userId` is **never accepted**. No local JWT is retained in
+the native Cloud credential record, sent over the Relay, or handed to Mobile.
+
+The private Electron→Backend Host-grant IPC now supplies a separate, validated
+`localOwnerUserId` beside the unchanged canonical Cloud Auth `snapshot`.
+The Backend must revalidate owner active-state in its user repository and parse
+the canonical OPS-020 snapshot before admitting any Cloud request. Native
+legacy Cloud sessions without a local owner fail closed and require explicit
+Cloud sign-out/sign-in to bind. Tailscale pairing and the current Gateway
+denial remain unchanged. A local JWT is not a Host Grant.
+
+This stage does **not** authorize live Remote V1/Gateway traffic. A dedicated Backend `CloudHostGrantRuntime` now composes the private native
+owner/snapshot envelope with the existing OPS-020 revision/TTL cache. Each
+authorization checks the current local user's active state and Relay account,
+device and canonical Remote V1 scope. It refreshes on a bounded 30-second
+attempt interval, retains an *already trusted* unexpired proof only on
+transient Cloud Auth outages, and drops authority on native
+signout/reauth/disconnect. Revocation wins against late IPC results; a
+different owner/Host/account cannot silently reuse a previous cache.
+
+The next slice must connect this Backend authority to the actual Remote
+Gateway/Harness execution path. Tests and CI for this slice are necessary
+but cannot demonstrate T4.
+
+## 2026-10-31 Cloud Gateway authorization adapter (feature PR, NOT accepted)
+
+Desktop now routes a Cloud-only request through the native-bound Grant runtime.
+On success, the Backend issues a 256-bit one-shot internal HTTP capability
+valid for 10 seconds and **bound to the exact method/path and local owner**.
+The connector removes Mobile-supplied bearer authorization and strips its
+attempts to inject the reserved capability header. The Backend global
+authentication hook consumes the capability once and attaches a distinct
+`cloudRemoteCaller` to the Fastify request. It must never create a
+`mira_device_*` credential, impersonate a paired Tailscale device, or
+replace the existing Host-owned Harness exact-call approval.
+
+A Cloud request awaiting native IPC / Grant authority has an independent
+cancellable state; disconnect or cancel before authority resolves must not
+start local business execution. Existing Legacy/Tailscale paths retain their
+previous credential flow. Push pairing/bootstrap remains **legacy-only**.
+
+**Not yet accepted**: require exact-head CI/T1/T2/T3 route and Tool/Harness
+verification, Cloud+Legacy negative tests, and independent review before
+merging or claiming actual Host capability execution. Production and Mobile
+T4 remain separate.
 
 ## Required second-slice trusted producer and consumer (same DSK-007 card)
 

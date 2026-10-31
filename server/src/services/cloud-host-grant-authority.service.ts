@@ -227,6 +227,21 @@ export class CloudHostGrantCache {
     return grant.scopes.includes(scope) && proof.policyScopes.includes(scope);
   }
 
+  /** Read-only effective Mobile scopes for the canonical Remote V1 manifest. */
+  getEffectiveScopes(
+    mobileDeviceId: string,
+    ownerUserId: number,
+    nowMs = Date.now(),
+  ): readonly RemoteDeviceScope[] {
+    const proof = this.snapshot;
+    if (!proof || !proof.policyConfigured ||
+        ownerUserId !== this.binding.localOwnerUserId ||
+        Date.parse(proof.validUntil) <= nowMs) return [];
+    const grant = proof.grants.find((g) => g.mobileDeviceId === mobileDeviceId);
+    if (!grant || grant.status !== "active") return [];
+    return grant.scopes.filter((scope) => proof.policyScopes.includes(scope));
+  }
+
   getRevision(nowMs = Date.now()): number | null {
     return this.snapshot && Date.parse(this.snapshot.validUntil) > nowMs
       ? this.snapshot.revision : null;

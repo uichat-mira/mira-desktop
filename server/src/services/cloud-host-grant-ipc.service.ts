@@ -56,9 +56,12 @@ export class CloudHostGrantIpcClient {
     this.pending.delete(value.requestId);
     clearTimeout(request.timeout);
     if (value.ok === true && hasKeys(value,
-        ["channel", "type", "requestId", "ok", "snapshot"]) &&
-        isRecord(value.snapshot)) {
-      request.resolve(value.snapshot);
+        ["channel", "type", "requestId", "ok", "snapshot", "localOwnerUserId"]) &&
+        isRecord(value.snapshot) &&
+        Number.isSafeInteger(value.localOwnerUserId) &&
+        (value.localOwnerUserId as number) > 0) {
+      request.resolve({ snapshot: value.snapshot,
+        localOwnerUserId: value.localOwnerUserId });
       return;
     }
     if (value.ok === false && hasKeys(value,
@@ -96,8 +99,9 @@ export class CloudHostGrantIpcClient {
     return () => { this.invalidations.delete(listener); };
   }
 
-  /** Returns untrusted JSON. Caller MUST bind to active local owner and parse
-   * with parseCloudHostGrantSnapshot before any business authorization. */
+  /** Returns private native {snapshot, localOwnerUserId} envelope.
+   * Caller MUST re-check local user state, Cloud account/Host match,
+   * and parseCloudHostGrantSnapshot before any business authorization. */
   requestSnapshot(): Promise<unknown> {
     if (this.disposed || this.disconnected ||
         this.transport.connected === false ||

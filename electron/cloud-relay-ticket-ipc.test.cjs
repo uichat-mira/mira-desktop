@@ -165,6 +165,7 @@ test("DSK-007 native grant channel serves only the exact owned child envelope", 
   let calls = 0;
   const bridge = attachCloudHostGrantIpc(child, () => ({
     requestHostGrantSnapshot: async () => { calls++; return snapshot; },
+    getBoundLocalOwnerUserId: () => 7,
   }));
   const id = randomUUID();
   child.emit("message", { channel: GRANT_CHANNEL, type: "request",
@@ -174,7 +175,7 @@ test("DSK-007 native grant channel serves only the exact owned child envelope", 
   await tick();
   assert.equal(calls, 1);
   assert.deepEqual(child.sent, [{ channel: GRANT_CHANNEL, type: "result",
-    requestId: id, ok: true, snapshot }]);
+    requestId: id, ok: true, snapshot, localOwnerUserId: 7 }]);
   assert.equal(JSON.stringify(child.sent).includes("mcs_v1."), false);
   bridge.dispose();
 });
@@ -211,5 +212,21 @@ test("DSK-007 native grant IPC rejects malformed/oversized replies without secre
   await tick();
   assert.deepEqual(child.sent, [{ channel: GRANT_CHANNEL, type: "result",
     requestId: id, ok: false, errorCode: "cloud_grant_invalid_response" }]);
+  bridge.dispose();
+});
+
+test("DSK-007 native grant IPC rejects snapshots from legacy unbound Cloud sessions", async () => {
+  const child = new FakeChild();
+  const bridge = attachCloudHostGrantIpc(child, () => ({
+    requestHostGrantSnapshot: async () => ({ hostId: "host-1" }),
+    getBoundLocalOwnerUserId: () => null,
+  }));
+  const id = randomUUID();
+  child.emit("message", { channel: GRANT_CHANNEL, type: "request", requestId: id });
+  await tick();
+  assert.deepEqual(child.sent, [{
+    channel: GRANT_CHANNEL, type: "result", requestId: id,
+    ok: false, errorCode: "cloud_grant_invalid_response",
+  }]);
   bridge.dispose();
 });
