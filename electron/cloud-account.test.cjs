@@ -89,6 +89,8 @@ test("Electron main wires native Cloud Auth to Chromium net.fetch", () => {
   assert.match(main, /\bnet\b[^}]*\}\s*=\s*require\(["']electron["']\)/);
   const start = main.indexOf("cloudAccount = createCloudAccountController({");
   assert.notEqual(start, -1, "native Cloud Account controller must be constructed");
+  assert.match(main, /UI_CHAT_CLOUD_IPC_CHILD:\s*"1"/,
+    "packaged Backend must be explicitly marked as the native IPC child");
   const end = main.indexOf("notify:", start);
   assert.ok(end > start, "Cloud Account controller must have a notify boundary");
   assert.match(
