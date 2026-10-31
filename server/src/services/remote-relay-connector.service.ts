@@ -180,13 +180,20 @@ const normalizeRelayUrl = (
 
 export const resolveCloudRelayConnectorConfig = (
   env: NodeJS.ProcessEnv = process.env,
-): CloudRelayConnectorConfig => ({
-  kind: "cloud",
-  enabled: env.UI_CHAT_CLOUD_RELAY_ENABLED === "1",
-  // Explicit deployment setting until REL-001 publishes its hosted URL.
-  // Cloud bearer admission must never travel over plaintext even in dev.
-  relayUrl: normalizeRelayUrl(env.UI_CHAT_CLOUD_RELAY_URL, "production"),
-});
+): CloudRelayConnectorConfig => {
+  // The official endpoint belongs to Mira's deployment, never a per-user
+  // setting. Missing/unsafe infrastructure stays visibly misconfigured rather
+  // than silently sending a Cloud ticket to the Legacy production Relay.
+  const url = normalizeRelayUrl(env.UI_CHAT_CLOUD_RELAY_URL, "production");
+  const relayUrl = url && new URL(url).hostname !== "relay.tomz.io" ? url : null;
+  return {
+    kind: "cloud",
+    // Cloud login is the activation gate. This operator-only emergency switch
+    // may disable the feature without affecting Local/Tailscale paths.
+    enabled: env.UI_CHAT_CLOUD_RELAY_ENABLED !== "0",
+    relayUrl,
+  };
+};
 
 export const resolveRemoteRelayConnectorConfig = (
   env: NodeJS.ProcessEnv = process.env,
