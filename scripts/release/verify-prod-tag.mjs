@@ -3,7 +3,7 @@
 // The release workflow must fetch origin/prod before calling this check.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 function git(cwd, ...args) {
@@ -39,7 +39,7 @@ export function verifyProdTag(tag, sha, cwd = fileURLToPath(new URL("../../", im
   return { tag, sha, prodCommit };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === join(process.cwd(), process.argv[1])) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   try {
     const result = verifyProdTag(process.argv[2], process.argv[3]);
     console.log(`Release provenance PASS: ${result.tag} @ ${result.sha} is in prod history (${result.prodCommit})`);
