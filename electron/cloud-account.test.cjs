@@ -18,6 +18,7 @@ test("secondary Electron instance cannot initialize Cloud OAuth, Backend or a wi
     requestSingleInstanceLock: () => false,
     quit: () => { quits += 1; },
     on: () => {},
+    getPath: (name) => "/fixture/" + name,
     whenReady: () => Promise.resolve(),
   };
   const electron = {
@@ -32,10 +33,18 @@ test("secondary Electron instance cannot initialize Cloud OAuth, Backend or a wi
   const mockedRequire = (name) => {
     if (name === "electron") return electron;
     if (name === "path") return path;
-    if (name === "fs") return { existsSync: () => true };
+    if (name === "fs") return {
+      existsSync: () => true,
+      readFileSync: () => "test-secret",
+      mkdirSync: () => {},
+      statSync: () => ({ isDirectory: () => true }),
+    };
     if (name === "child_process") return {
       execFileSync: () => {},
-      spawn: () => { backendStarts += 1; },
+      spawn: () => {
+        backendStarts += 1;
+        return { stdout: null, stderr: null, on: () => {}, kill: () => {} };
+      },
     };
     if (name === "./cloud-account.cjs") return {
       createCloudAccountController: () => {
@@ -55,7 +64,8 @@ test("secondary Electron instance cannot initialize Cloud OAuth, Backend or a wi
   vm.runInNewContext(mainSource, {
     require: mockedRequire,
     __dirname: path.join(__dirname, "__single_instance_fixture__"),
-    process: { argv: ["electron", "main.cjs", "--no-backend"], platform: "win32", pid: 123, execPath: "electron" },
+    process: { argv: ["electron", "main.cjs"], platform: "win32", pid: 123, execPath: "electron", resourcesPath: "/resources", env: {} },
+    fetch: async () => ({ ok: true }),
     console: { log: () => {}, error: () => {} },
     setTimeout,
     clearTimeout,
