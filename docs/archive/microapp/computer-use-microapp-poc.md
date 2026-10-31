@@ -12,9 +12,9 @@ Doc Type: design
 Canonical: false
 Related:
   - README.md
-  - ../architecture/README.md
-  - ../architecture/ipc-and-preload.md
-  - ../tooling-runtime/tools-protocol.md
+  - ../../architecture/README.md
+  - ../../architecture/ipc-and-preload.md
+  - ../../tooling-runtime/tools-protocol.md
 
 ## 单点真相范围
 
