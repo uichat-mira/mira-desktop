@@ -213,6 +213,30 @@ jobs:
           test -n "$(find mac-release-assets -maxdepth 1 -type f -print -quit)"
           ls -lah mac-release-assets/
 
+      - name: Verify macOS Intel DMG and blockmap
+        run: node scripts/release/verify-release-mirror.mjs macos-intel "${GITHUB_REF_NAME}" mac-release-assets
+
+      - name: Attach Intel macOS assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          files: mac-release-assets/*
+          fail_on_unmatched_files: true
+
+      - name: Verify GitHub Release is complete and is still latest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" > github-release.json
+          node scripts/release/verify-release-mirror.mjs macos-intel "${GITHUB_REF_NAME}" mac-release-assets github-release.json
+          latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)"
+          if [ "$latest_tag" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Stale release $GITHUB_REF_NAME cannot overwrite macOS R2 latest (current=$latest_tag)"
+            exit 1
+          fi
+
       - name: Validate R2 secrets
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -261,6 +285,10 @@ jobs:
             sleep $((attempt * 10))
           done
 
+          aws s3api list-objects-v2 --bucket "$R2_BUCKET" \
+            --prefix "${latest_prefix}/" --endpoint-url "$endpoint" > r2-objects.json
+          node scripts/release/verify-release-mirror.mjs macos-intel "${GITHUB_REF_NAME}" mac-release-assets github-release.json r2-objects.json
+
           public_base="${R2_PUBLIC_BASE_URL%/}"
           {
             echo '### Cloudflare R2 — macOS Intel'
@@ -268,9 +296,27 @@ jobs:
             echo 'Retention: latest successful prod/tag macOS Intel publish wins'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Attach Intel macOS assets to GitHub Release
-        uses: softprops/action-gh-release@v2
+  finalize:
+    name: Verify Windows and macOS release publication
+    if: always()
+    needs: [publish, publish-macos-intel]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish aggregate release status
+        uses: actions/github-script@v7
+        env:
+          WINDOWS_RESULT: ${{ needs.publish.result }}
+          MACOS_RESULT: ${{ needs.publish-macos-intel.result }}
         with:
-          tag_name: ${{ steps.release_meta.outputs.tag }}
-          files: mac-release-assets/*
-          fail_on_unmatched_files: true
+          script: |
+            const ok = process.env.WINDOWS_RESULT === "success" && process.env.MACOS_RESULT === "success";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: ok ? 'success' : 'failure',
+              context: process.env.RELEASE_PUBLISH_CONTEXT,
+              description: ok ? 'Windows and macOS GitHub/R2 mirror verified' : 'Release publication incomplete; inspect both platform jobs',
+              target_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            });
+            if (!ok) core.setFailed(`Windows=${process.env.WINDOWS_RESULT}; macOS=${process.env.MACOS_RESULT}`);
