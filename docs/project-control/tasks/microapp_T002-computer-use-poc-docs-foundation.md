@@ -14,7 +14,6 @@ related:
   - docs/microapp/computer-use-microapp-poc.md
   - docs/architecture/README.md
   - docs/architecture/ipc-and-preload.md
-  - docs/platform/tauri.md
 task_state: READY_FOR_REVIEW
 ---
 

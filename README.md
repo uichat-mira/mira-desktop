@@ -26,7 +26,6 @@ root/
   packages/         # Shared workspace packages
   scripts/          # Build and packaging helpers
   docs/             # Central project documentation
-  tauri/            # Tauri app sources and config
   .artifacts/       # Temporary shared build artifacts (ignored)
   release/          # packaged desktop release outputs
   runtime.config.cjs
@@ -35,7 +34,7 @@ root/
 ## Runtime
 
 - React + Vite renderer
-- Electron / Tauri shell
+- Electron shell
 - Fastify backend
 - Host and port come from `runtime.config.cjs`
 
@@ -47,7 +46,6 @@ pnpm dev:electron:win
 pnpm dev:electron:mac
 pnpm smoke:electron:chat:mac
 pnpm smoke:terminal:mac
-pnpm dev:tauri:win
 pnpm check
 pnpm check:no-db-in-index
 pnpm clean:artifacts
@@ -76,7 +74,6 @@ hotfix/* -> test or prod
 
 ```bash
 pnpm package:electron:win
-pnpm package:tauri:win
 ```
 
 ## Local Model Packs

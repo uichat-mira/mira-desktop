@@ -321,7 +321,7 @@ const suites = [
   {
     id: "document-type-runtime",
     type: "文档识别",
-    query: "这篇说明 Electron、Tauri、backend 进程和 preload 边界",
+    query: "这篇说明 Electron、backend 进程和 preload 边界",
     expectedTopId: "doc-runtime-architecture",
     candidates: [
       {
