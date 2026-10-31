@@ -96,7 +96,6 @@ const app = {
     },
     navigation: {
       home: "Home",
-      projects: "Knowledge and Evaluation",
       forge: "Forge",
       remoteAccess: "Remote connection",
       cloudAccount: "Cloud Account",
@@ -111,8 +110,6 @@ const app = {
       account: "Account",
       about: "About",
       development: "Development",
-      knowledgeBase: "Knowledge Base",
-      evaluation: "Evaluation Center",
       externalApp: "Open externally",
       primary: "Primary navigation",
     },

@@ -1,10 +1,11 @@
 import { useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, FlaskConical } from "lucide-react";
 import { message } from "@/shared/ui/Message";
 import { Modal } from "@/shared/ui/Modal";
 import { Select } from "@/shared/ui/Select";
+import { Button } from "@/shared/ui/Button";
 import {
   createKnowledgeBase,
   deleteKnowledgeBase,
@@ -387,13 +388,23 @@ export default function KnowledgeBaseSettings() {
       miniTitle={t("settings.knowledgeBase.page.miniTitle")}
       title={t("settings.knowledgeBase.page.title")}
       slot={
-        <div className="w-[200px] lg:hidden">
-          <Select
-            value={selectedKnowledgeBaseId ?? ""}
-            onChange={handleSelectKnowledgeBase}
-            options={knowledgeBaseSelectOptions}
-            compact
-          />
+        <div className="flex items-center gap-2">
+          <div className="w-[200px] lg:hidden">
+            <Select
+              value={selectedKnowledgeBaseId ?? ""}
+              onChange={handleSelectKnowledgeBase}
+              options={knowledgeBaseSelectOptions}
+              compact
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/evaluation/center")}
+          >
+            <FlaskConical className="h-3.5 w-3.5" />
+            {t("settings.evaluation.center.page.title")}
+          </Button>
         </div>
       }
       bodyClassName="overflow-hidden"

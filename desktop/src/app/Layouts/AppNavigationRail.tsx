@@ -5,12 +5,9 @@ import {
   CircleHelp,
   Cloud,
   ExternalLink,
-  FolderKanban,
   GitBranch,
   Info,
   LayoutDashboard,
-  LibraryBig,
-  ListChecks,
   LogOut,
   MessageSquareText,
   Puzzle,
@@ -26,6 +23,7 @@ import { useAuth } from "@/app/providers/AuthProvider";
 import DropdownMenu from "@/shared/ui/DropdownMenu";
 import { message } from "@/shared/ui/Message";
 import { openExternalUrl } from "@/shared/platform/desktopRuntime";
+import logoIcon from "@/assets/branding/uichat-logo-icon.png";
 
 type RailLinkId = "home" | "dashboard" | "forge" | "settings";
 
@@ -36,7 +34,7 @@ type RailLinkItem = {
   to: string;
 };
 
-type RailMenuItem = { id: "projects" } | { id: "extensions" } | { id: "remote-access" };
+type RailMenuItem = { id: "extensions" } | { id: "remote-access" };
 
 type PrimaryRailItem = RailLinkItem | RailMenuItem;
 
@@ -54,7 +52,6 @@ const primaryItems: PrimaryRailItem[] = [
     icon: LayoutDashboard,
     to: "/dashboard",
   },
-  { id: "projects" },
   { id: "extensions" },
   {
     id: "forge",
@@ -84,21 +81,6 @@ function isResourceRoute(pathname: string) {
     matchesRoute(pathname, "/about") ||
     matchesRoute(pathname, "/development")
   );
-}
-
-function isLibraryRoute(pathname: string) {
-  return (
-    matchesRoute(pathname, "/knowledge-base") ||
-    matchesRoute(pathname, "/evaluation")
-  );
-}
-
-function isKnowledgeBaseRoute(pathname: string) {
-  return matchesRoute(pathname, "/knowledge-base");
-}
-
-function isEvaluationRoute(pathname: string) {
-  return matchesRoute(pathname, "/evaluation");
 }
 
 function isAboutRoute(pathname: string) {
@@ -139,7 +121,7 @@ function RailButton({
   const Icon = item.icon;
   const className = `group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
     active
-      ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+      ? "bg-primary/10 text-primary"
       : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
   }`;
 
@@ -151,7 +133,7 @@ function RailButton({
       aria-current={active ? "page" : undefined}
       className={className}
     >
-      <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />
+      <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
     </NavLink>
   );
 }
@@ -215,7 +197,7 @@ function ExtensionsMenu({
   const { t } = useTranslation();
   const triggerClassName = `group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
     active
-      ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+      ? "bg-primary/10 text-primary"
       : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
   }`;
 
@@ -234,7 +216,7 @@ function ExtensionsMenu({
         >
           <Puzzle
             className="h-[18px] w-[18px]"
-            strokeWidth={active ? 2.2 : 1.8}
+            strokeWidth={1.8}
           />
         </button>
       }
@@ -294,13 +276,13 @@ function ResourceMenu({
           aria-current={active ? "page" : undefined}
           className={`group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
             active
-              ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+              ? "bg-primary/10 text-primary"
               : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
           }`}
         >
           <CircleHelp
             className="h-[18px] w-[18px]"
-            strokeWidth={active ? 2.2 : 1.8}
+            strokeWidth={1.8}
           />
         </button>
       }
@@ -358,87 +340,28 @@ function RemoteAccessMenu({ pathname }: { pathname: string }) {
           aria-current={active ? "page" : undefined}
           className={`group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
             active
-              ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+              ? "bg-primary/10 text-primary"
               : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
           }`}
         >
-          <Smartphone className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />
+          <Smartphone className="h-[18px] w-[18px]" strokeWidth={1.8} />
         </button>
       }
       items={[
-        {
-          id: "remote-access",
-          label: t("app.navigation.remoteAccess"),
-          leadingIcon: <Cable className="h-4 w-4" />,
-          selected: remoteActive,
-        },
         {
           id: "cloud-account",
           label: t("app.navigation.cloudAccount"),
           leadingIcon: <Cloud className="h-4 w-4" />,
           selected: cloudActive,
         },
+        {
+          id: "remote-access",
+          label: t("app.navigation.remoteAccess"),
+          leadingIcon: <Cable className="h-4 w-4" />,
+          selected: remoteActive,
+        },
       ]}
       onSelect={(item) => void navigate(`/${item.id}`)}
-    />
-  );
-}
-
-function LibraryMenu({
-  active = false,
-  pathname,
-}: {
-  active?: boolean;
-  pathname: string;
-}) {
-  const navigate = useNavigate();
-  const { t } = useTranslation();
-  const triggerClassName = `group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-    active
-      ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
-      : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
-  }`;
-
-  return (
-    <DropdownMenu
-      align="start"
-      side="right"
-      sideOffset={8}
-      trigger={
-        <button
-          type="button"
-          aria-label={t("app.navigation.projects")}
-          title={t("app.navigation.projects")}
-          aria-current={active ? "page" : undefined}
-          className={triggerClassName}
-        >
-          <FolderKanban
-            className="h-[18px] w-[18px]"
-            strokeWidth={active ? 2.2 : 1.8}
-          />
-        </button>
-      }
-      items={[
-        {
-          id: "knowledge-base",
-          label: t("app.navigation.knowledgeBase"),
-          leadingIcon: <LibraryBig className="h-4 w-4" />,
-          selected: isKnowledgeBaseRoute(pathname),
-        },
-        {
-          id: "evaluation",
-          label: t("app.navigation.evaluation"),
-          leadingIcon: <ListChecks className="h-4 w-4" />,
-          selected: isEvaluationRoute(pathname),
-        },
-      ]}
-      onSelect={(item) => {
-        void navigate(
-          item.id === "knowledge-base"
-            ? "/knowledge-base"
-            : "/evaluation/center",
-        );
-      }}
     />
   );
 }
@@ -459,9 +382,13 @@ export function AppNavigationRail() {
         title={t("app.navigation.home")}
         className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-[11px] text-text-primary transition-colors hover:bg-surface-primary/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       >
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-[8px] bg-text-primary text-[11px] font-semibold text-surface-tertiary">
-          M
-        </span>
+        <img
+          src={logoIcon}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="h-7 w-7 rounded-[7px] object-contain"
+        />
       </NavLink>
 
       <div className="flex flex-col items-center gap-1">
@@ -469,8 +396,6 @@ export function AppNavigationRail() {
           <div key={item.id}>
             {item.id === "remote-access" ? (
               <RemoteAccessMenu pathname={pathname} />
-            ) : item.id === "projects" ? (
-              <LibraryMenu active={isLibraryRoute(pathname)} pathname={pathname} />
             ) : item.id === "extensions" ? (
               <ExtensionsMenu
                 active={isExtensionsRoute(pathname)}
