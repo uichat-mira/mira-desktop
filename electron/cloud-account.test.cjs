@@ -23,6 +23,24 @@ test("Electron main wires native Cloud Auth to Chromium net.fetch", () => {
   );
 });
 
+test("macOS dev bundle declares the OAuth scheme before native registration", () => {
+  const prepare = fs.readFileSync(
+    path.join(__dirname, "..", "scripts", "prepare-electron-macos-dev.mjs"),
+    "utf8",
+  );
+  const main = fs.readFileSync(path.join(__dirname, "main.cjs"), "utf8");
+
+  assert.match(prepare, /CFBundleURLTypes/);
+  assert.match(prepare, /mira-desktop/);
+  assert.match(prepare, /com\.tomz\.uichat\.dev/);
+  assert.match(
+    main,
+    /process\.platform\s*===\s*["']darwin["'][\s\S]{0,600}setAsDefaultProtocolClient\(["']mira-desktop["']\)/,
+    "prepared macOS dev bundles must attempt native protocol registration",
+  );
+});
+
+
 const RELAY_AUDIENCE = "mira:cloud-relay-transport";
 const RELAY_SCOPE = "relay:transport";
 const RELAY_ROOM = "room_dGVzdC1yb29t";
