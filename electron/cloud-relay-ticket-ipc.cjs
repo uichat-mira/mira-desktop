@@ -135,10 +135,12 @@ function attachCloudHostGrantIpc(child, getAccount) {
     try { child.send(message, () => { /* never log grant contents */ }); }
     catch { /* disconnected: no HTTP/renderer fallback */ }
   }
-  function result(id, errorCode, snapshot) {
+  function result(id, errorCode, snapshot, localOwnerUserId) {
     if (disposed || !active.has(id)) return;
-    if (snapshot) send({ channel: GRANT_CHANNEL, type: "result",
-      requestId: id, ok: true, snapshot });
+    if (snapshot && Number.isSafeInteger(localOwnerUserId) && localOwnerUserId > 0) {
+      send({ channel: GRANT_CHANNEL, type: "result",
+        requestId: id, ok: true, snapshot, localOwnerUserId });
+    }
     else send({ channel: GRANT_CHANNEL, type: "result",
       requestId: id, ok: false, errorCode });
   }
@@ -166,12 +168,14 @@ function attachCloudHostGrantIpc(child, getAccount) {
       })
       .then((snapshot) => {
         if (!active.has(id) || disposed) return;
-        // Hard cap IPC transfer size; the Backend additionally parses the
-        // exact OPS-020 grant schema and rejects any unrecognized fields.
-        if (!record(snapshot) || JSON.stringify(snapshot).length > 250_000) {
+        const owner = account?.getBoundLocalOwnerUserId?.();
+        // The local owner is sourced ONLY from the encrypted native Cloud
+        // session captured at sign-in, not from the renderer or Cloud ledger.
+        if (!record(snapshot) || JSON.stringify(snapshot).length > 250_000 ||
+            !Number.isSafeInteger(owner) || owner <= 0) {
           result(id, "cloud_grant_invalid_response");
         } else {
-          result(id, null, snapshot);
+          result(id, null, snapshot, owner);
         }
       })
       .catch((error) => result(id, GRANT_ERRORS.has(error?.code)

@@ -170,7 +170,7 @@ export const registerWorkspaceThreadPageRoutes = async (app: FastifyInstance) =>
     },
     routeHandler("Failed to list remote workspace threads", async (request) => {
       const user = request.authUser;
-      if (!request.remoteDevice || !user) {
+      if (!(request.remoteDevice || request.cloudRemoteCaller) || !user) {
         throw forbidden("A paired remote device credential is required");
       }
 

@@ -43,13 +43,42 @@ ipcMain.handle("cloud-account:status", (event) => {
   cloudIpcAuth(event);
   return cloudAccount?.status() ?? { status: "checking", account: null, hostId: null, scopes: [], message: "", expiresAt: null, permissionsConfigured: false };
 });
-ipcMain.handle("cloud-account:login", (event, scopes) => {
+// This bearer already belongs to the local renderer session; Native checks
+// it against the local Backend instead of trusting a renderer-claimed user ID.
+async function verifyCloudLocalOwner(token) {
+  if (typeof token !== "string" || token.length < 20 ||
+      token.length > 4096 || token.startsWith("mira_device_")) {
+    throw new Error("请先登录 Mira 本地账户，再关联云账号");
+  }
+  let response;
+  try {
+    response = await net.fetch(getBackendUrl() + "/me", {
+      method: "GET",
+      headers: { authorization: "Bearer " + token, accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    throw new Error("本地 Mira 身份校验暂不可用，请检查桌面 Backend");
+  }
+  if (!response.ok) throw new Error("本地 Mira 登录状态已失效，请重新登录");
+  const body = await response.json().catch(() => null);
+  const user = body?.success === true ? body.data?.user : null;
+  if (!Number.isSafeInteger(user?.id) || user.id <= 0 ||
+      typeof user.username !== "string" ||
+      (user.role !== "admin" && user.role !== "user")) {
+    throw new Error("本地 Mira 用户身份无效，拒绝关联云账号");
+  }
+  return user.id;
+}
+
+ipcMain.handle("cloud-account:login", async (event, scopes, localAccessToken) => {
   cloudIpcAuth(event);
   if (!cloudAccount) throw new Error("Cloud Account not initialized");
   if (!cloudCallbackRegistered) {
     throw new Error("当前桌面构建无法接收 Mira Cloud OAuth 回调；请使用已安装并注册协议的 Electron 版本。");
   }
-  return cloudAccount.begin(scopes);
+  const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
+  return cloudAccount.begin(scopes, localOwnerUserId);
 });
 ipcMain.handle("cloud-account:cancel-login", (event) => {
   cloudIpcAuth(event);
