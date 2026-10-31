@@ -504,6 +504,9 @@ async function startBackend() {
       SETTINGS_SECRET: settingsSecret,
       UI_CHAT_ALLOW_DEFAULT_BOOTSTRAP: "1",
       UI_CHAT_BACKEND_URL: getBackendUrl(),
+      // Non-secret marker: only this Electron-owned Backend child can ask
+      // its parent for current Cloud Host eligibility on startup.
+      UI_CHAT_CLOUD_IPC_CHILD: "1",
       UI_CHAT_DESKTOP_RESOURCES_ROOT: process.resourcesPath,
       UI_CHAT_DATABASE_DIR: dataDir,
       UI_CHAT_LOG_DIR: logDir,
@@ -569,6 +572,15 @@ app.whenReady().then(async () => {
     // certificate verification enabled.
     fetcher: (input, init) => net.fetch(input, init),
     notify: (snapshot) => {
+      // The official Cloud Host follows the authenticated native lifecycle,
+      // not a renderer setting or a second manual Relay activation.
+      // Non-ready states close the old account's socket before any new ticket.
+      cloudRelayTicketBridge?.notifyAvailability(
+        snapshot.status === "signed_in" &&
+        snapshot.permissionsConfigured === true &&
+        snapshot.localOwnerBound === true &&
+        typeof snapshot.hostId === "string" && snapshot.hostId.length > 0,
+      );
       if (snapshot.status === "rejected" || snapshot.status === "signed_out") {
         cloudRelayTicketBridge?.notifyRevoked(
           snapshot.status === "rejected" ? "reauth" : "signout",

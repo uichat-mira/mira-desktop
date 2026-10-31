@@ -172,7 +172,23 @@ vi.mock("@/services/remote-tool-gateway.service.js", () => ({
   cancelRemoteToolInvocation: mocks.toolGateway.cancel,
 }));
 
-import remoteAccessRoute from "./remote-access.js";
+import remoteAccessRoute, { reconcileCloudRelayOnGrantInvalidation } from "./remote-access.js";
+
+describe("DSK-006 Cloud Host eligibility after Grant invalidation", () => {
+  it("stops instead of restarting after native sign-out", () => {
+    const connector = { restart: vi.fn(), stop: vi.fn() };
+    reconcileCloudRelayOnGrantInvalidation(false, connector);
+    expect(connector.stop).toHaveBeenCalledOnce();
+    expect(connector.restart).not.toHaveBeenCalled();
+  });
+
+  it("reacquires a ticket only for an eligible native Host", () => {
+    const connector = { restart: vi.fn(), stop: vi.fn() };
+    reconcileCloudRelayOnGrantInvalidation(true, connector);
+    expect(connector.restart).toHaveBeenCalledOnce();
+    expect(connector.stop).not.toHaveBeenCalled();
+  });
+});
 
 const user = { id: 7, username: "tester", role: "user" as const };
 const readySnapshot = {
