@@ -1,0 +1,49 @@
+name: DSK-011 Docs Index Final Sync (temporary)
+on:
+  push:
+    branches:
+      - feat/dsk011-document-hygiene
+    paths:
+      - .github/workflows/dsk011-docs-index-final-sync.yml
+permissions:
+  contents: write
+jobs:
+  docs-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Regenerate with repository-owned script and verify corrected links
+        shell: bash
+        run: |
+          set -euo pipefail
+          node packages/docs-site/scripts/build-docs-index.mjs
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const data = JSON.parse(fs.readFileSync('packages/docs-site/src/generated/docs-index.json', 'utf8'));
+          const doc = data.documents.find((entry) => entry.path === 'archive/microapp/computer-use-microapp-poc.md');
+          if (!doc) throw new Error('Archived Computer Use source missing from generated index');
+          for (const expected of ['../../architecture/README.md', '../../architecture/ipc-and-preload.md', '../../tooling-runtime/tools-protocol.md']) {
+            if (!doc.content.includes(expected)) throw new Error('Generated document missing corrected link: ' + expected);
+          }
+          if (doc.content.includes('  - ../architecture/') || doc.content.includes('  - ../tooling-runtime/')) {
+            throw new Error('Generated document retains stale relative links');
+          }
+          console.log('DSK011_DOCS_INDEX: corrected Related links verified');
+          NODE
+          git diff --check
+      - name: Commit only regenerated index
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- packages/docs-site/src/generated/docs-index.json
+          if git diff --cached --quiet; then
+            echo 'Documentation index unchanged'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'docs(dsk-011): sync generated index after final link correction'
+          git push origin HEAD:refs/heads/feat/dsk011-document-hygiene
