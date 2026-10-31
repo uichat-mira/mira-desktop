@@ -8,10 +8,11 @@ declare global {
         scopes: string[];
         expiresAt: string | null;
         permissionsConfigured: boolean;
+        localOwnerBound?: boolean;
         canResetCredentials?: boolean;
         message: string;
       }>;
-      signIn: (scopes: string[]) => Promise<unknown>;
+      signIn: (scopes: string[], localAccessToken: string) => Promise<unknown>;
       cancelSignIn: () => Promise<unknown>;
       retryHostSetup: () => Promise<unknown>;
       resetLocalCredentials: () => Promise<unknown>;
