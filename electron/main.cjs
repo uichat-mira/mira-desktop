@@ -554,6 +554,8 @@ async function startBackend() {
 }
 
 app.whenReady().then(async () => {
+  // A secondary process must never initialize a competing Backend or OAuth owner.
+  if (!hasSingleInstanceLock) return;
 
   // Electron owns the Cloud credential, browser callback and network exchange.
   // No bearer, PKCE verifier, password, or callback code is exposed to React.
