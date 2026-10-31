@@ -19,13 +19,34 @@ env:
   RELEASE_PUBLISH_CONTEXT: release-publish-r2
 
 jobs:
+  verify-tag-source:
+    name: Verify release tag is on prod
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout tagged commit and full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch authoritative production history
+        shell: bash
+        run: git fetch --no-tags origin '+refs/heads/prod:refs/remotes/origin/prod'
+
+      - name: Reject mismatched or unpromoted stable tag
+        run: node scripts/release/verify-prod-tag-cli.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
+
   factory:
     name: Build and validate release
+    needs: verify-tag-source
     uses: ./.github/workflows/release-factory-v2.yml
     secrets: inherit
 
   build-macos-intel:
     name: Build macOS Intel release asset
+    needs: verify-tag-source
     uses: ./.github/workflows/build-electron-macos-intel.yml
 
   publish:
