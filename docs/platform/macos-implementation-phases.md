@@ -1,19 +1,19 @@
 # macOS 桌面端实现分期
 
-Status: Historical
+Status: Proposed
 Owner: platform
 Layer: raw-source
 Module: Developments
 Feature: PlatformRuntime
 Doc Type: implementation-plan
-Canonical: false
+Canonical: true
 Related:
   - ../architecture/README.md
   - ../architecture/ipc-and-preload.md
   - ../build/README.md
   - ../developments/release-management.md
 
-> **Historical plan, superseded by DSK-011 (2026-10-31):** the proposed Tauri macOS phases and all Tauri commands below are no longer supported or planned; do not implement them. The Electron-only release contract lives in `../build/README.md`.
+> **DSK-011 scope (2026-10-31):** only the Tauri desktop shell and the Tauri-specific macOS parity proposal are retired. **Electron macOS remains an active product and engineering direction.** The existing Intel DMG branch build (`.github/workflows/build-macos-intel.yml` + `build-electron-macos-intel.yml`), production/tag GitHub Release integration, and R2 `mira/macos-intel/latest/` lane stay supported. Apple Silicon `darwin-arm64` is a separate proposed delivery target requiring its own validation. Tauri references below describe superseded historical plans, not active build instructions. The live build and release contract is in `../build/README.md`.
 >
 > **Version evidence:** references below to Electron 31.7.7 are historical
 > observations from original macOS implementation runs, not the current
@@ -35,7 +35,7 @@ Related:
 ### 推荐路线
 
 1. **首个可运行版本采用 Electron。**
-2. **先完成共享 runtime 平台化，再推进 Tauri macOS。**
+2. **继续推进 Electron macOS 共享 runtime、原生能力、打包与正式发行；不再建设 Tauri macOS。**
 3. **首发目标锁定 Apple Silicon / arm64、Developer ID 直发 DMG，不以 Mac App Store 为首期目标。**
 4. **浏览器 Native Messaging 与本地 Piper 不阻塞第一版内部可用包，但必须显式标记为“暂不可用”，不能通过 fallback 或静默失败伪装成可用。**
 5. **Windows 现有合同保持不变；平台化通过 manifest、resolver 和按平台产物实现，不以大规模重写桌面壳层为代价。**
@@ -126,7 +126,7 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 
 ## 改造进度
 
-状态只使用 `已完成`、`进行中`、`受阻`、`未开始`。这里记录已经发生的事实和可验证证据，不记录预计工期或日期安排。
+状态使用 `已完成`、`进行中`、`受阻`、`未开始`；已被明确取消的历史方案使用 `已取消`。这里记录已经发生的事实和可验证证据，不记录预计工期或日期安排。
 
 | 编号 | 改造项 | 状态 | 已有证据 | 当前阻塞或下一步 |
 | --- | --- | --- | --- | --- |
@@ -139,7 +139,7 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 | P6 | Electron 内部 DMG | 未开始 | Builder 已有 DMG / ICNS 基础配置 | 依赖 P4、P5；尚无干净机安装证据 |
 | P7 | Windows 回归与 MVP 验收 | 未开始 | Windows 当前合同已列入不可破坏项 | 依赖 macOS 开发态和内部 DMG |
 | P8 | Native Messaging / TTS / 正式发布 | 未开始 | 已识别平台差异和签名对象 | 不阻塞 Core；按独立审批门推进 |
-| P9 | Tauri macOS 对齐 | 未开始 | 已识别 resource path、Node runtime 与平台值缺口 | 共享 payload 和签名规则稳定后再进入 |
+| P9 | Tauri macOS 对齐（已退役） | 已取消 | 原方案属于双壳时期历史规划 | DSK-011 退役 Tauri；Electron macOS 与 Apple Silicon 路线继续推进 |
 
 ### 已完成事项
 
@@ -482,7 +482,9 @@ Secrets 至少包括：
 - staple 校验成功
 - 在另一台未配置开发环境的 Apple Silicon Mac 上首次启动不触发“应用已损坏”或来源不可验证
 
-## Phase 6：Tauri macOS 对齐
+## Phase 6：Tauri macOS 对齐（已取消，以下仅作历史存档）
+
+> DSK-011 已取消本阶段；下列 Tauri 资源与命令仅保留原设计决策背景，不可作为当前施工依据。Electron macOS 阶段与发布路线不受此决定影响。
 
 ### 前置条件
 
@@ -538,7 +540,7 @@ Secrets 至少包括：
 - Mac App Store sandbox
 - 钥匙串存储敏感配置
 - Dock/Menu Bar 原生体验
-- Electron 与 Tauri 的长期主次收敛
+- Electron 作为唯一桌面壳层的持续维护
 
 Universal 2 不是把两个 `.app` 简单拼接。所有 native module、sidecar、Piper、Node runtime 与 Native Host 都必须具备双架构或分别构建后合并，因此不应进入首版范围。
 
@@ -558,8 +560,8 @@ Universal 2 不是把两个 `.app` 简单拼接。所有 native module、sidecar
    - launcher、manifest、安装/检测/卸载
 6. `build/macos-sign-notarize`
    - 签名、公证、CI 与发布证据
-7. `feat/tauri-macos-parity`
-   - resource resolver、Node runtime、能力对齐
+7. ~~`feat/tauri-macos-parity`~~（DSK-011 已取消）
+   - 历史 Tauri macOS 阶段不再执行；Electron macOS 后续交付按前述阶段验收
 
 每个 PR 都必须保持 Windows release contract 可验证，不把“后续再修 Windows”作为平台化代价。
 
