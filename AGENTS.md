@@ -15,7 +15,6 @@ If other docs, comments, or legacy files still mention `UI Chat RAG Tester`, tre
 - Treat `docs/archive/` as historical reference only, not current product truth, unless the live code or active docs confirm the same behavior.
 - Read `docs/architecture/README.md` before changing runtime boundaries, networking, or packaging flow.
 - Read `docs/architecture/ipc-and-preload.md` before changing preload exposure, renderer/native boundaries, or IPC design.
-- For Tauri-related work, read `docs/platform/tauri.md` first and `docs/platform/tauri-setup.md` for setup and troubleshooting.
 - For chat UI work, read `docs/uchat.md` first.
 - Shared UI component docs remain source-adjacent in `desktop/src/shared/ui/COMPONENTS.md` and `desktop/src/shared/ui/ui-design-guidelines-tailwind.md`.
 
@@ -68,7 +67,7 @@ If other docs, comments, or legacy files still mention `UI Chat RAG Tester`, tre
 
 ### Backend Startup
 
-- Development: start desktop workflows through the root `pnpm dev:electron:win` or `pnpm dev:tauri:win` commands.
+- Development: start desktop workflows through the root `pnpm dev:electron:win` commands.
 - Do not refactor or replace the existing desktop dev startup chains unless you verify the full flow end-to-end. In particular, avoid changing the backend launch path, watch mode, or workspace invocation style without confirming that the relevant dev command still brings up Vite, backend health (`/health`), and the desktop shell together on Windows.
 - Production: Electron main starts `resources/node-runtime/node.exe` with `resources/server/server.cjs`.
 - Native dependencies for the backend are copied into `resources/server/node_modules` during packaging.

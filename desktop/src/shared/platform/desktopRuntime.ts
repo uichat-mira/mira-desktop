@@ -1,4 +1,4 @@
-export type DesktopHostKind = "browser" | "electron" | "tauri";
+export type DesktopHostKind = "browser" | "electron";
 
 export interface DesktopRuntimeInfo {
   hostKind: DesktopHostKind;
@@ -25,8 +25,7 @@ const isDesktopRuntimeInfo = (
 
   return (
     (runtime.hostKind === "browser" ||
-      runtime.hostKind === "electron" ||
-      runtime.hostKind === "tauri") &&
+      runtime.hostKind === "electron") &&
     typeof runtime.platform === "string" &&
     typeof runtime.isPackaged === "boolean" &&
     typeof runtime.backendUrl === "string"
@@ -86,20 +85,12 @@ export function getRuntimeDisplayLabel(runtime = getDesktopRuntime()) {
     return `Electron · ${runtime.platform}`;
   }
 
-  if (runtime.hostKind === "tauri") {
-    return `Tauri · ${runtime.platform}`;
-  }
-
   return "Browser Preview";
 }
 
 export function getRuntimeDescription(runtime = getDesktopRuntime()) {
   if (runtime.hostKind === "electron") {
     return "Electron 运行时通过后端 API 检查状态。";
-  }
-
-  if (runtime.hostKind === "tauri") {
-    return "Tauri 运行时通过后端 API 检查状态。";
   }
 
   return "当前为浏览器预览模式，状态检查通过 /api 代理访问后端。";
@@ -129,13 +120,8 @@ export async function openExternalUrl(url: string) {
     return;
   }
 
-  const tauriOpen =
-    (globalThis.window as any)?.__TAURI__?.shell?.open ??
-    (globalThis.window as any)?.__TAURI_INTERNALS__?.plugins?.shell?.open;
-
-  if (runtime.hostKind === "tauri" && typeof tauriOpen === "function") {
-    await tauriOpen(trimmedUrl);
-    return;
+  if (runtime.hostKind === "electron") {
+    throw new Error("Electron IPC 不可用，无法打开外部链接");
   }
 
   globalThis.window?.open(trimmedUrl, "_blank", "noopener,noreferrer");
@@ -162,12 +148,11 @@ export async function downloadBrowserExtension(): Promise<string> {
     );
   }
 
-  const tauriInvoke = (globalThis.window as any)?.__TAURI_INTERNALS__?.invoke;
-  if (runtime.hostKind === "tauri" && typeof tauriInvoke === "function") {
-    return String(await tauriInvoke("download_browser_extension_command"));
+  if (runtime.hostKind === "electron") {
+    throw new Error("Electron IPC 不可用，无法下载浏览器扩展");
   }
 
-  throw new Error("浏览器扩展下载仅支持 Electron 或 Tauri 桌面端");
+  throw new Error("浏览器扩展下载仅支持 Electron 桌面端");
 }
 
 export async function installNativeMessagingHost(): Promise<unknown> {
@@ -175,11 +160,11 @@ export async function installNativeMessagingHost(): Promise<unknown> {
   if (runtime.hostKind === "electron" && globalThis.window?.electronAPI?.invoke) {
     return globalThis.window.electronAPI.invoke("desktop:install-native-host");
   }
-  const tauriInvoke = (globalThis.window as any)?.__TAURI_INTERNALS__?.invoke;
-  if (runtime.hostKind === "tauri" && typeof tauriInvoke === "function") {
-    return tauriInvoke("install_native_messaging_host_command");
+  if (runtime.hostKind === "electron") {
+    throw new Error("Electron IPC 不可用，无法安装 Native Messaging");
   }
-  throw new Error("Native Messaging 安装仅支持 Electron 或 Tauri 桌面端");
+
+  throw new Error("Native Messaging 安装仅支持 Electron 桌面端");
 }
 
 export async function getNativeMessagingHostStatus(): Promise<NativeMessagingHostStatus> {
@@ -187,10 +172,10 @@ export async function getNativeMessagingHostStatus(): Promise<NativeMessagingHos
   if (runtime.hostKind === "electron" && globalThis.window?.electronAPI?.invoke) {
     return globalThis.window.electronAPI.invoke("desktop:get-native-host-status") as Promise<NativeMessagingHostStatus>;
   }
-  const tauriInvoke = (globalThis.window as any)?.__TAURI_INTERNALS__?.invoke;
-  if (runtime.hostKind === "tauri" && typeof tauriInvoke === "function") {
-    return tauriInvoke("get_native_messaging_host_status_command") as Promise<NativeMessagingHostStatus>;
+  if (runtime.hostKind === "electron") {
+    throw new Error("Electron IPC 不可用，无法查询 Native Messaging 状态");
   }
+
   return {
     status: "unsupported",
     installed: false,
@@ -203,9 +188,9 @@ export async function uninstallNativeMessagingHost(): Promise<unknown> {
   if (runtime.hostKind === "electron" && globalThis.window?.electronAPI?.invoke) {
     return globalThis.window.electronAPI.invoke("desktop:uninstall-native-host");
   }
-  const tauriInvoke = (globalThis.window as any)?.__TAURI_INTERNALS__?.invoke;
-  if (runtime.hostKind === "tauri" && typeof tauriInvoke === "function") {
-    return tauriInvoke("uninstall_native_messaging_host_command");
+  if (runtime.hostKind === "electron") {
+    throw new Error("Electron IPC 不可用，无法注销 Native Messaging");
   }
-  throw new Error("Native Messaging 注销仅支持 Electron 或 Tauri 桌面端");
+
+  throw new Error("Native Messaging 注销仅支持 Electron 桌面端");
 }

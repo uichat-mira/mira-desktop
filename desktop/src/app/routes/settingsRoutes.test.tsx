@@ -27,9 +27,6 @@ vi.mock("@/features/Settings/pages/General/index", () => ({
 vi.mock("@/features/Settings/pages/Personalization/index", () => ({
   default: () => <div data-testid="personalization-page">personalization-page</div>,
 }));
-vi.mock("@/features/Settings/pages/Account/index", () => ({
-  default: () => null,
-}));
 vi.mock("@/features/Settings/pages/ModelSetting", () => ({
   default: () => null,
 }));
@@ -79,6 +76,11 @@ function NavigationProbe() {
 }
 
 describe("settings routes", () => {
+  it("removes Cloud Account from settings routes and navigation", () => {
+    expect(settingsRoutes.some((route) => route.path === "account")).toBe(false);
+    render(<MemoryRouter><NavigationProbe /></MemoryRouter>);
+    expect(screen.queryByText(/settings.navigation.account/)).not.toBeInTheDocument();
+  });
   it("redirects the legacy settings MCP URL to the connector marketplace", async () => {
     function TestRoutes() {
       const location = useLocation();

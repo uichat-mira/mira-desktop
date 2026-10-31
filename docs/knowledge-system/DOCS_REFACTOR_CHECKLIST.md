@@ -123,7 +123,7 @@ Doc Type: checklist
 - [x] `docs/knowledge-system/IMPLEMENTATION_ROADMAP.md`
 - [x] `docs/architecture/README.md`
 - [x] `docs/architecture/ipc-and-preload.md`
-- [x] `docs/platform/tauri.md`
+- [x] 原 Tauri 平台文档（DSK-011 已退役，Git 历史可查）
 - [x] `docs/uchat.md`
 - [x] `docs/uchat-internal-maintenance.md`
 
@@ -150,7 +150,7 @@ Doc Type: checklist
 - [x] `docs/provider/README.md`
 - [x] `docs/role/README.md`
 - [x] `docs/architecture/README.md`
-- [x] `docs/platform/tauri.md`
+- [x] 原 Tauri 平台文档（DSK-011 已退役，Git 历史可查）
 - [x] `docs/tooling-runtime/README.md` 或等价入口页
 - [x] `docs/maps/AREA_MAP_CHAT.md`
 - [x] `docs/maps/AREA_MAP_RUNTIME.md`

@@ -273,7 +273,7 @@ docs/
 | `Role` | 角色系统、persona、role API | `role/README.md`、`role/role-api.md` |
 | `MicroAPP` | 微应用模块、接入点绑定的业务工作流、跨平台复用的集成业务能力 | `microapp/README.md`、`integrations/wecom-microapp-interface-design.md` |
 | `Docs` | 文档系统、schema、索引、AI 阅读规则、知识系统治理 | `WIKI_SYSTEM_SCHEMA.md`、`knowledge-system/DOCUMENTATION_STANDARDS.md`、`knowledge-system/KNOWLEDGE_SYSTEM_INDEX.md` |
-| `Develoments` | 开发支撑域：runtime、platform、evaluation、规划、bugfix、架构与工程约束 | `architecture/README.md`、`platform/tauri.md`、`developments/release-management.md` |
+| `Develoments` | 开发支撑域：runtime、platform、evaluation、规划、bugfix、架构与工程约束 | `architecture/README.md`、`build/README.md`、`developments/release-management.md` |
 
 ### 重叠文档怎么收
 

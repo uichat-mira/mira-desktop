@@ -23,6 +23,7 @@ vi.mock("react-i18next", () => ({
         "app.navigation.primary": "主导航",
         "app.navigation.home": "主页",
         "app.navigation.remoteAccess": "远程连接",
+        "app.navigation.cloudAccount": "云账号",
         "app.navigation.dashboard": "工作台",
         "app.navigation.projects": "知识与评测",
         "app.navigation.knowledgeBase": "知识库",
@@ -67,11 +68,11 @@ describe("AppNavigationRail extensions menu", () => {
   });
 
   it.each([
+    ["远程连接", "远程连接", "/remote-access"],
+    ["远程连接", "云账号", "/cloud-account"],
     ["扩展", "能力", "/extensions/capabilities"],
     ["扩展", "连接器", "/extensions/connectors"],
     ["扩展", "技能", "/extensions/skills"],
-    ["知识与评测", "知识库", "/knowledge-base"],
-    ["知识与评测", "评测中心", "/evaluation/center"],
     ["帮助", "关于", "/about"],
     ["帮助", "开发", "/development/logs"],
     ["tester", "设置", "/settings/general"],
@@ -82,5 +83,80 @@ describe("AppNavigationRail extensions menu", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: item }));
 
     expect(screen.getByTestId("location")).toHaveTextContent(expectedPath);
+  });
+});
+
+describe("AppNavigationRail knowledge base entry", () => {
+  it("no longer exposes the knowledge and evaluation entry", () => {
+    renderRail("/knowledge-base");
+
+    expect(screen.queryByRole("button", { name: "知识与评测" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "知识库" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "评测中心" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/knowledge-base");
+  });
+});
+
+describe("AppNavigationRail active highlight", () => {
+  it("highlights the active entry with the theme color and the same icon weight as hover", () => {
+    renderRail("/extensions/capabilities");
+
+    const extensions = screen.getByRole("button", { name: "扩展" });
+    const inactiveHelp = screen.getByRole("button", { name: "帮助" });
+
+    expect(extensions).toHaveAttribute("aria-current", "page");
+    expect(extensions.className).toContain("bg-primary/10");
+    expect(extensions.className).toContain("text-primary");
+    expect(extensions.className).not.toContain("text-text-primary");
+    expect(extensions.querySelector("svg")).toHaveAttribute("stroke-width", "1.8");
+    expect(inactiveHelp.querySelector("svg")).toHaveAttribute("stroke-width", "1.8");
+  });
+
+  it("applies the theme color highlight to the active rail link", () => {
+    renderRail("/chat");
+
+    const railHomeLink = screen.getAllByRole("link", { name: "主页" })[1];
+
+    expect(railHomeLink).toHaveAttribute("aria-current", "page");
+    expect(railHomeLink.className).toContain("bg-primary/10");
+    expect(railHomeLink.className).toContain("text-primary");
+    expect(railHomeLink.querySelector("svg")).toHaveAttribute("stroke-width", "1.8");
+  });
+});
+
+describe("AppNavigationRail brand mark", () => {
+  it("shows the product logo instead of the previous letter monogram", () => {
+    renderRail();
+
+    const [brandLink] = screen.getAllByRole("link", { name: "主页" });
+    const logo = brandLink.querySelector("img");
+
+    expect(logo).not.toBeNull();
+    expect(logo?.getAttribute("src")).toContain("uichat-logo-icon");
+    expect(logo?.getAttribute("aria-hidden")).toBe("true");
+    expect(brandLink).not.toHaveTextContent("M");
+  });
+});
+
+describe("AppNavigationRail remote access menu", () => {
+  it("opens the phone menu without navigating away", async () => {
+    renderRail();
+    await userEvent.click(screen.getByRole("button", { name: "远程连接" }));
+
+    expect(screen.getByRole("menuitem", { name: "远程连接" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "云账号" })).toBeInTheDocument();
+    const [firstItem, secondItem] = screen.getAllByRole("menuitem");
+    expect(firstItem).toHaveTextContent("云账号");
+    expect(secondItem).toHaveTextContent("远程连接");
+    expect(screen.getByTestId("location")).toHaveTextContent("/chat");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "远程连接" })).toHaveFocus();
+  });
+
+  it.each(["/remote-access", "/cloud-account"])("highlights the phone entry at %s", (path) => {
+    renderRail(path);
+    expect(screen.getByRole("button", { name: "远程连接" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "设置" })).not.toHaveAttribute("aria-current");
   });
 });

@@ -217,11 +217,6 @@ T010 目标平台为当前 Windows desktop release。
 pnpm package:electron:win
 ```
 
-若本轮同时要求 Tauri release，则另跑：
-
-```bash
-pnpm package:tauri:win
-```
 
 包内 backend 必须仍是：
 

@@ -383,7 +383,7 @@ rerank 是高级检索质量开关
 
 本页只记录本地模型的产品线选择和评测结论。
 
-Electron / Tauri resources 入包、模型包压缩、首启解压、checksum 校验、`onnxruntime-web` WASM 文件复制和 userData 路径解析，归 Build 模块维护：
+Electron resources 入包、模型包压缩、首启解压、checksum 校验、`onnxruntime-web` WASM 文件复制和 userData 路径解析，归 Build 模块维护：
 
 - `../build/local-model-packaging.md`
 
@@ -425,7 +425,7 @@ pnpm eval:local-model-runtime
 | 工具意图识别 | 帮我在项目里查找所有调用 providerProxyService 的地方 | 代码搜索工具 | 代码搜索工具 | 0.879846 |
 | 工具意图识别 | 把构建失败的结果发到企业微信机器人 | 企业微信通知工具 | 企业微信通知工具 | 0.931092 |
 | 文档识别 | 这份文档描述接口字段、请求路径和响应结构，应该归到哪里？ | API 契约文档 | API 契约文档 | 0.911365 |
-| 文档识别 | 这篇说明 Electron、Tauri、backend 进程和 preload 边界 | 运行时架构文档 | 运行时架构文档 | 0.920655 |
+| 文档识别 | 这篇说明 Electron、backend 进程和 preload 边界 | 运行时架构文档 | 运行时架构文档 | 0.920655 |
 | RAG 识别 | context 爆炸时应该优先裁剪历史还是当前用户问题？ | 上下文预算协议 | 上下文预算协议 | 0.920916 |
 | RAG 识别 | 默认安装包应该内置 reranker 吗？ | 本地模型包策略 | 本地模型包策略 | 0.892018 |
 

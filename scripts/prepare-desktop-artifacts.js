@@ -253,6 +253,16 @@ copyPath(
   "Electron main entry",
 );
 copyPath(
+  path.join(projectRoot, "electron", "cloud-account.cjs"),
+  path.join(electronArtifactsRoot, "cloud-account.cjs"),
+  "Electron Cloud OAuth controller",
+);
+copyPath(
+  path.join(projectRoot, "electron", "cloud-relay-ticket-ipc.cjs"),
+  path.join(electronArtifactsRoot, "cloud-relay-ticket-ipc.cjs"),
+  "Electron private Cloud Relay IPC broker",
+);
+copyPath(
   path.join(projectRoot, "electron", "preload.cjs"),
   path.join(electronArtifactsRoot, "preload.cjs"),
   "Electron preload entry",

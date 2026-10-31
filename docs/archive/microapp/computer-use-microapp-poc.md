@@ -1,6 +1,8 @@
 # Computer Use 微应用 POC
 
-Status: Planned
+> 历史设计快照（2026-07-06）。文中 Electron / Tauri 双壳讨论只记录当时的方案，DSK-011 已在 2026-10-31 退役 Tauri；当前桌面运行、原生桥接和发布仅以 Electron 为准。此文不作为当前实施指令。
+
+Status: Historical
 Owner: microapp / runtime / desktop
 Last verified: 2026-07-06
 Layer: raw-source
@@ -10,10 +12,9 @@ Doc Type: design
 Canonical: false
 Related:
   - README.md
-  - ../architecture/README.md
-  - ../architecture/ipc-and-preload.md
-  - ../platform/tauri.md
-  - ../tooling-runtime/tools-protocol.md
+  - ../../architecture/README.md
+  - ../../architecture/ipc-and-preload.md
+  - ../../tooling-runtime/tools-protocol.md
 
 ## 单点真相范围
 

@@ -988,7 +988,7 @@ message.destroy();
 
 ## ExternalLink
 
-用于统一处理外部链接打开行为，避免业务页直接写裸 `<a>` 并各自判断 Electron、Tauri 或浏览器差异。
+用于统一处理外部链接打开行为，避免业务页直接写裸 `<a>` 并各自判断 Electron 或浏览器差异。
 
 ### 当前能力
 

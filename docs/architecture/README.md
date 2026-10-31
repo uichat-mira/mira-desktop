@@ -16,7 +16,6 @@ Related:
   - chat-agent-fast-review-2026-06-27.md
   - mcp-marketplace-agent-integration.md
   - multi-agent-execution-truth.md
-  - ../platform/tauri.md
 
 ## 单点真相范围
 
@@ -39,7 +38,7 @@ Related:
 | 层 | 当前技术 |
 | --- | --- |
 | Renderer | React + Vite + TypeScript |
-| Desktop shell | Electron main + preload，另有 Tauri 壳层 |
+| Desktop shell | Electron main + preload |
 | Backend | Fastify bundled Node service |
 | Database | SQLite (`better-sqlite3`) |
 | Workspace | pnpm workspace |
@@ -74,8 +73,7 @@ desktop shell --------------------------------^
 ```
 
 本地 renderer 开发服务默认监听 `http://127.0.0.1:5757`。端口统一来自
-`runtime.config.cjs`，需要覆盖时使用 `UI_CHAT_DESKTOP_PORT`，Electron、
-Tauri 和 Vite 不分别维护端口常量。
+`runtime.config.cjs`，需要覆盖时使用 `UI_CHAT_DESKTOP_PORT`，Electron 和 Vite 不分别维护端口常量。
 
 ### 打包态
 
@@ -87,9 +85,8 @@ UIChat.exe
        └─ terminal -> bundled Terminal Dev Runtime + system PATH fallback
 ```
 
-Tauri 形态下同样复用前端构建产物和 backend bundle，只是壳层实现不同。
 
-Electron 和 Tauri 还共享同一批 `node-runtime/` 与 `terminal-runtime/` staging 输入。桌面壳层只把 resources 根目录传给 Backend；终端 PATH 的组件校验、优先顺序和 system fallback 由 Backend 统一处理，不进入 renderer 或 preload 合同。详见 `../build/terminal-dev-runtime.md`。
+Electron 使用 `node-runtime/` 与 `terminal-runtime/` staging 输入。桌面壳层只把 resources 根目录传给 Backend；终端 PATH 的组件校验、优先顺序和 system fallback 由 Backend 统一处理，不进入 renderer 或 preload 合同。详见 `../build/terminal-dev-runtime.md`。
 
 ## 当前稳定边界
 
@@ -101,8 +98,7 @@ Electron 和 Tauri 还共享同一批 `node-runtime/` 与 `terminal-runtime/` st
 - Main Agent、forked Skill Agent、private Runtime、审批恢复和 Parent recovery 的当前合同见 `multi-agent-execution-truth.md`
 
 当前正式打包仍以 Windows 为基线。Electron 开发态对 renderer 暴露宿主
-`process.platform`，已验证 `win32` 与 `darwin`；Tauri 当前仍只按
-Windows 合同提供 `win32`，macOS 平台值对齐尚未进入实现。
+`process.platform`，已验证 `win32` 与 `darwin`。
 
 工作空间根目录由 backend 按宿主平台校验：Windows 接受盘符绝对路径或
 UNC 路径，POSIX 宿主接受以 `/` 开头的绝对路径。renderer 使用同一
@@ -115,7 +111,7 @@ UNC 路径，POSIX 宿主接受以 `/` 开头的绝对路径。renderer 使用�
 - 改请求链路
 - 改 backend host / port 来源
 - 改 preload 暴露面
-- 改 Electron / Tauri 打包边界
+- 改 Electron 打包边界
 
 涉及 Main Agent / Skill Agent 的任务局部执行所有权、私有 Runtime、approval checkpoint resume 或多 Agent 产品表述时，先读 `multi-agent-execution-truth.md`。
 
@@ -128,4 +124,3 @@ UNC 路径，POSIX 宿主接受以 `/` 开头的绝对路径。renderer 使用�
 - `chat-agent-fast-review-2026-06-27.md`
 - `mcp-marketplace-agent-integration.md`
 - `multi-agent-execution-truth.md`
-- `../platform/tauri.md`

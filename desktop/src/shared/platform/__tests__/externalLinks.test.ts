@@ -5,7 +5,6 @@ import { installDesktopExternalLinkHandler } from "../externalLinks";
 const resetRuntime = () => {
   delete (window as unknown as Record<string, unknown>).desktopRuntime;
   delete (window as unknown as Record<string, unknown>).electronAPI;
-  delete (window as unknown as Record<string, unknown>).__TAURI__;
   document.body.innerHTML = "";
 };
 
@@ -50,39 +49,6 @@ describe("installDesktopExternalLinkHandler", () => {
     uninstall();
   });
 
-  it("Tauri 中通过 shell plugin 打开同一个系统浏览器", async () => {
-    const open = vi.fn().mockResolvedValue(undefined);
-    Object.assign(window, {
-      desktopRuntime: {
-        hostKind: "tauri",
-        platform: "win32",
-        isPackaged: false,
-        backendUrl: "http://127.0.0.1:8788",
-      },
-      __TAURI__: { shell: { open } },
-    });
-
-    document.body.innerHTML = `
-      <a id="github-app" href="https://github.com/apps/uichat-mira/installations/new" target="_blank">
-        添加仓库授权
-      </a>
-    `;
-
-    const uninstall = installDesktopExternalLinkHandler();
-    const event = new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-    });
-    document.getElementById("github-app")?.dispatchEvent(event);
-    await Promise.resolve();
-
-    expect(event.defaultPrevented).toBe(true);
-    expect(open).toHaveBeenCalledWith(
-      "https://github.com/apps/uichat-mira/installations/new",
-    );
-
-    uninstall();
-  });
 
   it("浏览器预览模式保留原生链接行为", () => {
     document.body.innerHTML = `
