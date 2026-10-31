@@ -155,14 +155,19 @@ export class CloudRelayTicketIpcClient {
     if (typeof transport.send === "function") {
       transport.on("message", this.onMessage);
       transport.on("disconnect", this.onDisconnect);
-      // The Backend may start after Electron restored a Cloud Session;
-      // ask the owning native parent for its current state, without secrets.
-      try {
-        transport.send({
-          channel: CLOUD_RELAY_TICKET_IPC_CHANNEL, type: "state_request",
-        });
-      } catch {
-        this.disconnected = true;
+      // Only the Electron-spawned Backend may initiate this native handshake.
+      // Vitest workers also have process.send() for their own binary protocol;
+      // never send an application IPC object onto that unrelated channel.
+      const ownedChild = transport !== (process as CloudRelayTicketIpcTransport) ||
+        process.env.UI_CHAT_CLOUD_IPC_CHILD === "1";
+      if (ownedChild) {
+        try {
+          transport.send({
+            channel: CLOUD_RELAY_TICKET_IPC_CHANNEL, type: "state_request",
+          });
+        } catch {
+          this.disconnected = true;
+        }
       }
     }
   }
