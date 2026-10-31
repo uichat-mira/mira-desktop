@@ -500,6 +500,86 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
     service.stop();
   });
 
+  it("forwards a scoped Cloud request only after a Grant, never forwarding Client JWT", async () => {
+    const socket = new FakeRelaySocket();
+    const localFetch = vi.fn(async () => new Response("{}", { status: 200 }));
+    const source: CloudRelayTicketSource = {
+      withHostTicket: async (consume) => consume(ticket("cloud.jwt.signature")),
+      onRevoked: () => () => undefined,
+    };
+    const authorize = vi.fn(async () => "one-shot-private-capability");
+    const service = new RemoteRelayConnectorService(
+      cloudConfig, () => socket,
+      localFetch as RelayLocalFetch,
+      "http://127.0.0.1:8787", () => 0, source, authorize,
+    );
+    service.start();
+    await Promise.resolve();
+    socket.open();
+    socket.message({ version: 1, type: "hello_ack", role: "host",
+      relayId: cloudRoom, protocolVersion: 1 });
+    const id = "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e~good";
+    socket.message({
+      version: 1, type: "request", requestId: id,
+      method: "GET", path: "/remote/v1/workspaces",
+      headers: { authorization: "Bearer forged-local-token",
+        "x-mira-cloud-internal-request": "client-injected" },
+      relayProvenance: {
+        version: 1, transport: "cloud", accountId: "account-a",
+        deviceId: "phone-a", room: cloudRoom, role: "client",
+        connectionId: "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e",
+        requestId: id,
+      },
+    });
+    await vi.waitFor(() => expect(localFetch).toHaveBeenCalledOnce());
+    const headers = localFetch.mock.calls[0]![1].headers as Record<string, string>;
+    expect(headers.authorization).toBeUndefined();
+    expect(headers["x-mira-cloud-internal-request"])
+      .toBe("one-shot-private-capability");
+    expect(authorize).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(parsedSent(socket).some((f) =>
+      f.type === "complete" && f.requestId === id)).toBe(true));
+    service.stop();
+  });
+
+  it("cancels a pending Cloud Grant fetch before any local business side effect", async () => {
+    const socket = new FakeRelaySocket();
+    const localFetch = vi.fn();
+    let release!: (value: string | null) => void;
+    const waiting = new Promise<string | null>((resolve) => { release = resolve; });
+    const source: CloudRelayTicketSource = {
+      withHostTicket: async (consume) => consume(ticket("cloud.jwt.signature")),
+      onRevoked: () => () => undefined,
+    };
+    const service = new RemoteRelayConnectorService(
+      cloudConfig, () => socket,
+      localFetch as unknown as RelayLocalFetch,
+      "http://127.0.0.1:8787", () => 0, source, () => waiting,
+    );
+    service.start();
+    await Promise.resolve();
+    socket.open();
+    socket.message({ version: 1, type: "hello_ack", role: "host",
+      relayId: cloudRoom, protocolVersion: 1 });
+    const id = "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e~pending";
+    const proof = {
+      version: 1, transport: "cloud", accountId: "account-a",
+      deviceId: "phone-a", room: cloudRoom, role: "client",
+      connectionId: "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e",
+      requestId: id,
+    };
+    socket.message({ version: 1, type: "request", requestId: id,
+      method: "GET", path: "/remote/v1/workspaces", relayProvenance: proof });
+    socket.message({ version: 1, type: "cancel", requestId: id,
+      relayProvenance: proof });
+    release("opaque-capability");
+    await vi.waitFor(() => expect(service.getSnapshot().state).toBe("connected"));
+    await Promise.resolve();
+    expect(localFetch).not.toHaveBeenCalled();
+    expect(socket.closeCalls).toEqual([]);
+    service.stop();
+  });
+
   it("refreshes the ticket for every reconnect, not when a healthy socket ticket expires", async () => {
     vi.useFakeTimers();
     try {
