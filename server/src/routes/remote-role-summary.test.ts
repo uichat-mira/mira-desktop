@@ -17,11 +17,18 @@ import remoteRoleSummaryRoute from "./remote-role-summary.js";
 
 const user = { id: 7, username: "tester", role: "user" as const };
 
-const createApp = async (paired = true) => {
+const createApp = async (paired = true, cloud = false) => {
   const app = Fastify();
   app.setErrorHandler(sendRouteError);
   app.addHook("preHandler", async (request) => {
     request.authUser = user;
+    if (cloud) {
+      request.cloudRemoteCaller = {
+        kind: "cloud", mobileDeviceId: "phone-a", accountId: "account-a",
+        hostId: "host-1", revision: 3,
+        scopes: ["threads:read"], owner: user,
+      };
+    }
     if (paired) {
       request.remoteDevice = {
         id: "device-1",
@@ -79,6 +86,14 @@ describe("remote role summary route", () => {
     assert.equal("prompt" in response.json().data[0], false);
     assert.equal("llmProfile" in response.json().data[0], false);
     assert.equal("summary" in response.json().data[0], false);
+    await app.close();
+  });
+
+  it("allows an already authenticated and scoped Cloud Mobile without QR pairing", async () => {
+    const app = await createApp(false, true);
+    const response = await app.inject({ method: "GET", url: "/remote/v1/roles" });
+    assert.equal(response.statusCode, 200, response.body);
+    expect(mocks.roles.listRoles).toHaveBeenCalledWith({ userId: user.id });
     await app.close();
   });
 
