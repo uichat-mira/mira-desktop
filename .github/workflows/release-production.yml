@@ -74,11 +74,6 @@ jobs:
           name: release-factory-electron-${{ github.sha }}
           path: release-assets/electron
 
-      - name: Download Tauri package
-        uses: actions/download-artifact@v4
-        with:
-          name: release-factory-tauri-${{ github.sha }}
-          path: release-assets/tauri
 
       - name: Flatten release assets
         shell: bash

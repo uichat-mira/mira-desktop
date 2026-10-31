@@ -155,100 +155,10 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  build-tauri:
-    name: Build Tauri (Windows)
-    if: github.event_name != 'pull_request' && contains(fromJSON('["dev","test","prod"]'), github.ref_name)
-    runs-on: windows-2022
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9.12.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: 'pnpm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust / Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: tauri
-          cache-targets: false
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Sync package versions
-        run: pnpm version:sync
-
-      - name: Install clipper extension dependencies
-        run: npm ci --prefix mira-clipper-ext --ignore-scripts
-
-      - name: Configure clipper extension signing key
-        env:
-          MIRA_CLIPPER_CRX_PROD_PEM: ${{ secrets.MIRA_CLIPPER_CRX_PROD_PEM }}
-        run: |
-          New-Item -ItemType Directory -Force mira-clipper-ext/.keys | Out-Null
-          [System.IO.File]::WriteAllText(
-            (Join-Path (Resolve-Path mira-clipper-ext/.keys) 'mira-clipper-prod.pem'),
-            $env:MIRA_CLIPPER_CRX_PROD_PEM,
-            [System.Text.UTF8Encoding]::new($false)
-          )
-
-      - name: Cache local model packs
-        uses: actions/cache@v4
-        with:
-          path: .local-models/raw
-          key: ${{ runner.os }}-local-model-packs-v1-${{ hashFiles('scripts/prepare-local-model-packs.mjs') }}
-          restore-keys: |
-            ${{ runner.os }}-local-model-packs-v1-
-
-      - name: Cache Terminal Dev Runtime
-        uses: actions/cache@v4
-        with:
-          path: .local-runtimes/terminal-dev
-          key: ${{ runner.os }}-terminal-dev-${{ hashFiles('scripts/terminal-runtime.lock.json') }}
-
-      - name: Type check
-        run: pnpm check
-
-      - name: Prepare local model packs
-        run: pnpm prepare:local-model-packs
-        env:
-          LOCAL_MODEL_RAW_ROOT: .local-models/raw
-          LOCAL_MODEL_ALLOW_NETWORK: '1'
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-
-      - name: Build Tauri (Windows)
-        run: pnpm package:tauri:win
-        env:
-          CARGO_BUILD_JOBS: 1
-          CARGO_INCREMENTAL: '0'
-          RELEASE_KEEP_COUNT: 3
-
-      - name: Upload Tauri artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: tauri-windows
-          path: |
-            release/**/tauri/msi/*.msi
-            release/**/tauri/nsis/*setup.exe
-          if-no-files-found: error
-          retention-days: 3
-
-
 
   publish-prod-r2:
     name: Publish prod package to Cloudflare R2
-    needs: [build-electron, build-tauri]
+    needs: [build-electron]
     if: github.ref == 'refs/heads/prod'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -259,11 +169,6 @@ jobs:
           name: electron-win
           path: release-assets/electron
 
-      - name: Download Tauri package
-        uses: actions/download-artifact@v4
-        with:
-          name: tauri-windows
-          path: release-assets/tauri
 
       - name: Flatten release assets
         shell: bash
