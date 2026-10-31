@@ -545,11 +545,13 @@ app.whenReady().then(async () => {
     },
   });
   // Failure to register Cloud OAuth must never prevent local Mira startup.
-  // Dev-mode macOS cannot register a protocol without a packaged .app bundle.
+  // macOS dev is prepared before launch with a Mira-specific bundle id,
+  // CFBundleURLTypes and LaunchServices registration; unprepared direct
+  // launches fail closed because setAsDefaultProtocolClient returns false.
   try {
-    if (app.isPackaged) {
+    if (app.isPackaged || process.platform === "darwin") {
       cloudCallbackRegistered = app.setAsDefaultProtocolClient("mira-desktop");
-    } else if (process.platform !== "darwin" && process.argv[1]) {
+    } else if (process.argv[1]) {
       cloudCallbackRegistered = app.setAsDefaultProtocolClient("mira-desktop", process.execPath, [path.resolve(process.argv[1])]);
     }
   } catch {
