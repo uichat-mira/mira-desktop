@@ -91,7 +91,7 @@ mira/latest/                 # Windows Electron
 mira/macos-intel/latest/     # Intel macOS Electron DMG
 ```
 
-普通 `prod` 分支推送只构建和保存短期 artifact，不能写公共 R2。所有 Tag Release 工作流共享串行发布组，避免不同标签同时覆盖镜像；旧 Tag 重跑如不再是 GitHub 最新正式 Release，必须拒绝更新 R2。
+普通 `prod` 分支推送只构建和保存短期 artifact，不能写公共 R2。只有稳定的 `vX.Y.Z` Tag 能进入正式发布；不同新版本发布共享串行组，防止相互覆盖。Windows 发布必须等待 Windows Release Factory 与 Intel macOS 构建都成功，且在更新 GitHub Release 前检查 R2 凭据。新的发布工作流拒绝非最新 Tag 覆盖公共 R2；**历史 Tag 自带的旧工作流不会被追溯修改，禁止重跑旧 Tag 发布工作流**。
 
 Tag 发布先验证 Windows Setup / macOS Intel DMG 和对应 blockmap 的文件名、版本及非零大小，再验证 GitHub Release 的对应文件和字节大小；R2 同步后还要检查该平台 latest 目录仅包含预期两个对象且大小匹配。Tauri 资产混入、文件缺失、尺寸不匹配或目录残留均阻断发布。Windows 与 macOS 两条发布链都通过后，整体发布状态才成功。
 
