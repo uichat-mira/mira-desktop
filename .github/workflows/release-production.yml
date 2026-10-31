@@ -6,7 +6,8 @@ on:
       - 'v*'
 
 concurrency:
-  group: release-production-${{ github.ref }}
+  group: release-production-publication
+  # Different tags must not race to overwrite the same public R2 latest prefixes.
   cancel-in-progress: false
 
 permissions:
@@ -89,6 +90,9 @@ jobs:
           test -n "$(find dist -maxdepth 1 -type f -print -quit)"
           ls -lah dist/
 
+      - name: Verify Windows installer and blockmap
+        run: node scripts/release/verify-release-mirror.mjs win "${GITHUB_REF_NAME}" dist
+
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -96,6 +100,19 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
+      - name: Verify GitHub Release is complete and is still latest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" > github-release.json
+          node scripts/release/verify-release-mirror.mjs win "${GITHUB_REF_NAME}" dist github-release.json
+          latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)"
+          if [ "$latest_tag" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Stale release $GITHUB_REF_NAME cannot overwrite R2 latest (current=$latest_tag)"
+            exit 1
+          fi
       - name: Validate R2 secrets
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -127,13 +144,6 @@ jobs:
         run: |
           endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           latest_prefix="mira/latest"
-          legacy_previous_prefix="mira/previous"
-
-          aws s3 rm "s3://${R2_BUCKET}/${legacy_previous_prefix}/" \
-            --recursive \
-            --endpoint-url "$endpoint" \
-            --only-show-errors || true
-
           for attempt in 1 2 3; do
             if aws s3 sync dist/ "s3://${R2_BUCKET}/${latest_prefix}/" \
               --delete \
@@ -150,42 +160,16 @@ jobs:
             sleep $((attempt * 10))
           done
 
+          aws s3api list-objects-v2 --bucket "$R2_BUCKET" \
+            --prefix "${latest_prefix}/" --endpoint-url "$endpoint" > r2-objects.json
+          node scripts/release/verify-release-mirror.mjs win "${GITHUB_REF_NAME}" dist github-release.json r2-objects.json
+
           public_base="${R2_PUBLIC_BASE_URL%/}"
           {
             echo '### Cloudflare R2'
             echo "Uploaded current release assets to: ${public_base}/${latest_prefix}/"
             echo 'Retention: latest release only'
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Publish successful release status
-        if: success()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state: 'success',
-              context: process.env.RELEASE_PUBLISH_CONTEXT,
-              description: 'GitHub Release and Cloudflare R2 published',
-              target_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
-            });
-
-      - name: Publish failed release status
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state: 'failure',
-              context: process.env.RELEASE_PUBLISH_CONTEXT,
-              description: 'GitHub Release or Cloudflare R2 publishing failed',
-              target_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
-            });
 
   publish-macos-intel:
     name: Attach macOS Intel DMG to GitHub Release
