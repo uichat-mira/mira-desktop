@@ -1,4 +1,4 @@
-name: DSK-011 One-Time pnpm Lock Regeneration
+name: DSK-011 One-Time Generated Documentation Sync
 
 # Temporary branch-scoped recovery tool. Remove after the generated lockfile
 # has been committed. It never builds installers, releases or touches prod.
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  regenerate:
+  generate-doc-index:
     if: github.repository == 'uichat-mira/mira-desktop'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -22,26 +22,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Generate lockfile using the repository package manager
+      - name: Generate docs index from repository sources
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/feat/dsk-011-tauri-retirement-recovery"
           corepack enable
-          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
-          pnpm install --lockfile-only --ignore-scripts --frozen-lockfile
+          pnpm install --frozen-lockfile --ignore-scripts
+          node packages/docs-site/scripts/build-docs-index.mjs
           ! grep -qi '@tauri-apps/cli' pnpm-lock.yaml
           git diff --check
-      - name: Commit only the pnpm-generated lockfile
+      - name: Commit generated documentation index
         shell: bash
         run: |
           set -euo pipefail
-          git add -- pnpm-lock.yaml
+          git add -- packages/docs-site/src/generated/docs-index.json
           if git diff --cached --quiet; then
-            echo 'Lockfile already synchronized'
+            echo 'Docs index already synchronized'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'chore(dsk-011): regenerate lockfile with pnpm'
+          git commit -m 'docs(dsk-011): regenerate docs index from current sources'
           git push origin "HEAD:refs/heads/feat/dsk-011-tauri-retirement-recovery"

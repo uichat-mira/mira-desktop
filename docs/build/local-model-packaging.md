@@ -436,19 +436,6 @@ pnpm package:electron:win
 - 本地 embedding 可输出 384 维向量
 - reranker 未安装时标准检索不报错
 
-Tauri release 验证：
-
-```bash
-pnpm package:tauri:win
-```
-
-需要额外检查：
-
-- `tauri/resources/model-packs`
-- `tauri/resources/model-runtime`
-- sidecar backend 能解析 resource dir
-- 生产态不访问 Hugging Face
-
 ## 后续改进
 
 - [ ] UI 增加模型资源状态：可用、缺失、解压中、校验失败。

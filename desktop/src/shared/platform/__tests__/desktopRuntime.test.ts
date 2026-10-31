@@ -49,6 +49,21 @@ describe("desktopRuntime", () => {
     });
   });
 
+  it("已退役的 Tauri runtime 注入被拒绝，不会伪装成桌面环境", () => {
+    setWindow({
+      ...window,
+      desktopRuntime: {
+        hostKind: "tauri",
+        platform: "win32",
+        isPackaged: true,
+        backendUrl: "http://localhost:3000",
+      },
+    } as unknown as typeof globalThis.window);
+
+    expect(getDesktopRuntime().hostKind).toBe("browser");
+    expect(getApiBaseUrl()).toBe("/api");
+  });
+
   it("window.desktopRuntime 注入时优先使用", () => {
     const injected: DesktopRuntimeInfo = {
       hostKind: "electron",
@@ -218,6 +233,22 @@ describe("desktopRuntime", () => {
       "desktop:open-external",
       "https://example.com",
     );
+  });
+
+  it("Electron 桌面环境缺少 IPC 时不静默退回浏览器打开链接", async () => {
+    setWindow({
+      ...window,
+      desktopRuntime: {
+        hostKind: "electron",
+        platform: "win32",
+        isPackaged: true,
+        backendUrl: "http://localhost:3000",
+      },
+      open: vi.fn(),
+    } as unknown as typeof globalThis.window);
+
+    await expect(openExternalUrl("https://example.com")).rejects.toThrow("Electron IPC 不可用");
+    expect(window.open).not.toHaveBeenCalled();
   });
 
   it("getNativeMessagingHostStatus electron 环境使用原生状态查询", async () => {

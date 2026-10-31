@@ -152,7 +152,7 @@ pnpm prepare:piper-runtime
 - 先复用 `.local-runtimes/` 持久缓存
 - 再复制到 `.artifacts/micro-apps/tts/piper/`
 - `prepare-desktop-artifacts` 会自动执行这一步
-- Electron resources 和 Tauri resources 都会带上 `micro-apps/tts/piper/` 目录
+- Electron resources 会带上 `micro-apps/tts/piper/` 目录
 
 服务端运行时解析顺序：
 
