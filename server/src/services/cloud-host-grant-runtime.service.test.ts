@@ -49,6 +49,7 @@ describe("DSK-007 native-bound Cloud Host authority lifecycle (T1/T2)", () => {
       "/remote/v1/workspaces", NOW)).toMatchObject({
         accountId: "account-a", hostId: "host-1",
         mobileDeviceId: "phone-a", revision: 3, owner: { id: 7 },
+        scopes: ["threads:read"],
       });
     expect(await f.runtime.authorize({ ...identity, accountId: "foreign" },
       "GET", "/remote/v1/workspaces", NOW)).toBeNull();

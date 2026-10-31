@@ -26,6 +26,7 @@ export type CloudGrantAdmission = Readonly<{
   hostId: string;
   mobileDeviceId: string;
   revision: number;
+  scopes: readonly string[];
 }>;
 
 const REFRESH_INTERVAL_MS = 30_000;
@@ -145,6 +146,7 @@ export class CloudHostGrantRuntime {
       hostId: this.binding.hostId,
       mobileDeviceId: identity.deviceId,
       revision,
+      scopes: this.cache.getEffectiveScopes(identity.deviceId, owner.id, nowMs),
     };
   }
 
