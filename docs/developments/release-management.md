@@ -116,6 +116,12 @@ pnpm package:electron:win
 4. 按需运行目标桌面打包命令；不要为了普通代码变更重复完整打包
 5. `prod` 分支构建只生成、验证并保存短期 Electron 安装包，不写入 R2 的公共 `latest`；唯一公共镜像写入者为正式 `v*` Tag 的 `.github/workflows/release-production.yml`。该工作流对 Windows Setup / macOS Intel DMG、blockmap、GitHub Release 与 R2 对象进行版本与文件大小一致性核对，且仅允许当前最新正式版本更新两个 latest 前缀。完整发布状态要求 Windows 与 macOS 均成功，任何一端失败都应显式阻断。
 
+## 稳定 Tag 来源保护
+
+正式的 `vX.Y.Z` Tag 必须指向已进入 `prod` Git 历史的提交，且 Tag、事件 SHA、检出的 HEAD、根 `package.json` 版本必须一致。发布工作流先检出完整历史、显式获取 `origin/prod`，通过 `scripts/release/verify-prod-tag.mjs` 后，才启动 Release Factory 和 macOS Intel 构建。验证失败时不调用发布任务，不触及 GitHub Release 或 R2。
+
+在 PR 上可使用 `node --test scripts/release/verify-prod-tag.test.mjs` 验证正反例。该工作流门禁不替代 GitHub Tag ruleset：Tag 所含的工作流本身也来自被标记的提交，仓库管理员仍应保护 `v*` Tag 的创建、改写及删除权限；历史 Tag 不应因本次门禁变更而重跑。未通过真实打包运行验收前不要打正式 Tag。
+
 ## 说明
 
 当前提供了可用的辅助脚本：
