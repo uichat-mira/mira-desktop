@@ -182,7 +182,9 @@ const readySnapshot = {
   },
 };
 
-const createApp = async (options: { authenticated?: boolean; device?: unknown } = {}) => {
+const createApp = async (options: {
+  authenticated?: boolean; device?: unknown; cloud?: boolean;
+} = {}) => {
   const app = Fastify();
   app.setErrorHandler(sendRouteError);
   await app.register(fastifyWebsocket);
@@ -192,6 +194,15 @@ const createApp = async (options: { authenticated?: boolean; device?: unknown } 
     }
     if (options.device) {
       request.remoteDevice = options.device as never;
+    }
+    if (options.cloud) {
+      request.authUser = user;
+      request.cloudRemoteCaller = {
+        kind: "cloud", accountId: "account-a", hostId: "host-a",
+        mobileDeviceId: "phone-a", revision: 3,
+        scopes: ["threads:read", "tools:read", "tools:invoke"],
+        owner: user,
+      };
     }
   });
   await app.register(remoteAccessRoute);
@@ -671,6 +682,34 @@ describe("remote access routes", () => {
     });
 
     assert.equal(response.statusCode, 403, response.body);
+    expect(mocks.push.createBindingDescriptor).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("supports native-authorized Cloud Mobile through canonical tools and Harness, without pairing", async () => {
+    const app = await createApp({ cloud: true });
+    const tools = await app.inject({ method: "GET", url: "/remote/v1/tools" });
+    assert.equal(tools.statusCode, 200, tools.body);
+    const manifest = await app.inject({ method: "GET", url: "/remote/v1/manifest" });
+    assert.equal(manifest.statusCode, 200, manifest.body);
+    expect(manifest.json().data.device).toMatchObject({
+      id: "phone-a", platform: "cloud",
+      scopes: ["threads:read", "tools:read", "tools:invoke"],
+    });
+    const stream = await app.inject({
+      method: "POST", url: "/remote/v1/tool-invocations/stream",
+      payload: { toolId: "web_search", args: { queries: ["cloud"] } },
+    });
+    assert.equal(stream.statusCode, 200, stream.body);
+    expect(stream.body).toContain('"type":"tool:complete"');
+    expect(mocks.toolGateway.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: user.id, toolId: "web_search" }),
+    );
+    const push = await app.inject({
+      method: "POST", url: "/remote/v1/push/binding-descriptor",
+      payload: { installationId: "phone-a", sourceScope: ["thread-1"] },
+    });
+    assert.equal(push.statusCode, 403, push.body);
     expect(mocks.push.createBindingDescriptor).not.toHaveBeenCalled();
     await app.close();
   });
