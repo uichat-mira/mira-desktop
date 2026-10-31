@@ -1,0 +1,47 @@
+name: DSK-011 One-Time pnpm Lock Regeneration
+
+# Temporary branch-scoped recovery tool. Remove after the generated lockfile
+# has been committed. It never builds installers, releases or touches prod.
+on:
+  push:
+    branches:
+      - feat/dsk-011-tauri-retirement-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    if: github.repository == 'uichat-mira/mira-desktop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Generate lockfile using the repository package manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/feat/dsk-011-tauri-retirement-recovery"
+          corepack enable
+          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          pnpm install --lockfile-only --ignore-scripts --frozen-lockfile
+          ! grep -qi '@tauri-apps/cli' pnpm-lock.yaml
+          git diff --check
+      - name: Commit only the pnpm-generated lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo 'Lockfile already synchronized'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore(dsk-011): regenerate lockfile with pnpm'
+          git push origin "HEAD:refs/heads/feat/dsk-011-tauri-retirement-recovery"
