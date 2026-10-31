@@ -120,7 +120,8 @@ describe("DSK-007 Cloud Host grant verification (T1; not Relay ingress)", () => 
       policyConfigured: false, policyScopes: [], grants: [],
     }), NOW);
     expect(cache.allows("phone-1", 7, "GET", "/remote/v1/workspaces", NOW)).toBe(false);
-    cache.replaceFromTrustedNative(valid(), NOW);
+    // Cloud Auth increments the revision whenever the Host policy changes.
+    cache.replaceFromTrustedNative(valid({ revision: 3 }), NOW);
     cache.clear();
     expect(cache.getRevision(NOW)).toBeNull();
   });
