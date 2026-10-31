@@ -40,7 +40,7 @@ This directory contains the Vanilla JS browser collector for the Evolving Knowle
 
 ## 快速开始
 
-从项目根目录启动 Electron 或 Tauri 开发环境时，根启动脚本会先准备 Native Host，再生成开发版扩展包。单独运行扩展目录的开发命令也会准备 Native Host：
+从项目根目录启动 Electron 开发环境时，根启动脚本会先准备 Native Host，再生成开发版扩展包。单独运行扩展目录的开发命令也会准备 Native Host：
 
 ```bash
 pnpm --dir mira-clipper-ext dev
