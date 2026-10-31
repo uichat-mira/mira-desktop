@@ -5,6 +5,70 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const vm = require("node:vm");
+
+test("secondary Electron instance cannot initialize Cloud OAuth, Backend or a window", async () => {
+  const mainSource = fs.readFileSync(path.join(__dirname, "main.cjs"), "utf8");
+  let quits = 0;
+  let controllerStarts = 0;
+  let backendStarts = 0;
+  let windowStarts = 0;
+  const app = {
+    isPackaged: true,
+    requestSingleInstanceLock: () => false,
+    quit: () => { quits += 1; },
+    on: () => {},
+    whenReady: () => Promise.resolve(),
+  };
+  const electron = {
+    app,
+    BrowserWindow: class { constructor() { windowStarts += 1; } },
+    dialog: { showErrorBox: () => {} },
+    ipcMain: { handle: () => {} },
+    net: { fetch: () => {} },
+    safeStorage: {},
+    shell: {},
+  };
+  const mockedRequire = (name) => {
+    if (name === "electron") return electron;
+    if (name === "path") return path;
+    if (name === "fs") return { existsSync: () => true };
+    if (name === "child_process") return {
+      execFileSync: () => {},
+      spawn: () => { backendStarts += 1; },
+    };
+    if (name === "./cloud-account.cjs") return {
+      createCloudAccountController: () => {
+        controllerStarts += 1;
+        return { initialize: () => {} };
+      },
+    };
+    if (name === "./cloud-relay-ticket-ipc.cjs") return {
+      attachCloudRelayTicketIpc: () => {},
+      attachCloudHostGrantIpc: () => {},
+    };
+    if (name.endsWith("runtime.config.cjs")) return {
+      backend: { host: "127.0.0.1", port: 6000 },
+    };
+    throw new Error("Unexpected require in secondary-instance fixture: " + name);
+  };
+  vm.runInNewContext(mainSource, {
+    require: mockedRequire,
+    __dirname: path.join(__dirname, "__single_instance_fixture__"),
+    process: { argv: ["electron", "main.cjs", "--no-backend"], platform: "win32", pid: 123, execPath: "electron" },
+    console: { log: () => {}, error: () => {} },
+    setTimeout,
+    clearTimeout,
+    Buffer,
+  }, { filename: "electron/main.cjs", timeout: 1000 });
+  // The mock whenReady resolves even after quit, reproducing the startup race.
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(quits, 1, "a secondary instance requests termination");
+  assert.equal(controllerStarts, 0, "secondary must not own Cloud OAuth");
+  assert.equal(backendStarts, 0, "secondary must not start the Backend");
+  assert.equal(windowStarts, 0, "secondary must not open a competing window");
+});
+
 const { createCloudAccountController, parseCallback, validateScopes,
   RELAY_TICKET_ERROR_CODES } = require("./cloud-account.cjs");
 
