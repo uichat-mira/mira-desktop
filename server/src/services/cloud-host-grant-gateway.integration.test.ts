@@ -74,6 +74,9 @@ class FakeCloudSocket {
   on(type: string, handler: () => void) {
     this.addEventListener(type, handler);
   }
+  hasHandler(type: string) {
+    return (this.handlers.get(type)?.length ?? 0) > 0;
+  }
   private emit(type: string, event?: unknown) {
     for (const handler of this.handlers.get(type) || []) handler(event);
   }
@@ -140,8 +143,7 @@ describe("DSK-007 Cloud Host Gateway real Fastify+HTTP runtime (T3)", () => {
     );
     try {
       connector.start();
-      await vi.waitFor(() => expect(socket.sent.some((x) =>
-        x.type === "hello")).toBe(false)); // Hello only after WebSocket open.
+      await vi.waitFor(() => expect(socket.hasHandler("open")).toBe(true));
       socket.open();
       expect(socket.sent[0]).toMatchObject({ type: "hello", role: "host" });
       socket.message({ version: 1, type: "hello_ack", role: "host",
