@@ -469,12 +469,19 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
       enabled: true, state: "connected", relayId: null, lastError: null,
     });
     socket.message({
-      version: 1, type: "request", requestId: "untrusted-client",
+      version: 1, type: "request",
+      requestId: "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e~untrusted-client",
       method: "POST", path: "/remote/v1/tool/invoke",
       headers: { authorization: "Bearer mira_device_legacy" },
+      relayProvenance: {
+        version: 1, transport: "cloud", accountId: "account-a",
+        deviceId: "mobile-a", room: cloudRoom, role: "client",
+        connectionId: "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e",
+        requestId: "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e~untrusted-client",
+      },
     });
     expect(parsedSent(socket).at(-1)).toMatchObject({
-      type: "error", requestId: "untrusted-client", code: "CLOUD_GRANT_REQUIRED",
+      type: "error", requestId: "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e~untrusted-client", code: "CLOUD_GRANT_REQUIRED",
       retryable: false,
     });
     expect(localFetch).not.toHaveBeenCalled();
