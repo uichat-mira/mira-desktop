@@ -1,5 +1,5 @@
 ---
-status: current
+status: historical
 priority: P1
 owner: docs
 last_verified: 2026-07-06
@@ -7,7 +7,7 @@ layer: project-control
 module: MicroAPP
 feature: ComputerUse
 doc_type: task-card
-canonical: true
+canonical: false
 related:
   - docs/project-control/project-control-ledger.md
   - docs/microapp/README.md
@@ -18,6 +18,8 @@ task_state: READY_FOR_REVIEW
 ---
 
 # microapp_T002 Computer Use POC Docs Foundation
+
+> 历史任务合同（2026-07-06），保留原验收文字作为施工证据。文中的 Electron/Tauri 双壳及 `tauri/**` 限制仅反映当时的代码边界；2026-10-31 DSK-011 已退役 Tauri。后续开发应遵守当前 Electron-only runtime 与 `AGENTS.md`，不要据此重引入 Tauri。
 
 ## Target
 

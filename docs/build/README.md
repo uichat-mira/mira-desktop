@@ -490,6 +490,8 @@ server/test-report/
 
 这两个目录是开发页和 release 包共同复用的稳定报告源。
 
+> **报告时间性：** 这些 JSON 是最后一次完整生成留下的测试快照，不是当前 commit 的实时测试结论。源码变更后若完整 Vitest/coverage 生成失败，应保留原快照并在 PR 中披露失败用例，不能手工改动测试结果或把旧用例名当成当前支持能力的证据。尤其是 DSK-011 退役后的旧 Tauri 用例名，需要待完整测试恢复后由 `scripts/generate-test-report.js` 正式刷新；验证旧 Tauri runtime 注入被拒绝的负例仍应保留。
+
 ### `test-report.json`
 
 用于承载测试结果本体，至少包含：
