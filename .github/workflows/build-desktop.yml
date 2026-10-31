@@ -46,8 +46,8 @@ jobs:
       - name: Run DSK-005 Cloud Account UI and navigation regressions
         run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/CloudAccount/__tests__/index.test.tsx src/app/routes/settingsRoutes.test.tsx src/app/Layouts/AppNavigationRail.test.tsx src/app/ChatApplicationStateBoundary.test.tsx
 
-      - name: Verify release mirror contract
-        run: node --test scripts/release/verify-release-mirror.test.mjs
+      - name: Verify release mirror and prod tag provenance contracts
+        run: node --test scripts/release/verify-release-mirror.test.mjs scripts/release/verify-prod-tag.test.mjs
 
       - name: Run Terminal Capability Lab regressions
         run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/Extensions/Capabilities/cases.test.ts src/features/Extensions/Capabilities/hooks/useCapabilities.test.tsx src/features/Extensions/Capabilities/index.test.tsx src/features/Settings/pages/Tools/__tests__/useToolsWorkbench.test.tsx src/features/Settings/pages/Tools/components/ToolsPackagePanel.test.tsx src/features/Settings/pages/Tools/utils.test.ts
