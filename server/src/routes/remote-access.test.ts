@@ -696,6 +696,7 @@ describe("remote access routes", () => {
       id: "phone-a", platform: "cloud",
       scopes: ["threads:read", "tools:read", "tools:invoke"],
     });
+    expect(manifest.json().data.routes.push).toEqual([]);
     const stream = await app.inject({
       method: "POST", url: "/remote/v1/tool-invocations/stream",
       payload: { toolId: "web_search", args: { queries: ["cloud"] } },

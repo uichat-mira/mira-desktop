@@ -61,6 +61,7 @@ export class CloudHostGrantRuntime {
   constructor(
     private readonly native: NativeGrantSource,
     private readonly resolveOwner: ResolveOwner,
+    private readonly clock: () => number = Date.now,
   ) {
     this.unsubscribe = native.onInvalidated((_reason: CloudGrantInvalidation) => {
       // A late IPC reply must never revive revoked owner/grant authority.
@@ -128,7 +129,11 @@ export class CloudHostGrantRuntime {
       });
     }
     await this.inFlight;
-    if (this.disposed || this.blocked || !this.cache || !this.binding ||
+    // Use the clock AFTER the asynchronous native refresh: a snapshot that
+    // was valid when the request started may have expired while IPC waited.
+    const verifyAtMs = Math.max(nowMs, this.clock());
+    if (!Number.isFinite(verifyAtMs) ||
+        this.disposed || this.blocked || !this.cache || !this.binding ||
         identity.accountId !== this.binding.accountId) return null;
     const owner = this.resolveOwner(this.binding.localOwnerUserId);
     if (!owner || !owner.isActive ||
@@ -136,9 +141,9 @@ export class CloudHostGrantRuntime {
       this.blocked = true;
       return null;
     }
-    if (!this.cache.allows(identity.deviceId, owner.id, method, path, nowMs))
+    if (!this.cache.allows(identity.deviceId, owner.id, method, path, verifyAtMs))
       return null;
-    const revision = this.cache.getRevision(nowMs);
+    const revision = this.cache.getRevision(verifyAtMs);
     if (revision === null) return null;
     return {
       owner: { id: owner.id, username: owner.username, role: owner.role },
@@ -146,7 +151,7 @@ export class CloudHostGrantRuntime {
       hostId: this.binding.hostId,
       mobileDeviceId: identity.deviceId,
       revision,
-      scopes: this.cache.getEffectiveScopes(identity.deviceId, owner.id, nowMs),
+      scopes: this.cache.getEffectiveScopes(identity.deviceId, owner.id, verifyAtMs),
     };
   }
 

@@ -34,7 +34,7 @@ const setup = () => {
     },
   };
   const runtime = new CloudHostGrantRuntime(native, (id) =>
-    id === owner.id ? owner : null);
+    id === owner.id ? owner : null, () => NOW);
   return {
     runtime, owner, requestSnapshot,
     set: (next: unknown) => { raw = next; },
@@ -114,12 +114,47 @@ describe("DSK-007 native-bound Cloud Host authority lifecycle (T1/T2)", () => {
     const runtime = new CloudHostGrantRuntime({
       requestSnapshot: () => pending,
       onInvalidated: (fn) => { listener = fn; return () => {}; },
-    }, () => ({ id: 7, username: "local", role: "user", isActive: true }));
+    }, () => ({ id: 7, username: "local", role: "user", isActive: true }),
+    () => NOW);
     const attempt = runtime.authorize(identity, "GET",
       "/remote/v1/workspaces", NOW);
     listener?.();
     release({ localOwnerUserId: 7, snapshot: grant() });
     expect(await attempt).toBeNull();
+    runtime.dispose();
+  });
+
+  it("rejects an old grant that expires while a native refresh is pending", async () => {
+    let activeNow = NOW;
+    let rejectRefresh!: (reason: unknown) => void;
+    let reads = 0;
+    const native = {
+      requestSnapshot: () => {
+        reads++;
+        if (reads === 1) return Promise.resolve({
+          snapshot: grant(), localOwnerUserId: 7,
+        });
+        return new Promise<unknown>((_resolve, reject) => {
+          rejectRefresh = reject;
+        });
+      },
+      onInvalidated: () => () => {},
+    };
+    const runtime = new CloudHostGrantRuntime(native, () => ({
+      id: 7, username: "local", role: "user", isActive: true,
+    }), () => activeNow);
+    expect(await runtime.authorize(identity, "GET",
+      "/remote/v1/workspaces", NOW)).not.toBeNull();
+    // The old proof expires at NOW+240s. The request enters just before it,
+    // but a failed native IPC refresh settles after expiration.
+    activeNow = NOW + 239_990;
+    const pending = runtime.authorize(identity, "GET",
+      "/remote/v1/workspaces", activeNow);
+    activeNow = NOW + 241_000;
+    rejectRefresh(Object.assign(new Error("offline"), {
+      code: "cloud_grant_unavailable",
+    }));
+    expect(await pending).toBeNull();
     runtime.dispose();
   });
 

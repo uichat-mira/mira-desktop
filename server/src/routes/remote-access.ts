@@ -1085,10 +1085,12 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
             "POST /remote/v1/tool-invocations/:invocationId/cancel",
           ],
           artifacts: ["GET /threads/:id/media/:mediaId/content"],
-          push: [
+          // Push binding still requires a locally paired Remote Device.
+          // Cloud Mobile must not discover unsupported bootstrap routes.
+          push: paired ? [
             "POST /remote/v1/push/binding-descriptor",
             "POST /remote/v1/push/bindings/accept",
-          ],
+          ] : [],
         },
         reconnect: {
           mode: "canonical-state-replay",
