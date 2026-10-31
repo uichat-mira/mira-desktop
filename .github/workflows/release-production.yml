@@ -99,6 +99,8 @@ jobs:
 
       - name: Validate R2 secrets
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -114,6 +116,9 @@ jobs:
             fi
           done
           [ "$missing" -eq 0 ]
+          # Read-only credential probe before any public GitHub Release asset is changed.
+          aws s3api list-objects-v2 --bucket "$R2_BUCKET" --max-items 1 \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" > /dev/null
 
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
@@ -226,6 +231,8 @@ jobs:
 
       - name: Validate R2 secrets
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -241,6 +248,9 @@ jobs:
             fi
           done
           [ "$missing" -eq 0 ]
+          # Read-only credential probe before any public GitHub Release asset is changed.
+          aws s3api list-objects-v2 --bucket "$R2_BUCKET" --max-items 1 \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" > /dev/null
 
       - name: Attach Intel macOS assets to GitHub Release
         uses: softprops/action-gh-release@v2
