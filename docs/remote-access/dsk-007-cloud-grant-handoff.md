@@ -84,9 +84,18 @@ legacy Cloud sessions without a local owner fail closed and require explicit
 Cloud sign-out/sign-in to bind. Tailscale pairing and the current Gateway
 denial remain unchanged. A local JWT is not a Host Grant.
 
-This stage does **not** authorize live Remote V1/Gateway traffic. The next
-slice must enforce the owner and grant at execution time; tests and CI for
-this slice are necessary but cannot demonstrate T4.
+This stage does **not** authorize live Remote V1/Gateway traffic. A dedicated Backend `CloudHostGrantRuntime` now composes the private native
+owner/snapshot envelope with the existing OPS-020 revision/TTL cache. Each
+authorization checks the current local user's active state and Relay account,
+device and canonical Remote V1 scope. It refreshes on a bounded 30-second
+attempt interval, retains an *already trusted* unexpired proof only on
+transient Cloud Auth outages, and drops authority on native
+signout/reauth/disconnect. Revocation wins against late IPC results; a
+different owner/Host/account cannot silently reuse a previous cache.
+
+The next slice must connect this Backend authority to the actual Remote
+Gateway/Harness execution path. Tests and CI for this slice are necessary
+but cannot demonstrate T4.
 
 ## Required second-slice trusted producer and consumer (same DSK-007 card)
 
