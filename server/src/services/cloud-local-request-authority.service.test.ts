@@ -62,6 +62,20 @@ describe("DSK-007 in-process Cloud one-shot Remote V1 authority", () => {
     expect(service.consume(again, "GET", "/remote/v1/workspaces")).toBeNull();
   });
 
+  it("reaps abandoned expired proofs so they cannot starve future requests", () => {
+    const service = new CloudLocalRequestAuthority();
+    for (let i = 0; i < 128; i++) {
+      expect(service.issue(authority, "GET", "/remote/v1/workspaces", 1000))
+        .toBeTruthy();
+    }
+    expect(service.issue(authority, "GET", "/remote/v1/workspaces", 1001))
+      .toBeNull();
+    const fresh = service.issue(authority, "GET", "/remote/v1/workspaces", 11_000);
+    expect(fresh).toBeTruthy();
+    expect(service.consume(fresh, "GET", "/remote/v1/workspaces", 11_000))
+      .toMatchObject({ owner: { id: 7 }, mobileDeviceId: "phone-a" });
+  });
+
   it("authenticates a real Fastify request using only Backend-issued one-shot proof", async () => {
     const app = Fastify();
     app.addHook("preHandler", async (req, reply) => {

@@ -179,6 +179,9 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
   });
   const unsubscribeCloudRevoked = cloudGrantIpc.onInvalidated(() => {
     cloudLocalRequestAuthority.clear();
+    // A revoked native owner invalidates in-flight requests as well as the
+    // next admission. Never allow long-running Tool SSE to outlive sign-out.
+    cloudRelayConnectorService.restart();
   });
   const cloudRelayConnectorService = new RemoteRelayConnectorService(
     resolveCloudRelayConnectorConfig,

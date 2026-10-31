@@ -42,6 +42,11 @@ export class CloudLocalRequestAuthority {
 
   issue(admission: CloudGrantAdmission, method: string, path: string,
     now = Date.now()): string | null {
+    // Expired capabilities can remain unconsumed if the local fetch aborts
+    // before reaching Fastify. Reap them to prevent permanent saturation.
+    for (const [token, entry] of this.pending) {
+      if (entry.expiresAt <= now) this.pending.delete(token);
+    }
     if (!Number.isFinite(now) || this.pending.size >= MAX_PENDING ||
         !getRequiredRemoteScope(method, path)) return null;
     const ticket = randomBytes(32).toString("base64url");
