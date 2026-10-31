@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const { createCloudAccountController, parseCallback, validateScopes,
   RELAY_TICKET_ERROR_CODES } = require("./cloud-account.cjs");
 
@@ -24,15 +25,18 @@ test("Electron main wires native Cloud Auth to Chromium net.fetch", () => {
 });
 
 test("macOS dev bundle declares the OAuth scheme before native registration", () => {
-  const prepare = fs.readFileSync(
-    path.join(__dirname, "..", "scripts", "prepare-electron-macos-dev.mjs"),
-    "utf8",
+  const preparePath = path.join(
+    __dirname, "..", "scripts", "prepare-electron-macos-dev.mjs",
   );
+  execFileSync(process.execPath, ["--check", preparePath], { stdio: "pipe" });
+  const prepare = fs.readFileSync(preparePath, "utf8");
   const main = fs.readFileSync(path.join(__dirname, "main.cjs"), "utf8");
 
   assert.match(prepare, /CFBundleURLTypes/);
   assert.match(prepare, /mira-desktop/);
   assert.match(prepare, /com\.tomz\.uichat\.dev/);
+  assert.match(prepare, /CFBundleTypeRole/);
+  assert.match(prepare, /lsregister/);
   assert.match(
     main,
     /process\.platform\s*===\s*["']darwin["'][\s\S]{0,600}setAsDefaultProtocolClient\(["']mira-desktop["']\)/,
