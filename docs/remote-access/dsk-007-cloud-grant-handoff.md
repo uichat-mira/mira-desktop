@@ -40,11 +40,28 @@ returns `CLOUD_GRANT_REQUIRED` until this is solved.
   fast test gate. **No active Gateway or Harness request is enabled by this PR.**
 
 Remaining: the Backend must bind the native snapshot to the authenticated
-active local Host owner, implement bounded sync/invalidations, and receive
-**Relay-service-attested per-request Mobile identity** before canonical route
-and exact-call Harness enforcement may be used. The latest Relay `dev`
-still discards the verified Client identity during its forwarding path; this
-is owned by REL-001, not a reason to invent Client headers in DSK-007.
+active local Host owner, implement bounded sync/invalidations, and enforce
+the current Relay-service-attested per-request Mobile identity at canonical
+routes and exact-call Harness. Cloud Relay's `dev` now stamps
+`relayProvenance` after REL-001 PR #21. DSK-007 must never replace that
+attestation with Client-controlled HTTP headers.
+
+## 2026-10-31 official Relay provenance consumption (Desktop PR #446)
+
+REL-001 [PR #21](https://github.com/uichat-mira/uichat-mira-relay/pull/21)
+merged to Relay `dev` as `f33129b81583e566f873bae457ba0de5cf2fcd03`. Cloud-only
+WebSocket admission persists the verified Client account/device/room binding and
+authoritatively overwrites the Client's top-level `relayProvenance` in Host
+`request` and `cancel` frames. Desktop now has a strict, room- and
+connection-scoped parser for these fields. Invalid/missing proof fails closed;
+Legacy transport does not acquire Cloud caller identity. This verifies the
+**ingress protocol shape**, not a business permission or local owner binding.
+
+**Cloud business requests still return `CLOUD_GRANT_REQUIRED`.** The
+`CloudHostGrantIpcClient` is not yet bound to an authenticated local Desktop
+user or the Remote V1/Harness route execution context. Do not infer a local
+owner from a Cloud account or a request header. Grant freshness, per-route
+scope and exact-call Harness checks must be proved before enabling execution.
 
 ## Required second-slice trusted producer and consumer (same DSK-007 card)
 
@@ -70,7 +87,7 @@ is owned by REL-001, not a reason to invent Client headers in DSK-007.
    then real Cloud/Relay/Mobile T4 under OPS-005. Unit tests alone are not
    integration acceptance.
 
-## Verified Relay identity loss (2026-10-29, Relay `dev` source)
+## Historical Relay identity gap (2026-10-29, resolved in Relay PR #21)
 
 - `uichat-mira-relay/src/cloud-relay-verifier.ts` derives a trusted
   `CloudRelayTicketIdentity` with `accountId`, `deviceId`, `room` and
