@@ -3,11 +3,12 @@ const path = require("path");
 const fs = require("fs");
 const { spawn, execFileSync } = require("child_process");
 const { createCloudAccountController } = require("./cloud-account.cjs");
-const { attachCloudRelayTicketIpc } = require("./cloud-relay-ticket-ipc.cjs");
+const { attachCloudRelayTicketIpc, attachCloudHostGrantIpc } = require("./cloud-relay-ticket-ipc.cjs");
 
 let mainWindow;
 let backendProcess;
 let cloudRelayTicketBridge = null;
+let cloudHostGrantBridge = null;
 
 let cloudAccount;
 let cloudCallbackRegistered = false;
@@ -487,6 +488,7 @@ async function startBackend() {
     windowsHide: true,
   });
   cloudRelayTicketBridge = attachCloudRelayTicketIpc(backendProcess, () => cloudAccount);
+  cloudHostGrantBridge = attachCloudHostGrantIpc(backendProcess, () => cloudAccount);
 
   if (backendProcess.stdout) {
     backendProcess.stdout.on("data", (data) => {
@@ -503,6 +505,8 @@ async function startBackend() {
   backendProcess.on("close", (code) => {
     cloudRelayTicketBridge?.dispose();
     cloudRelayTicketBridge = null;
+    cloudHostGrantBridge?.dispose();
+    cloudHostGrantBridge = null;
     console.log(`Backend process exited with code ${code}`);
   });
 
@@ -536,6 +540,9 @@ app.whenReady().then(async () => {
     notify: (snapshot) => {
       if (snapshot.status === "rejected" || snapshot.status === "signed_out") {
         cloudRelayTicketBridge?.notifyRevoked(
+          snapshot.status === "rejected" ? "reauth" : "signout",
+        );
+        cloudHostGrantBridge?.notifyRevoked(
           snapshot.status === "rejected" ? "reauth" : "signout",
         );
       }
@@ -594,6 +601,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   cloudRelayTicketBridge?.dispose();
+  cloudHostGrantBridge?.dispose();
   if (backendProcess) {
     backendProcess.kill();
   }
