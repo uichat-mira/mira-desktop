@@ -514,6 +514,62 @@ function createCloudAccountController(options) {
     if (expectedRevision !== revision) throw relayFailure(null, expectedRevision);
     return validateRelayTicket(ticket, host, accountId);
   }
+  // DSK-007: only the authenticated Electron main process may read the runtime
+  // Host grant ledger. This is NOT a Relay ticket or a business authorization.
+  async function requestHostGrantSnapshot() {
+    if (view.status !== "signed_in" || !record?.sessionToken ||
+        !isRecord(record.account) || typeof record.account.id !== "string" ||
+        typeof record.hostId !== "string" || !record.hostId ||
+        !record.permissionsConfigured) {
+      const error = new Error("Cloud Host grant snapshot is not configured");
+      error.code = "cloud_grant_not_configured";
+      throw error;
+    }
+    const expectedRevision = revision;
+    const hostId = record.hostId;
+    const accountId = record.account.id;
+    let snapshot;
+    try {
+      snapshot = await request("/v1/hosts/" + encodeURIComponent(hostId) + "/grants",
+        "GET", record.sessionToken);
+    } catch (error) {
+      if (expectedRevision !== revision) {
+        const aborted = new Error("Cloud Host grant request superseded");
+        aborted.code = "cloud_grant_aborted";
+        throw aborted;
+      }
+      if (error?.code === "reauth" || error?.status === 401) {
+        resetRejectedSession();
+        const rejected = new Error("Cloud Session expired");
+        rejected.code = "cloud_grant_reauth";
+        throw rejected;
+      }
+      const failed = new Error("Cloud Host grant snapshot unavailable");
+      failed.code = error?.status === 403 ? "cloud_grant_not_authorized" :
+        "cloud_grant_unavailable";
+      throw failed;
+    }
+    if (expectedRevision !== revision || record?.hostId !== hostId ||
+        record?.account?.id !== accountId || view.status !== "signed_in") {
+      const aborted = new Error("Cloud Host grant request superseded");
+      aborted.code = "cloud_grant_aborted";
+      throw aborted;
+    }
+    // The Backend performs the complete OPS-020 schema and time verification;
+    // native checks its own account/Host binding before crossing child IPC.
+    if (!isRecord(snapshot) || snapshot.hostId !== hostId ||
+        snapshot.accountId !== accountId ||
+        !Number.isSafeInteger(snapshot.revision) ||
+        typeof snapshot.validUntil !== "string" ||
+        !Number.isFinite(Date.parse(snapshot.validUntil)) ||
+        Date.parse(snapshot.validUntil) <= Date.now()) {
+      const invalid = new Error("Cloud Host grant snapshot invalid");
+      invalid.code = "cloud_grant_invalid_response";
+      throw invalid;
+    }
+    return snapshot;
+  }
+
   async function withRelayHostTicket(consumer) {
     if (typeof consumer !== "function") {
       throw new Error("Relay 票据只能交给受信任的原生连接消费接口");
@@ -595,7 +651,7 @@ function createCloudAccountController(options) {
     return status();
   }
   return { initialize, begin, cancelAuthorization, handleCallback, retryHostSetup,
-    resetLocalCredentials, signOut, status, withRelayHostTicket };
+    resetLocalCredentials, signOut, status, withRelayHostTicket, requestHostGrantSnapshot };
 }
 
 module.exports = { createCloudAccountController, parseCallback, validateScopes, SCOPES,
