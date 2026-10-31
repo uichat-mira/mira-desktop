@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { EventEmitter } = require("node:events");
 const { randomUUID } = require("node:crypto");
-const { attachCloudRelayTicketIpc, CHANNEL } = require("./cloud-relay-ticket-ipc.cjs");
+const { attachCloudRelayTicketIpc, attachCloudHostGrantIpc, CHANNEL, GRANT_CHANNEL } = require("./cloud-relay-ticket-ipc.cjs");
 
 class FakeChild extends EventEmitter {
   connected = true;
@@ -150,4 +150,66 @@ test("both Electron staging paths include the native IPC module", () => {
     /path\.join\(projectRoot, "electron", "cloud-relay-ticket-ipc\.cjs"\)/);
   assert.match(read("scripts/release/package-electron-from-payload.mjs"),
     /"cloud-relay-ticket-ipc\.cjs"/);
+});
+
+test("DSK-007 native grant channel serves only the exact owned child envelope", async () => {
+  const child = new FakeChild();
+  const snapshot = {
+    hostId: "host-1", accountId: "account-a", policyConfigured: true,
+    policyScopes: ["threads:read"], revision: 7,
+    issuedAt: new Date(Date.now() - 1000).toISOString(),
+    validUntil: new Date(Date.now() + 300000).toISOString(),
+    maxStalenessSeconds: 300,
+    grants: [{ mobileDeviceId: "mobile-1", scopes: ["threads:read"], status: "active" }],
+  };
+  let calls = 0;
+  const bridge = attachCloudHostGrantIpc(child, () => ({
+    requestHostGrantSnapshot: async () => { calls++; return snapshot; },
+  }));
+  const id = randomUUID();
+  child.emit("message", { channel: GRANT_CHANNEL, type: "request",
+    requestId: id, accountId: "foreign-account" }); // forged data denied
+  child.emit("message", { channel: GRANT_CHANNEL, type: "request", requestId: "bad-id" });
+  child.emit("message", { channel: GRANT_CHANNEL, type: "request", requestId: id });
+  await tick();
+  assert.equal(calls, 1);
+  assert.deepEqual(child.sent, [{ channel: GRANT_CHANNEL, type: "result",
+    requestId: id, ok: true, snapshot }]);
+  assert.equal(JSON.stringify(child.sent).includes("mcs_v1."), false);
+  bridge.dispose();
+});
+
+test("DSK-007 native grant IPC cancels in-flight snapshots on signout", async () => {
+  const child = new FakeChild();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const bridge = attachCloudHostGrantIpc(child, () => ({
+    requestHostGrantSnapshot: async () => {
+      await gate;
+      return { hostId: "late-host" };
+    },
+  }));
+  child.emit("message", { channel: GRANT_CHANNEL, type: "request",
+    requestId: randomUUID() });
+  await tick();
+  bridge.notifyRevoked("signout");
+  release();
+  await tick();
+  assert.deepEqual(child.sent, [{
+    channel: GRANT_CHANNEL, type: "revoked", reason: "signout",
+  }]);
+  bridge.dispose();
+});
+
+test("DSK-007 native grant IPC rejects malformed/oversized replies without secrets", async () => {
+  const child = new FakeChild();
+  const bridge = attachCloudHostGrantIpc(child, () => ({
+    requestHostGrantSnapshot: async () => ({ content: "x".repeat(260000) }),
+  }));
+  const id = randomUUID();
+  child.emit("message", { channel: GRANT_CHANNEL, type: "request", requestId: id });
+  await tick();
+  assert.deepEqual(child.sent, [{ channel: GRANT_CHANNEL, type: "result",
+    requestId: id, ok: false, errorCode: "cloud_grant_invalid_response" }]);
+  bridge.dispose();
 });
