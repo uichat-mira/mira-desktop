@@ -29,7 +29,7 @@ V1 中 RAG 明确不读、不写这套用户长期记忆。知识库线程开启
 2. `thread-request-context.node.ts`：Chat 与 Agent 共用的请求上下文链；
 3. 默认对话流：普通 Chat 与 Agent 共用 assistant 消息持久化函数；
 4. `llmSharedNode`：可通过 Mira 的 task 模型执行结构化整理；
-5. `UI_CHAT_DATABASE_DIR`：Electron 与 Tauri 已统一传入的用户数据目录；
+5. `UI_CHAT_DATABASE_DIR`：Electron 已统一传入的用户数据目录；
 6. `desktop/src/features/Settings/pages/Personalization/index.tsx`：现有个性化页面已经包含记忆开关、管理抽屉和手工输入区域。
 
 在 `dev` 基线中，记忆 UI 是使用页面本地状态的 frontend preview。本功能分支已复用原页面和入口，将其接入真实 Memory API、文件存储与 Chat / Agent 生命周期；没有新建记忆页面、迁移入口或重做页面整体视觉结构。
