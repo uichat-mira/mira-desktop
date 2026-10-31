@@ -161,6 +161,17 @@ const createRelaySocketFactory = (app: FastifyInstance): RelaySocketFactory => {
   return (url) => new WebSocketCtor(url);
 };
 
+// The native Cloud Host state is authoritative for whether a Grant
+// invalidation may reconnect. Export this tiny decision point for regression
+// coverage: a sign-out must never cause an unsolicited ticket retry.
+export const reconcileCloudRelayOnGrantInvalidation = (
+  eligible: boolean,
+  connector: Pick<RemoteRelayConnectorService, "restart" | "stop">,
+): void => {
+  if (eligible) connector.restart();
+  else connector.stop();
+};
+
 const remoteAccessRoute: FastifyPluginAsync = async (app) => {
   const socketFactory = createRelaySocketFactory(app);
   const remoteRelayConnectorService = new RemoteRelayConnectorService(
@@ -182,8 +193,9 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     // Native logout sends both Cloud-ticket unavailability and Grant
     // invalidation. The latter must NOT restart a connector which the former
     // just stopped. Only a still-eligible Host may reacquire a fresh ticket.
-    if (cloudTicketIpc.isHostAvailable()) cloudRelayConnectorService.restart();
-    else cloudRelayConnectorService.stop();
+    reconcileCloudRelayOnGrantInvalidation(
+      cloudTicketIpc.isHostAvailable(), cloudRelayConnectorService,
+    );
   });
   const cloudRelayConnectorService = new RemoteRelayConnectorService(
     resolveCloudRelayConnectorConfig,
