@@ -103,14 +103,6 @@ describe("desktopRuntime", () => {
         backendUrl: "",
       }),
     ).toBe(true);
-    expect(
-      isDesktopShell({
-        hostKind: "tauri",
-        platform: "linux",
-        isPackaged: true,
-        backendUrl: "",
-      }),
-    ).toBe(true);
   });
 
   it("getApiBaseUrl 优先使用 VITE_API_URL", () => {
@@ -174,14 +166,6 @@ describe("desktopRuntime", () => {
       }),
     ).toBe("Electron · win32");
 
-    expect(
-      getRuntimeDisplayLabel({
-        hostKind: "tauri",
-        platform: "darwin",
-        isPackaged: true,
-        backendUrl: "",
-      }),
-    ).toBe("Tauri · darwin");
   });
 
   it("getRuntimeDescription 返回正确描述", () => {

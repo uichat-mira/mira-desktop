@@ -19,7 +19,7 @@ declare global {
       subscribe: (listener: (state: Awaited<ReturnType<NonNullable<Window["cloudAccount"]>["status"]>>) => void) => () => void;
     };
     desktopRuntime?: {
-      hostKind: "browser" | "electron" | "tauri";
+      hostKind: "browser" | "electron";
       platform: string;
       isPackaged: boolean;
       backendUrl: string;
