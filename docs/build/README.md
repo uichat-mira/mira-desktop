@@ -58,8 +58,8 @@ pnpm version:sync
 
 桌面构建分为三个入口：
 
-- `.github/workflows/build-desktop.yml`：Windows 环境分支包与 Windows prod R2 发布。
-- `.github/workflows/build-macos-intel.yml`：Intel macOS 环境分支包与 macOS prod R2 发布；与 Windows workflow 独立并行。
+- `.github/workflows/build-desktop.yml`：Windows 环境分支包构建、测试与短期 Actions artifact，不写公共 R2。
+- `.github/workflows/build-macos-intel.yml`：Intel macOS 环境分支包及短期 artifact，不写公共 R2；与 Windows workflow 独立并行。
 - `.github/workflows/release-production.yml`：`v*` 标签正式发布；Windows 重型校验和打包由 `release-factory-v2.yml` 执行，并行调用 Intel macOS reusable build。
 
 当前触发规则：
@@ -69,7 +69,7 @@ pnpm version:sync
 | Pull Request → `dev/test/prod` | 轻量检查，不执行完整桌面打包 |
 | push → `dev` | Windows workflow 构建 Electron；独立 macOS workflow 构建 Intel DMG。macOS dev 构建跳过重复 release test-report 生成，二者互不等待 |
 | push → `test` | Windows workflow 构建 Electron；独立 macOS workflow 构建 Intel DMG。macOS test 构建跳过重复 release test-report 生成，二者互不等待 |
-| push → `prod` | Windows 与 Intel macOS 使用独立 workflow 完整构建；Windows 安装包同步 R2 `mira/latest/`，Intel macOS DMG 独立同步 `mira/macos-intel/latest/`，两条发布链互不阻塞 |
+| push → `prod` | Windows 与 Intel macOS 使用独立 workflow 完整构建并保存短期 artifact，**不覆盖公共 R2 latest** |
 | push → `v*` tag | Release Factory 完整校验 Windows 产物；并行构建 Intel macOS DMG。GitHub Release 保存 Windows + Intel macOS 资产；R2 分别更新 Windows `mira/latest/` 与 Intel macOS `mira/macos-intel/latest/` |
 
 Windows 分支构建仍由 Electron 独立 job 执行；Intel macOS 已拆到独立 workflow，因此其长耗时不会延长 Windows `Build Desktop Apps` workflow。GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
@@ -84,21 +84,20 @@ Actions artifact 为短期构建产物；GitHub Release 保存标签版本历史
 
 ### Cloudflare R2 当前版本分发
 
-R2 当前按平台拆分 latest 前缀，避免 Intel macOS 的慢构建阻塞 Windows 发布，也避免多个 job 对同一目录执行 `sync --delete` 时互相删除产物：
+公共镜像只由正式 `v*` 标签发布工作流 `.github/workflows/release-production.yml` 更新：
 
 ```text
 mira/latest/                 # Windows Electron
 mira/macos-intel/latest/     # Intel macOS Electron DMG
 ```
 
-两套前缀都由以下成功事件更新：
+普通 `prod` 分支推送只构建和保存短期 artifact，不能写公共 R2。所有 Tag Release 工作流共享串行发布组，避免不同标签同时覆盖镜像；旧 Tag 重跑如不再是 GitHub 最新正式 Release，必须拒绝更新 R2。
 
-1. `prod` 分支对应平台构建成功；
-2. `v*` 标签对应平台正式发布成功。
+Tag 发布先验证 Windows Setup / macOS Intel DMG 和对应 blockmap 的文件名、版本及非零大小，再验证 GitHub Release 的对应文件和字节大小；R2 同步后还要检查该平台 latest 目录仅包含预期两个对象且大小匹配。Tauri 资产混入、文件缺失、尺寸不匹配或目录残留均阻断发布。Windows 与 macOS 两条发布链都通过后，整体发布状态才成功。
 
-在 `prod` 分支上，Windows 发布只依赖 Windows Electron，Intel macOS R2 发布只依赖 Intel macOS 构建，因此两条链互不阻塞。`v*` 标签下，Windows Release/R2 仍不等待 Mac；Mac 在自身构建完成后等待现有 GitHub Release 建立，再追加 DMG 并更新独立 Mac R2 前缀。两套 R2 路径各自使用 `--delete` 维护本平台 latest。R2 不承担历史版本保存职责，标签历史仍由 GitHub Release 保存。
+这两套前缀仍各自使用 `--delete` 清理本平台 latest 中的旧产物，不删除历史 GitHub Release / Tag。GitHub 与 R2 上传存在短暂先后窗口；若发生部分失败，工作流必须标红，由维护者重试或修复，不能把部分成功描述为完全发布。旧 `mira/previous/` 不再由工作流主动删除。
 
-R2 所需 GitHub Secrets 为：
+R2 所需 GitHub Secrets：
 
 ```text
 R2_ACCOUNT_ID
@@ -108,7 +107,7 @@ R2_BUCKET
 R2_PUBLIC_BASE_URL
 ```
 
-Windows R2 公开地址格式为 `${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`；Intel macOS 地址格式为 `${R2_PUBLIC_BASE_URL}/mira/macos-intel/latest/<asset-name>`。两套 latest 各自使用 `--delete` 同步。旧的 Windows `mira/previous/` 仍会在 Windows 发布前清理。
+Windows 公开镜像：`${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`；macOS Intel 镜像：`${R2_PUBLIC_BASE_URL}/mira/macos-intel/latest/<asset-name>`。离线发布校验回归：`node --test scripts/release/verify-release-mirror.test.mjs`。
 
 ## 本地模型资源
 
@@ -629,9 +628,9 @@ Electron 另有一条独立的 Intel macOS CI / GitHub Release 路径：
 
 - GitHub-hosted `macos-15-intel` runner 上执行 `node scripts/build-dist.js mac`；
 - server native module、bundled Node 24.22.1 与 staged runtime smoke 应按 `darwin-x64` 实际验收；Node 22 的历史验收不代表 Node 24 已验证通过；
-- `dev/test/prod` 保存短期 Actions DMG artifact；其中 `dev/test` 为降低重复 CI 成本跳过 release test-report 重生成，`prod` 保持完整打包；
+- `dev/test/prod` 保存短期 Actions DMG artifact；其中 `dev/test` 为降低重复 CI 成本跳过 release test-report 重生成，`prod` 保持完整打包但不写公共 R2；
 - `v*` tag 使用完整 Intel macOS 打包并把 DMG 追加到 GitHub Release；
-- Intel DMG 当前**未做 Developer ID 签名与公证**；成功的 `prod` / `v*` 构建会同步到独立 R2 前缀 `mira/macos-intel/latest/`；
+- Intel DMG 当前**未做 Developer ID 签名与公证**；仅正式 `v*` 发布可同步到独立 R2 前缀 `mira/macos-intel/latest/`；
 - 这条 Intel 兼容性 lane 不改变 canonical macOS 首发目标 `darwin-arm64`，不能替代后续 arm64 release/payload 证据。
 
 其余边界：
