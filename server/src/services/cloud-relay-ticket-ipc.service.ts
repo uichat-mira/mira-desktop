@@ -76,6 +76,8 @@ function validTicket(value: unknown): value is CloudRelayHostTicket {
 export class CloudRelayTicketIpcClient {
   private readonly pending = new Map<string, PendingTicket>();
   private readonly revoked = new Set<(reason: CloudRelayRevocationReason) => void>();
+  private readonly availabilityListeners = new Set<(available: boolean) => void>();
+  private available = false;
   private closed = false;
   private disconnected = false;
   private readonly onMessage = (message?: unknown) => {
@@ -83,10 +85,17 @@ export class CloudRelayTicketIpcClient {
         message.channel !== CLOUD_RELAY_TICKET_IPC_CHANNEL) {
       return;
     }
+    if (message.type === "availability" &&
+        exactKeys(message, ["channel", "type", "available"]) &&
+        typeof message.available === "boolean") {
+      this.setAvailability(message.available);
+      return;
+    }
     if (message.type === "revoked" &&
         exactKeys(message, ["channel", "type", "reason"]) &&
         (message.reason === "signout" || message.reason === "reauth")) {
       const reason = message.reason;
+      this.setAvailability(false);
       this.failAll(reason === "reauth" ? "relay_ticket_reauth" : "relay_ticket_revoked");
       for (const subscriber of [...this.revoked]) {
         try {
@@ -122,6 +131,7 @@ export class CloudRelayTicketIpcClient {
   };
   private readonly onDisconnect = () => {
     this.disconnected = true;
+    this.setAvailability(false);
     this.failAll("relay_ticket_bridge_disconnected");
     // A surviving Backend must not retain an authorized socket after its
     // native credential owner has become unreachable.
@@ -145,7 +155,36 @@ export class CloudRelayTicketIpcClient {
     if (typeof transport.send === "function") {
       transport.on("message", this.onMessage);
       transport.on("disconnect", this.onDisconnect);
+      // The Backend may start after Electron restored a Cloud Session;
+      // ask the owning native parent for its current state, without secrets.
+      try {
+        transport.send({
+          channel: CLOUD_RELAY_TICKET_IPC_CHANNEL, type: "state_request",
+        });
+      } catch {
+        this.disconnected = true;
+      }
     }
+  }
+
+  private setAvailability(available: boolean) {
+    if (this.available === available) return;
+    this.available = available;
+    if (!available) this.failAll("relay_ticket_not_configured");
+    for (const subscriber of [...this.availabilityListeners]) {
+      try { subscriber(available); } catch {
+        // Native lifecycle observers must not crash the IPC control plane.
+      }
+    }
+  }
+
+  isHostAvailable(): boolean {
+    return this.available && !this.closed && !this.disconnected;
+  }
+
+  onAvailabilityChanged(listener: (available: boolean) => void): () => void {
+    this.availabilityListeners.add(listener);
+    return () => { this.availabilityListeners.delete(listener); };
   }
 
   /** Subscribe to native logout/revocation; the actual socket close is DSK-010 Round 2. */
@@ -209,5 +248,7 @@ export class CloudRelayTicketIpcClient {
       this.transport.off("disconnect", this.onDisconnect);
     }
     this.revoked.clear();
+    this.availabilityListeners.clear();
+    this.available = false;
   }
 }
