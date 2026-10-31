@@ -504,6 +504,9 @@ async function startBackend() {
       SETTINGS_SECRET: settingsSecret,
       UI_CHAT_ALLOW_DEFAULT_BOOTSTRAP: "1",
       UI_CHAT_BACKEND_URL: getBackendUrl(),
+      // Non-secret marker: only this Electron-owned Backend child can ask
+      // its parent for current Cloud Host eligibility on startup.
+      UI_CHAT_CLOUD_IPC_CHILD: "1",
       UI_CHAT_DESKTOP_RESOURCES_ROOT: process.resourcesPath,
       UI_CHAT_DATABASE_DIR: dataDir,
       UI_CHAT_LOG_DIR: logDir,
