@@ -1,6 +1,6 @@
 # DSK-007 · Cloud Host Grant secure adapter handoff
 
-Status: **implementation started, not accepted**. Branch: `feat/dsk-007-cloud-host-grant`.
+Status: **implementation in progress, not accepted**. Latest native-owner slice: `feat/dsk-007-cloud-host-owner-binding-423`.
 
 ## Current scope
 
@@ -66,6 +66,27 @@ not a business permission or local owner binding.
 user or the Remote V1/Harness route execution context. Do not infer a local
 owner from a Cloud account or a request header. Grant freshness, per-route
 scope and exact-call Harness checks must be proved before enabling execution.
+
+## 2026-10-31 trusted local owner association (native slice, not yet accepted)
+
+Desktop Cloud sign-in now carries the **existing local Mira session token only to
+Electron main**. Native main validates it against the owned loopback Fastify
+`GET /me`, validates the response shape, and binds the resulting numeric
+local user ID into its encrypted Cloud OAuth transaction at successful callback.
+A renderer-supplied `userId` is **never accepted**. No local JWT is retained in
+the native Cloud credential record, sent over the Relay, or handed to Mobile.
+
+The private Electron→Backend Host-grant IPC now supplies a separate, validated
+`localOwnerUserId` beside the unchanged canonical Cloud Auth `snapshot`.
+The Backend must revalidate owner active-state in its user repository and parse
+the canonical OPS-020 snapshot before admitting any Cloud request. Native
+legacy Cloud sessions without a local owner fail closed and require explicit
+Cloud sign-out/sign-in to bind. Tailscale pairing and the current Gateway
+denial remain unchanged. A local JWT is not a Host Grant.
+
+This stage does **not** authorize live Remote V1/Gateway traffic. The next
+slice must enforce the owner and grant at execution time; tests and CI for
+this slice are necessary but cannot demonstrate T4.
 
 ## Required second-slice trusted producer and consumer (same DSK-007 card)
 

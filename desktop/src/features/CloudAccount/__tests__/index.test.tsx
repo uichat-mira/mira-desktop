@@ -3,6 +3,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import CloudAccountPage from "../index";
 
+const localAuth = vi.hoisted(() => ({ token: "signed.local.jwt" as string | null }));
+vi.mock("@/app/providers/AuthProvider", () => ({
+  useAuth: () => ({
+    session: localAuth.token ? { token: localAuth.token, user: { id: 7 } } : null,
+    isCheckingSession: false,
+  }),
+}));
+
 const empty = {
   status: "signed_out" as const,
   account: null,
@@ -16,6 +24,7 @@ const empty = {
 afterEach(() => {
   delete window.cloudAccount;
   vi.restoreAllMocks();
+  localAuth.token = "signed.local.jwt";
 });
 
 describe("DSK-005 Cloud Account page", () => {
@@ -36,7 +45,8 @@ describe("DSK-005 Cloud Account page", () => {
     await screen.findByText("当前未登录云账号");
     fireEvent.click(screen.getByLabelText("读取会话"));
     fireEvent.click(screen.getByRole("button", { name: /使用系统浏览器登录云账号/ }));
-    await waitFor(() => expect(signIn).toHaveBeenCalledWith(["threads:read"]));
+    await waitFor(() => expect(signIn).toHaveBeenCalledWith(
+      ["threads:read"], "signed.local.jwt"));
     expect(signIn.mock.calls[0][0]).not.toContain("tools:invoke");
     expect(subscribe).toHaveBeenCalled();
   });
@@ -123,7 +133,23 @@ describe("DSK-005 Cloud Account page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "退出云账号" }));
     await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
     fireEvent.click(await screen.findByRole("button", { name: /使用系统浏览器登录云账号/ }));
-    await waitFor(() => expect(signIn).toHaveBeenCalledWith([]));
+    await waitFor(() => expect(signIn).toHaveBeenCalledWith(
+      [], "signed.local.jwt"));
+  });
+
+  it("refuses Cloud login without an authenticated local Mira session", async () => {
+    localAuth.token = null;
+    const signIn = vi.fn();
+    window.cloudAccount = {
+      status: vi.fn().mockResolvedValue(empty), signIn,
+      cancelSignIn: vi.fn(), retryHostSetup: vi.fn(),
+      resetLocalCredentials: vi.fn(), signOut: vi.fn(),
+      subscribe: vi.fn().mockReturnValue(() => {}),
+    };
+    render(<CloudAccountPage />);
+    expect(await screen.findByRole("button",
+      { name: /使用系统浏览器登录云账号/ })).toBeDisabled();
+    expect(signIn).not.toHaveBeenCalled();
   });
 
   it("shows existing cloud account without reusing local credentials", async () => {

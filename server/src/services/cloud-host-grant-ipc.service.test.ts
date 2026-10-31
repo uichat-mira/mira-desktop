@@ -52,9 +52,21 @@ describe("DSK-007 Cloud Host grant private Backend IPC (T2)", () => {
     parent.emit("message", { channel: "mira:cloud-relay:host-ticket:v1",
       type: "result", requestId: parent.sent[0]?.requestId,
       ok: true, snapshot: snapshot() });
-    parent.reply(0, { ok: true, snapshot: snapshot() });
-    await expect(wait).resolves.toEqual(snapshot());
+    parent.reply(0, { ok: true, snapshot: snapshot(), localOwnerUserId: 7 });
+    await expect(wait).resolves.toEqual({ snapshot: snapshot(), localOwnerUserId: 7 });
     parent.reply(0, { ok: false, errorCode: "cloud_grant_reauth" });
+    client.dispose();
+  });
+
+  it("refuses native grant snapshots that lack verified local owner or claim invalid owner", async () => {
+    const parent = new FakeParent();
+    const client = new CloudHostGrantIpcClient(parent);
+    const first = client.requestSnapshot();
+    parent.reply(0, { ok: true, snapshot: snapshot() });
+    await expect(first).rejects.toMatchObject({ code: "cloud_grant_invalid_response" });
+    const second = client.requestSnapshot();
+    parent.reply(1, { ok: true, snapshot: snapshot(), localOwnerUserId: -1 });
+    await expect(second).rejects.toMatchObject({ code: "cloud_grant_invalid_response" });
     client.dispose();
   });
 

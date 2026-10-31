@@ -197,7 +197,7 @@ function fixture() {
 
 async function signIn(f, controller, scopes = ["threads:read"]) {
   await controller.initialize();
-  await controller.begin(scopes);
+  await controller.begin(scopes, 7);
   const state = new URL(f.opened.at(-1)).searchParams.get("state");
   await controller.handleCallback(
     "mira-desktop://oauth/callback?state=" + state + "&code=mca_v1.id.secret");
@@ -854,4 +854,36 @@ test("DSK-007 grant fetch rejects logout races and never revives an old session"
   release();
   await rejectsCode(inFlight, "cloud_grant_aborted");
   await rejectsCode(controller.requestHostGrantSnapshot(), "cloud_grant_not_configured");
+});
+
+test("DSK-007 owner association is encrypted, survives native restore, and clears on signout", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const account = f.build();
+  await signIn(f, account);
+  assert.equal(account.getBoundLocalOwnerUserId(), 7);
+  assert.equal(account.status().localOwnerBound, true);
+  assert.equal(fs.readFileSync(f.store, "utf8").includes("localOwnerUserId"), false);
+  const restored = f.build();
+  await restored.initialize();
+  assert.equal(restored.getBoundLocalOwnerUserId(), 7);
+  await restored.signOut();
+  assert.equal(restored.getBoundLocalOwnerUserId(), null);
+  assert.equal(restored.status().localOwnerBound, false);
+});
+
+test("DSK-007 legacy Cloud sessions without local owner never yield Host business grants", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const account = f.build();
+  await account.initialize();
+  await account.begin(["threads:read"]); // legacy native flow, no verified owner
+  const state = new URL(f.opened.at(-1)).searchParams.get("state");
+  await account.handleCallback("mira-desktop://oauth/callback?state=" + state +
+    "&code=mca_v1.id.secret");
+  assert.equal(account.status().status, "signed_in");
+  assert.equal(account.status().localOwnerBound, false);
+  await rejectsCode(account.requestHostGrantSnapshot(), "cloud_grant_not_configured");
+  assert.equal(account.getBoundLocalOwnerUserId(), null);
+  await assert.rejects(account.begin([], -7), /本地 Mira 用户 ID 无效/);
 });
