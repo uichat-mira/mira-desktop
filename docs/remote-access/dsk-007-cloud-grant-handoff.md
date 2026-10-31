@@ -20,9 +20,35 @@ on a client frame would be spoofable. In particular, a Cloud Relay transport
 ticket is *not* a business credential; the current Cloud Relay connector
 returns `CLOUD_GRANT_REQUIRED` until this is solved.
 
+## 2026-10-31 native IPC implementation (PR #443)
+
+- Electron native Cloud Account now requests `GET /v1/hosts/{hostId}/grants`
+  using its encrypted Cloud Session and Chromium `net.fetch`, requiring
+  a signed-in configured Host and binding the response to its recorded Host
+  and account. Concurrent logout/re-auth discards a superseded response.
+- Private Electron-spawned Backend child IPC channel
+  `mira:cloud-host-grant:snapshot:v1` sends only a bounded JSON snapshot,
+  never the Cloud Session or Relay ticket. It explicitly rejects malformed
+  envelopes, duplicate request IDs, expired waits and canceled work. Backend
+  consumer intentionally returns **untrusted** JSON until bound by the current
+  local Host owner and checked with `parseCloudHostGrantSnapshot`.
+- The existing grant evaluator now pins its local owner binding; rejects
+  impossible calendar dates and equal-revision policy changes; allows a
+  verified grant holder to read the canonical manifest while continuing to
+  reject Cloud push pairing bootstrap.
+- Native, backend IPC and grant evaluator regression checks are part of the
+  fast test gate. **No active Gateway or Harness request is enabled by this PR.**
+
+Remaining: the Backend must bind the native snapshot to the authenticated
+active local Host owner, implement bounded sync/invalidations, and receive
+**Relay-service-attested per-request Mobile identity** before canonical route
+and exact-call Harness enforcement may be used. The latest Relay `dev`
+still discards the verified Client identity during its forwarding path; this
+is owned by REL-001, not a reason to invent Client headers in DSK-007.
+
 ## Required second-slice trusted producer and consumer (same DSK-007 card)
 
-1. The Electron main process must retrieve the runtime grant snapshot from
+1. **Implemented in PR #443:** The Electron main process retrieves the runtime grant snapshot from
    Cloud Auth over authenticated TLS using its encrypted Desktop Cloud Session.
    Extend a **private Electron child IPC**, never renderer HTTP, with exact
    account/Host binding, no Cloud Session/raw token leakage and bounded updates.

@@ -35,6 +35,8 @@ describe("DSK-007 Cloud Host grant verification (T1; not Relay ingress)", () => 
     expect(cache.allows("phone-1", 8, "GET", "/remote/v1/tools", NOW)).toBe(false);
     expect(cache.allows("phone-1", 7, "GET", "/secrets", NOW)).toBe(false);
     expect(cache.allows("phone-1", 7, "POST", "/remote/v1/push/binding-descriptor", NOW)).toBe(false);
+    expect(cache.allows("phone-1", 7, "GET", "/remote/v1/manifest", NOW)).toBe(true);
+    expect(cache.allows("phone-3", 7, "GET", "/remote/v1/manifest", NOW)).toBe(false);
   });
 
   it("applies narrowing/revocation as atomic revision replacement", () => {
@@ -118,8 +120,43 @@ describe("DSK-007 Cloud Host grant verification (T1; not Relay ingress)", () => 
       policyConfigured: false, policyScopes: [], grants: [],
     }), NOW);
     expect(cache.allows("phone-1", 7, "GET", "/remote/v1/workspaces", NOW)).toBe(false);
-    cache.replaceFromTrustedNative(valid(), NOW);
+    // Cloud Auth increments the revision whenever the Host policy changes.
+    cache.replaceFromTrustedNative(valid({ revision: 3 }), NOW);
     cache.clear();
     expect(cache.getRevision(NOW)).toBeNull();
+  });
+
+  it("rejects impossible dates even if Date.parse normalizes them", () => {
+    const febNow = Date.parse("2026-03-03T04:00:00.000Z");
+    const cache = new CloudHostGrantCache(binding);
+    expect(() => cache.replaceFromTrustedNative(valid({
+      issuedAt: "2026-02-31T03:59:00.000Z",
+      validUntil: "2026-03-03T04:03:00.000Z",
+    }), febNow)).toThrow(CloudHostGrantContractError);
+  });
+
+  it("captures the owner binding once, independent of caller mutation", () => {
+    const mutable = { ...binding };
+    const cache = new CloudHostGrantCache(mutable);
+    mutable.localOwnerUserId = 8;
+    mutable.accountId = "foreign-account";
+    cache.replaceFromTrustedNative(valid(), NOW);
+    expect(cache.allows("phone-1", 7, "GET", "/remote/v1/tools", NOW)).toBe(true);
+    expect(cache.allows("phone-1", 8, "GET", "/remote/v1/tools", NOW)).toBe(false);
+  });
+
+  it("rejects same-revision scope changes while permitting TTL refresh", () => {
+    const cache = new CloudHostGrantCache(binding);
+    cache.replaceFromTrustedNative(valid({ revision: 9,
+      grants: [{ mobileDeviceId: "phone-1", scopes: ["threads:read"], status: "active" }],
+    }), NOW);
+    cache.replaceFromTrustedNative(valid({ revision: 9,
+      grants: [{ mobileDeviceId: "phone-1", scopes: ["threads:read"], status: "active" }],
+      issuedAt: "2026-10-26T03:59:10.000Z",
+      validUntil: "2026-10-26T04:04:10.000Z",
+    }), NOW);
+    expect(() => cache.replaceFromTrustedNative(valid({ revision: 9 }), NOW))
+      .toThrow(CloudHostGrantContractError);
+    expect(cache.allows("phone-1", 7, "GET", "/remote/v1/workspaces", NOW)).toBe(false);
   });
 });

@@ -95,6 +95,11 @@ export function parseCloudHostGrantSnapshot(
 
   const issuedAt = Date.parse(raw.issuedAt);
   const validUntil = Date.parse(raw.validUntil);
+  // Date.parse normalizes impossible calendar dates (e.g. February 31).
+  // Grant validity must be the exact instant represented by Cloud Auth.
+  if (!Number.isFinite(issuedAt) || !Number.isFinite(validUntil) ||
+      new Date(issuedAt).toISOString() !== raw.issuedAt ||
+      new Date(validUntil).toISOString() !== raw.validUntil) return bad();
   if (!Number.isFinite(issuedAt) || !Number.isFinite(validUntil) ||
       issuedAt > nowMs + CLOCK_SKEW_MS || validUntil <= nowMs ||
       validUntil <= issuedAt ||
@@ -149,16 +154,29 @@ export class CloudHostGrantCache {
   // Retain the highest trusted revision even after a failed refresh clears the
   // usable snapshot; otherwise a later replay could resurrect older grants.
   private highestObservedRevision: number | null = null;
-  constructor(private readonly binding: CloudHostGrantBinding) {}
+  private highestPolicyFingerprint: string | null = null;
+  private readonly binding: CloudHostGrantBinding;
+  constructor(binding: CloudHostGrantBinding) {
+    // The trusted native account/local-owner association is fixed for this
+    // cache lifecycle: mutation by a caller cannot silently switch owners.
+    this.binding = Object.freeze({ ...binding });
+  }
 
   replaceFromTrustedNative(input: unknown, nowMs = Date.now()): void {
     try {
       const candidate = parseCloudHostGrantSnapshot(input, this.binding, nowMs);
+      // A ledger revision changes on any grant mutation. issuedAt/validUntil
+      // may advance at the same revision, but scopes cannot change under it.
+      const fingerprint = JSON.stringify([candidate.policyConfigured,
+        candidate.policyScopes, candidate.grants]);
       if (this.highestObservedRevision !== null &&
-          candidate.revision < this.highestObservedRevision) {
+          (candidate.revision < this.highestObservedRevision ||
+          (candidate.revision === this.highestObservedRevision &&
+           fingerprint !== this.highestPolicyFingerprint))) {
         throw new CloudHostGrantContractError();
       }
       this.highestObservedRevision = candidate.revision;
+      this.highestPolicyFingerprint = fingerprint;
       this.snapshot = candidate;
     } catch (error) {
       // A malformed/mismatched/replayed response cannot keep an old positive
@@ -177,6 +195,7 @@ export class CloudHostGrantCache {
     this.snapshot = null;
     // An explicit local signout ends the bound native Session lifecycle.
     this.highestObservedRevision = null;
+    this.highestPolicyFingerprint = null;
   }
 
   allows(
@@ -194,13 +213,18 @@ export class CloudHostGrantCache {
         !proof.policyConfigured) return false;
 
     const scope = getRequiredRemoteScope(method, path);
-    // The Cloud path does not inherit pairing-only Push trust bootstrap.
-    if (!scope || scope === "authenticated") return false;
+    if (!scope) return false;
     const grant = proof.grants.find(
       (item) => item.mobileDeviceId === mobileDeviceIdFromAuthenticatedIngress,
     );
-    return !!grant && grant.status === "active" &&
-      grant.scopes.includes(scope) && proof.policyScopes.includes(scope);
+    if (!grant || grant.status !== "active") return false;
+    // Manifest discovery requires an authenticated Mobile with a non-empty
+    // effective grant. Push pairing-bootstrap paths remain forbidden on Cloud.
+    if (scope === "authenticated") {
+      return method.toUpperCase() === "GET" &&
+        path.split("?")[0] === "/remote/v1/manifest" && grant.scopes.length > 0;
+    }
+    return grant.scopes.includes(scope) && proof.policyScopes.includes(scope);
   }
 
   getRevision(nowMs = Date.now()): number | null {

@@ -117,6 +117,8 @@ function fixture() {
   let beforeSessionRestore = null;
   let beforeOpenExternal = null;
   let beforeServiceCredential = null;
+  let grantSnapshot = null;
+  let beforeGrantRead = null;
   let hostFailuresRemaining = 0;
   let hostHandler = null;
   let serviceCredentialHandler = null;
@@ -152,10 +154,13 @@ function fixture() {
       }
       return Response.json(issuedTicket());
     }
-    if (url.endsWith("/v1/hosts/host-1/grants"))
+    if (url.endsWith("/v1/hosts/host-1/grants")) {
+      if (beforeGrantRead) await beforeGrantRead();
+      if (grantSnapshot) return Response.json(grantSnapshot);
       return Response.json({ hostId: "host-1", accountId: "account-a",
         revision: storedPolicy ? 7 : 0, policyConfigured: Boolean(storedPolicy),
         policyScopes: storedPolicy || [] });
+    }
     if (url.endsWith("/v1/hosts/host-1/grant-policy")) {
       if (beforePolicyPut) await beforePolicyPut();
       return Response.json({ hostId: "host-1", revision: 1 });
@@ -184,6 +189,8 @@ function fixture() {
     setBeforeSessionRestore: (hook) => { beforeSessionRestore = hook; },
     setBeforeOpenExternal: (hook) => { beforeOpenExternal = hook; },
     setBeforeServiceCredential: (hook) => { beforeServiceCredential = hook; },
+    setGrantSnapshot: (snapshot) => { grantSnapshot = snapshot; },
+    setBeforeGrantRead: (hook) => { beforeGrantRead = hook; },
     setHostHandler: (handler) => { hostHandler = handler; },
     setServiceCredentialHandler: (handler) => { serviceCredentialHandler = handler; } };
 }
@@ -810,4 +817,41 @@ test("DSK-009 Cloud reauth invalidates another in-flight Relay ticket request", 
   const restarted = f.build();
   await restarted.initialize();
   assert.equal(restarted.status().status, "signed_out");
+});
+
+test("DSK-007 native owner fetches live scoped Host snapshot without passing Cloud bearer", async () => {
+  const f = fixture();
+  const controller = f.build();
+  await signIn(f, controller);
+  const issuedAt = new Date(Date.now() - 1000).toISOString();
+  const validUntil = new Date(Date.now() + 200000).toISOString();
+  const snapshot = {
+    hostId: "host-1", accountId: "account-a", policyConfigured: true,
+    policyScopes: ["threads:read"], revision: 5, issuedAt, validUntil,
+    maxStalenessSeconds: 300,
+    grants: [{ mobileDeviceId: "phone-a", scopes: ["threads:read"], status: "active" }],
+  };
+  f.setGrantSnapshot(snapshot);
+  const resolved = await controller.requestHostGrantSnapshot();
+  assert.deepEqual(resolved, snapshot);
+  assert.equal(JSON.stringify(resolved).includes("mcs_v1."), false);
+  const request = f.calls.at(-1);
+  assert.equal(request.url.endsWith("/v1/hosts/host-1/grants"), true);
+  assert.equal(request.opts.headers.authorization, "Bearer mcs_v1.session.secret");
+  f.setGrantSnapshot({ ...snapshot, accountId: "other-account" });
+  await rejectsCode(controller.requestHostGrantSnapshot(), "cloud_grant_invalid_response");
+});
+
+test("DSK-007 grant fetch rejects logout races and never revives an old session", async () => {
+  const f = fixture();
+  const controller = f.build();
+  await signIn(f, controller);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  f.setBeforeGrantRead(() => gate);
+  const inFlight = controller.requestHostGrantSnapshot();
+  await controller.signOut();
+  release();
+  await rejectsCode(inFlight, "cloud_grant_aborted");
+  await rejectsCode(controller.requestHostGrantSnapshot(), "cloud_grant_not_configured");
 });
