@@ -82,6 +82,9 @@ history, not current release guidance.
   becomes `signed_in` with configured Host policy and a valid local-owner
   binding. The Backend independently requests a fresh ticket before each
   socket and never receives the Cloud Session or account identity.
+- Electron marks only its spawned Backend process with non-secret
+  `UI_CHAT_CLOUD_IPC_CHILD=1`. Other Node child/worker process channels
+  (including Vitest) must never be sent this message.
 - Backend first sends `state_request` to native over the existing
   `mira:cloud-relay:host-ticket:v1` IPC channel. This allows a restored
   Cloud Session to be recognized when Backend startup races the Electron
