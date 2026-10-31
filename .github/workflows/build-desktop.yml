@@ -46,6 +46,9 @@ jobs:
       - name: Run DSK-005 Cloud Account UI and navigation regressions
         run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/CloudAccount/__tests__/index.test.tsx src/app/routes/settingsRoutes.test.tsx src/app/Layouts/AppNavigationRail.test.tsx src/app/ChatApplicationStateBoundary.test.tsx
 
+      - name: Verify release mirror contract
+        run: node --test scripts/release/verify-release-mirror.test.mjs
+
       - name: Run Terminal Capability Lab regressions
         run: pnpm --filter @ui-chat-mira/desktop exec vitest run src/features/Extensions/Capabilities/cases.test.ts src/features/Extensions/Capabilities/hooks/useCapabilities.test.tsx src/features/Extensions/Capabilities/index.test.tsx src/features/Settings/pages/Tools/__tests__/useToolsWorkbench.test.tsx src/features/Settings/pages/Tools/components/ToolsPackagePanel.test.tsx src/features/Settings/pages/Tools/utils.test.ts
 
@@ -154,94 +157,3 @@ jobs:
             release/**/electron/*Setup*.exe.blockmap
           if-no-files-found: error
           retention-days: 3
-
-
-  publish-prod-r2:
-    name: Publish prod package to Cloudflare R2
-    needs: [build-electron]
-    if: github.ref == 'refs/heads/prod'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Download Electron package
-        uses: actions/download-artifact@v4
-        with:
-          name: electron-win
-          path: release-assets/electron
-
-
-      - name: Flatten release assets
-        shell: bash
-        run: |
-          mkdir -p dist
-          for dir in release-assets/*/; do
-            prefix=$(basename "$dir")
-            find "$dir" -type f | while read -r file; do
-              relative_path="${file#"$dir"}"
-              safe_name=$(printf '%s' "$relative_path" | tr '/\\ ' '___')
-              cp "$file" "dist/${prefix}_${safe_name}"
-            done
-          done
-          test -n "$(find dist -maxdepth 1 -type f -print -quit)"
-          ls -lah dist/
-
-      - name: Validate R2 secrets
-        env:
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        shell: bash
-        run: |
-          missing=0
-          for name in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ACCOUNT_ID R2_BUCKET R2_PUBLIC_BASE_URL; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing required release secret: ${name}"
-              missing=1
-            fi
-          done
-          [ "$missing" -eq 0 ]
-
-      - name: Upload prod package to Cloudflare R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_RETRY_MODE: standard
-          AWS_MAX_ATTEMPTS: 5
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        shell: bash
-        run: |
-          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          latest_prefix="mira/latest"
-          legacy_previous_prefix="mira/previous"
-
-          aws s3 rm "s3://${R2_BUCKET}/${legacy_previous_prefix}/" \
-            --recursive \
-            --endpoint-url "$endpoint" \
-            --only-show-errors || true
-
-          for attempt in 1 2 3; do
-            if aws s3 sync dist/ "s3://${R2_BUCKET}/${latest_prefix}/" \
-              --delete \
-              --endpoint-url "$endpoint" \
-              --only-show-errors; then
-              break
-            fi
-
-            if [ "$attempt" -eq 3 ]; then
-              echo "R2 upload failed after ${attempt} attempts." >&2
-              exit 1
-            fi
-
-            sleep $((attempt * 10))
-          done
-
-          public_base="${R2_PUBLIC_BASE_URL%/}"
-          {
-            echo '### Cloudflare R2'
-            echo "Uploaded prod branch assets to: ${public_base}/${latest_prefix}/"
-            echo 'Retention: latest successful prod/tag publish wins'
-          } >> "$GITHUB_STEP_SUMMARY"
