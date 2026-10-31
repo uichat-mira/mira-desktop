@@ -24,7 +24,7 @@ Related:
 这份文档统一说明：
 
 - Mira 当前桌面代码距离 macOS 可用版本还有哪些真实缺口
-- macOS 首版为什么应先走 Electron，而不是直接追求 Tauri 完整对齐
+- Electron macOS 的交付边界与独立 Node runtime 约束
 - 共享构建输入、原生依赖、终端运行时、浏览器 Native Messaging、TTS、签名公证应该如何分期
 - 每一期的交付边界、验收门槛与明确不做项
 
@@ -49,14 +49,7 @@ Related:
 - 历史初版方案允许没有独立 Node runtime 时通过 `ELECTRON_RUN_AS_NODE=1` 使用 Electron 自身执行 `server.cjs`；当前 Electron 45 已移除此回退
 - `electron-builder.yml` 已存在 `mac.target: dmg` 与 ICNS 图标入口
 
-Tauri 当前额外存在以下阻塞：
-
-- 手动从当前可执行文件目录拼接 `resources`，不符合 macOS `.app` 的标准资源目录
-- backend 生产启动写死 `node.exe` 和 `where.exe`
-- Native Messaging 写死 `.exe`、Windows 注册表与 `reg.exe`
-- Tauri 打包脚本显式拒绝非 Windows 平台
-
-因此，Electron 更适合作为验证共享 runtime 平台化成果的第一条 macOS 产品链；Tauri 应在共享输入稳定后复用同一套能力合同，而不是先在 Rust 壳层里复制一套临时方案。
+DSK-011 已决定仅维护 Electron 桌面壳层；这里的分期均指 Electron macOS。下方初期快照里的 Tauri 内容只用于解释当年的双壳取舍，不代表当前实现或待办。
 
 ## 初期代码事实（历史快照）
 
@@ -98,7 +91,7 @@ Tauri 当前额外存在以下阻塞：
 - 当前核查环境没有 Cargo，因此 Tauri macOS 编译尚未验证。
 - Computer Use 浏览器运行时平台缺口已按 [T123](../project-control/tasks/microapp_T123-computer-use-browser-runtime-platformization.md) 修复并实机验证：托管 Chromium 配置按平台分发（win32 → win64、darwin/arm64 → mac-arm64，版本 152.0.7948.0），darwin 探测 `/Applications` 下的 Chrome/Edge，托管记录按当前平台布局校验；`darwin-arm64` 实机用 playwright-core 真实启动托管 Chrome for Testing 与系统 Chrome 均成功，错误安装的 win64 记录被判无效并回落系统浏览器；runtime 定向测试 16 项通过。
 
-Cargo 仍属于核查环境缺口；`remote-relay-connector` 类型错误是当前基线缺陷，不在本轮 macOS 开发态改造中顺带修复。Tauri 工具链只在 Phase 6 前要求补齐。
+Cargo 仍属于核查环境缺口；`remote-relay-connector` 类型错误是当前基线缺陷，不在本轮 macOS 开发态改造中顺带修复。Tauri 工具链不再是当前 macOS 交付依赖。
 
 ## 目标能力分层
 
@@ -187,16 +180,16 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 
 ### 目标
 
-先把“macOS 首版是什么”写进合同，避免实现过程中不断把 Universal、App Store、Tauri、Native Messaging、Piper 同时拉进首期。
+先把“macOS 首版是什么”写进合同，避免实现过程中同时推进 Universal、App Store、Native Messaging、Piper 等多条非核心能力。
 
 ### 决策
 
 - 首发架构：`darwin-arm64`
 - 首发壳层：Electron
 - 分发：Developer ID 直发 DMG
-- 首期不做：Mac App Store sandbox、Universal 2、Intel x64、自动更新
+- 原方案首期不做：Mac App Store sandbox、Universal 2、Intel x64、自动更新；**现有 Intel x64 兼容性 DMG 构建/发行链路已独立存在，必须继续保留**
 - Core 必须可用；Native Messaging 与 Piper 可不进入首个内部包，但 capability 必须明确报告 unavailable
-- `desktopRuntime.platform` 在 Node/Electron 合同继续使用 `darwin`；Tauri 侧应将 Rust 的 `macos` 映射为 `darwin`，避免前端出现第三套平台值
+- `desktopRuntime.platform` 统一采用 Node/Electron 的 `darwin` 平台标识；renderer 不引入第二套平台名称
 
 ### 产物
 
@@ -219,11 +212,8 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 
 - `package.json`
   - 增加 `dev:electron:mac`
-  - 增加 `dev:tauri:mac` 仅用于壳层探测，不作为首版交付承诺
   - 增加无平台后缀的内部命令；是否保留平台后缀别名需由项目负责人确认
 - `electron/dev-launcher.cjs`
-- `scripts/run-tauri-dev.cjs`
-- `scripts/tauri-dev-launcher.cjs`
 - `server/src/harness/environment.ts`
 - Terminal Session smoke tests
 
@@ -247,7 +237,7 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 
 ### 目标
 
-把 `.artifacts/` 从“Windows 构建缓存”变成带平台合同的桌面 payload 输入。这一期是 Electron 与 Tauri 两条 macOS 链的共同前置条件。
+把 `.artifacts/` 从“Windows 构建缓存”变成带平台合同的 Electron 桌面 payload 输入。Windows 与 macOS 各自验证原生依赖，不互相复制构建产物。
 
 ### 推荐目录
 
@@ -277,7 +267,6 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 ### 代码范围
 
 - `scripts/prepare-desktop-artifacts.js`
-- `scripts/prepare-tauri-assets.js`
 - `server/build.js`
 - `scripts/prepare-terminal-runtime.mjs`
 - `scripts/terminal-runtime.lock.json` 及新的平台锁文件
@@ -400,13 +389,12 @@ Phase 2 不强制立即提供 Piper macOS 包，但必须做到：
 - 用户级 Chrome manifest 写入：
   - `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`
 - Chromium、Chrome for Testing 等路径作为后续兼容项，不在首个实现里猜测式全写
-- status / install / uninstall 通过平台 adapter 实现，不在 Electron 与 Tauri 各自复制业务判断
+- status / install / uninstall 统一经 Electron 的平台 adapter，实现能力可达性和权限边界，不在 UI 内复制业务判断
 
 需要同时修改：
 
 - `mira-clipper-ext/scripts/build-native-host.mjs`
 - Electron IPC adapter
-- Tauri command adapter（Phase 6 接入）
 - Native Host smoke
 
 ### 4.2 TTS
@@ -482,52 +470,9 @@ Secrets 至少包括：
 - staple 校验成功
 - 在另一台未配置开发环境的 Apple Silicon Mac 上首次启动不触发“应用已损坏”或来源不可验证
 
-## Phase 6：Tauri macOS 对齐（已取消，以下仅作历史存档）
+## Phase 6：已取消的 Tauri macOS 阶段
 
-> DSK-011 已取消本阶段；下列 Tauri 资源与命令仅保留原设计决策背景，不可作为当前施工依据。Electron macOS 阶段与发布路线不受此决定影响。
-
-### 前置条件
-
-只有 Phase 2 的共享 payload 与 Phase 5 的签名规则稳定后，才进入 Tauri 正式对齐。否则会把平台问题重复实现一遍。
-
-### 代码范围
-
-- `tauri/src/main.rs`
-- `tauri/tauri.conf.json`
-- `scripts/prepare-tauri-assets.js`
-- `scripts/build-tauri-dist.js`
-- Tauri capabilities / sidecar config
-
-### 必改项
-
-#### 资源目录
-
-移除从 `current_exe()` 父目录手拼 `resources` 的逻辑，改用 Tauri 的 resource path resolver。macOS `.app` 中可执行文件位于 `Contents/MacOS`，资源位于 `Contents/Resources`，手拼相邻目录会落错位置。
-
-#### 平台值
-
-将 Rust `std::env::consts::OS == "macos"` 映射为前端合同使用的 `darwin`；Windows 继续映射为 `win32`。
-
-#### Backend runtime
-
-短期优先：
-
-- 从 `darwin-arm64` payload 携带 `node-runtime/node`
-- 通过 Tauri resource resolver 定位
-- backend 进程生命周期继续由现有 `BackendProcess` 管理
-
-后续若改成 Tauri sidecar，必须遵守 target triple 文件名规则，并把 sidecar 纳入签名、公证与 capability 权限配置。
-
-#### Native Messaging
-
-复用 Phase 4 的平台 adapter 与 macOS launcher，不在 Rust 代码里继续保留 Windows Registry 作为唯一实现。
-
-### 验收
-
-- Tauri 与 Electron 使用同一份 `darwin-arm64` payload manifest
-- Core capability smoke 与 Electron 一致
-- Native Messaging、Terminal、数据库、Workspace 的结果合同一致
-- 两个壳层不维护两套下载器、原生依赖选择器或 runtime PATH 规则
+DSK-011 已退役 Tauri，此阶段不再实施；原计划可从 Git 历史追溯。**Electron macOS 的 Core、独立 Node、Native Messaging、DMG、签名公证和 Apple Silicon 目标仍按其他阶段推进。**
 
 ## Phase 7：架构扩展与产品化
 
@@ -592,15 +537,15 @@ Universal 2 不是把两个 `.app` 简单拼接。所有 native module、sidecar
 
 控制：构建后枚举 Mach-O 与 `.node`，生成签名清单；签名和验证都基于清单执行。
 
-### Tauri / Electron 双实现漂移
+### 重新引入双壳维护负担
 
-风险：两个壳层各自维护 runtime path、Native Messaging 和 backend 启动规则。
+风险：新增未批准的第二桌面壳层，导致平台能力和发布门禁重复。
 
-控制：共享 payload manifest、platform resolver 与 capability contract；壳层只负责生命周期和原生桥接。
+控制：桌面壳层保持 Electron 单一实现；Windows 与 macOS 共享能力合同、按平台验证原生资源。
 
 ### 首期范围膨胀
 
-风险：Universal、App Store、Tauri、Piper、Native Messaging 同时阻塞首版。
+风险：Universal、App Store、Piper、Native Messaging 同时阻塞首版。
 
 控制：Phase 0 冻结 arm64 + Electron + direct DMG；Extended 能力按明确 gate 后移。
 
@@ -618,13 +563,10 @@ macOS 首个正式版本完成时，必须同时满足：
 - notarization、staple、Gatekeeper 验证通过
 - capability UI 不宣称未实现能力可用
 - Windows 构建、验证与发布流程无回归
-- Electron 与后续 Tauri 共用同一套 `darwin-arm64` runtime 合同
+- Electron macOS 使用经 `darwin-arm64` 验证的 runtime 合同，不依赖其他桌面壳层
 
 ## 外部实现依据
 
 - Apple notarization：`https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution`
 - Chrome Native Messaging：`https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging`
 - electron-builder notarization：`https://www.electron.build/docs/notarization/`
-- Tauri resources：`https://v2.tauri.app/develop/resources/`
-- Tauri sidecar：`https://v2.tauri.app/zh-cn/develop/sidecar/`
-- Tauri macOS signing：`https://v2.tauri.app/zh-cn/distribute/sign/macos/`

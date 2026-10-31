@@ -9,6 +9,9 @@ import {
   getRuntimeDescription,
   openExternalUrl,
   getNativeMessagingHostStatus,
+  downloadBrowserExtension,
+  installNativeMessagingHost,
+  uninstallNativeMessagingHost,
   type DesktopRuntimeInfo,
 } from "../desktopRuntime";
 
@@ -249,6 +252,26 @@ describe("desktopRuntime", () => {
 
     await expect(openExternalUrl("https://example.com")).rejects.toThrow("Electron IPC 不可用");
     expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it("Electron 缺少 IPC 时扩展与 Native Messaging 操作明确失败", async () => {
+    const open = vi.fn();
+    setWindow({
+      ...window,
+      desktopRuntime: {
+        hostKind: "electron",
+        platform: "win32",
+        isPackaged: true,
+        backendUrl: "http://localhost:3000",
+      },
+      open,
+    } as unknown as typeof globalThis.window);
+
+    await expect(downloadBrowserExtension()).rejects.toThrow("Electron IPC 不可用");
+    await expect(installNativeMessagingHost()).rejects.toThrow("Electron IPC 不可用");
+    await expect(getNativeMessagingHostStatus()).rejects.toThrow("Electron IPC 不可用");
+    await expect(uninstallNativeMessagingHost()).rejects.toThrow("Electron IPC 不可用");
+    expect(open).not.toHaveBeenCalled();
   });
 
   it("getNativeMessagingHostStatus electron 环境使用原生状态查询", async () => {
