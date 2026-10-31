@@ -201,12 +201,27 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     },
   );
 
+  // Only the native Cloud Account owner may make an official Host eligible.
+  // The local/Tailscale/self-hosted connector remains independent. Wait for
+  // Backend listen before creating a Cloud socket, including restore races.
+  let backendListening = false;
+  const unsubscribeCloudAvailability = cloudTicketIpc.onAvailabilityChanged(
+    (available) => {
+      if (!backendListening) return;
+      if (available) cloudRelayConnectorService.start();
+      else cloudRelayConnectorService.stop();
+    },
+  );
+
   app.addHook("onListen", async () => {
+    backendListening = true;
     remoteRelayConnectorService.start();
-    cloudRelayConnectorService.start();
+    if (cloudTicketIpc.isHostAvailable()) cloudRelayConnectorService.start();
   });
 
   app.addHook("onClose", async () => {
+    backendListening = false;
+    unsubscribeCloudAvailability();
     cloudRelayConnectorService.stop();
     unsubscribeCloudRevoked();
     cloudLocalRequestAuthority.clear();
