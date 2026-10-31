@@ -31,6 +31,9 @@ test("stable tag on prod commit is accepted (including annotated tags)", () => i
   assert.equal(verifyProdTag("v0.106.0", f.sha, f.cwd).sha, f.sha);
   git(f.cwd, "tag", "-d", "v0.106.0");
   git(f.cwd, "tag", "-a", "v0.106.0", "-m", "release");
+  const tagObject = git(f.cwd, "rev-parse", "refs/tags/v0.106.0");
+  assert.notEqual(tagObject, f.sha);
+  assert.equal(verifyProdTag("v0.106.0", tagObject, f.cwd).sha, f.sha);
   assert.equal(verifyProdTag("v0.106.0", f.sha, f.cwd).sha, f.sha);
 }));
 
@@ -46,7 +49,7 @@ test("commit outside prod history is rejected", () => inRepo(f => {
 test("tag/version mismatch, unstable tag and SHA mismatch are rejected", () => inRepo(f => {
   assert.throws(() => verifyProdTag("v0.105.0", f.sha, f.cwd), /differs from package.json/);
   assert.throws(() => verifyProdTag("v0.106.0-rc.1", f.sha, f.cwd), /Only stable/);
-  assert.throws(() => verifyProdTag("v0.106.0", "f".repeat(40), f.cwd), /must match/);
+  assert.throws(() => verifyProdTag("v0.106.0", "f".repeat(40), f.cwd), /same tagged commit/);
 }));
 
 test("missing prod ref fails closed", () => inRepo(f => {
@@ -55,21 +58,24 @@ test("missing prod ref fails closed", () => inRepo(f => {
 }));
 
 test("publish jobs cannot run before provenance guard", () => {
-  const yml = readFileSync(new URL("../../.github/workflows/release-production.yml", import.meta.url), "utf8");
+  const yml = readFileSync(new URL("../../.github/workflows/release-production.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.match(yml, /  verify-tag-source:\n/);
   assert.match(yml, /  factory:\n    name: Build and validate release\n    needs: verify-tag-source\n/);
   assert.match(yml, /  build-macos-intel:\n    name: Build macOS Intel release asset\n    needs: verify-tag-source\n/);
+  assert.match(yml, /verify-prod-tag-cli\.mjs/);
 });
 
 test("CLI executes provenance check instead of exiting silently", () => inRepo(f => {
   const scripts = join(f.cwd, "scripts", "release");
   mkdirSync(scripts, { recursive: true });
-  copyFileSync(new URL("./verify-prod-tag.mjs", import.meta.url), join(scripts, "verify-prod-tag.mjs"));
-  const output = execFileSync(process.execPath, ["scripts/release/verify-prod-tag.mjs", "v0.106.0", f.sha], {
+  for (const filename of ["verify-prod-tag.mjs", "verify-prod-tag-cli.mjs"]) {
+    copyFileSync(new URL("./" + filename, import.meta.url), join(scripts, filename));
+  }
+  const output = execFileSync(process.execPath, ["scripts/release/verify-prod-tag-cli.mjs", "v0.106.0", f.sha], {
     cwd: f.cwd, encoding: "utf8",
   });
   assert.match(output, /Release provenance PASS/);
   assert.throws(() => execFileSync(process.execPath, [
-    "scripts/release/verify-prod-tag.mjs", "v0.106.0", "f".repeat(40),
+    "scripts/release/verify-prod-tag-cli.mjs", "v0.106.0", "f".repeat(40),
   ], { cwd: f.cwd, encoding: "utf8", stdio: "pipe" }));
 }));
