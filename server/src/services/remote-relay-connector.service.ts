@@ -518,7 +518,11 @@ export class RemoteRelayConnectorService {
   }
 
   private handleMessage(socket: RelaySocket, generation: number, raw: string) {
-    const frame = parseRelayInboundHostFrame(raw);
+    // Only a TLS-connected, Cloud-ticket-authenticated Host socket may receive
+    // official Relay assertions. Legacy messages never gain Cloud identity.
+    const cloudRoom = this.currentConfig && isCloud(this.currentConfig)
+      ? this.currentRelayId ?? "" : undefined;
+    const frame = parseRelayInboundHostFrame(raw, cloudRoom);
     if (!frame) {
       this.lastError = this.currentConfig && isCloud(this.currentConfig)
         ? "cloud_relay_invalid_frame"
