@@ -14,6 +14,9 @@ import {
   type RelayOutboundHostFrame,
   type RelayRequestFrame,
 } from "@/remote-relay/protocol.js";
+import {
+  CLOUD_INTERNAL_REQUEST_HEADER,
+} from "@/services/cloud-local-request-authority.service.js";
 
 const RELAY_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/u;
 const TOKEN_MIN_LENGTH = 32;
@@ -32,6 +35,7 @@ const LEGACY_HOST_PROTOCOL_ERRORS = new Set([
 ]);
 
 const BLOCKED_REQUEST_HEADERS = new Set([
+  CLOUD_INTERNAL_REQUEST_HEADER,
   "connection",
   "content-length",
   "cookie",
@@ -291,6 +295,7 @@ export class RemoteRelayConnectorService {
   private stopped = false;
   private generation = 0;
   private readonly activeRequests = new Map<string, ActiveLocalRequest>();
+  private readonly pendingCloudRequests = new Map<string, { cancelled: boolean }>();
 
   constructor(
     private readonly configProvider: () => AnyRelayConnectorConfig =
@@ -300,6 +305,9 @@ export class RemoteRelayConnectorService {
     private readonly localBaseUrl = `http://127.0.0.1:${CONFIG.PORT}`,
     private readonly random = Math.random,
     private readonly cloudTicketSource?: CloudRelayTicketSource,
+    private readonly authorizeCloudRequest?: (
+      frame: RelayRequestFrame,
+    ) => Promise<string | null>,
   ) {}
 
   start() {
@@ -579,9 +587,38 @@ export class RemoteRelayConnectorService {
 
     if (frame.type === "request") {
       if (this.currentConfig && isCloud(this.currentConfig)) {
-        // DSK-007 owns verified Cloud Grants. Transport ticket ≠ Tool Grant.
-        this.sendError(frame.requestId, "CLOUD_GRANT_REQUIRED",
-          "Cloud Host Grant is not available for business requests", false);
+        if (!frame.relayProvenance || !this.authorizeCloudRequest) {
+          this.sendError(frame.requestId, "CLOUD_GRANT_REQUIRED",
+            "Cloud Host Grant is not available for business requests", false);
+          return;
+        }
+        if (this.activeRequests.has(frame.requestId) ||
+            this.pendingCloudRequests.has(frame.requestId)) {
+          this.sendError(frame.requestId, "REQUEST_ID_IN_USE",
+            "A Cloud request with this id is already active", false);
+          return;
+        }
+        const pending = { cancelled: false };
+        this.pendingCloudRequests.set(frame.requestId, pending);
+        void (async () => {
+          try {
+            const capability = await this.authorizeCloudRequest!(frame);
+            if (pending.cancelled || !this.isCurrent(socket, generation)) return;
+            if (!capability) {
+              this.sendError(frame.requestId, "CLOUD_GRANT_REQUIRED",
+                "Mobile Cloud Host Grant denies this route", false);
+              return;
+            }
+            await this.handleLocalRequest(frame, capability);
+          } catch {
+            if (!pending.cancelled && this.isCurrent(socket, generation)) {
+              this.sendError(frame.requestId, "CLOUD_GRANT_REQUIRED",
+                "Cloud Host Grant could not be verified", false);
+            }
+          } finally {
+            this.pendingCloudRequests.delete(frame.requestId);
+          }
+        })();
         return;
       }
       void this.handleLocalRequest(frame);
@@ -589,6 +626,8 @@ export class RemoteRelayConnectorService {
     }
 
     if (frame.type === "cancel") {
+      const waiting = this.pendingCloudRequests.get(frame.requestId);
+      if (waiting) waiting.cancelled = true;
       const active = this.activeRequests.get(frame.requestId);
       if (active) {
         active.cancelled = true;
@@ -609,7 +648,10 @@ export class RemoteRelayConnectorService {
     }
   }
 
-  private async handleLocalRequest(frame: RelayRequestFrame) {
+  private async handleLocalRequest(
+    frame: RelayRequestFrame,
+    internalCloudCapability?: string,
+  ) {
     if (this.activeRequests.has(frame.requestId)) {
       this.sendError(
         frame.requestId,
@@ -667,9 +709,16 @@ export class RemoteRelayConnectorService {
     this.activeRequests.set(frame.requestId, active);
 
     try {
+      const headers = sanitizeRequestHeaders(frame.headers);
+      if (internalCloudCapability) {
+        // Client-controlled authorization is discarded; the Backend consumes
+        // only its own short-lived one-shot internal Cloud capability.
+        delete headers.authorization;
+        headers[CLOUD_INTERNAL_REQUEST_HEADER] = internalCloudCapability;
+      }
       const response = await this.localFetch(target, {
         method: frame.method,
-        headers: sanitizeRequestHeaders(frame.headers),
+        headers,
         ...(body?.byteLength ? { body } : {}),
         signal: active.controller.signal,
       });
@@ -812,6 +861,10 @@ export class RemoteRelayConnectorService {
   }
 
   private abortAllRequests() {
+    for (const pending of this.pendingCloudRequests.values()) {
+      pending.cancelled = true;
+    }
+    this.pendingCloudRequests.clear();
     for (const active of this.activeRequests.values()) {
       active.cancelled = true;
       active.controller.abort();

@@ -18,6 +18,12 @@ import {
 } from "@/services/remote-relay-config.service.js";
 import { tailscaleRemoteAccessService } from "@/services/tailscale-remote-access.service.js";
 import { CloudRelayTicketIpcClient } from "@/services/cloud-relay-ticket-ipc.service.js";
+import { CloudHostGrantIpcClient } from "@/services/cloud-host-grant-ipc.service.js";
+import { CloudHostGrantRuntime } from "@/services/cloud-host-grant-runtime.service.js";
+import {
+  cloudLocalRequestAuthority,
+} from "@/services/cloud-local-request-authority.service.js";
+import { userRepository } from "@/db/index.js";
 import { threadService } from "@/services/thread.service.js";
 import {
   HostNotificationBindingError,
@@ -164,6 +170,16 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
   // Completely independent from user-configured/self-hosted Relay and Tailscale.
   // This provider uses Electron's private child IPC, never an HTTP credential API.
   const cloudTicketIpc = new CloudRelayTicketIpcClient();
+  const cloudGrantIpc = new CloudHostGrantIpcClient();
+  const cloudGrantRuntime = new CloudHostGrantRuntime(cloudGrantIpc, (id) => {
+    const user = userRepository.findById(id);
+    if (!user || !user.isActive) return null;
+    return { id: user.id, username: user.username,
+      role: user.role, isActive: user.isActive };
+  });
+  const unsubscribeCloudRevoked = cloudGrantIpc.onInvalidated(() => {
+    cloudLocalRequestAuthority.clear();
+  });
   const cloudRelayConnectorService = new RemoteRelayConnectorService(
     resolveCloudRelayConnectorConfig,
     socketFactory,
@@ -171,6 +187,15 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     undefined,
     Math.random,
     cloudTicketIpc,
+    async (frame) => {
+      if (!frame.relayProvenance) return null;
+      const authorized = await cloudGrantRuntime.authorize(
+        frame.relayProvenance, frame.method, frame.path,
+      );
+      return authorized
+        ? cloudLocalRequestAuthority.issue(authorized, frame.method, frame.path)
+        : null;
+    },
   );
 
   app.addHook("onListen", async () => {
@@ -180,6 +205,10 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
 
   app.addHook("onClose", async () => {
     cloudRelayConnectorService.stop();
+    unsubscribeCloudRevoked();
+    cloudLocalRequestAuthority.clear();
+    cloudGrantRuntime.dispose();
+    cloudGrantIpc.dispose();
     cloudTicketIpc.dispose();
     remoteRelayConnectorService.stop();
   });
@@ -602,7 +631,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     },
     routeHandler("Failed to list remote device workspaces", async (request) => {
       const user = request.authUser;
-      if (!request.remoteDevice || !user) {
+      if (!(request.remoteDevice || request.cloudRemoteCaller) || !user) {
         throw forbidden("A paired remote device credential is required");
       }
 
@@ -654,7 +683,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to list remote device tools", async (request) => {
-      if (!request.remoteDevice || !request.authUser) {
+      if (!(request.remoteDevice || request.cloudRemoteCaller) || !request.authUser) {
         throw forbidden("A paired remote device credential is required");
       }
       return success(await listRemoteToolManifests());
@@ -689,7 +718,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     },
     routeHandler("Failed to stream remote device tool invocation", async (request, reply) => {
       const user = request.authUser;
-      if (!request.remoteDevice || !user) {
+      if (!(request.remoteDevice || request.cloudRemoteCaller) || !user) {
         throw forbidden("A paired remote device credential is required");
       }
 
@@ -810,7 +839,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     },
     routeHandler("Failed to resolve remote device tool approval", async (request) => {
       const user = request.authUser;
-      if (!request.remoteDevice || !user) {
+      if (!(request.remoteDevice || request.cloudRemoteCaller) || !user) {
         throw forbidden("A paired remote device credential is required");
       }
       return success(
@@ -849,7 +878,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to cancel remote device tool invocation", async (request) => {
-      if (!request.remoteDevice || !request.authUser) {
+      if (!(request.remoteDevice || request.cloudRemoteCaller) || !request.authUser) {
         throw forbidden("A paired remote device credential is required");
       }
       return success(
@@ -1016,18 +1045,20 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to get remote device manifest", async (request) => {
-      const device = request.remoteDevice;
-      if (!device) {
-        throw forbidden("A paired remote device credential is required");
+      const paired = request.remoteDevice;
+      const cloud = request.cloudRemoteCaller;
+      if (!paired && !cloud) {
+        throw forbidden("Authenticated Remote V1 device required");
       }
 
       return success({
         protocolVersion: 1,
-        device: {
-          id: device.id,
-          name: device.name,
-          platform: device.platform,
-          scopes: device.permissions,
+        device: paired ? {
+          id: paired.id, name: paired.name,
+          platform: paired.platform, scopes: paired.permissions,
+        } : {
+          id: cloud!.mobileDeviceId, name: "Mira Cloud Mobile",
+          platform: "cloud", scopes: cloud!.scopes,
         },
         routes: {
           workspaces: ["GET /remote/v1/workspaces"],
