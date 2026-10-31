@@ -1,20 +1,20 @@
 # macOS 桌面端实现分期
 
-Status: Proposed
+Status: Historical
 Owner: platform
 Layer: raw-source
 Module: Developments
 Feature: PlatformRuntime
 Doc Type: implementation-plan
-Canonical: true
+Canonical: false
 Related:
-  - tauri.md
-  - tauri-setup.md
   - ../architecture/README.md
   - ../architecture/ipc-and-preload.md
   - ../build/README.md
   - ../developments/release-management.md
 
+> **Historical plan, superseded by DSK-011 (2026-10-31):** the proposed Tauri macOS phases and all Tauri commands below are no longer supported or planned; do not implement them. The Electron-only release contract lives in `../build/README.md`.
+>
 > **Version evidence:** references below to Electron 31.7.7 are historical
 > observations from original macOS implementation runs, not the current
 > Electron runtime version. Electron 45 requires its own acceptance evidence.
