@@ -118,7 +118,7 @@ pnpm package:electron:win
 
 ## 稳定 Tag 来源保护
 
-正式的 `vX.Y.Z` Tag 必须指向已进入 `prod` Git 历史的提交，且 Tag、事件 SHA、检出的 HEAD、根 `package.json` 版本必须一致。发布工作流先检出完整历史、显式获取 `origin/prod`，通过 `scripts/release/verify-prod-tag.mjs` 后，才启动 Release Factory 和 macOS Intel 构建。验证失败时不调用发布任务，不触及 GitHub Release 或 R2。
+正式的 `vX.Y.Z` Tag 必须指向已进入 `prod` Git 历史的提交，且 Tag 解析出的提交必须等于检出的 HEAD，事件 SHA 可以是该提交或带注释的 Tag 对象，根 `package.json` 版本必须匹配。发布工作流先检出完整历史、显式获取 `origin/prod`，通过 `scripts/release/verify-prod-tag-cli.mjs` 后，才启动 Release Factory 和 macOS Intel 构建。验证失败时不调用发布任务，不触及 GitHub Release 或 R2。
 
 在 PR 上可使用 `node --test scripts/release/verify-prod-tag.test.mjs` 验证正反例。该工作流门禁不替代 GitHub Tag ruleset：Tag 所含的工作流本身也来自被标记的提交，仓库管理员仍应保护 `v*` Tag 的创建、改写及删除权限；历史 Tag 不应因本次门禁变更而重跑。未通过真实打包运行验收前不要打正式 Tag。
 
