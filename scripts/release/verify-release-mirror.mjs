@@ -14,7 +14,7 @@ function readJson(path) {
 
 export function verify(platform, tag, directory, githubRelease, r2List) {
   if (!["win", "macos-intel"].includes(platform)) fail("unknown platform " + platform);
-  if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)) fail("invalid release tag " + tag);
+  if (!/^v\d+\.\d+\.\d+$/.test(tag)) fail("invalid release tag " + tag);
   const version = tag.slice(1);
   const files = readdirSync(directory);
   if (files.length !== 2 || files.some(name => !statSync(join(directory, name)).isFile())) {
