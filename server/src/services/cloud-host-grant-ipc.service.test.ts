@@ -79,7 +79,8 @@ describe("DSK-007 Cloud Host grant private Backend IPC (T2)", () => {
     const wait = client.requestSnapshot();
     parent.emit("message", { channel: CHANNEL, type: "revoked", reason: "reauth" });
     await expect(wait).rejects.toMatchObject({ code: "cloud_grant_reauth" });
-    expect(invalidated).toHaveBeenCalledExactlyOnceWith("reauth");
+    expect(invalidated).toHaveBeenCalledTimes(1);
+    expect(invalidated).toHaveBeenCalledWith("reauth");
     parent.reply(0, { ok: true, snapshot: snapshot() });
     client.dispose();
   });
