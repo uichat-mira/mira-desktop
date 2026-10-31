@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -60,3 +60,16 @@ test("publish jobs cannot run before provenance guard", () => {
   assert.match(yml, /  factory:\n    name: Build and validate release\n    needs: verify-tag-source\n/);
   assert.match(yml, /  build-macos-intel:\n    name: Build macOS Intel release asset\n    needs: verify-tag-source\n/);
 });
+
+test("CLI executes provenance check instead of exiting silently", () => inRepo(f => {
+  const scripts = join(f.cwd, "scripts", "release");
+  mkdirSync(scripts, { recursive: true });
+  copyFileSync(new URL("./verify-prod-tag.mjs", import.meta.url), join(scripts, "verify-prod-tag.mjs"));
+  const output = execFileSync(process.execPath, ["scripts/release/verify-prod-tag.mjs", "v0.106.0", f.sha], {
+    cwd: f.cwd, encoding: "utf8",
+  });
+  assert.match(output, /Release provenance PASS/);
+  assert.throws(() => execFileSync(process.execPath, [
+    "scripts/release/verify-prod-tag.mjs", "v0.106.0", "f".repeat(40),
+  ], { cwd: f.cwd, encoding: "utf8", stdio: "pipe" }));
+}));
