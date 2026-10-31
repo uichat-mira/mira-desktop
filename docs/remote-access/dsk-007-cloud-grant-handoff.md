@@ -53,9 +53,13 @@ merged to Relay `dev` as `f33129b81583e566f873bae457ba0de5cf2fcd03`. Cloud-only
 WebSocket admission persists the verified Client account/device/room binding and
 authoritatively overwrites the Client's top-level `relayProvenance` in Host
 `request` and `cancel` frames. Desktop now has a strict, room- and
-connection-scoped parser for these fields. Invalid/missing proof fails closed;
-Legacy transport does not acquire Cloud caller identity. This verifies the
-**ingress protocol shape**, not a business permission or local owner binding.
+connection-scoped parser for these fields. Missing/invalid provenance on
+Cloud **requests** fails closed; Legacy transport does not acquire Cloud caller
+identity. Relay socket cleanup sends a bare, server-routed `cancel` when a
+Client disconnects. Desktop accepts it only from its authenticated Cloud
+Host socket and only to abort an already-active matching request, never as
+permission or identity evidence. This verifies the **ingress protocol shape**,
+not a business permission or local owner binding.
 
 **Cloud business requests still return `CLOUD_GRANT_REQUIRED`.** The
 `CloudHostGrantIpcClient` is not yet bound to an authenticated local Desktop

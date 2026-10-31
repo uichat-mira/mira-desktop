@@ -485,6 +485,17 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
       retryable: false,
     });
     expect(localFetch).not.toHaveBeenCalled();
+    // Cloud Relay's socket cleanup sends a bare cancellation; accepting it
+    // must not tear down the entire official Host WebSocket.
+    socket.message({
+      version: 1, type: "cancel",
+      requestId: "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e~untrusted-client",
+    });
+    expect(socket.closeCalls).toEqual([]);
+    expect(service.getSnapshot()).toMatchObject({
+      state: "connected", lastError: null, activeRequests: 0,
+    });
+    expect(localFetch).not.toHaveBeenCalled();
     expect(ticketCount).toBe(1);
     service.stop();
   });

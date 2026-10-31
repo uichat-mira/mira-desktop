@@ -55,12 +55,32 @@ describe("DSK-007 official Cloud Relay provenance consumer contract (T2)", () =>
     expect(parseRelayInboundHostFrame(cancel(provenance()), room)).toMatchObject({
       type: "cancel", requestId, relayProvenance: provenance(),
     });
-    expect(parseRelayInboundHostFrame(cancel(undefined), room)).toBeNull();
+    // The Relay socket-cleanup path emits an unadorned routed cancel.
+    expect(parseRelayInboundHostFrame(cancel(undefined), room)).toMatchObject({
+      type: "cancel", requestId,
+    });
+    expect(parseRelayInboundHostFrame(cancel(undefined), room))
+      .not.toHaveProperty("relayProvenance");
     expect(parseRelayInboundHostFrame(cancel({ ...provenance(), deviceId: "x", requestId: "wrong" }), room))
       .toBeNull();
     expect(parseRelayInboundHostFrame(cancel(undefined))).toMatchObject({
       type: "cancel", requestId,
     });
+  });
+
+  it("rejects forged or malformed bare Cloud cancellation without granting authority", () => {
+    const cancel = (id: string, claim?: unknown) => JSON.stringify({
+      version: 1, type: "cancel", requestId: id,
+      ...(claim === undefined ? {} : { relayProvenance: claim }),
+    });
+    expect(parseRelayInboundHostFrame(cancel("not-connection-bound"), room)).toBeNull();
+    expect(parseRelayInboundHostFrame(cancel(conn + "~"), room)).toBeNull();
+    expect(parseRelayInboundHostFrame(cancel("not-a-uuid~one-request"), room)).toBeNull();
+    expect(parseRelayInboundHostFrame(cancel(requestId, { deviceId: "fake" }), room))
+      .toBeNull();
+    // Missing Cloud request provenance is ALWAYS denied, unlike cleanup-only cancellation.
+    expect(parseRelayInboundHostFrame(req({ relayProvenance: undefined }), room))
+      .toBeNull();
   });
 
   it("never promotes transport identity to a direct permission decision", () => {

@@ -245,7 +245,16 @@ export const parseRelayInboundHostFrame = (
     if (!isRequestId(value.requestId)) return null;
     const provenance = cloudRoom === undefined
       ? undefined : parseCloudProvenance(value.relayProvenance, value.requestId, cloudRoom);
-    if (cloudRoom !== undefined && !provenance) return null;
+    // REL-001 Relay room-sockets.cleanupSocket emits bare cancellation on
+    // Client disconnect. It may only abort an existing local request, never
+    // establish Mobile identity or authorize a business request.
+    const split = value.requestId.indexOf("~");
+    const relayCleanupCancel = cloudRoom !== undefined &&
+      value.relayProvenance === undefined &&
+      split > 0 &&
+      CLOUD_CONNECTION_ID.test(value.requestId.slice(0, split)) &&
+      CLOUD_CLIENT_REQUEST_ID.test(value.requestId.slice(split + 1));
+    if (cloudRoom !== undefined && !provenance && !relayCleanupCancel) return null;
     return {
       version: RELAY_PROTOCOL_VERSION,
       type: "cancel",
