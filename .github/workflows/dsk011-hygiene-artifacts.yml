@@ -1,4 +1,4 @@
-name: One-time DSK-011 hygiene artifacts
+name: One-time DSK-011 docs index refresh
 
 on:
   push:
@@ -9,60 +9,31 @@ permissions:
   contents: write
 
 jobs:
-  rebuild:
+  docs-index:
     if: github.repository == 'uichat-mira/mira-desktop'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9.12.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: pnpm
-      - name: Install frozen dependency graph
-        run: pnpm install --frozen-lockfile --prefer-offline
-      - name: Regenerate official frontend tests and coverage using repository generator
+          node-version: '24'
+      - name: Regenerate documentation index
         shell: bash
         run: |
           set -euo pipefail
-          node --input-type=module -e "import { generateFrontendTestReport } from './scripts/generate-test-report.js'; generateFrontendTestReport();"
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-          const report = JSON.parse(fs.readFileSync('desktop/test-report/test-report.json', 'utf8'));
-          const coverage = JSON.parse(fs.readFileSync('desktop/test-report/coverage-report.json', 'utf8'));
-          if (!report.summary?.success || !(report.summary?.totalTests > 0)) throw new Error('Official frontend report did not pass full test suite');
-          if (!coverage.available || !(coverage.files?.length > 0)) throw new Error('Frontend coverage report was not generated');
-          for (const suite of report.suites ?? []) {
-            for (const item of suite.assertionResults ?? []) {
-              if (/installDesktopExternalLinkHandler Tauri|About renders the current Tauri host|Tauri 中通过 shell plugin 打开同一个系统浏览器/i.test(item.fullName ?? '')) {
-                throw new Error('Deleted Tauri host test still listed in report: ' + item.fullName);
-              }
-            }
-          }
-          console.log('Official frontend report verified: ' + report.summary.totalTests + ' tests');
-          JS
-      - name: Sync frontend report to backend static report copies
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp desktop/test-report/test-report.json server/client-coverage/test-report.json
-          cp desktop/test-report/coverage-report.json server/client-coverage/coverage-report.json
-      - name: Rebuild documentation index
-        run: node packages/docs-site/scripts/build-docs-index.mjs
-      - name: Commit generated reports and index (only)
-        shell: bash
-        run: |
-          set -euo pipefail
+          node packages/docs-site/scripts/build-docs-index.mjs
           git diff --check
-          git add -- desktop/test-report/test-report.json desktop/test-report/coverage-report.json server/client-coverage/test-report.json server/client-coverage/coverage-report.json packages/docs-site/src/generated/docs-index.json
+      - name: Commit generated index only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- packages/docs-site/src/generated/docs-index.json
           if git diff --cached --quiet; then
-            echo 'No generated changes'
+            echo 'Documentation index unchanged'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'test(dsk-011): refresh official Electron frontend report and docs index'
+          git commit -m 'docs(dsk-011): regenerate docs index for retired contracts'
           git push origin HEAD:refs/heads/feat/dsk011-document-hygiene
