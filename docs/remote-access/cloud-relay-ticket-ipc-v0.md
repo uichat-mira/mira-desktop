@@ -69,3 +69,47 @@ The positive ticket contains only `token`, `tokenType`, `audience`, `expiresAt`,
 **Blocking for genuine T3:** After REL-001 lands, compare its actual outbound URL, Host `hello` and `hello_ack` fields, JWT verifier expectations (issuer, audience, EdDSA/JWKS, expiry, room/role, current entitlement) and rejection frames with this provisional Desktop shape, and make only the necessary contract edits. Require runtime/service fixture or staged hosted proof for a valid Host ticket, invalid/mismatched ticket cases, new ticket on reconnect, successful authenticated socket retained past ticket expiry, and no business forwarding before DSK-007 Grant. Verify no raw ticket logging.
 
 **Not certified:** Current deterministic Desktop tests validate client behavior against fixtures and known *legacy* rejection frames, not a Cloud-enabled Relay runtime. They do **not** certify Relay-side JWT signature verification, issuer pinning, account/Host-room entitlement or production Mobile-to-Desktop E2E. Leave DSK-010/DSK-006 open until REL-001 delivers a trustworthy implementation and T3 evidence.
+
+## DSK-006 — Native Cloud Host lifecycle (2026-11-01)
+
+This section supersedes the earlier **opt-in** activation description for
+Cloud Host users; earlier DSK-010 statements are retained as implementation
+history, not current release guidance.
+
+- **Activation belongs to a verified native Mira Cloud Account**, not the
+  self-hosted Relay settings screen. Electron Main publishes a boolean
+  `availability` message to its exact spawned Backend child when the account
+  becomes `signed_in` with configured Host policy and a valid local-owner
+  binding. The Backend independently requests a fresh ticket before each
+  socket and never receives the Cloud Session or account identity.
+- Backend first sends `state_request` to native over the existing
+  `mira:cloud-relay:host-ticket:v1` IPC channel. This allows a restored
+  Cloud Session to be recognized when Backend startup races the Electron
+  notification. Both new messages have **exactly**
+  `{channel,type}` or `{channel,type,available:boolean}`; neither contains
+  account IDs, tokens, Host rooms or secret material.
+- A non-ready Cloud state (sign-out, 401/rejected, setup incomplete,
+  checking, unavailable or local owner unbound) stops the Cloud socket
+  immediately and aborts pending Host work. Subsequent `signed_in` after
+  verified restoration reacquires a new ticket. Backend must be listening
+  before a Cloud socket is created. The independent self-hosted Relay and
+  Tailscale paths are not started, stopped or reconfigured by this gate.
+- **Operator endpoint remains a release precondition:** the platform must
+  supply `UI_CHAT_CLOUD_RELAY_URL` pointing to a verified Cloud-only
+  official TLS endpoint, with no user-visible per-account URL/room/token.
+  The Client no longer requires a user or operator to flip an extra
+  `UI_CHAT_CLOUD_RELAY_ENABLED=1` switch. A missing, plaintext or
+  `relay.tomz.io` Legacy endpoint fails visibly as
+  `cloud_relay_endpoint_unavailable`. An **operator-only emergency**
+  `UI_CHAT_CLOUD_RELAY_ENABLED=0` can suspend official Cloud transport
+  without affecting local/Tailscale/self-hosted connectivity.
+- The isolated REL-005 `workers.dev` Worker is a **test service**, not
+  automatically the final official production endpoint. Do not hard-code it
+  as the product default or silently route to the Legacy production hostname.
+  Release wiring of an official Cloud-only endpoint and genuine Desktop
+  sign-in/restart/Host revoke T3 remain separate acceptance evidence.
+- The development Backend started by `electron/dev-launcher.cjs` may lack
+  the Electron-owned child IPC channel. In that mode no Cloud bearer
+  is forwarded by another route: use a packaged-shaped owned-IPC harness
+  for targeted validation, and report actual local dev mode as unsupported
+  for native Cloud Host relay until its process model is explicitly changed.
