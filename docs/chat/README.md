@@ -200,6 +200,12 @@ ON DELETE CASCADE
 
 默认空间相关缺陷与整改边界见 [[chat/workspace]]。
 
+## 方案与实验
+
+以下内容只作为决策输入，不是当前合同：
+
+- [[chat/assistant-ui-replacement-evaluation]]：assistant-ui 替代 uchat 的可行性研究（Planning；当前建议维持 uchat）。
+
 ## 历史与施工资料
 
 旧总纲已经保存到 [[archive/chat/README]]。
