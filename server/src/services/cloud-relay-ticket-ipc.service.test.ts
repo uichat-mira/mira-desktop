@@ -190,8 +190,10 @@ describe("CloudRelayTicketIpcClient", () => {
     const another = new FakeParent();
     another.failSend = true;
     const failing = new CloudRelayTicketIpcClient(another);
+    // The new initial state handshake detects the broken parent channel before
+    // any ticket request; do not retry a failed IPC transport with credentials.
     await expect(failing.withHostTicket(() => true))
-      .rejects.toMatchObject({ code: "relay_ticket_bridge_disconnected" });
+      .rejects.toMatchObject({ code: "relay_ticket_bridge_unavailable" });
     failing.dispose();
   });
 });
