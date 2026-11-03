@@ -39,8 +39,10 @@
   },
   "scripts": {
     "dev:electron:win": "node scripts/generate-dev-coverage.js && pnpm --dir mira-clipper-ext dev && pnpm --filter @ui-chat-mira/electron dev",
+    "dev:electron:win:cloud-pilot": "node scripts/generate-dev-coverage.js && pnpm --dir mira-clipper-ext dev && cross-env UI_CHAT_CLOUD_PILOT=1 pnpm --filter @ui-chat-mira/electron dev",
     "dev:electron:win:trace": "cross-env AGENT_TRACE_PHOENIX=true PHOENIX_COLLECTOR_ENDPOINT=http://localhost:16006 AGENT_TRACE_PROJECT=uichat-mira-dev AGENT_TRACE_VERBOSE=true pnpm dev:electron:win",
     "dev:electron:mac": "node scripts/generate-dev-coverage.js && node scripts/prepare-electron-macos-dev.mjs && node scripts/prepare-node-pty-macos-dev.mjs && pnpm --filter @ui-chat-mira/electron dev",
+    "dev:electron:mac:cloud-pilot": "node scripts/generate-dev-coverage.js && node scripts/prepare-electron-macos-dev.mjs && node scripts/prepare-node-pty-macos-dev.mjs && cross-env UI_CHAT_CLOUD_PILOT=1 pnpm --filter @ui-chat-mira/electron dev",
     "smoke:electron:chat:mac": "node scripts/prepare-electron-macos-dev.mjs && node scripts/prepare-node-pty-macos-dev.mjs && node scripts/smoke-electron-chat-macos.mjs",
     "smoke:terminal:mac": "node scripts/prepare-node-pty-macos-dev.mjs && pnpm --filter @ui-chat-mira/server exec tsx ../scripts/smoke-terminal-session-macos.ts",
     "docs:dev": "pnpm --filter @ui-chat-mira/docs-site dev",

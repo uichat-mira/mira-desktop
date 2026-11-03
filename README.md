@@ -43,13 +43,17 @@ root/
 ```bash
 pnpm install
 pnpm dev:electron:win
+pnpm dev:electron:win:cloud-pilot
 pnpm dev:electron:mac
+pnpm dev:electron:mac:cloud-pilot
 pnpm smoke:electron:chat:mac
 pnpm smoke:terminal:mac
 pnpm check
 pnpm check:no-db-in-index
 pnpm clean:artifacts
 ```
+
+`dev:electron:win:cloud-pilot` / `dev:electron:mac:cloud-pilot` 是显式的 Cloud Host 联调模式：Vite renderer 仍热更新，但 Electron Main 直接启动一个不带 watch 的 Node/tsx Backend 子进程，并通过现有私有 IPC 连接 Cloud Relay Ticket 与 Host Grant bridge。该模式要求 Backend 端口空闲；不会复用独立 Backend。若配置的 Vite 端口已被其它项目占用，会为本次联调分配独立的开发端口，不会误用其它项目页面，也不会改变普通 Dev 或 packaged 启动路径。Cloud Relay endpoint 仍由本机 `.env` 的 operator 配置提供，不在启动脚本中写死。
 
 `dev:electron:mac` 当前用于 Apple Silicon Electron Core 开发态验证，不构建仅支持 Windows 的 Native Messaging Host。启动前会为 npm 下载的 `Electron.app` 准备本机 ad-hoc 开发签名，并恢复 node-pty macOS `spawn-helper` 的执行位；这些动作只用于本地开发，macOS 正式包仍需 Developer ID、公证及独立 payload 验证。正式打包目前未支持，当前进度见 `docs/platform/macos-implementation-phases.md`。
 

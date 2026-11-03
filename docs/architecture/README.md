@@ -67,10 +67,27 @@ renderer 不应直接持有 native 或 Node 级能力真相。
 
 ### 开发态
 
+普通开发启动仍由 launcher 独立启动或复用 Backend：
+
 ```text
 renderer (Vite dev server) -- /api proxy --> Fastify backend
 desktop shell --------------------------------^
 ```
+
+Cloud Pilot 联调使用显式的 `dev:electron:<platform>:cloud-pilot` 启动脚本：
+
+```text
+renderer (Vite dev server) -- /api proxy --> Fastify backend
+desktop shell
+  └─ Electron Main -- private child IPC --> Node + tsx Backend (no watch)
+```
+
+Cloud Pilot 不启动独立 Backend watcher；Backend 由 Electron Main 作为唯一子进程启动，
+因此可复用 packaged runtime 的原生 IPC ticket / Host Grant bridge。Vite renderer
+仍保持热更新，Backend 源码变化需要完整重启 Cloud Pilot。该模式拒绝复用已占用的
+Backend 端口；若配置的 Vite 端口被其它 IPv4 服务占用，则分配独立的开发端口而不复用
+未知服务。Electron 使用与 Vite 一致的 `127.0.0.1` renderer 地址，避免 Windows 上
+`localhost` 优先解析到另一个项目的 IPv6 loopback 服务。普通 Dev 和 packaged 进程模型不变。
 
 本地 renderer 开发服务默认监听 `http://127.0.0.1:5757`。端口统一来自
 `runtime.config.cjs`，需要覆盖时使用 `UI_CHAT_DESKTOP_PORT`，Electron 和 Vite 不分别维护端口常量。
