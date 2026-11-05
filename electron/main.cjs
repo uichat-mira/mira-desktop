@@ -577,6 +577,7 @@ app.whenReady().then(async () => {
       // Non-ready states close the old account's socket before any new ticket.
       cloudRelayTicketBridge?.notifyAvailability(
         snapshot.status === "signed_in" &&
+        snapshot.hostAvailable === true &&
         snapshot.permissionsConfigured === true &&
         snapshot.localOwnerBound === true &&
         typeof snapshot.hostId === "string" && snapshot.hostId.length > 0,
@@ -643,6 +644,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  cloudAccount?.dispose?.();
   cloudRelayTicketBridge?.dispose();
   cloudHostGrantBridge?.dispose();
   if (backendProcess) {
