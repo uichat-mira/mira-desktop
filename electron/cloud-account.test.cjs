@@ -175,6 +175,44 @@ function hostPayload(overrides = {}) {
 }
 
 function fixture() {
+  let nowMs = Date.parse("2026-10-25T12:00:00.000Z");
+  let leaseTtlSeconds = 150;
+  const leaseTimers = new Map();
+  let nextLeaseTimerId = 0;
+  const notifications = [];
+  const leaseSetTimeout = (callback, delayMs) => {
+    const handle = { id: ++nextLeaseTimerId, unref() {} };
+    leaseTimers.set(handle.id, {
+      callback,
+      at: nowMs + Math.max(0, Number(delayMs) || 0),
+    });
+    return handle;
+  };
+  const leaseClearTimeout = (handle) => {
+    if (handle && Number.isSafeInteger(handle.id)) leaseTimers.delete(handle.id);
+  };
+  async function flushLeaseTasks() {
+    for (let index = 0; index < 12; index += 1) await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  async function advanceLeaseTime(milliseconds) {
+    const target = nowMs + milliseconds;
+    let executions = 0;
+    while (true) {
+      const next = [...leaseTimers.entries()]
+        .filter(([, timer]) => timer.at <= target)
+        .sort((left, right) => left[1].at - right[1].at)[0];
+      if (!next) break;
+      nowMs = next[1].at;
+      leaseTimers.delete(next[0]);
+      next[1].callback();
+      await flushLeaseTasks();
+      executions += 1;
+      if (executions > 1000) throw new Error("Lease timer runaway");
+    }
+    nowMs = target;
+    await flushLeaseTasks();
+  }
   const artifactRoot = path.resolve(__dirname, "..", ".test-artifact");
   fs.mkdirSync(artifactRoot, { recursive: true });
   const dir = fs.mkdtempSync(path.join(artifactRoot, "mira-cloud-"));
@@ -197,6 +235,7 @@ function fixture() {
   let beforeGrantRead = null;
   let hostFailuresRemaining = 0;
   let hostHandler = null;
+  let beforeHostRegistration = null;
   let serviceCredentialHandler = null;
   const fetcher = async (url, opts) => {
     calls.push({ url, opts });
@@ -207,6 +246,7 @@ function fixture() {
       expiresAt: "2026-12-12T00:00:00.000Z",
     });
     if (url.endsWith("/v1/hosts") && opts.method === "POST") {
+      if (beforeHostRegistration) await beforeHostRegistration({ url, opts });
       if (hostFailuresRemaining > 0) {
         --hostFailuresRemaining;
         return Response.json({ code: "TEMPORARILY_UNAVAILABLE" }, { status: 503 });
@@ -219,8 +259,8 @@ function fixture() {
         displayName: "Mira Desktop", clientVersion: "1.0.0",
         availability: "available", relayRoom: RELAY_ROOM,
         registeredAt: "2026-10-25T12:00:00.000Z",
-        lastAdvertisedAt: "2026-10-25T12:00:30.000Z",
-        leaseExpiresAt: "2026-10-25T12:02:30.000Z" });
+        lastAdvertisedAt: new Date(nowMs).toISOString(),
+        leaseExpiresAt: new Date(nowMs + leaseTtlSeconds * 1000).toISOString() });
     }
     if (url.endsWith("/v1/service-credentials") && opts.method === "POST") {
       if (beforeServiceCredential) await beforeServiceCredential();
@@ -254,10 +294,15 @@ function fixture() {
       opened.push(url);
       if (beforeOpenExternal) await beforeOpenExternal();
     } },
-    notify: () => {}, fetcher, storagePath: store,
+    notify: (snapshot) => notifications.push(snapshot), fetcher, storagePath: store,
+    leaseNow: () => nowMs,
+    leaseSetTimeout, leaseClearTimeout,
     ...overrides,
   });
-  return { dir, store, opened, calls, build,
+  return { dir, store, opened, calls, notifications, build,
+    advanceLeaseTime,
+    pendingLeaseTimerCount: () => leaseTimers.size,
+    setLeaseTtlSeconds: (seconds) => { leaseTtlSeconds = seconds; },
     setOffline: (yes) => { offline = yes; },
     setStoredPolicy: (scopes) => { storedPolicy = scopes; },
     failHostRegistration: (count = 1) => { hostFailuresRemaining = count; },
@@ -265,6 +310,7 @@ function fixture() {
     setBeforeSessionRestore: (hook) => { beforeSessionRestore = hook; },
     setBeforeOpenExternal: (hook) => { beforeOpenExternal = hook; },
     setBeforeServiceCredential: (hook) => { beforeServiceCredential = hook; },
+    setBeforeHostRegistration: (hook) => { beforeHostRegistration = hook; },
     setGrantSnapshot: (snapshot) => { grantSnapshot = snapshot; },
     setBeforeGrantRead: (hook) => { beforeGrantRead = hook; },
     setHostHandler: (handler) => { hostHandler = handler; },
@@ -283,6 +329,215 @@ async function signIn(f, controller, scopes = ["threads:read"]) {
 function rejectsCode(promise, code) {
   return assert.rejects(promise, (error) => error.code === code);
 }
+
+test("DSK-012 renews from the server lease across three non-default windows without touching Relay", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setLeaseTtlSeconds(90);
+  const controller = f.build();
+  await signIn(f, controller);
+  const initialHostRegistrations = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  const initialNotifications = f.notifications.length;
+  assert.equal(initialHostRegistrations, 1);
+  assert.equal(controller.status().hostAvailable, true);
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+
+  await f.advanceLeaseTime(180_000);
+
+  const renewedHostRegistrations = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  assert.equal(renewedHostRegistrations, initialHostRegistrations + 3);
+  assert.equal(f.calls.some((call) => call.url.endsWith("/v1/service-credentials")), false);
+  assert.equal(f.notifications.length, initialNotifications,
+    "a healthy renewal must not notify/restart the Relay connector");
+  assert.equal(controller.status().status, "signed_in");
+  assert.equal(controller.status().hostAvailable, true);
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+  controller.dispose();
+  assert.equal(f.pendingLeaseTimerCount(), 0);
+});
+
+test("DSK-012 restores the Host lease and resumes one renewal lifecycle", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setLeaseTtlSeconds(75);
+  const first = f.build();
+  await signIn(f, first);
+  first.dispose();
+  assert.equal(f.pendingLeaseTimerCount(), 0);
+
+  const restored = f.build();
+  await restored.initialize();
+  assert.equal(restored.status().status, "signed_in");
+  assert.equal(restored.status().hostAvailable, true);
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length, 2);
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+
+  await f.advanceLeaseTime(45_000);
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length, 3);
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+  restored.dispose();
+});
+
+test("DSK-012 retries transient renewal failures with bounded backoff while the lease remains valid", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setLeaseTtlSeconds(60);
+  const controller = f.build();
+  await signIn(f, controller);
+  f.setOffline(true);
+
+  await f.advanceLeaseTime(30_000);
+  assert.equal(controller.status().status, "signed_in");
+  assert.equal(controller.status().hostAvailable, true);
+  assert.equal(controller.status().account.username, "test-a");
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+
+  f.setOffline(false);
+  await f.advanceLeaseTime(1_000);
+  assert.equal(controller.status().status, "signed_in");
+  assert.equal(controller.status().hostAvailable, true);
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length, 3);
+  assert.equal(f.calls.some((call) => call.url.endsWith("/v1/service-credentials")), false);
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+  controller.dispose();
+});
+
+test("DSK-012 marks Host unavailable at lease expiry but preserves the Cloud Session and recovers", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setLeaseTtlSeconds(60);
+  const controller = f.build();
+  await signIn(f, controller);
+  f.setOffline(true);
+
+  await f.advanceLeaseTime(60_000);
+  assert.equal(controller.status().status, "unavailable");
+  assert.equal(controller.status().hostAvailable, false);
+  assert.equal(controller.status().account.username, "test-a");
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+
+  f.setOffline(false);
+  await f.advanceLeaseTime(30_000);
+  assert.equal(controller.status().status, "signed_in");
+  assert.equal(controller.status().hostAvailable, true);
+  assert.equal(controller.status().account.username, "test-a");
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+  controller.dispose();
+});
+
+test("DSK-012 rejects an expired server lease response and can recover without re-login", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setLeaseTtlSeconds(60);
+  const controller = f.build();
+  await signIn(f, controller);
+  f.setHostHandler(() => Response.json(hostPayload({
+    leaseExpiresAt: "2026-10-25T12:00:29.000Z",
+  })));
+
+  await f.advanceLeaseTime(30_000);
+  assert.equal(controller.status().status, "unavailable");
+  assert.equal(controller.status().hostAvailable, false);
+  assert.equal(controller.status().account.username, "test-a");
+  assert.equal(f.pendingLeaseTimerCount(), 0);
+
+  f.setHostHandler(null);
+  await controller.initialize();
+  assert.equal(controller.status().status, "signed_in");
+  assert.equal(controller.status().hostAvailable, true);
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+  controller.dispose();
+});
+
+test("DSK-012 stops renewal after Cloud Session rejection or Host revocation", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setLeaseTtlSeconds(60);
+  const controller = f.build();
+  await signIn(f, controller);
+  f.setHostHandler(() => Response.json({ error: { code: "HOST_REAUTH_REQUIRED" } }, { status: 401 }));
+  await f.advanceLeaseTime(30_000);
+  assert.equal(controller.status().status, "rejected");
+  assert.equal(controller.status().hostAvailable, false);
+  assert.equal(f.pendingLeaseTimerCount(), 0);
+
+  const restarted = f.build();
+  await restarted.initialize();
+  assert.equal(restarted.status().status, "signed_out");
+  restarted.dispose();
+
+  const revokedFixture = fixture();
+  t.after(() => fs.rmSync(revokedFixture.dir, { recursive: true, force: true }));
+  revokedFixture.setLeaseTtlSeconds(60);
+  const revoked = revokedFixture.build();
+  await signIn(revokedFixture, revoked);
+  revokedFixture.setHostHandler(() => Response.json({ error: { code: "HOST_REGISTRATION_NOT_ALLOWED" } }, { status: 403 }));
+  await revokedFixture.advanceLeaseTime(30_000);
+  assert.equal(revoked.status().status, "unavailable");
+  assert.equal(revoked.status().hostAvailable, false);
+  assert.equal(revoked.status().account.username, "test-a");
+  assert.equal(revokedFixture.pendingLeaseTimerCount(), 0);
+  revokedFixture.setHostHandler(null);
+  const recovered = revokedFixture.build();
+  await recovered.initialize();
+  assert.equal(recovered.status().status, "signed_in");
+  assert.equal(recovered.status().hostAvailable, true);
+  recovered.dispose();
+  revoked.dispose();
+});
+
+test("DSK-012 shares an in-flight Host registration and discards stale renewal after sign-out", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setLeaseTtlSeconds(60);
+  const controller = f.build();
+  await signIn(f, controller);
+
+  let entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  f.setBeforeHostRegistration(async () => { entered(); await gate; });
+  const advance = f.advanceLeaseTime(30_000);
+  await started;
+  const ticket = controller.withRelayHostTicket(() => {});
+  await controller.signOut();
+  release();
+  await Promise.all([advance, rejectsCode(ticket, RELAY_TICKET_ERROR_CODES.ABORTED)]);
+  assert.equal(controller.status().status, "signed_out");
+  assert.equal(f.pendingLeaseTimerCount(), 0);
+  const registrations = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  assert.equal(registrations, 2, "timer and ticket path must share one in-flight Host registration");
+  await f.advanceLeaseTime(120_000);
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length, registrations);
+  controller.dispose();
+});
+
+test("DSK-012 controller disposal cancels its timer and Electron main wires shutdown cleanup", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build();
+  await signIn(f, controller);
+  assert.equal(f.pendingLeaseTimerCount(), 1);
+  controller.dispose();
+  assert.equal(f.pendingLeaseTimerCount(), 0);
+  await f.advanceLeaseTime(600_000);
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length, 1);
+
+  const main = fs.readFileSync(path.join(__dirname, "main.cjs"), "utf8");
+  assert.match(main, /snapshot\.hostAvailable\s*===\s*true/,
+    "Relay availability must follow the native Host lease state");
+  assert.match(main, /app\.on\(["']before-quit["'][\s\S]{0,120}cloudAccount\?\.dispose\?\.\(\)/,
+    "Electron shutdown must dispose the native lease lifecycle");
+});
 
 test("rejects wrong protocols, duplicate parameters, fragments and invalid scopes", () => {
   assert.equal(parseCallback("https://attacker/callback?state=a&code=b"), null);
@@ -717,7 +972,8 @@ test("DSK-009 fails closed without a configured session or on foreign Host owner
   await rejectsCode(controller.withRelayHostTicket(() => { consumed = true; }),
     RELAY_TICKET_ERROR_CODES.INVALID_RESPONSE);
   assert.equal(consumed, false);
-  assert.equal(controller.status().status, "signed_in");
+  assert.equal(controller.status().status, "unavailable");
+  assert.equal(controller.status().hostAvailable, false);
 });
 
 test("DSK-009 distinguishes relay denial from revoked Cloud Session and keeps recoverable session", async (t) => {
