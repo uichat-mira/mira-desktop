@@ -102,6 +102,7 @@ ipcMain.handle("cloud-account:logout", (event) => {
 });
 
 const BACKEND_START_TIMEOUT_MS = 15000;
+const CLOUD_PILOT_BACKEND_START_TIMEOUT_MS = 60000;
 const BACKEND_START_POLL_INTERVAL_MS = 300;
 
 const isDev = !app.isPackaged;
@@ -259,8 +260,10 @@ function createWindow() {
   });
 
   if (isDev) {
+    const rendererHost =
+      process.env.UI_CHAT_CLOUD_PILOT === "1" ? "127.0.0.1" : "localhost";
     void mainWindow
-      .loadURL(`http://localhost:${runtimeConfig.dev.desktopPort}`)
+      .loadURL(`http://${rendererHost}:${runtimeConfig.dev.desktopPort}`)
       .then(() => {
         mainWindow?.webContents.openDevTools({ mode: "detach" });
       })
@@ -439,10 +442,91 @@ ipcMain.handle("desktop:download-browser-extension", async () => {
   return destinationPath;
 });
 
+function attachBackendProcessHandlers(child) {
+  cloudRelayTicketBridge = attachCloudRelayTicketIpc(child, () => cloudAccount);
+  cloudHostGrantBridge = attachCloudHostGrantIpc(child, () => cloudAccount);
+
+  if (child.stdout) {
+    child.stdout.on("data", (data) => {
+      console.log(`Backend: ${data}`);
+    });
+  }
+
+  if (child.stderr) {
+    child.stderr.on("data", (data) => {
+      console.error(`Backend error: ${data}`);
+    });
+  }
+
+  child.on("close", (code) => {
+    cloudRelayTicketBridge?.dispose();
+    cloudRelayTicketBridge = null;
+    cloudHostGrantBridge?.dispose();
+    cloudHostGrantBridge = null;
+    console.log(`Backend process exited with code ${code}`);
+  });
+
+  child.on("error", (error) => {
+    console.error("Failed to start backend process:", error);
+  });
+}
+
+async function startCloudPilotDevBackend() {
+  // Keep the development-only launcher out of packaged builds.
+  const { resolveCloudPilotBackendLaunch } = require("./cloud-pilot-dev.cjs");
+  const nodeBinary = process.env.UI_CHAT_CLOUD_PILOT_NODE_BINARY;
+  if (!nodeBinary || !path.isAbsolute(nodeBinary) || !fs.existsSync(nodeBinary)) {
+    throw new Error(
+      "Cloud Pilot requires the Node executable supplied by electron/dev-launcher.cjs. Start it with the platform-specific dev:electron:<platform>:cloud-pilot script.",
+    );
+  }
+
+  const launch = resolveCloudPilotBackendLaunch({
+    workspaceRoot: path.resolve(__dirname, ".."),
+    nodeBinary,
+    baseEnv: process.env,
+    runtimeConfig,
+  });
+  for (const requiredPath of [launch.args[0], launch.args[1]]) {
+    if (!fs.existsSync(requiredPath)) {
+      throw new Error(`Cloud Pilot source Backend file is missing: ${requiredPath}`);
+    }
+  }
+
+  if (await isBackendHealthy()) {
+    throw new Error(
+      `Cloud Pilot refuses to reuse an independently started Backend at ${getBackendUrl()}; stop it and restart the Cloud Pilot launcher.`,
+    );
+  }
+
+  console.log("Cloud Pilot: Electron Main is starting the source Backend without watch mode.");
+  console.log("Cloud Pilot Backend runtime:", launch.nodeBinary);
+  backendProcess = spawn(launch.nodeBinary, launch.args, launch.options);
+  attachBackendProcessHandlers(backendProcess);
+
+  const backendReady = await waitForBackendReady(
+    CLOUD_PILOT_BACKEND_START_TIMEOUT_MS,
+  );
+  if (!backendReady) {
+    throw new Error(
+      `Cloud Pilot Backend did not become healthy within ${CLOUD_PILOT_BACKEND_START_TIMEOUT_MS}ms: ${getBackendUrl()}/health. Check the Backend output above; an occupied port is never reused.`,
+    );
+  }
+
+  console.log("Cloud Pilot Backend is healthy and attached to Electron's private IPC channel.");
+  return true;
+}
+
 async function startBackend() {
+  if (isDev && process.env.UI_CHAT_CLOUD_PILOT === "1") {
+    return startCloudPilotDevBackend();
+  }
   if (isDev) {
     console.log("Dev mode: backend server already started via concurrently");
     return true;
+  }
+  if (process.env.UI_CHAT_CLOUD_PILOT === "1") {
+    throw new Error("Cloud Pilot is a development-only startup mode.");
   }
 
   const backendPath = path.join(process.resourcesPath, "server", "server.cjs");
@@ -519,32 +603,7 @@ async function startBackend() {
     stdio: ["ignore", "pipe", "pipe", "ipc"],
     windowsHide: true,
   });
-  cloudRelayTicketBridge = attachCloudRelayTicketIpc(backendProcess, () => cloudAccount);
-  cloudHostGrantBridge = attachCloudHostGrantIpc(backendProcess, () => cloudAccount);
-
-  if (backendProcess.stdout) {
-    backendProcess.stdout.on("data", (data) => {
-      console.log(`Backend: ${data}`);
-    });
-  }
-
-  if (backendProcess.stderr) {
-    backendProcess.stderr.on("data", (data) => {
-      console.error(`Backend error: ${data}`);
-    });
-  }
-
-  backendProcess.on("close", (code) => {
-    cloudRelayTicketBridge?.dispose();
-    cloudRelayTicketBridge = null;
-    cloudHostGrantBridge?.dispose();
-    cloudHostGrantBridge = null;
-    console.log(`Backend process exited with code ${code}`);
-  });
-
-  backendProcess.on("error", (error) => {
-    console.error("Failed to start backend process:", error);
-  });
+  attachBackendProcessHandlers(backendProcess);
 
   const backendReady = await waitForBackendReady();
   if (!backendReady) {

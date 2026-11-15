@@ -111,8 +111,20 @@ history, not current release guidance.
   as the product default or silently route to the Legacy production hostname.
   Release wiring of an official Cloud-only endpoint and genuine Desktop
   sign-in/restart/Host revoke T3 remain separate acceptance evidence.
-- The development Backend started by `electron/dev-launcher.cjs` may lack
-  the Electron-owned child IPC channel. In that mode no Cloud bearer
-  is forwarded by another route: use a packaged-shaped owned-IPC harness
-  for targeted validation, and report actual local dev mode as unsupported
-  for native Cloud Host relay until its process model is explicitly changed.
+- Ordinary development startup still launches or reuses an independent
+  Backend and therefore does not provide the Electron-owned child IPC channel.
+  It must continue to fail closed; no Cloud bearer is forwarded by HTTP,
+  preload, Renderer or another side channel.
+- Explicit Cloud Pilot startup (`pnpm dev:electron:win:cloud-pilot` or
+  `pnpm dev:electron:mac:cloud-pilot`) keeps the Vite renderer in watch mode,
+  but skips the independent Backend launcher. Electron Main starts the source
+  Backend directly with the workspace Node executable and `tsx` **without
+  watch mode**, attaches the same private ticket and Host Grant IPC bridges,
+  and marks only that exact child with `UI_CHAT_CLOUD_IPC_CHILD=1`.
+- Cloud Pilot refuses to start when the configured Backend port is already
+  occupied; it never reuses an independently started Backend. Renderer/Vite
+  hot reload remains available; Backend source changes require a full Cloud
+  Pilot restart. The normal Dev launcher and packaged startup remain unchanged.
+- Cloud Pilot consumes the same operator-provided `UI_CHAT_CLOUD_RELAY_URL`
+  from local environment configuration. It does not invent or default to the
+  isolated REL-005 Worker or a Legacy Relay hostname.
