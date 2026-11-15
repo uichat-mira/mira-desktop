@@ -18,6 +18,9 @@ const SERVICE_CREDENTIAL_ISSUER = "mira:cloud-auth";
 const RELAY_TRANSPORT_AUDIENCE = "mira:cloud-relay-transport";
 const RELAY_TRANSPORT_SCOPE = "relay:transport";
 const RELAY_ROOM = /^[A-Za-z0-9._:-]{1,128}$/;
+const HOST_LEASE_RENEWAL_LEAD_MS = 30_000;
+const HOST_LEASE_RETRY_BASE_MS = 1_000;
+const HOST_LEASE_RETRY_MAX_MS = 30_000;
 const SERVICE_CREDENTIAL_KID = /^[A-Za-z0-9._-]{1,64}$/;
 const RELAY_TICKET_LIFETIME_SECONDS = 600;
 const RELAY_TICKET_CLOCK_SKEW_SECONDS = 30;
@@ -154,7 +157,9 @@ function parseCallback(value) {
 function createCloudAccountController(options) {
   const { app, safeStorage, shell, notify, fetcher = globalThis.fetch,
     storagePath = path.join(app.getPath("userData"), "cloud-account.v1.enc"),
-    origin = ORIGIN, authorizationTimeoutMs = 10 * 60 * 1000 } = options;
+    origin = ORIGIN, authorizationTimeoutMs = 10 * 60 * 1000,
+    leaseNow = Date.now, leaseSetTimeout = setTimeout,
+    leaseClearTimeout = clearTimeout } = options;
   // Origin is controlled by native code, never supplied by renderer.
   if (origin !== ORIGIN && !options.allowTestOrigin) throw new Error("Invalid Cloud Auth origin");
   if (!Number.isSafeInteger(authorizationTimeoutMs) || authorizationTimeoutMs < 1) {
@@ -163,8 +168,21 @@ function createCloudAccountController(options) {
   let record = null;
   let pending = null;
   let authorizationTimer = null;
+  let hostLeaseTimer = null;
+  let hostLeaseState = null;
+  let hostRegistrationInFlight = null;
+  let hostLeaseRenewalInFlight = null;
+  let disposed = false;
   let revision = 0;
   let credentialRecoveryAvailable = false;
+  function clearHostLeaseTimer() {
+    if (hostLeaseTimer !== null) leaseClearTimeout(hostLeaseTimer);
+    hostLeaseTimer = null;
+  }
+  function stopHostLeaseRenewal() {
+    clearHostLeaseTimer();
+    hostLeaseState = null;
+  }
   function clearPending() {
     if (authorizationTimer) clearTimeout(authorizationTimer);
     authorizationTimer = null;
@@ -172,7 +190,7 @@ function createCloudAccountController(options) {
   }
   let view = { status: "signed_out", account: null, hostId: null,
     scopes: [], message: "", expiresAt: null, permissionsConfigured: false,
-    canResetCredentials: false };
+    hostAvailable: false, canResetCredentials: false };
 
   function publish(patch) {
     view = { ...view, ...patch };
@@ -274,14 +292,185 @@ function createCloudAccountController(options) {
       typeof result.account.username !== "string" ||
       typeof result.expiresAt !== "string") throw new Error("Cloud Auth 会话响应无效");
   }
+  function isTransientHostLeaseError(error) {
+    return error?.code === "network" || error?.status === 408 ||
+      error?.status === 425 || error?.status === 429 ||
+      (Number.isInteger(error?.status) && error.status >= 500 && error.status <= 599);
+  }
+  async function requestHostRegistration(token, expectedRevision) {
+    if (hostRegistrationInFlight?.revision === expectedRevision) {
+      return hostRegistrationInFlight.promise;
+    }
+    const operation = { revision: expectedRevision, promise: null };
+    operation.promise = request("/v1/hosts", "POST", token, {});
+    hostRegistrationInFlight = operation;
+    try {
+      return await operation.promise;
+    } finally {
+      if (hostRegistrationInFlight === operation) hostRegistrationInFlight = null;
+    }
+  }
+  function scheduleHostLeaseTimer(state, delayMs) {
+    if (disposed || state !== hostLeaseState || state.revision !== revision) return;
+    clearHostLeaseTimer();
+    hostLeaseTimer = leaseSetTimeout(() => {
+      hostLeaseTimer = null;
+      void renewHostLease(state.revision);
+    }, Math.max(0, Math.ceil(delayMs)));
+    hostLeaseTimer?.unref?.();
+  }
+  function scheduleHostLeaseRenewal(state) {
+    const remainingMs = state.leaseExpiresAtMs - leaseNow();
+    if (remainingMs <= 0) {
+      scheduleHostLeaseTimer(state, 0);
+      return;
+    }
+    // Renew with a safety window derived from the server's actual lease.
+    // Very short configured leases reserve most of their remaining window for retries.
+    const leadMs = Math.min(HOST_LEASE_RENEWAL_LEAD_MS, remainingMs * 0.75);
+    scheduleHostLeaseTimer(state, remainingMs - leadMs);
+  }
+  function scheduleHostLeaseRetry(state) {
+    const exponent = Math.min(state.retryAttempt, 5);
+    const backoffMs = Math.min(
+      HOST_LEASE_RETRY_BASE_MS * (2 ** exponent),
+      HOST_LEASE_RETRY_MAX_MS,
+    );
+    state.retryAttempt += 1;
+    const remainingMs = state.leaseExpiresAtMs === null
+      ? Infinity : state.leaseExpiresAtMs - leaseNow();
+    // If the current lease is about to expire, wake at its boundary so the
+    // Host is marked unavailable before the next bounded retry.
+    const delayMs = remainingMs > 0 ? Math.min(backoffMs, remainingMs) : backoffMs;
+    scheduleHostLeaseTimer(state, delayMs);
+  }
+  function publishHostUnavailable(message, expectedRevision) {
+    if (expectedRevision !== revision) return status();
+    return publish({
+      status: "unavailable",
+      account: record?.account || null,
+      hostId: record?.hostId || null,
+      scopes: record?.scopes || [],
+      permissionsConfigured: Boolean(record?.permissionsConfigured),
+      expiresAt: record?.expiresAt || null,
+      hostAvailable: false,
+      message,
+    });
+  }
+  function publishHostAvailable(message = "") {
+    return publish({
+      status: "signed_in",
+      account: record.account,
+      hostId: record.hostId,
+      scopes: record.scopes || [],
+      permissionsConfigured: true,
+      expiresAt: record.expiresAt || null,
+      hostAvailable: true,
+      message,
+    });
+  }
+  function acceptHostLease(host, expectedRevision, publishAvailability = true) {
+    if (disposed || expectedRevision !== revision || !record?.sessionToken ||
+        record.hostId !== host.id) return false;
+    if (!hostLeaseState || hostLeaseState.revision !== expectedRevision ||
+        hostLeaseState.hostId !== host.id) {
+      clearHostLeaseTimer();
+      hostLeaseState = {
+        revision: expectedRevision,
+        hostId: host.id,
+        leaseExpiresAtMs: host.leaseExpiresAtMs,
+        retryAttempt: 0,
+      };
+    } else {
+      hostLeaseState.leaseExpiresAtMs = host.leaseExpiresAtMs;
+      hostLeaseState.retryAttempt = 0;
+    }
+    scheduleHostLeaseRenewal(hostLeaseState);
+    if (publishAvailability && (view.status !== "signed_in" || view.hostAvailable !== true)) {
+      publishHostAvailable("");
+    }
+    return true;
+  }
+  function startHostLeaseRetry(hostId, expectedRevision) {
+    if (disposed || expectedRevision !== revision || !record?.sessionToken ||
+        record.hostId !== hostId) return;
+    clearHostLeaseTimer();
+    hostLeaseState = {
+      revision: expectedRevision,
+      hostId,
+      leaseExpiresAtMs: null,
+      retryAttempt: 0,
+    };
+    scheduleHostLeaseRetry(hostLeaseState);
+  }
+  function renewHostLease(expectedRevision) {
+    if (disposed || expectedRevision !== revision || !record?.sessionToken ||
+        !record.hostId || !record.permissionsConfigured) return Promise.resolve(status());
+    if (hostLeaseRenewalInFlight?.revision === expectedRevision) {
+      return hostLeaseRenewalInFlight.promise;
+    }
+    const operation = { revision: expectedRevision, promise: null };
+    operation.promise = performHostLeaseRenewal(expectedRevision).finally(() => {
+      if (hostLeaseRenewalInFlight === operation) hostLeaseRenewalInFlight = null;
+    });
+    hostLeaseRenewalInFlight = operation;
+    return operation.promise;
+  }
+  async function performHostLeaseRenewal(expectedRevision) {
+    const state = hostLeaseState;
+    if (!state || state.revision !== expectedRevision ||
+        state.hostId !== record?.hostId) return status();
+    if (state.leaseExpiresAtMs !== null &&
+        leaseNow() >= state.leaseExpiresAtMs && view.hostAvailable) {
+      publishHostUnavailable("Cloud Host 在线租约已过期，正在自动恢复。", expectedRevision);
+    }
+    try {
+      const response = await requestHostRegistration(record.sessionToken, expectedRevision);
+      if (disposed || expectedRevision !== revision || state !== hostLeaseState) {
+        return status();
+      }
+      const host = validateHostLease(response, state.hostId);
+      acceptHostLease(host, expectedRevision);
+      return status();
+    } catch (error) {
+      if (disposed || expectedRevision !== revision || state !== hostLeaseState) {
+        return status();
+      }
+      if (error?.code === "reauth" || error?.status === 401) {
+        return resetRejectedSession();
+      }
+      if (error?.code === RELAY_TICKET_ERROR_CODES.NOT_AUTHORIZED ||
+          error?.status === 403) {
+        stopHostLeaseRenewal();
+        return publishHostUnavailable(
+          "Cloud Host 已被云端拒绝或撤销；Cloud Account 会话仍保留。",
+          expectedRevision,
+        );
+      }
+      if (isTransientHostLeaseError(error)) {
+        if (state.leaseExpiresAtMs !== null &&
+            leaseNow() >= state.leaseExpiresAtMs && view.hostAvailable) {
+          publishHostUnavailable("Cloud Host 在线租约已过期，正在自动恢复。", expectedRevision);
+        }
+        scheduleHostLeaseRetry(state);
+        return status();
+      }
+      stopHostLeaseRenewal();
+      return publishHostUnavailable(
+        "Cloud Host 租约续期响应无效，Host 已停止对外提供连接；Cloud Account 会话仍保留。",
+        expectedRevision,
+      );
+    }
+  }
   function resetRejectedSession() {
     // Revocation invalidates every in-flight Host/Relay request using this session.
     ++revision;
+    stopHostLeaseRenewal();
     record = { installationId: record.installationId };
     persist(record);
     return publish({ status: "rejected", account: null, scopes: [],
       hostId: null, permissionsConfigured: false, expiresAt: null,
-      canResetCredentials: false,
+      hostAvailable: false, canResetCredentials: false,
       message: "云账号会话已撤销或过期，请重新登录；本地 Mira 不受影响。" });
   }
   async function initialize() {
@@ -303,12 +492,41 @@ function createCloudAccountController(options) {
         record = { ...record, account: result.account, expiresAt: result.expiresAt };
         persist(record);
         const complete = Boolean(record.permissionsConfigured && record.hostId);
-        return publish({ status: complete ? "signed_in" : "setup_failed",
-          account: result.account, hostId: complete ? record.hostId : null,
-          scopes: complete ? (record.scopes || []) : [],
-          permissionsConfigured: complete, expiresAt: result.expiresAt,
-          message: complete ? "" :
-            "云账号会话已恢复，但 Host 权限设置尚未完成。可直接重试，无需重新登录。" });
+        if (!complete) {
+          stopHostLeaseRenewal();
+          return publish({ status: "setup_failed",
+            account: result.account, hostId: null, scopes: [],
+            permissionsConfigured: false, hostAvailable: false,
+            expiresAt: result.expiresAt,
+            message: "云账号会话已恢复，但 Host 权限设置尚未完成。可直接重试，无需重新登录。" });
+        }
+        try {
+          const hostResponse = await requestHostRegistration(restoreToken, restoreRevision);
+          if (restoreRevision !== revision) return status();
+          const host = validateHostLease(hostResponse, record.hostId);
+          acceptHostLease(host, restoreRevision);
+          return status();
+        } catch (hostError) {
+          if (restoreRevision !== revision) return status();
+          if (hostError?.code === "reauth" || hostError?.status === 401) {
+            return resetRejectedSession();
+          }
+          if (isTransientHostLeaseError(hostError)) {
+            startHostLeaseRetry(record.hostId, restoreRevision);
+            return publishHostUnavailable(
+              "Cloud Account 会话已恢复，但 Host 租约暂时无法刷新，正在自动重试。",
+              restoreRevision,
+            );
+          }
+          stopHostLeaseRenewal();
+          return publishHostUnavailable(
+            hostError?.code === RELAY_TICKET_ERROR_CODES.NOT_AUTHORIZED ||
+              hostError?.status === 403
+              ? "Cloud Account 会话有效，但 Cloud Host 已被云端拒绝或撤销。"
+              : "Cloud Account 会话已恢复，但 Host 租约响应无效，Host 暂不可用。",
+            restoreRevision,
+          );
+        }
       } catch (error) {
         if (restoreRevision !== revision) return status();
         if (error.code === "reauth") {
@@ -317,7 +535,7 @@ function createCloudAccountController(options) {
         return publish({ status: "unavailable", account: record.account || null,
           hostId: record.hostId || null, scopes: record.scopes || [],
           permissionsConfigured: Boolean(record.permissionsConfigured),
-          expiresAt: record.expiresAt || null,
+          hostAvailable: false, expiresAt: record.expiresAt || null,
           message: "无法联系 Cloud Auth；保留原会话，本地功能不受影响。" });
       }
     } catch {
@@ -340,10 +558,11 @@ function createCloudAccountController(options) {
     persist(fresh);
     ++revision;
     clearPending();
+    stopHostLeaseRenewal();
     record = fresh;
     credentialRecoveryAvailable = false;
     return publish({ status: "signed_out", account: null, hostId: null,
-      scopes: [], permissionsConfigured: false, expiresAt: null,
+      scopes: [], permissionsConfigured: false, hostAvailable: false, expiresAt: null,
       canResetCredentials: false,
       message: "已重置本机 Cloud 凭据；旧云端会话未确认撤销，请在 Cloud Portal 检查并撤销旧设备。" });
   }
@@ -395,9 +614,9 @@ function createCloudAccountController(options) {
     return publish({ status: "signed_out", message: "已取消云账号授权，可重新发起登录。" });
   }
   async function configureHost(token, selected, expectedRevision) {
-    const host = await request("/v1/hosts", "POST", token, {});
+    const hostResponse = await requestHostRegistration(token, expectedRevision);
     if (expectedRevision !== revision) return null;
-    if (!host || typeof host.id !== "string") throw new Error("Cloud Host 注册响应无效");
+    const host = validateHostLease(hostResponse, record?.hostId || null);
     const snapshot = await request("/v1/hosts/" + encodeURIComponent(host.id) + "/grants",
       "GET", token);
     if (expectedRevision !== revision) return null;
@@ -422,12 +641,15 @@ function createCloudAccountController(options) {
     const { requestedScopes: _completedSelection, ...saved } = record;
     record = { ...saved, hostId: host.id, scopes, permissionsConfigured: true };
     persist(record);
-    return { hostId: host.id, scopes, existingPolicy };
+    return { hostId: host.id, scopes, existingPolicy, host };
   }
-  function publishConfiguredHost(result) {
+  function publishConfiguredHost(result, expectedRevision) {
+    if (disposed || expectedRevision !== revision || !record?.sessionToken ||
+        record.hostId !== result.hostId ||
+        !acceptHostLease(result.host, expectedRevision, false)) return status();
     return publish({ status: "signed_in", account: record.account,
       expiresAt: record.expiresAt, hostId: result.hostId,
-      scopes: result.scopes, permissionsConfigured: true,
+      scopes: result.scopes, permissionsConfigured: true, hostAvailable: true,
       message: result.existingPolicy
         ? "云账号已登录，已保留云端原有 Host 权限设置；修改请前往 Cloud Portal。"
         : "云账号已登录，Host 权限范围已保存。实际调用仍由 Desktop Gateway 决定。" });
@@ -443,7 +665,7 @@ function createCloudAccountController(options) {
     publish({ status: "checking", message: "正在重试 Host 权限设置…" });
     try {
       const result = await configureHost(token, selected, expectedRevision);
-      if (result) return publishConfiguredHost(result);
+      if (result) return publishConfiguredHost(result, expectedRevision);
     } catch (error) {
       if (expectedRevision !== revision) return status();
       if (error.code === "reauth") return resetRejectedSession();
@@ -497,6 +719,16 @@ function createCloudAccountController(options) {
     }
     return host;
   }
+  function validateHostLease(host, expectedHostId) {
+    const validated = validateHostPresence(host, expectedHostId || host?.id);
+    const leaseExpiresAtMs = Date.parse(host.leaseExpiresAt);
+    if (typeof host.leaseExpiresAt !== "string" ||
+        !Number.isFinite(leaseExpiresAtMs) || leaseExpiresAtMs <= leaseNow()) {
+      throw relayTicketError(RELAY_TICKET_ERROR_CODES.INVALID_RESPONSE,
+        "Cloud Auth 返回的 Host 在线租约无效或已过期，已拒绝建立连接。");
+    }
+    return { ...validated, leaseExpiresAtMs };
+  }
   async function requestRelayHostTicket() {
     if (!record?.sessionToken || !isRecord(record.account) ||
         typeof record.account.id !== "string" || !record.account.id ||
@@ -508,16 +740,30 @@ function createCloudAccountController(options) {
     const token = record.sessionToken;
     const accountId = record.account.id;
     const expectedRevision = revision;
+    let hostResponse;
     let host;
     try {
-      // Refresh the server-owned Host lease and read the authoritative room.
-      // The renderer never supplies an account, room, role, or audience.
-      host = await request("/v1/hosts", "POST", token, {});
+      // Keep the existing authoritative Host registration contract. It is
+      // single-flight with timer renewals and never exposes the Cloud bearer.
+      hostResponse = await requestHostRegistration(token, expectedRevision);
     } catch (error) {
+      if (error?.status === 403) {
+        stopHostLeaseRenewal();
+        publishHostUnavailable("Cloud Host 已被云端拒绝或撤销；Cloud Account 会话仍保留。", expectedRevision);
+      }
       throw relayFailure(error, expectedRevision);
     }
     if (expectedRevision !== revision) throw relayFailure(null, expectedRevision);
-    host = validateHostPresence(host, record.hostId);
+    try {
+      host = validateHostLease(hostResponse, record.hostId);
+    } catch (error) {
+      if (error?.code === RELAY_TICKET_ERROR_CODES.NOT_AUTHORIZED) {
+        stopHostLeaseRenewal();
+        publishHostUnavailable("Cloud Host 当前在云端不可用；Cloud Account 会话仍保留。", expectedRevision);
+      }
+      throw error;
+    }
+    acceptHostLease(host, expectedRevision);
     let ticket;
     try {
       ticket = await request("/v1/service-credentials", "POST", token, {
@@ -634,7 +880,7 @@ function createCloudAccountController(options) {
       // A successful code exchange is durable even if Host setup is interrupted.
       // The owner's initial choice stays in the same encrypted native record.
       const hostSetup = await configureHost(sessionToken, transaction.selected, transaction.revision);
-      if (hostSetup) publishConfiguredHost(hostSetup);
+      if (hostSetup) publishConfiguredHost(hostSetup, transaction.revision);
     } catch (error) {
       if (transaction.revision !== revision) return true;
       if (record && record.sessionToken) {
@@ -655,12 +901,13 @@ function createCloudAccountController(options) {
   async function signOut() {
     ++revision;
     clearPending();
+    stopHostLeaseRenewal();
     const token = record && record.sessionToken;
     const installationId = (record && record.installationId) || crypto.randomUUID();
     record = { installationId };
     persist(record);
     publish({ status: "signed_out", account: null, hostId: null, scopes: [],
-      expiresAt: null, permissionsConfigured: false, message: "" });
+      expiresAt: null, permissionsConfigured: false, hostAvailable: false, message: "" });
     if (token) {
       try { await request("/v1/auth/logout", "POST", token); }
       catch {
@@ -669,9 +916,16 @@ function createCloudAccountController(options) {
     }
     return status();
   }
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    ++revision;
+    clearPending();
+    stopHostLeaseRenewal();
+  }
   return { initialize, begin, cancelAuthorization, handleCallback, retryHostSetup,
     resetLocalCredentials, signOut, status, withRelayHostTicket,
-    requestHostGrantSnapshot, getBoundLocalOwnerUserId };
+    requestHostGrantSnapshot, getBoundLocalOwnerUserId, dispose };
 }
 
 module.exports = { createCloudAccountController, parseCallback, validateScopes, SCOPES,
