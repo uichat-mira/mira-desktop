@@ -1,5 +1,6 @@
 import nodeFetch from "node-fetch";
 import { SocksProxyAgent } from "socks-proxy-agent";
+import { buildSocks5ProxyUrl } from "@/services/socks5-proxy-config.js";
 import {
   generalSettingsRepository,
   type GeneralSettingsRecord,
@@ -15,21 +16,8 @@ type GlobalWithInstallMarker = typeof globalThis & {
 type ProxySettingsReader = () => GeneralSettingsRecord;
 type NodeFetch = typeof nodeFetch;
 
-export const buildGitHubSocks5ProxyUrl = (settings: GeneralSettingsRecord) => {
-  const host = settings.socks5Host.trim();
-  const port = Number.isInteger(settings.socks5Port) ? settings.socks5Port : 0;
-  if (!host || port <= 0 || port > 65535) {
-    return null;
-  }
-
-  const username = settings.socks5Username.trim();
-  const password = settings.socks5Password.trim();
-  const auth =
-    username || password
-      ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
-      : "";
-  return `socks5://${auth}${host}:${port}`;
-};
+export const buildGitHubSocks5ProxyUrl = (settings: GeneralSettingsRecord) =>
+  buildSocks5ProxyUrl(settings);
 
 const resolveRequestUrl = (input: string | URL | Request) => {
   try {

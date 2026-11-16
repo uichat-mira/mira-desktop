@@ -80,6 +80,34 @@ ipcMain.handle("cloud-account:login", async (event, scopes, localAccessToken) =>
   const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
   return cloudAccount.begin(scopes, localOwnerUserId);
 });
+ipcMain.handle("cloud-account:read-host-policy", async (event, localAccessToken) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
+  return cloudAccount.readHostPolicy(localOwnerUserId);
+});
+ipcMain.handle("cloud-account:update-host-policy", async (event, scopes, expectedRevision,
+  localAccessToken) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
+  return cloudAccount.updateHostPolicy(scopes, localOwnerUserId, expectedRevision,
+    async (addedScopes) => {
+      cloudIpcAuth(event);
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: "warning",
+        title: "确认扩大手机访问权限",
+        message: "确认扩大本机 Host 对同账号手机的访问上限吗？",
+        detail: "新增权限：" + addedScopes.join("、") +
+          "\n已登录和未来登录的同账号手机可能获得上述能力，单设备限制仍然有效。",
+        buttons: ["取消", "确认扩大权限"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      return response === 1;
+    });
+});
 ipcMain.handle("cloud-account:cancel-login", (event) => {
   cloudIpcAuth(event);
   if (!cloudAccount) throw new Error("Cloud Account not initialized");
@@ -102,6 +130,7 @@ ipcMain.handle("cloud-account:logout", (event) => {
 });
 
 const BACKEND_START_TIMEOUT_MS = 15000;
+const CLOUD_PILOT_BACKEND_START_TIMEOUT_MS = 60000;
 const BACKEND_START_POLL_INTERVAL_MS = 300;
 
 const isDev = !app.isPackaged;
@@ -259,8 +288,10 @@ function createWindow() {
   });
 
   if (isDev) {
+    const rendererHost =
+      process.env.UI_CHAT_CLOUD_PILOT === "1" ? "127.0.0.1" : "localhost";
     void mainWindow
-      .loadURL(`http://localhost:${runtimeConfig.dev.desktopPort}`)
+      .loadURL(`http://${rendererHost}:${runtimeConfig.dev.desktopPort}`)
       .then(() => {
         mainWindow?.webContents.openDevTools({ mode: "detach" });
       })
@@ -439,10 +470,91 @@ ipcMain.handle("desktop:download-browser-extension", async () => {
   return destinationPath;
 });
 
+function attachBackendProcessHandlers(child) {
+  cloudRelayTicketBridge = attachCloudRelayTicketIpc(child, () => cloudAccount);
+  cloudHostGrantBridge = attachCloudHostGrantIpc(child, () => cloudAccount);
+
+  if (child.stdout) {
+    child.stdout.on("data", (data) => {
+      console.log(`Backend: ${data}`);
+    });
+  }
+
+  if (child.stderr) {
+    child.stderr.on("data", (data) => {
+      console.error(`Backend error: ${data}`);
+    });
+  }
+
+  child.on("close", (code) => {
+    cloudRelayTicketBridge?.dispose();
+    cloudRelayTicketBridge = null;
+    cloudHostGrantBridge?.dispose();
+    cloudHostGrantBridge = null;
+    console.log(`Backend process exited with code ${code}`);
+  });
+
+  child.on("error", (error) => {
+    console.error("Failed to start backend process:", error);
+  });
+}
+
+async function startCloudPilotDevBackend() {
+  // Keep the development-only launcher out of packaged builds.
+  const { resolveCloudPilotBackendLaunch } = require("./cloud-pilot-dev.cjs");
+  const nodeBinary = process.env.UI_CHAT_CLOUD_PILOT_NODE_BINARY;
+  if (!nodeBinary || !path.isAbsolute(nodeBinary) || !fs.existsSync(nodeBinary)) {
+    throw new Error(
+      "Cloud Pilot requires the Node executable supplied by electron/dev-launcher.cjs. Start it with the platform-specific dev:electron:<platform>:cloud-pilot script.",
+    );
+  }
+
+  const launch = resolveCloudPilotBackendLaunch({
+    workspaceRoot: path.resolve(__dirname, ".."),
+    nodeBinary,
+    baseEnv: process.env,
+    runtimeConfig,
+  });
+  for (const requiredPath of [launch.args[0], launch.args[1]]) {
+    if (!fs.existsSync(requiredPath)) {
+      throw new Error(`Cloud Pilot source Backend file is missing: ${requiredPath}`);
+    }
+  }
+
+  if (await isBackendHealthy()) {
+    throw new Error(
+      `Cloud Pilot refuses to reuse an independently started Backend at ${getBackendUrl()}; stop it and restart the Cloud Pilot launcher.`,
+    );
+  }
+
+  console.log("Cloud Pilot: Electron Main is starting the source Backend without watch mode.");
+  console.log("Cloud Pilot Backend runtime:", launch.nodeBinary);
+  backendProcess = spawn(launch.nodeBinary, launch.args, launch.options);
+  attachBackendProcessHandlers(backendProcess);
+
+  const backendReady = await waitForBackendReady(
+    CLOUD_PILOT_BACKEND_START_TIMEOUT_MS,
+  );
+  if (!backendReady) {
+    throw new Error(
+      `Cloud Pilot Backend did not become healthy within ${CLOUD_PILOT_BACKEND_START_TIMEOUT_MS}ms: ${getBackendUrl()}/health. Check the Backend output above; an occupied port is never reused.`,
+    );
+  }
+
+  console.log("Cloud Pilot Backend is healthy and attached to Electron's private IPC channel.");
+  return true;
+}
+
 async function startBackend() {
+  if (isDev && process.env.UI_CHAT_CLOUD_PILOT === "1") {
+    return startCloudPilotDevBackend();
+  }
   if (isDev) {
     console.log("Dev mode: backend server already started via concurrently");
     return true;
+  }
+  if (process.env.UI_CHAT_CLOUD_PILOT === "1") {
+    throw new Error("Cloud Pilot is a development-only startup mode.");
   }
 
   const backendPath = path.join(process.resourcesPath, "server", "server.cjs");
@@ -504,6 +616,9 @@ async function startBackend() {
       SETTINGS_SECRET: settingsSecret,
       UI_CHAT_ALLOW_DEFAULT_BOOTSTRAP: "1",
       UI_CHAT_BACKEND_URL: getBackendUrl(),
+      // Non-secret marker: only this Electron-owned Backend child can ask
+      // its parent for current Cloud Host eligibility on startup.
+      UI_CHAT_CLOUD_IPC_CHILD: "1",
       UI_CHAT_DESKTOP_RESOURCES_ROOT: process.resourcesPath,
       UI_CHAT_DATABASE_DIR: dataDir,
       UI_CHAT_LOG_DIR: logDir,
@@ -516,32 +631,7 @@ async function startBackend() {
     stdio: ["ignore", "pipe", "pipe", "ipc"],
     windowsHide: true,
   });
-  cloudRelayTicketBridge = attachCloudRelayTicketIpc(backendProcess, () => cloudAccount);
-  cloudHostGrantBridge = attachCloudHostGrantIpc(backendProcess, () => cloudAccount);
-
-  if (backendProcess.stdout) {
-    backendProcess.stdout.on("data", (data) => {
-      console.log(`Backend: ${data}`);
-    });
-  }
-
-  if (backendProcess.stderr) {
-    backendProcess.stderr.on("data", (data) => {
-      console.error(`Backend error: ${data}`);
-    });
-  }
-
-  backendProcess.on("close", (code) => {
-    cloudRelayTicketBridge?.dispose();
-    cloudRelayTicketBridge = null;
-    cloudHostGrantBridge?.dispose();
-    cloudHostGrantBridge = null;
-    console.log(`Backend process exited with code ${code}`);
-  });
-
-  backendProcess.on("error", (error) => {
-    console.error("Failed to start backend process:", error);
-  });
+  attachBackendProcessHandlers(backendProcess);
 
   const backendReady = await waitForBackendReady();
   if (!backendReady) {
@@ -569,6 +659,15 @@ app.whenReady().then(async () => {
     // certificate verification enabled.
     fetcher: (input, init) => net.fetch(input, init),
     notify: (snapshot) => {
+      // The official Cloud Host follows the authenticated native lifecycle,
+      // not a renderer setting or a second manual Relay activation.
+      // Non-ready states close the old account's socket before any new ticket.
+      cloudRelayTicketBridge?.notifyAvailability(
+        snapshot.status === "signed_in" &&
+        snapshot.permissionsConfigured === true &&
+        snapshot.localOwnerBound === true &&
+        typeof snapshot.hostId === "string" && snapshot.hostId.length > 0,
+      );
       if (snapshot.status === "rejected" || snapshot.status === "signed_out") {
         cloudRelayTicketBridge?.notifyRevoked(
           snapshot.status === "rejected" ? "reauth" : "signout",

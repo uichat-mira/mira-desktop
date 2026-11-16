@@ -89,6 +89,8 @@ test("Electron main wires native Cloud Auth to Chromium net.fetch", () => {
   assert.match(main, /\bnet\b[^}]*\}\s*=\s*require\(["']electron["']\)/);
   const start = main.indexOf("cloudAccount = createCloudAccountController({");
   assert.notEqual(start, -1, "native Cloud Account controller must be constructed");
+  assert.match(main, /UI_CHAT_CLOUD_IPC_CHILD:\s*"1"/,
+    "packaged Backend must be explicitly marked as the native IPC child");
   const end = main.indexOf("notify:", start);
   assert.ok(end > start, "Cloud Account controller must have a notify boundary");
   assert.match(
@@ -187,6 +189,7 @@ function fixture() {
   };
   let offline = false;
   let storedPolicy = null;
+  let policyRevision = 0;
   let beforePolicyPut = null;
   let beforeSessionRestore = null;
   let beforeOpenExternal = null;
@@ -232,12 +235,21 @@ function fixture() {
       if (beforeGrantRead) await beforeGrantRead();
       if (grantSnapshot) return Response.json(grantSnapshot);
       return Response.json({ hostId: "host-1", accountId: "account-a",
-        revision: storedPolicy ? 7 : 0, policyConfigured: Boolean(storedPolicy),
+        revision: policyRevision, policyConfigured: Boolean(storedPolicy),
         policyScopes: storedPolicy || [] });
     }
     if (url.endsWith("/v1/hosts/host-1/grant-policy")) {
-      if (beforePolicyPut) await beforePolicyPut();
-      return Response.json({ hostId: "host-1", revision: 1 });
+      const custom = beforePolicyPut ? await beforePolicyPut({ url, opts }) : null;
+      if (custom instanceof Response) return custom;
+      const input = JSON.parse(opts.body);
+      if (input.expectedRevision !== policyRevision) {
+        return Response.json({ error: { code: "HOST_GRANT_STALE_REVISION" } },
+          { status: 409 });
+      }
+      storedPolicy = input.scopes;
+      policyRevision += 1;
+      return Response.json({ hostId: "host-1", revision: policyRevision,
+        scopes: storedPolicy });
     }
     if (url.endsWith("/v1/auth/session")) {
       if (beforeSessionRestore) await beforeSessionRestore();
@@ -257,7 +269,7 @@ function fixture() {
   });
   return { dir, store, opened, calls, build,
     setOffline: (yes) => { offline = yes; },
-    setStoredPolicy: (scopes) => { storedPolicy = scopes; },
+    setStoredPolicy: (scopes) => { storedPolicy = scopes; policyRevision = 7; },
     failHostRegistration: (count = 1) => { hostFailuresRemaining = count; },
     setBeforePolicyPut: (hook) => { beforePolicyPut = hook; },
     setBeforeSessionRestore: (hook) => { beforeSessionRestore = hook; },
@@ -322,6 +334,85 @@ test("native PKCE exchanges once, sets the chosen Host ceiling and never exposes
   assert.match(restored.status().message, /云端撤销未确认/);
 });
 
+test("Cloud Host renews its OPS-018 directory lease while a healthy Relay socket stays established", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build({ presenceRefreshIntervalMs: 20 });
+  await signIn(f, controller);
+  const countAdvertisements = () => f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  const initial = countAdvertisements();
+  await new Promise((resolve) => setTimeout(resolve, 95));
+  assert.ok(countAdvertisements() > initial,
+    "native Host renews presence without recycling a healthy Relay ticket");
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/service-credentials")).length, 0,
+    "presence refresh does not acquire another transport ticket");
+  assert.equal(controller.status().localOwnerBound, true);
+  await controller.signOut();
+  const afterLogout = countAdvertisements();
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  assert.equal(countAdvertisements(), afterLogout,
+    "sign-out stops the trusted Host presence refresh");
+});
+
+test("restored signed-in Desktop resumes Host lease renewal without a second OAuth login", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const first = f.build();
+  await signIn(f, first);
+  const restored = f.build({ presenceRefreshIntervalMs: 20 });
+  await restored.initialize();
+  assert.equal(restored.status().status, "signed_in");
+  const before = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  await new Promise((resolve) => setTimeout(resolve, 75));
+  const after = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  assert.ok(after > before);
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/oauth/token")).length, 1,
+    "restored Host refresh never reauthenticates as a new account");
+  await restored.signOut();
+});
+
+test("in-flight Host presence renewal cannot reactivate after Cloud sign-out", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build({ presenceRefreshIntervalMs: 15 });
+  await signIn(f, controller);
+  let releaseRenewal;
+  f.setHostHandler(() => new Promise((resolve) => { releaseRenewal = resolve; }));
+  for (let tick = 0; tick < 30 && !releaseRenewal; tick += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(typeof releaseRenewal, "function");
+  await controller.signOut();
+  releaseRenewal(Response.json(hostPayload()));
+  await new Promise((resolve) => setTimeout(resolve, 45));
+  assert.equal(controller.status().status, "signed_out");
+  const postCalls = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST");
+  assert.equal(postCalls.length, 2,
+    "no stale timer or in-flight request may renew an abandoned Cloud account");
+});
+
+test("Host lease refresh network errors retry safely without exposing credentials", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build({ presenceRefreshIntervalMs: 20 });
+  await signIn(f, controller);
+  f.failHostRegistration(1);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const count = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  assert.ok(count >= 3, "failed renewal schedules another bounded attempt");
+  assert.equal(controller.status().status, "signed_in",
+    "temporary Cloud Auth outage must not invalidate local credentials");
+  assert.ok(!JSON.stringify(controller.status()).includes("mcs_v1."));
+  await controller.signOut();
+});
+
 test("Cloud offline preserves native session rather than invalidating local Mira", async (t) => {
   const f = fixture();
   t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
@@ -350,6 +441,188 @@ test("re-login keeps the Cloud owner's existing Host ceiling instead of overwrit
   assert.deepEqual(controller.status().scopes, ["threads:read"]);
   assert.match(controller.status().message, /保留云端原有/);
   assert.equal(f.calls.some((call) => call.url.endsWith("/grant-policy")), false);
+});
+
+test("verified Desktop owner can add only messages:read to an existing Host ceiling", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  assert.deepEqual(controller.status().scopes, ["threads:read"]);
+  const result = await controller.updateHostPolicy(["messages:read", "threads:read"], 7, 7, async () => true);
+  assert.equal(result.status, "signed_in");
+  assert.deepEqual(result.scopes, ["threads:read", "messages:read"]);
+  assert.equal(result.localOwnerBound, true);
+  assert.equal(JSON.stringify(result).includes("mcs_v1."), false);
+  const writes = f.calls.filter((call) => call.url.endsWith("/grant-policy"));
+  assert.equal(writes.length, 1);
+  assert.deepEqual(JSON.parse(writes[0].opts.body), {
+    expectedRevision: 7, scopes: ["threads:read", "messages:read"],
+  });
+  assert.equal(fs.readFileSync(f.store, "utf8").includes("messages:read"), false,
+    "native scoped permissions remain in OS-encrypted storage");
+  const restored = f.build();
+  await restored.initialize();
+  assert.deepEqual(restored.status().scopes, ["threads:read", "messages:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/v1/oauth/token")).length, 1);
+  await restored.signOut();
+});
+
+test("Host policy edit rejects other local users, invalid scopes and missing owner binding", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  await assert.rejects(controller.updateHostPolicy(["messages:read"], 8, 7), /绑定的 Mira 本地账户/);
+  await assert.rejects(controller.updateHostPolicy(["tools:*"], 7, 7), /无效的远程权限/);
+  await assert.rejects(controller.updateHostPolicy(["messages:read"], -1, 7), /绑定的 Mira 本地账户/);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
+  await controller.signOut();
+  const legacy = f.build();
+  await legacy.initialize();
+  await legacy.begin(["threads:read"]);
+  const state = new URL(f.opened.at(-1)).searchParams.get("state");
+  await legacy.handleCallback("mira-desktop://oauth/callback?state=" + state +
+    "&code=mca_v1.id.secret");
+  assert.equal(legacy.status().localOwnerBound, false);
+  await assert.rejects(legacy.updateHostPolicy(["messages:read"], 7, 7), /绑定的 Mira 本地账户/);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
+});
+
+test("stale policy revision fails closed without broadening local scope", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  f.setBeforePolicyPut(() => Response.json(
+    { error: { code: "HOST_GRANT_STALE_REVISION" } }, { status: 409 }));
+  await assert.rejects(
+    controller.updateHostPolicy(["threads:read", "messages:read"], 7, 7, async () => true),
+    /权限版本已变化/,
+  );
+  assert.deepEqual(controller.status().scopes, ["threads:read"]);
+  await controller.signOut();
+});
+
+test("sign-out cancels the result of an in-flight owner Host policy edit", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  let entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  f.setBeforePolicyPut(async () => { entered(); await held; });
+  const write = controller.updateHostPolicy(["threads:read", "messages:read"], 7, 7, async () => true);
+  await started;
+  await controller.signOut();
+  release();
+  await assert.rejects(write, /云账号已变更/);
+  assert.equal(controller.status().status, "signed_out");
+  assert.deepEqual(controller.status().scopes, []);
+  const restored = f.build();
+  await restored.initialize();
+  assert.equal(restored.status().status, "signed_out");
+});
+
+test("revoked Cloud Session fails closed during owner policy edit", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  f.setBeforePolicyPut(() => Response.json(
+    { error: { code: "CLOUD_SESSION_REVOKED" } }, { status: 401 }));
+  await rejectsCode(controller.updateHostPolicy(["threads:read", "messages:read"], 7, 7, async () => true),
+    "reauth");
+  assert.equal(controller.status().status, "rejected");
+  assert.equal(controller.getBoundLocalOwnerUserId(), null);
+});
+
+test("owner policy editor reads the fresh Cloud Auth baseline and never trusts cached scopes", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read", "messages:read"]);
+  const account = f.build();
+  await signIn(f, account);
+  assert.deepEqual(account.status().scopes, ["threads:read", "messages:read"]);
+  f.setStoredPolicy(["threads:read"]); // Remote admin narrowed policy since last login.
+  const latest = await account.readHostPolicy(7);
+  assert.deepEqual(latest, { revision: 7, scopes: ["threads:read"] });
+  let prompted = [];
+  await assert.rejects(
+    account.updateHostPolicy(["threads:read", "messages:read"], 7, latest.revision,
+      async (added) => { prompted = added; return false; }),
+    /已取消扩大 Host 权限/,
+  );
+  assert.deepEqual(prompted, ["messages:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0,
+    "a stale wider cached view cannot issue an expansion without native confirmation");
+  await assert.rejects(
+    account.updateHostPolicy(["threads:read", "messages:read"], 7, latest.revision),
+    /已取消扩大 Host 权限/,
+  );
+  const result = await account.updateHostPolicy(
+    ["threads:read", "messages:read"], 7, latest.revision, async () => true);
+  assert.deepEqual(result.scopes, ["threads:read", "messages:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 1);
+});
+
+test("stale editor revision cannot submit or ask for widening confirmation", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const account = f.build();
+  await signIn(f, account);
+  let prompts = 0;
+  await assert.rejects(
+    account.updateHostPolicy(["threads:read", "messages:read"], 7, 6,
+      async () => { prompts += 1; return true; }),
+    /权限版本已变化/,
+  );
+  assert.equal(prompts, 0);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
+  await assert.rejects(account.readHostPolicy(8), /绑定的 Mira 本地账户/);
+  assert.deepEqual(await account.readHostPolicy(7),
+    { revision: 7, scopes: ["threads:read"] });
+});
+
+test("no-change and narrowing Host policy require no widening confirmation", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read", "messages:read"]);
+  const account = f.build();
+  await signIn(f, account);
+  const noOp = await account.updateHostPolicy(["threads:read", "messages:read"], 7, 7);
+  assert.deepEqual(noOp.scopes, ["threads:read", "messages:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
+  const narrowed = await account.updateHostPolicy(["threads:read"], 7, 7);
+  assert.deepEqual(narrowed.scopes, ["threads:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 1);
+});
+
+test("owner signout during native expansion confirmation rejects later policy mutation", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const account = f.build();
+  await signIn(f, account);
+  let entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const editing = account.updateHostPolicy(["threads:read", "messages:read"], 7, 7,
+    async () => { entered(); await held; return true; });
+  await started;
+  await account.signOut();
+  release();
+  await assert.rejects(editing, /权限操作已取消/);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
 });
 
 test("logout wins when an in-flight Host grant write finishes later", async (t) => {

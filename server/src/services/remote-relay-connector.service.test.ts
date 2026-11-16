@@ -401,18 +401,30 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
   });
 
-  it("is opt-in and never inherits self-hosted/legacy Relay token settings", () => {
+  it("activates only for native Cloud login and never uses Legacy Relay infrastructure", () => {
     expect(resolveCloudRelayConnectorConfig({
       UI_CHAT_REMOTE_RELAY_ENABLED: "1",
       UI_CHAT_REMOTE_RELAY_URL: "https://legacy.example.test",
       UI_CHAT_REMOTE_RELAY_HOST_TOKEN: "h".repeat(48),
-    })).toEqual({ kind: "cloud", enabled: false, relayUrl: null });
+    })).toEqual({ kind: "cloud", enabled: true, relayUrl: null });
     expect(resolveCloudRelayConnectorConfig({
       UI_CHAT_CLOUD_RELAY_ENABLED: "1",
       UI_CHAT_CLOUD_RELAY_URL: "https://official.example.test",
       NODE_ENV: "production",
     })).toEqual({ kind: "cloud", enabled: true,
       relayUrl: "wss://official.example.test" });
+    expect(resolveCloudRelayConnectorConfig({
+      UI_CHAT_CLOUD_RELAY_URL: "https://official.example.test",
+      NODE_ENV: "production",
+    })).toEqual({ kind: "cloud", enabled: true,
+      relayUrl: "wss://official.example.test" });
+    expect(resolveCloudRelayConnectorConfig({
+      UI_CHAT_CLOUD_RELAY_URL: "https://relay.tomz.io",
+    }).relayUrl).toBeNull();
+    expect(resolveCloudRelayConnectorConfig({
+      UI_CHAT_CLOUD_RELAY_ENABLED: "0",
+      UI_CHAT_CLOUD_RELAY_URL: "https://official.example.test",
+    }).enabled).toBe(false);
     expect(resolveCloudRelayConnectorConfig({
       UI_CHAT_CLOUD_RELAY_ENABLED: "1",
       UI_CHAT_CLOUD_RELAY_URL: "ws://insecure.example.test",

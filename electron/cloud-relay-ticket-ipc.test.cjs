@@ -51,6 +51,28 @@ function ticketLike(child) {
   return value;
 }
 
+test("native state request replays restored Host readiness without credentials", () => {
+  const child = new FakeChild();
+  let ready = false;
+  const bridge = attachCloudRelayTicketIpc(child, () => ({
+    status: () => ({ status: ready ? "signed_in" : "signed_out",
+      permissionsConfigured: ready, localOwnerBound: ready,
+      hostId: ready ? "host-1" : null }),
+  }));
+  child.emit("message", { channel: CHANNEL, type: "state_request",
+    accountId: "forged" });
+  assert.equal(child.sent.length, 0, "reject extra fields in state request");
+  child.emit("message", { channel: CHANNEL, type: "state_request" });
+  assert.deepEqual(child.sent, [{ channel: CHANNEL, type: "availability", available: false }]);
+  ready = true;
+  child.emit("message", { channel: CHANNEL, type: "state_request" });
+  assert.deepEqual(child.sent[1], { channel: CHANNEL, type: "availability", available: true });
+  bridge.notifyAvailability(false);
+  assert.deepEqual(child.sent[2], { channel: CHANNEL, type: "availability", available: false });
+  assert.equal(JSON.stringify(child.sent).includes("mcs_v1."), false);
+  bridge.dispose();
+});
+
 test("unknown input shapes, forged fields and duplicate ids cannot request a ticket", async () => {
   const child = new FakeChild();
   let called = 0;

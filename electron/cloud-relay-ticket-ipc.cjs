@@ -56,7 +56,28 @@ function attachCloudRelayTicketIpc(child, getAccount) {
       send({ channel: CHANNEL, type: "result", requestId, ok: false, errorCode });
     }
   }
+  // State is advisory only: the native ticket issuer still checks the
+  // device-bound Session and Host ownership for each new socket generation.
+  function hostAvailable() {
+    const snapshot = getAccount()?.status?.();
+    return snapshot?.status === "signed_in" &&
+      snapshot.permissionsConfigured === true &&
+      snapshot.localOwnerBound === true &&
+      typeof snapshot.hostId === "string" && snapshot.hostId.length > 0;
+  }
+  function notifyAvailability(available) {
+    if (disposed) return;
+    if (!available) active.clear();
+    send({ channel: CHANNEL, type: "availability", available: available === true });
+  }
   function onMessage(value) {
+    // Backend subscribes after its own startup. Respond to its handshake so
+    // a missed early Electron notification cannot leave a restored Host offline.
+    if (!disposed && exactKeys(value, ["channel", "type"]) &&
+        value.channel === CHANNEL && value.type === "state_request") {
+      notifyAvailability(hostAvailable());
+      return;
+    }
     if (disposed || !exactKeys(value, ["channel", "type", "requestId"]) ||
         value.channel !== CHANNEL || value.type !== "request" ||
         typeof value.requestId !== "string" || !UUID.test(value.requestId)) {
@@ -108,7 +129,7 @@ function attachCloudRelayTicketIpc(child, getAccount) {
   child.on("message", onMessage);
   child.on("disconnect", dispose);
   child.on("close", dispose);
-  return { dispose, notifyRevoked };
+  return { dispose, notifyRevoked, notifyAvailability };
 }
 
 

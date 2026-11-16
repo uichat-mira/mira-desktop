@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { Readable } from "node:stream";
+import type { SocksProxyAgent } from "socks-proxy-agent";
 import {
   PairingServiceError,
   remoteAccessPairingService,
@@ -18,6 +19,8 @@ import {
 } from "@/services/remote-relay-config.service.js";
 import { tailscaleRemoteAccessService } from "@/services/tailscale-remote-access.service.js";
 import { CloudRelayTicketIpcClient } from "@/services/cloud-relay-ticket-ipc.service.js";
+import { generalSettingsRepository } from "@/db/repositories/general-settings.repository.js";
+import { createCloudRelaySocketFactory } from "@/services/cloud-relay-socket-proxy.service.js";
 import { CloudHostGrantIpcClient } from "@/services/cloud-host-grant-ipc.service.js";
 import { CloudHostGrantRuntime } from "@/services/cloud-host-grant-runtime.service.js";
 import {
@@ -141,12 +144,15 @@ const mapPushBindingError = (error: unknown): never => {
   throw error;
 };
 
-const createRelaySocketFactory = (app: FastifyInstance): RelaySocketFactory => {
+const createRelaySocketFactories = (app: FastifyInstance) => {
   const websocketServer = (
     app as unknown as {
       websocketServer?: {
         options?: {
-          WebSocket?: new (url: string) => ReturnType<RelaySocketFactory>;
+          WebSocket?: new (
+            url: string,
+            options?: { agent?: SocksProxyAgent },
+          ) => ReturnType<RelaySocketFactory>;
         };
       };
     }
@@ -158,11 +164,29 @@ const createRelaySocketFactory = (app: FastifyInstance): RelaySocketFactory => {
     );
   }
 
-  return (url) => new WebSocketCtor(url);
+  const direct: RelaySocketFactory = (url) => new WebSocketCtor(url);
+  const cloud = createCloudRelaySocketFactory(
+    direct,
+    (url, agent) => new WebSocketCtor(url, { agent }),
+    () => generalSettingsRepository.get(),
+  );
+  return { direct, cloud };
+};
+
+// The native Cloud Host state is authoritative for whether a Grant
+// invalidation may reconnect. Export this tiny decision point for regression
+// coverage: a sign-out must never cause an unsolicited ticket retry.
+export const reconcileCloudRelayOnGrantInvalidation = (
+  eligible: boolean,
+  connector: Pick<RemoteRelayConnectorService, "restart" | "stop">,
+): void => {
+  if (eligible) connector.restart();
+  else connector.stop();
 };
 
 const remoteAccessRoute: FastifyPluginAsync = async (app) => {
-  const socketFactory = createRelaySocketFactory(app);
+  const { direct: socketFactory, cloud: cloudSocketFactory } =
+    createRelaySocketFactories(app);
   const remoteRelayConnectorService = new RemoteRelayConnectorService(
     resolvePersistedRemoteRelayConnectorConfig,
     socketFactory,
@@ -179,13 +203,16 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
   });
   const unsubscribeCloudRevoked = cloudGrantIpc.onInvalidated(() => {
     cloudLocalRequestAuthority.clear();
-    // A revoked native owner invalidates in-flight requests as well as the
-    // next admission. Never allow long-running Tool SSE to outlive sign-out.
-    cloudRelayConnectorService.restart();
+    // Native logout sends both Cloud-ticket unavailability and Grant
+    // invalidation. The latter must NOT restart a connector which the former
+    // just stopped. Only a still-eligible Host may reacquire a fresh ticket.
+    reconcileCloudRelayOnGrantInvalidation(
+      cloudTicketIpc.isHostAvailable(), cloudRelayConnectorService,
+    );
   });
   const cloudRelayConnectorService = new RemoteRelayConnectorService(
     resolveCloudRelayConnectorConfig,
-    socketFactory,
+    cloudSocketFactory,
     fetch,
     undefined,
     Math.random,
@@ -201,12 +228,27 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     },
   );
 
+  // Only the native Cloud Account owner may make an official Host eligible.
+  // The local/Tailscale/self-hosted connector remains independent. Wait for
+  // Backend listen before creating a Cloud socket, including restore races.
+  let backendListening = false;
+  const unsubscribeCloudAvailability = cloudTicketIpc.onAvailabilityChanged(
+    (available) => {
+      if (!backendListening) return;
+      if (available) cloudRelayConnectorService.start();
+      else cloudRelayConnectorService.stop();
+    },
+  );
+
   app.addHook("onListen", async () => {
+    backendListening = true;
     remoteRelayConnectorService.start();
-    cloudRelayConnectorService.start();
+    if (cloudTicketIpc.isHostAvailable()) cloudRelayConnectorService.start();
   });
 
   app.addHook("onClose", async () => {
+    backendListening = false;
+    unsubscribeCloudAvailability();
     cloudRelayConnectorService.stop();
     unsubscribeCloudRevoked();
     cloudLocalRequestAuthority.clear();
