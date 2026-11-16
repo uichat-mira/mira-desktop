@@ -33,11 +33,19 @@ export default function CloudAccountPage() {
   const english = i18n.resolvedLanguage?.toLowerCase().startsWith("en") ?? false;
   const [view, setView] = useState<CloudView>(emptyView);
   const [selected, setSelected] = useState<string[]>([]);
+  const [editingPolicy, setEditingPolicy] = useState(false);
+  const [policyScopes, setPolicyScopes] = useState<string[]>([]);
+  const [policyRevision, setPolicyRevision] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   // Different Cloud accounts never inherit a previous user's initial Host scope choices.
-  useEffect(() => { setSelected([]); }, [view.account?.id]);
+  useEffect(() => {
+    setSelected([]);
+    setEditingPolicy(false);
+    setPolicyScopes([]);
+    setPolicyRevision(null);
+  }, [view.account?.id]);
 
   useEffect(() => {
     if (!api) return;
@@ -91,6 +99,53 @@ export default function CloudAccountPage() {
     try { setView(await api.signOut() as CloudView); setSelected([]); }
     catch (err) { setError(err instanceof Error ? err.message : "云账号退出失败"); }
     finally { setBusy(false); }
+  };
+  const beginPolicyEdit = async () => {
+    if (!api || !session?.token || isCheckingSession ||
+        view.status !== "signed_in" || view.localOwnerBound !== true) {
+      setError("请先登录当前 Mira 本地账户并确认云端 Host 身份");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      // The server's CURRENT policy is the edit baseline, never the restored
+      // encrypted local snapshot or a renderer-owned default.
+      const fresh = await api.readHostPolicy(session.token);
+      setPolicyScopes(fresh.scopes);
+      setPolicyRevision(fresh.revision);
+      setEditingPolicy(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "读取云端 Host 权限失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const updateHostPolicy = async () => {
+    if (!api || !session?.token || isCheckingSession ||
+        view.status !== "signed_in" || view.localOwnerBound !== true ||
+        policyRevision === null) {
+      setError("请先从 Cloud Auth 读取最新 Host 授权，再保存");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      // Native compares against the latest server snapshot and obtains a
+      // trusted Electron-owned confirmation before ANY scope widening.
+      setView(await api.updateHostPolicy(policyScopes, policyRevision, session.token));
+      setEditingPolicy(false);
+      setPolicyRevision(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "云端 Host 授权保存失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const togglePolicyScope = (scope: string) => {
+    setPolicyScopes((current) => current.includes(scope)
+      ? current.filter((item) => item !== scope)
+      : [...current, scope]);
   };
   const toggle = (scope: string) => {
     setSelected((current) => current.includes(scope)
@@ -177,7 +232,45 @@ export default function CloudAccountPage() {
                   此云登录早于本地用户绑定，手机访问仍被拒绝。请退出云账号，再以当前 Mira 本地账户重新登录云账号。
                 </p>
               ) : null}
-              <p className="text-xs text-text-secondary">修改或撤销某台手机的权限，请前往 Mira Cloud Account Portal。</p>
+              <p className="text-xs text-text-secondary">本页修改 Host 的权限上限；单台手机的缩小或撤销仍在 Mira Cloud Account Portal 管理。</p>
+              {view.status === "signed_in" && view.localOwnerBound === true && api ? (
+                <div className="space-y-3 pt-2">
+                  {!editingPolicy ? (
+                    <Button variant="outline" disabled={busy || isCheckingSession || !session?.token}
+                      onClick={() => void beginPolicyEdit()}>
+                      {english ? "Edit Host permission ceiling" : "调整 Host 权限上限"}
+                    </Button>
+                  ) : (
+                    <>
+                      <p className="text-xs text-text-secondary">
+                        {english
+                          ? "The editor loads the latest Cloud Auth policy. Widening requires a separate native confirmation, and current or future eligible devices may inherit the new ceiling."
+                          : "正在编辑 Cloud Auth 最新权限策略。扩大权限需要再次在系统确认框中授权，现有或未来符合条件的手机可能继承新的上限。"}
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {SCOPE_OPTIONS.map(([id, zh, en]) => (
+                          <label key={id} className="flex cursor-pointer items-center gap-3 rounded-ui-control border border-border px-3 py-2 text-sm text-text-primary">
+                            <input type="checkbox" checked={policyScopes.includes(id)}
+                              disabled={busy} onChange={() => togglePolicyScope(id)}
+                              aria-label={english ? en : zh} />
+                            <span>{english ? en : zh}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="primary" disabled={busy || isCheckingSession || !session?.token}
+                          onClick={() => void updateHostPolicy()}>
+                          {english ? "Save Host policy to Cloud Auth" : "保存 Host 授权"}
+                        </Button>
+                        <Button variant="outline" disabled={busy}
+                          onClick={() => { setEditingPolicy(false); setPolicyRevision(null); }}>
+                          {english ? "Cancel" : "取消"}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : null}
             </div>
           </SectionCard>
         ) : !signedIn && hasNative ? (
@@ -185,8 +278,8 @@ export default function CloudAccountPage() {
             icon={<LockKeyhole size={16} />}>
             <div className="space-y-4 p-4">
               <p className="text-sm leading-6 text-text-secondary">
-                {english ? "Choose initial Mobile scopes before sign-in; all start disabled. If this Host already has a Cloud policy, its existing scopes are preserved. Change them later in Cloud Portal. No QR pairing is needed."
-                  : "首次登录可选择手机可调用的权限，默认全部关闭；若云端已有此 Host 的权限策略，将保留原设置，后续可在 Cloud Portal 修改。不需要二维码或现场配对。"}
+                {english ? "Choose initial Mobile scopes before sign-in; all start disabled. If this Host already has a Cloud policy, existing scopes are preserved. After login change the Host ceiling here; individual device restrictions remain in Cloud Portal. No QR pairing is needed."
+                  : "首次登录可选择手机可调用的权限，默认全部关闭；若云端已有此 Host 的权限策略，将保留原设置；登录后可在本页修改权限上限，单台手机权限在 Cloud Portal 管理。不需要二维码或现场配对。"}
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {SCOPE_OPTIONS.map(([id, zh, en]) => (
