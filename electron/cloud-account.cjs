@@ -21,6 +21,19 @@ const RELAY_ROOM = /^[A-Za-z0-9._:-]{1,128}$/;
 const SERVICE_CREDENTIAL_KID = /^[A-Za-z0-9._-]{1,64}$/;
 const RELAY_TICKET_LIFETIME_SECONDS = 600;
 const RELAY_TICKET_CLOCK_SKEW_SECONDS = 30;
+// OPS-018 Host presence lease is independent of Relay WebSocket ping/pong.
+// Refresh well before expiry without replacing an established Relay ticket.
+const HOST_PRESENCE_RENEW_MAX_MS = 60_000;
+const HOST_PRESENCE_RETRY_MS = 15_000;
+const HOST_PRESENCE_RENEW_MIN_MS = 5_000;
+function hostPresenceRenewDelay(host) {
+  const advertised = Date.parse(host?.lastAdvertisedAt);
+  const expires = Date.parse(host?.leaseExpiresAt);
+  const leaseMs = expires - advertised;
+  if (!Number.isFinite(leaseMs) || leaseMs <= 0) return HOST_PRESENCE_RETRY_MS;
+  return Math.min(HOST_PRESENCE_RENEW_MAX_MS,
+    Math.max(HOST_PRESENCE_RENEW_MIN_MS, Math.floor(leaseMs / 2)));
+}
 const RELAY_TICKET_ERROR_CODES = Object.freeze({
   NOT_CONFIGURED: "relay_ticket_not_configured",
   HOST_MISMATCH: "relay_ticket_host_mismatch",
@@ -154,17 +167,26 @@ function parseCallback(value) {
 function createCloudAccountController(options) {
   const { app, safeStorage, shell, notify, fetcher = globalThis.fetch,
     storagePath = path.join(app.getPath("userData"), "cloud-account.v1.enc"),
-    origin = ORIGIN, authorizationTimeoutMs = 10 * 60 * 1000 } = options;
+    origin = ORIGIN, authorizationTimeoutMs = 10 * 60 * 1000,
+    presenceRefreshIntervalMs = null } = options;
   // Origin is controlled by native code, never supplied by renderer.
   if (origin !== ORIGIN && !options.allowTestOrigin) throw new Error("Invalid Cloud Auth origin");
   if (!Number.isSafeInteger(authorizationTimeoutMs) || authorizationTimeoutMs < 1) {
     throw new Error("Invalid OAuth authorization timeout");
+  }
+  if (presenceRefreshIntervalMs !== null &&
+      (!Number.isSafeInteger(presenceRefreshIntervalMs) ||
+        presenceRefreshIntervalMs <= 0)) {
+    throw new Error("Invalid Host presence refresh interval");
   }
   let record = null;
   let pending = null;
   let authorizationTimer = null;
   let revision = 0;
   let credentialRecoveryAvailable = false;
+  let presenceTimer = null;
+  let presenceInFlight = false;
+  let lastHostPresence = null;
   function clearPending() {
     if (authorizationTimer) clearTimeout(authorizationTimer);
     authorizationTimer = null;
@@ -176,10 +198,51 @@ function createCloudAccountController(options) {
 
   function publish(patch) {
     view = { ...view, ...patch };
+    scheduleHostPresenceRefresh(hostPresenceRenewDelay(lastHostPresence));
     notify(status());
     return status();
   }
   const validLocalOwner = (id) => Number.isSafeInteger(id) && id > 0;
+  function hostPresenceEligible() {
+    return view.status === "signed_in" && record?.sessionToken &&
+      record.permissionsConfigured && record.hostId &&
+      validLocalOwner(record.localOwnerUserId);
+  }
+  function scheduleHostPresenceRefresh(delayMs) {
+    if (presenceTimer) clearTimeout(presenceTimer);
+    presenceTimer = null;
+    if (!hostPresenceEligible()) return;
+    presenceTimer = setTimeout(() => {
+      presenceTimer = null;
+      void refreshHostPresence();
+    }, presenceRefreshIntervalMs ?? delayMs);
+    presenceTimer.unref?.();
+  }
+  async function refreshHostPresence() {
+    if (!hostPresenceEligible() || presenceInFlight) return;
+    const expectedRevision = revision;
+    const token = record.sessionToken;
+    const hostId = record.hostId;
+    presenceInFlight = true;
+    let nextDelay = HOST_PRESENCE_RETRY_MS;
+    try {
+      const host = await request("/v1/hosts", "POST", token, {});
+      if (expectedRevision !== revision || !hostPresenceEligible()) return;
+      validateHostPresence(host, hostId);
+      lastHostPresence = host;
+      nextDelay = hostPresenceRenewDelay(host);
+    } catch (error) {
+      if (expectedRevision !== revision) return;
+      if (error?.code === "reauth") {
+        resetRejectedSession(); // Revocation must stop further renewal.
+      }
+      // An unavailable Cloud Auth request must not be reported as a fresh lease.
+      // The server's lease expires normally; retry without exposing the bearer.
+    } finally {
+      presenceInFlight = false;
+      if (expectedRevision === revision) scheduleHostPresenceRefresh(nextDelay);
+    }
+  }
   function status() {
     return { ...view, scopes: [...view.scopes],
       localOwnerBound: Boolean(record?.sessionToken &&
@@ -277,6 +340,7 @@ function createCloudAccountController(options) {
   function resetRejectedSession() {
     // Revocation invalidates every in-flight Host/Relay request using this session.
     ++revision;
+    lastHostPresence = null;
     record = { installationId: record.installationId };
     persist(record);
     return publish({ status: "rejected", account: null, scopes: [],
@@ -340,6 +404,7 @@ function createCloudAccountController(options) {
     persist(fresh);
     ++revision;
     clearPending();
+    lastHostPresence = null;
     record = fresh;
     credentialRecoveryAvailable = false;
     return publish({ status: "signed_out", account: null, hostId: null,
@@ -422,6 +487,7 @@ function createCloudAccountController(options) {
     const { requestedScopes: _completedSelection, ...saved } = record;
     record = { ...saved, hostId: host.id, scopes, permissionsConfigured: true };
     persist(record);
+    lastHostPresence = host;
     return { hostId: host.id, scopes, existingPolicy };
   }
   function publishConfiguredHost(result) {
@@ -518,6 +584,8 @@ function createCloudAccountController(options) {
     }
     if (expectedRevision !== revision) throw relayFailure(null, expectedRevision);
     host = validateHostPresence(host, record.hostId);
+    lastHostPresence = host;
+    scheduleHostPresenceRefresh(hostPresenceRenewDelay(host));
     let ticket;
     try {
       ticket = await request("/v1/service-credentials", "POST", token, {
@@ -655,6 +723,7 @@ function createCloudAccountController(options) {
   async function signOut() {
     ++revision;
     clearPending();
+    lastHostPresence = null;
     const token = record && record.sessionToken;
     const installationId = (record && record.installationId) || crypto.randomUUID();
     record = { installationId };
