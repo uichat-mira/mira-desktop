@@ -276,3 +276,35 @@ V1 不伪造尚未存在的 durable event journal。重连采用 canonical state
 - `tools:approve` 必须校验 invocation owner、toolId 和原始 args inputHash；参数变化后旧批准无效。
 - `tools:control` 只能取消当前 owner user 的 invocation。
 - 旧 paired device 不静默获得新增 `tools:*` scope；缺少工具 scope 不影响其已有 Thread/Message 能力。
+
+
+## Cloud / Mobile canonical append turns (dev candidate)
+
+**Status:** Draft implementation on the feature branch, not yet integrated or
+deployed. The old release remains read-only T4 only; do not claim write T4.
+
+A Cloud/Mobile Chat write uses the existing Host-authorized
+POST /proxy/chat/default business route and a separately effective
+messages:write grant. It sends one new user message and the additional body
+object appendAtTail: { expectedTailMessageId: last canonical message id }.
+The expected value is null **only when the Host conversation is empty**.
+
+Mobile obtains this cursor from a fresh canonical Host history read.
+It never uploads renderer-local messages as conversation authority. In the
+same SQLite transaction the Desktop compares the actual tail, rejects a
+changed tail (409 THREAD_TAIL_CONFLICT), repeated message id (409), or
+an incomplete previous user turn (409), and appends without deleting any
+existing canonical messages. Model/Agent/RAG context comes from Desktop's
+stored history rather than the one-item Mobile payload.
+
+The existing Desktop path **without** appendAtTail retains intentional
+branch-edit semantics; this new contract does not silently change it.
+Neither Relay transport tickets nor Cloud login confer any Host business
+permission. A stale tail or uncertain transport outcome never causes an
+automatic replay of the side-effecting mutation.
+
+For canonical Agent threads, the Host uses its own agentEnabled state and
+can provision an isolated private Agent workspace even with workspaceId null.
+This extension does not implement Mobile Tool approval UI, broaden Tool or
+Agent approval scopes, or bypass Harness authorization and exact-call approval.
+Real two-device and interruption T4 remains required before release.

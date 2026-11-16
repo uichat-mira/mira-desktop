@@ -620,6 +620,104 @@ test("POST /proxy/chat/default routes non-RAG threads into persisted default cha
   }
 });
 
+test("Cloud append uses Host history and never truncates earlier messages; stale turn conflicts", async () => {
+  const user = userRepository.create({
+    username: "remote-append-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id, title: "Existing history" });
+  const before = threadService.createMessage(thread.id,user.id,{
+    id:"before-"+crypto.randomUUID(),role:"user",
+    content:"Earlier question",parts:[{type:"text",text:"Earlier question"}],
+  });
+  const reply = threadService.createMessage(thread.id,user.id,{
+    id:"reply-"+crypto.randomUUID(),parentId:before.id,role:"assistant",
+    content:"Earlier answer",parts:[{type:"text",text:"Earlier answer"}],
+  });
+  const app = await createAuthedApp(user);
+  const original = providerProxyService.createPersistedChatStream;
+  let modelMessages: Array<{role:string;content:string;id?:string}> = [];
+  providerProxyService.createPersistedChatStream = (input) => {
+    modelMessages = input.messages.map(m=>({
+      role: m.role, content: m.content, id: m.id,
+    }));
+    return Readable.from([""]);
+  };
+  const send = async (cursor: string | null, id: string) => app.inject({
+    method:"POST",url:"/proxy/chat/default",
+    payload:{
+      id:thread.id,messageId:id,
+      appendAtTail:{expectedTailMessageId:cursor},
+      messages:[{id,role:"user",parts:[{type:"text",text:"New question"}]}],
+    },
+  });
+  try {
+    const first = await send(reply.id,"remote-"+crypto.randomUUID());
+    assert.equal(first.statusCode,200,first.body);
+    assert.deepEqual(modelMessages.filter(m=>m.role==="user"||m.role==="assistant")
+      .map(m=>m.content),["Earlier question","Earlier answer","New question"]);
+    const snapshot=threadService.getMessages(thread.id,user.id);
+    assert.equal(snapshot.length,3);
+    assert.deepEqual(snapshot.slice(0,2).map(m=>m.id),[before.id,reply.id]);
+    const stale = await send(reply.id,"stale-"+crypto.randomUUID());
+    assert.equal(stale.statusCode,409,stale.body);
+    assert.equal(threadService.getMessages(thread.id,user.id).length,3);
+  } finally {
+    providerProxyService.createPersistedChatStream=original;
+    await app.close();
+  }
+});
+
+test("Cloud append never trusts client Agent override and preserves private Agent root", async () => {
+  const user=userRepository.create({
+    username:"remote-agent-"+crypto.randomUUID(),passwordHash:"hash",
+    role:"user",isActive:true,
+  });
+  const thread=threadService.createThread({
+    userId:user.id,title:"Private Agent",agentEnabled:true,
+  });
+  assert.equal(thread.workspaceId,null);
+  const app=await createAuthedApp(user);
+  const original=providerProxyService.createPersistedChatStream;
+  let executeFullAnswer:
+    Parameters<typeof providerProxyService.createPersistedChatStream>[0]["executeFullAnswer"]|undefined;
+  providerProxyService.createPersistedChatStream=(input)=>{
+    executeFullAnswer=input.executeFullAnswer;
+    return Readable.from([""]);
+  };
+  const spy=vi.spyOn(agentModule,"createAndRunAgent").mockResolvedValue({
+    run:{id:"test-run",status:"completed",threadId:thread.id,userId:user.id,
+      goal:{id:"goal",text:"agent action",successCriteria:[],constraints:[],riskLevel:"low"},
+      plan:{id:"plan",goalId:"goal",version:1,steps:[]},
+      observations:[],traceId:"trace",createdAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString()},
+    output:{answer:"Agent answer",status:"completed",observations:[],retrievedChunks:[]},
+  } as never);
+  try {
+    const response=await app.inject({
+      method:"POST",url:"/proxy/chat/default",
+      payload:{id:thread.id,messageId:"agent-"+crypto.randomUUID(),
+        appendAtTail:{expectedTailMessageId:null},
+        agentEnabled:false,
+        messages:[{role:"user",parts:[{type:"text",text:"agent action"}]}],
+      },
+    });
+    assert.equal(response.statusCode,200,response.body);
+    assert.ok(executeFullAnswer,"Host-owned Agent execution path should be used");
+    const result=await executeFullAnswer?.({
+      emitToolEvent:async()=>{},emitExecutionNode:async()=>{},
+    });
+    assert.equal(result?.answer,"Agent answer");
+    assert.equal(spy.mock.calls.length,1);
+    assert.ok(spy.mock.calls[0]?.[0].workspaceRoot);
+    assert.equal(threadService.getMessages(thread.id,user.id).length,1);
+  } finally {
+    spy.mockRestore();
+    providerProxyService.createPersistedChatStream=original;
+    await app.close();
+  }
+});
+
 test("POST /proxy/chat/default routes knowledge-bound agent sends through AgentRun instead of the legacy RAG branch", async () => {
   const user = userRepository.create({
     username: `user-${crypto.randomUUID()}`,

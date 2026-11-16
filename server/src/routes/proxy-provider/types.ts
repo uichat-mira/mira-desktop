@@ -19,6 +19,8 @@ export interface ProviderChatBody extends ChatMessagesBody {
   id?: string;
   /** Client message id for the latest user message. A UUID is generated when absent. */
   messageId?: string;
+  /** Host-authoritative optimistic append, separate from Desktop branch edits. */
+  appendAtTail?: { expectedTailMessageId: string | null };
   /** Per-send Agent mode request from the composer Agent button. */
   agentEnabled?: boolean;
   requestedToolGroupIds?: string[];

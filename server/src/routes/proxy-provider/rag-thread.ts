@@ -74,6 +74,8 @@ export interface RagAssistantStreamInput {
   userId: number;
   /** Optional client-side user message id. */
   userMessageId?: string;
+  /** User turn already atomically appended by Host before generating RAG. */
+  prePersistedUserMessageId?: string;
   /** Latest user question and non-system history. */
   ragInput: NonNullable<ReturnType<typeof toRagInput>>;
   /** Client-visible linear history used to align persisted RAG messages. */
@@ -95,6 +97,7 @@ export const createRagAssistantStream = (input: RagAssistantStreamInput) => {
     threadId,
     userId,
     userMessageId,
+    prePersistedUserMessageId,
     ragInput,
     messages,
     requestContextMessages,
@@ -114,12 +117,9 @@ export const createRagAssistantStream = (input: RagAssistantStreamInput) => {
     "[proxy-provider] starting RAG chat stream",
   );
 
-  const { latestUserMessageId } = persistVisibleUserMessage({
-    threadId,
-    userId,
-    userMessageId,
-    messages,
-  });
+  const latestUserMessageId = prePersistedUserMessageId ??
+    persistVisibleUserMessage({ threadId, userId, userMessageId, messages })
+      .latestUserMessageId;
   const latestUserMessage = [...messages]
     .reverse()
     .find((message) => message.role === "user");
