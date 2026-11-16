@@ -873,9 +873,12 @@ export const threadService = {
           message: "Desktop conversation changed; reload history before sending",
         });
       }
-      if (actualTail?.role === "user") {
-        // A prior assistant turn has not completed. Do not interleave two
-        // streams or guess which user message an answer belongs to.
+      if (actualTail?.role === "user" &&
+          (toMessageResponse(actualTail).metadata.remoteAppend as
+            { status?: unknown } | undefined)?.status !== "failed") {
+        // Unresolved user turns remain blocked: no automatic replay of
+        // uncertain provider/Agent side effects. Only a recorded, terminal
+        // generation failure may be followed by a new explicit user turn.
         throw createAppError({
           statusCode: 409, code: "THREAD_TURN_PENDING",
           message: "A previous turn is pending; reload before another send",
@@ -894,12 +897,44 @@ export const threadService = {
         metadata: {
           ...input.metadata,
           lineage: { parentId: actualTail?.id ?? null },
+          remoteAppend: { status: "pending" },
         },
       });
       return {
         messages: [...previous.map(toMessageResponse), latestUserMessage],
         latestUserMessage,
       };
+    })();
+  },
+
+  /**
+   * Mark only a still-terminal-tail Remote append as failed after the Host
+   * definitively emits an error finish. Ambiguous transport disconnects are
+   * NOT failures: the in-flight turn remains protected against replay.
+   */
+  markAppendMessageFailed(
+    threadId: string,
+    userId: number,
+    messageId: string,
+  ): boolean {
+    return getSqlite().transaction(() => {
+      if (!threadRepository.findById(threadId, userId)) return false;
+      const existing = messageRepository.findById(messageId);
+      if (!existing || existing.threadId !== threadId ||
+          existing.role !== "user") return false;
+      const tail = messageRepository.listByThread(threadId).at(-1);
+      if (tail?.id !== messageId) return false;
+      const message = toMessageResponse(existing);
+      const state = message.metadata.remoteAppend as
+        { status?: unknown } | undefined;
+      if (state?.status !== "pending") return false;
+      const updated = messageRepository.updateById(messageId, {
+        metadata: JSON.stringify({
+          ...message.metadata,
+          remoteAppend: { status: "failed" },
+        }),
+      });
+      return Boolean(updated);
     })();
   },
 

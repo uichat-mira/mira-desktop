@@ -769,6 +769,62 @@ test("paired device append uses Host history and never truncates earlier message
   }
 });
 
+test("paired canonical append recovers after definitive empty-model failure without losing history", async () => {
+  const user = userRepository.create({
+    username: "failed-followup-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id, title: "Known conversation" });
+  const oldQuestion = threadService.createMessage(thread.id, user.id, {
+    id: "old-q-" + crypto.randomUUID(), role: "user",
+    content: "prior question", parts: [{ type: "text", text: "prior question" }],
+  });
+  const oldAnswer = threadService.createMessage(thread.id, user.id, {
+    id: "old-a-" + crypto.randomUUID(), parentId: oldQuestion.id,
+    role: "assistant", content: "prior answer",
+    parts: [{ type: "text", text: "prior answer" }],
+  });
+  const app = await createRemoteGatewayApp();
+  const credential = createPairedDeviceCredential(user);
+  const oldGenerate = providerProxyService.generateTextForRole;
+  const send = async (id: string, cursor: string) => app.inject({
+    method: "POST", url: "/proxy/chat/default",
+    headers: { authorization: `Bearer ${credential}` },
+    payload: {
+      id: thread.id, messageId: id,
+      appendAtTail: { expectedTailMessageId: cursor },
+      messages: [{ id, role: "user", parts: [{ type: "text", text: "new question" }] }],
+    },
+  });
+  try {
+    providerProxyService.generateTextForRole = async () => "";
+    const failedId = "failed-" + crypto.randomUUID();
+    const failed = await send(failedId, oldAnswer.id);
+    assert.equal(failed.statusCode, 200, failed.body);
+    assert.match(failed.body, /"finishReason":"error"/);
+    assert.deepEqual(threadService.getMessages(thread.id, user.id).map(m => m.id),
+      [oldQuestion.id, oldAnswer.id, failedId]);
+    assert.equal(threadService.getMessages(thread.id, user.id).at(-1)?.metadata.remoteAppend?.status,
+      "failed");
+    providerProxyService.generateTextForRole = async () => "Recovery worked";
+    const nextId = "recovery-" + crypto.randomUUID();
+    const recovered = await send(nextId, failedId);
+    assert.equal(recovered.statusCode, 200, recovered.body);
+    assert.match(recovered.body, /"finishReason":"stop"/);
+    const history = threadService.getMessages(thread.id, user.id);
+    assert.deepEqual(history.slice(0, 4).map(m => m.id),
+      [oldQuestion.id, oldAnswer.id, failedId, nextId]);
+    assert.equal(history[4]?.role, "assistant");
+    assert.equal(history[4]?.content, "Recovery worked");
+    const noReplay = await send(failedId, history[4]!.id);
+    assert.equal(noReplay.statusCode, 409, noReplay.body);
+    assert.equal(threadService.getMessages(thread.id, user.id).length, 5);
+  } finally {
+    providerProxyService.generateTextForRole = oldGenerate;
+    await app.close();
+  }
+});
+
 test("Cloud append shares the Host contract and rejects cross-owner threads and duplicate ids", async () => {
   const owner = userRepository.create({
     username: "cloud-owner-" + crypto.randomUUID(),

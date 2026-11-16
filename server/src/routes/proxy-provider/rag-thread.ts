@@ -139,6 +139,11 @@ export const createRagAssistantStream = (input: RagAssistantStreamInput) => {
     routeReason?: string;
   }) => {
     if (finishReason !== "stop" || !threadId || !answer.trim()) {
+      if (finishReason === "error" && prePersistedUserMessageId) {
+        threadService.markAppendMessageFailed(
+          threadId, userId, prePersistedUserMessageId,
+        );
+      }
       return;
     }
 
@@ -293,6 +298,11 @@ export const createRagAssistantStream = (input: RagAssistantStreamInput) => {
           yield chunk;
         }
       } catch (streamError) {
+        if (prePersistedUserMessageId) {
+          threadService.markAppendMessageFailed(
+            threadId, userId, prePersistedUserMessageId,
+          );
+        }
         const message =
           streamError instanceof Error ? streamError.message : String(streamError);
         yield* assistantTextStartChunks({ messageId: assistantMessageId });

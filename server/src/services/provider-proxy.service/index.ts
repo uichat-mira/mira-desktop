@@ -331,6 +331,9 @@ export const providerProxyService = {
             includeDone: true,
           });
         } catch (error) {
+          // Only a definite failed generation is recoverable as a fresh
+          // follow-up. Stream disconnects without an error finish stay pending.
+          await input.onComplete?.({ answer, finishReason: "error" });
           const message = error instanceof Error ? error.message : String(error);
           yield assistantErrorChunk(message);
           yield* flushToolEvents();

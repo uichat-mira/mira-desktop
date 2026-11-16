@@ -223,9 +223,11 @@ const sendRagChatStream = ({
   requestContextMessages?: ReturnType<typeof normalizeProxyChatMessages>;
   requestContextPreludeChunks?: string[];
 }) => {
-  prepareEventStreamReply(reply);
-  return reply.send(
-    createRagAssistantStream({
+  // An unavailable Knowledge Base can throw before a RAG stream exists.
+  // Record that definitive failure instead of stranding the appended turn.
+  let stream: ReturnType<typeof createRagAssistantStream>;
+  try {
+    stream = createRagAssistantStream({
       threadId,
       userId: authUserId,
       userMessageId,
@@ -235,8 +237,17 @@ const sendRagChatStream = ({
       requestContextMessages,
       requestContextPreludeChunks,
       log: app.log,
-    }),
-  );
+    });
+  } catch (error) {
+    if (prePersistedUserMessageId) {
+      threadService.markAppendMessageFailed(
+        threadId, authUserId, prePersistedUserMessageId,
+      );
+    }
+    throw error;
+  }
+  prepareEventStreamReply(reply);
+  return reply.send(stream);
 };
 
 /**
@@ -411,6 +422,11 @@ const sendPersistedDefaultChatStream = ({
       },
       onComplete: async ({ answer, finishReason }) => {
         if (finishReason !== "stop" || !answer.trim()) {
+          if (finishReason === "error" && prePersistedUserMessage) {
+            threadService.markAppendMessageFailed(
+              threadId, authUserId, latestUserMessageId,
+            );
+          }
           return;
         }
 

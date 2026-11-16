@@ -122,6 +122,51 @@ test("canonical append keeps all earlier messages and atomically rejects stale, 
   assert.equal(threadService.getMessages(thread.id,user.id).length, 4);
 });
 
+test("only a confirmed failed remote turn allows a new explicit append", () => {
+  const user = userRepository.create({
+    username: "remote-failure-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const other = userRepository.create({
+    username: "remote-failure-other-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id });
+  const original = threadService.appendMessageAtTail(thread.id, user.id, null, {
+    id: "remote-first-" + crypto.randomUUID(), role: "user",
+    content: "first turn", parts: [{ type: "text", text: "first turn" }],
+  });
+  assert.equal(original.latestUserMessage.metadata.remoteAppend?.status, "pending");
+  const attempt = (id: string) => threadService.appendMessageAtTail(
+    thread.id, user.id, original.latestUserMessage.id,
+    { id, role: "user", content: "second turn", parts: [{ type: "text", text: "second turn" }] },
+  );
+  assert.throws(() => attempt("blocked-" + crypto.randomUUID()), /previous turn is pending/);
+  assert.equal(threadService.markAppendMessageFailed(
+    thread.id, other.id, original.latestUserMessage.id,
+  ), false, "Cross-owner cannot finalize an in-flight turn");
+  assert.equal(threadService.markAppendMessageFailed(
+    thread.id, user.id, original.latestUserMessage.id,
+  ), true);
+  assert.equal(threadService.getMessages(thread.id, user.id)[0]?.metadata.remoteAppend?.status, "failed");
+  const continuedId = "continued-" + crypto.randomUUID();
+  const continued = attempt(continuedId);
+  assert.deepEqual(continued.messages.map(m => m.id),
+    [original.latestUserMessage.id, continuedId]);
+  assert.equal(threadService.markAppendMessageFailed(
+    thread.id, user.id, original.latestUserMessage.id,
+  ), false, "Old failed turn cannot overwrite newer canonical tail");
+  assert.throws(() => attempt("stale-" + crypto.randomUUID()), /Desktop conversation changed/);
+  assert.throws(() => threadService.appendMessageAtTail(
+    thread.id, user.id, continuedId, {
+      id: "still-running-" + crypto.randomUUID(), role: "user",
+      content: "wrong concurrent", parts: [{ type: "text", text: "wrong concurrent" }],
+    },
+  ), /previous turn is pending/);
+  assert.deepEqual(threadService.getMessages(thread.id, user.id).map(m => m.id),
+    [original.latestUserMessage.id, continuedId]);
+});
+
 test("canonical append begins empty thread without deleting later revisions", () => {
   const user = userRepository.create({
     username:"empty-append-"+crypto.randomUUID(),passwordHash:"hash",
