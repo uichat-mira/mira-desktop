@@ -13,7 +13,12 @@ import {
   type ProxyProviderParam,
   providerProxyService,
 } from "@/services/provider-proxy.service/index.js";
-import { normalizeProxyChatMessages } from "@/services/provider-proxy.message-protocol.js";
+import {
+  normalizeProxyChatMessages,
+  getNormalizedMessageText,
+  type NormalizedChatMessage,
+  type ProxyChatMessageInput,
+} from "@/services/provider-proxy.message-protocol.js";
 import {
   handleValidationError,
 } from "@/utils/index.js";
@@ -201,6 +206,7 @@ const sendRagChatStream = ({
   threadId,
   authUserId,
   userMessageId,
+  prePersistedUserMessageId,
   ragInput,
   messages,
   requestContextMessages,
@@ -211,6 +217,7 @@ const sendRagChatStream = ({
   threadId: string;
   authUserId: number;
   userMessageId?: string;
+  prePersistedUserMessageId?: string;
   ragInput: NonNullable<ReturnType<typeof toRagInput>>;
   messages: ReturnType<typeof normalizeProxyChatMessages>;
   requestContextMessages?: ReturnType<typeof normalizeProxyChatMessages>;
@@ -222,6 +229,7 @@ const sendRagChatStream = ({
       threadId,
       userId: authUserId,
       userMessageId,
+      prePersistedUserMessageId,
       ragInput,
       messages,
       requestContextMessages,
@@ -231,12 +239,37 @@ const sendRagChatStream = ({
   );
 };
 
+/**
+ * Build model context from the Host's persisted canonical conversation.
+ * Cloud/Mobile must never be the authority for an existing Host transcript.
+ */
+const hostHistoryForProvider = (
+  messages: ReturnType<typeof threadService.getMessages>,
+): NormalizedChatMessage[] => normalizeProxyChatMessages(
+  messages.flatMap((message): ProxyChatMessageInput[] => {
+    if (message.role !== "system" && message.role !== "user" &&
+        message.role !== "assistant") return [];
+    const parts = message.parts.filter(
+      (part): part is Extract<ProxyChatMessageInput["parts"][number],
+        { type: "text" | "image" | "file" }> => part.type !== "data",
+    );
+    if (!parts.length && message.content.trim()) {
+      parts.push({ type: "text", text: message.content });
+    }
+    if (!parts.length) return [];
+    return [{
+      id: message.id, role: message.role, parts,
+    }];
+  }),
+);
+
 const sendPersistedDefaultChatStream = ({
   app,
   reply,
   threadId,
   authUserId,
   userMessageId,
+  prePersistedUserMessage,
   messages,
   agentMessages,
   requestContextMessages,
@@ -251,6 +284,7 @@ const sendPersistedDefaultChatStream = ({
   threadId: string;
   authUserId: number;
   userMessageId?: string;
+  prePersistedUserMessage?: { id: string; message: NormalizedChatMessage };
   messages: ReturnType<typeof normalizeProxyChatMessages>;
   agentMessages?: ReturnType<typeof normalizeProxyChatMessages>;
   requestContextMessages?: ReturnType<typeof normalizeProxyChatMessages>;
@@ -266,12 +300,14 @@ const sendPersistedDefaultChatStream = ({
   if (agentEnabled && !workspaceRoot) {
     throw badRequest("Agent workspace is unavailable");
   }
-  const { latestUserMessageId, latestUserMessage } = persistVisibleUserMessage({
-    threadId,
-    userId: authUserId,
-    userMessageId,
-    messages,
-  });
+  const { latestUserMessageId, latestUserMessage } = prePersistedUserMessage
+    ? {
+        latestUserMessageId: prePersistedUserMessage.id,
+        latestUserMessage: prePersistedUserMessage.message,
+      }
+    : persistVisibleUserMessage({
+        threadId, userId: authUserId, userMessageId, messages,
+      });
   const assistantMessageId = crypto.randomUUID();
   let agentAssistantMetadata: Record<string, unknown> | undefined;
 
@@ -477,18 +513,39 @@ export const registerProxyProviderChatRoutes = async (
         return validationResponse;
       }
 
-      const messages = normalizeProxyChatMessages(request.body.messages);
+      let messages = normalizeProxyChatMessages(request.body.messages);
 
       if (messages.length === 0) {
         throw badRequest("No valid chat messages provided");
+      }
+      const appendRequest = request.body.appendAtTail;
+      // Paired devices and Cloud Mobile both enter this same business route.
+      // Neither may use Desktop branch-edit persistence by omitting the
+      // canonical append cursor: that could truncate Host history the Mobile
+      // client has not seen yet.
+      const isRemoteCaller = Boolean(
+        request.remoteDevice || request.cloudRemoteCaller,
+      );
+      if (isRemoteCaller && !appendRequest) {
+        throw badRequest(
+          "Remote chat sends require appendAtTail with the canonical Host tail",
+        );
+      }
+      if (appendRequest && (request.params.provider !== "default" ||
+          typeof request.body.id !== "string" || !request.authUser ||
+          typeof request.body.messageId !== "string" ||
+          !request.body.messageId.trim() ||
+          messages.length !== 1 || messages[0]?.role !== "user")) {
+        throw badRequest("Canonical append requires a single user turn, thread, message id and authenticated owner");
       }
 
       if (request.params.provider === "default") {
         const threadId = request.body.id;
         const authUser = request.authUser;
         const thread = resolveDefaultProviderThread(threadId, authUser?.id);
-        const agentEnabled =
-          typeof request.body.agentEnabled === "boolean"
+        const agentEnabled = appendRequest
+          ? Boolean(thread?.agentEnabled)
+          : typeof request.body.agentEnabled === "boolean"
             ? request.body.agentEnabled
             : resolveThreadAgentEnabled(threadId, authUser?.id);
         if (agentEnabled && typeof threadId === "string" && authUser) {
@@ -499,6 +556,23 @@ export const registerProxyProviderChatRoutes = async (
           if (!workspaceRoot) {
             throw badRequest("Agent workspace is unavailable");
           }
+        }
+        // Append intentionally has a distinct contract from Desktop's
+        // branch-from-ancestor edit. Compare tail and append atomically before
+        // invoking any provider/Harness code. A race fails with 409 and never
+        // deletes or silently replays a non-idempotent turn.
+        const appended = appendRequest && threadId && authUser
+          ? threadService.appendMessageAtTail(
+              threadId, authUser.id, appendRequest.expectedTailMessageId, {
+                id: request.body.messageId,
+                role: "user",
+                content: getNormalizedMessageText(messages[0]),
+                parts: messages[0]?.parts,
+              },
+            )
+          : null;
+        if (appended) {
+          messages = hostHistoryForProvider(appended.messages);
         }
         const requestContextContext = collectThreadRequestContext(
           threadId,
@@ -522,6 +596,7 @@ export const registerProxyProviderChatRoutes = async (
             threadId,
             authUserId: authUser.id,
             userMessageId: request.body.messageId,
+            ...(appended ? { prePersistedUserMessageId: appended.latestUserMessage.id } : {}),
             ragInput,
             messages,
             requestContextMessages,
@@ -559,6 +634,12 @@ export const registerProxyProviderChatRoutes = async (
             threadId,
             authUserId: authUser.id,
             userMessageId: request.body.messageId,
+            ...(appended ? {
+              prePersistedUserMessage: {
+                id: appended.latestUserMessage.id,
+                message: messages[messages.length - 1]!,
+              },
+            } : {}),
             messages: defaultChatMessages,
             agentMessages: messages,
             requestContextMessages,

@@ -108,6 +108,17 @@ export const chatMessagesBodySchema = {
         additionalProperties: false,
       },
     },
+    appendAtTail: {
+      type: "object",
+      required: ["expectedTailMessageId"],
+      additionalProperties: false,
+      description: "Append one new user turn only if the Host canonical tail has not changed.",
+      properties: {
+        expectedTailMessageId: {
+          anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
+        },
+      },
+    },
     agentEnabled: {
       type: "boolean",
       description: "Per-send Agent mode request from the desktop composer.",
