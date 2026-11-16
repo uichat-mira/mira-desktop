@@ -82,6 +82,12 @@ desktop shell
   └─ Electron Main -- private child IPC --> Node + tsx Backend (no watch)
 ```
 
+官方 Cloud Relay 的 Backend WebSocket 仅在 Mira「通用」已配置 SOCKS5
+Host/Port 时使用独立的 `socks5h` 代理连接（DNS 在代理侧解析）；未配置则保持原有直连，
+已配置但代理失败时只报告 Cloud 传输不可用，不静默切换直连、Legacy Relay 或 Tailscale。
+该代理不接管 macOS 系统网络、Electron Cloud OAuth、Backend 本机 HTTP 健康检查，
+也不改变独立自建 Relay 的 WebSocket 连接策略。
+
 Cloud Pilot 不启动独立 Backend watcher；Backend 由 Electron Main 作为唯一子进程启动，
 因此可复用 packaged runtime 的原生 IPC ticket / Host Grant bridge。Vite renderer
 仍保持热更新，Backend 源码变化需要完整重启 Cloud Pilot。该模式拒绝复用已占用的
