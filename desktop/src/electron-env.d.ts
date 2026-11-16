@@ -13,7 +13,9 @@ declare global {
         message: string;
       }>;
       signIn: (scopes: string[], localAccessToken: string) => Promise<unknown>;
-      updateHostPolicy: (scopes: string[], localAccessToken: string) =>
+      readHostPolicy: (localAccessToken: string) =>
+        Promise<{ scopes: string[]; revision: number }>;
+      updateHostPolicy: (scopes: string[], revision: number, localAccessToken: string) =>
         ReturnType<NonNullable<Window["cloudAccount"]>["status"]>;
       cancelSignIn: () => Promise<unknown>;
       retryHostSetup: () => Promise<unknown>;

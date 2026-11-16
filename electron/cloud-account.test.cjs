@@ -450,7 +450,7 @@ test("verified Desktop owner can add only messages:read to an existing Host ceil
   const controller = f.build();
   await signIn(f, controller);
   assert.deepEqual(controller.status().scopes, ["threads:read"]);
-  const result = await controller.updateHostPolicy(["messages:read", "threads:read"], 7);
+  const result = await controller.updateHostPolicy(["messages:read", "threads:read"], 7, 7, async () => true);
   assert.equal(result.status, "signed_in");
   assert.deepEqual(result.scopes, ["threads:read", "messages:read"]);
   assert.equal(result.localOwnerBound, true);
@@ -475,9 +475,9 @@ test("Host policy edit rejects other local users, invalid scopes and missing own
   f.setStoredPolicy(["threads:read"]);
   const controller = f.build();
   await signIn(f, controller);
-  await assert.rejects(controller.updateHostPolicy(["messages:read"], 8), /绑定的 Mira 本地账户/);
-  await assert.rejects(controller.updateHostPolicy(["tools:*"], 7), /无效的远程权限/);
-  await assert.rejects(controller.updateHostPolicy(["messages:read"], -1), /绑定的 Mira 本地账户/);
+  await assert.rejects(controller.updateHostPolicy(["messages:read"], 8, 7), /绑定的 Mira 本地账户/);
+  await assert.rejects(controller.updateHostPolicy(["tools:*"], 7, 7), /无效的远程权限/);
+  await assert.rejects(controller.updateHostPolicy(["messages:read"], -1, 7), /绑定的 Mira 本地账户/);
   assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
   await controller.signOut();
   const legacy = f.build();
@@ -487,7 +487,7 @@ test("Host policy edit rejects other local users, invalid scopes and missing own
   await legacy.handleCallback("mira-desktop://oauth/callback?state=" + state +
     "&code=mca_v1.id.secret");
   assert.equal(legacy.status().localOwnerBound, false);
-  await assert.rejects(legacy.updateHostPolicy(["messages:read"], 7), /绑定的 Mira 本地账户/);
+  await assert.rejects(legacy.updateHostPolicy(["messages:read"], 7, 7), /绑定的 Mira 本地账户/);
   assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
 });
 
@@ -500,7 +500,7 @@ test("stale policy revision fails closed without broadening local scope", async 
   f.setBeforePolicyPut(() => Response.json(
     { error: { code: "HOST_GRANT_STALE_REVISION" } }, { status: 409 }));
   await assert.rejects(
-    controller.updateHostPolicy(["threads:read", "messages:read"], 7),
+    controller.updateHostPolicy(["threads:read", "messages:read"], 7, 7, async () => true),
     /权限版本已变化/,
   );
   assert.deepEqual(controller.status().scopes, ["threads:read"]);
@@ -518,7 +518,7 @@ test("sign-out cancels the result of an in-flight owner Host policy edit", async
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   f.setBeforePolicyPut(async () => { entered(); await held; });
-  const write = controller.updateHostPolicy(["threads:read", "messages:read"], 7);
+  const write = controller.updateHostPolicy(["threads:read", "messages:read"], 7, 7, async () => true);
   await started;
   await controller.signOut();
   release();
@@ -538,10 +538,91 @@ test("revoked Cloud Session fails closed during owner policy edit", async (t) =>
   await signIn(f, controller);
   f.setBeforePolicyPut(() => Response.json(
     { error: { code: "CLOUD_SESSION_REVOKED" } }, { status: 401 }));
-  await rejectsCode(controller.updateHostPolicy(["threads:read", "messages:read"], 7),
+  await rejectsCode(controller.updateHostPolicy(["threads:read", "messages:read"], 7, 7, async () => true),
     "reauth");
   assert.equal(controller.status().status, "rejected");
   assert.equal(controller.getBoundLocalOwnerUserId(), null);
+});
+
+test("owner policy editor reads the fresh Cloud Auth baseline and never trusts cached scopes", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read", "messages:read"]);
+  const account = f.build();
+  await signIn(f, account);
+  assert.deepEqual(account.status().scopes, ["threads:read", "messages:read"]);
+  f.setStoredPolicy(["threads:read"]); // Remote admin narrowed policy since last login.
+  const latest = await account.readHostPolicy(7);
+  assert.deepEqual(latest, { revision: 7, scopes: ["threads:read"] });
+  let prompted = [];
+  await assert.rejects(
+    account.updateHostPolicy(["threads:read", "messages:read"], 7, latest.revision,
+      async (added) => { prompted = added; return false; }),
+    /已取消扩大 Host 权限/,
+  );
+  assert.deepEqual(prompted, ["messages:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0,
+    "a stale wider cached view cannot issue an expansion without native confirmation");
+  await assert.rejects(
+    account.updateHostPolicy(["threads:read", "messages:read"], 7, latest.revision),
+    /已取消扩大 Host 权限/,
+  );
+  const result = await account.updateHostPolicy(
+    ["threads:read", "messages:read"], 7, latest.revision, async () => true);
+  assert.deepEqual(result.scopes, ["threads:read", "messages:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 1);
+});
+
+test("stale editor revision cannot submit or ask for widening confirmation", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const account = f.build();
+  await signIn(f, account);
+  let prompts = 0;
+  await assert.rejects(
+    account.updateHostPolicy(["threads:read", "messages:read"], 7, 6,
+      async () => { prompts += 1; return true; }),
+    /权限版本已变化/,
+  );
+  assert.equal(prompts, 0);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
+  await assert.rejects(account.readHostPolicy(8), /绑定的 Mira 本地账户/);
+  assert.deepEqual(await account.readHostPolicy(7),
+    { revision: 7, scopes: ["threads:read"] });
+});
+
+test("no-change and narrowing Host policy require no widening confirmation", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read", "messages:read"]);
+  const account = f.build();
+  await signIn(f, account);
+  const noOp = await account.updateHostPolicy(["threads:read", "messages:read"], 7, 7);
+  assert.deepEqual(noOp.scopes, ["threads:read", "messages:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
+  const narrowed = await account.updateHostPolicy(["threads:read"], 7, 7);
+  assert.deepEqual(narrowed.scopes, ["threads:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 1);
+});
+
+test("owner signout during native expansion confirmation rejects later policy mutation", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const account = f.build();
+  await signIn(f, account);
+  let entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const editing = account.updateHostPolicy(["threads:read", "messages:read"], 7, 7,
+    async () => { entered(); await held; return true; });
+  await started;
+  await account.signOut();
+  release();
+  await assert.rejects(editing, /权限操作已取消/);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
 });
 
 test("logout wins when an in-flight Host grant write finishes later", async (t) => {

@@ -165,9 +165,11 @@ describe("DSK-005 Cloud Account page", () => {
     const updateHostPolicy = vi.fn().mockResolvedValue({
       ...owned, scopes: ["threads:read", "messages:read"],
     });
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const readHostPolicy = vi.fn().mockResolvedValue({
+      revision: 7, scopes: ["threads:read"],
+    });
     window.cloudAccount = {
-      status: vi.fn().mockResolvedValue(owned),
+      status: vi.fn().mockResolvedValue(owned), readHostPolicy,
       signIn: vi.fn(), updateHostPolicy, cancelSignIn: vi.fn(), retryHostSetup: vi.fn(),
       resetLocalCredentials: vi.fn(), signOut: vi.fn(),
       subscribe: vi.fn().mockReturnValue(() => {}),
@@ -176,14 +178,63 @@ describe("DSK-005 Cloud Account page", () => {
     const edit = await screen.findByRole("button", { name: "调整 Host 权限上限" });
     expect(updateHostPolicy).not.toHaveBeenCalled();
     fireEvent.click(edit);
-    fireEvent.click(screen.getByLabelText("读取消息"));
+    await waitFor(() => expect(readHostPolicy).toHaveBeenCalledWith("signed.local.jwt"));
+    fireEvent.click(await screen.findByLabelText("读取消息"));
     expect(updateHostPolicy).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "保存 Host 授权" }));
     await waitFor(() => expect(updateHostPolicy).toHaveBeenCalledWith(
-      ["threads:read", "messages:read"], "signed.local.jwt",
+      ["threads:read", "messages:read"], 7, "signed.local.jwt",
     ));
-    expect(confirm).toHaveBeenCalledOnce();
     expect(await screen.findByText("读取消息")).toBeInTheDocument();
+  });
+
+  it("seeds editor from fresh server scopes, not an older wider local cache", async () => {
+    const cached = {
+      ...empty, status: "signed_in" as const,
+      account: { id: "cloud-a", username: "owner" },
+      hostId: "host-1", scopes: ["threads:read", "messages:read"],
+      permissionsConfigured: true, localOwnerBound: true,
+    };
+    const latest = vi.fn().mockResolvedValue({ revision: 18, scopes: ["threads:read"] });
+    const write = vi.fn().mockResolvedValue({ ...cached, scopes: ["threads:read"] });
+    window.cloudAccount = {
+      status: vi.fn().mockResolvedValue(cached),
+      readHostPolicy: latest, updateHostPolicy: write,
+      signIn: vi.fn(), cancelSignIn: vi.fn(), retryHostSetup: vi.fn(),
+      resetLocalCredentials: vi.fn(), signOut: vi.fn(),
+      subscribe: vi.fn().mockReturnValue(() => {}),
+    };
+    render(<CloudAccountPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "调整 Host 权限上限" }));
+    const input = await screen.findByLabelText("读取消息");
+    expect(input).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "保存 Host 授权" }));
+    await waitFor(() => expect(write).toHaveBeenCalledWith(
+      ["threads:read"], 18, "signed.local.jwt",
+    ));
+    expect(latest).toHaveBeenCalledOnce();
+  });
+
+  it("does not expose the editor when the fresh Cloud Auth policy fails to load", async () => {
+    const owned = {
+      ...empty, status: "signed_in" as const,
+      account: { id: "cloud-a", username: "owner" },
+      hostId: "host-1", scopes: ["threads:read"],
+      permissionsConfigured: true, localOwnerBound: true,
+    };
+    const write = vi.fn();
+    window.cloudAccount = {
+      status: vi.fn().mockResolvedValue(owned),
+      readHostPolicy: vi.fn().mockRejectedValue(new Error("Cloud Auth 不可用")),
+      updateHostPolicy: write, signIn: vi.fn(), cancelSignIn: vi.fn(),
+      retryHostSetup: vi.fn(), resetLocalCredentials: vi.fn(), signOut: vi.fn(),
+      subscribe: vi.fn().mockReturnValue(() => {}),
+    };
+    render(<CloudAccountPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "调整 Host 权限上限" }));
+    expect(await screen.findByText("Cloud Auth 不可用")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存 Host 授权" })).not.toBeInTheDocument();
+    expect(write).not.toHaveBeenCalled();
   });
 
   it("does not offer Host ceiling editing to a Cloud Session without local owner binding", async () => {

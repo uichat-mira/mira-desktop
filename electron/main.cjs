@@ -80,11 +80,33 @@ ipcMain.handle("cloud-account:login", async (event, scopes, localAccessToken) =>
   const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
   return cloudAccount.begin(scopes, localOwnerUserId);
 });
-ipcMain.handle("cloud-account:update-host-policy", async (event, scopes, localAccessToken) => {
+ipcMain.handle("cloud-account:read-host-policy", async (event, localAccessToken) => {
   cloudIpcAuth(event);
   if (!cloudAccount) throw new Error("Cloud Account not initialized");
   const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
-  return cloudAccount.updateHostPolicy(scopes, localOwnerUserId);
+  return cloudAccount.readHostPolicy(localOwnerUserId);
+});
+ipcMain.handle("cloud-account:update-host-policy", async (event, scopes, expectedRevision,
+  localAccessToken) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
+  return cloudAccount.updateHostPolicy(scopes, localOwnerUserId, expectedRevision,
+    async (addedScopes) => {
+      cloudIpcAuth(event);
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: "warning",
+        title: "确认扩大手机访问权限",
+        message: "确认扩大本机 Host 对同账号手机的访问上限吗？",
+        detail: "新增权限：" + addedScopes.join("、") +
+          "\n已登录和未来登录的同账号手机可能获得上述能力，单设备限制仍然有效。",
+        buttons: ["取消", "确认扩大权限"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      return response === 1;
+    });
 });
 ipcMain.handle("cloud-account:cancel-login", (event) => {
   cloudIpcAuth(event);

@@ -491,9 +491,7 @@ function createCloudAccountController(options) {
     lastHostPresence = host;
     return { hostId: host.id, scopes, existingPolicy };
   }
-  async function updateHostPolicy(selectedScopes, verifiedLocalOwnerUserId) {
-    const selected = validateScopes(selectedScopes);
-    if (policyWriteInFlight) throw new Error("已有云端权限保存操作正在进行");
+  function currentPolicyOwner(verifiedLocalOwnerUserId) {
     if (view.status !== "signed_in" || !record?.sessionToken ||
         !record.permissionsConfigured || !record.hostId ||
         !validLocalOwner(verifiedLocalOwnerUserId) ||
@@ -508,27 +506,61 @@ function createCloudAccountController(options) {
       view.status === "signed_in" && record?.sessionToken === token &&
       record?.hostId === hostId &&
       record?.localOwnerUserId === verifiedLocalOwnerUserId;
+    return { token, hostId, accountId, stillOwner };
+  }
+  async function trustedHostPolicySnapshot(context) {
+    const snapshot = await request("/v1/hosts/" +
+      encodeURIComponent(context.hostId) + "/grants", "GET", context.token);
+    if (!context.stillOwner()) {
+      throw new Error("云账号或本地用户已变更，权限操作已取消");
+    }
+    if (!snapshot || snapshot.hostId !== context.hostId ||
+        snapshot.accountId !== context.accountId || !snapshot.policyConfigured ||
+        !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
+        !Array.isArray(snapshot.policyScopes)) {
+      throw new Error("Cloud Auth Host 权限快照无效");
+    }
+    return { revision: snapshot.revision, scopes: validateScopes(snapshot.policyScopes) };
+  }
+  async function readHostPolicy(verifiedLocalOwnerUserId) {
+    const context = currentPolicyOwner(verifiedLocalOwnerUserId);
+    return trustedHostPolicySnapshot(context);
+  }
+  async function updateHostPolicy(selectedScopes, verifiedLocalOwnerUserId,
+    expectedServerRevision, confirmWidening) {
+    const selected = validateScopes(selectedScopes);
+    if (policyWriteInFlight) throw new Error("已有云端权限保存操作正在进行");
+    if (!Number.isSafeInteger(expectedServerRevision) || expectedServerRevision < 0) {
+      throw new Error("需要先读取 Cloud Auth 最新 Host 权限版本");
+    }
+    const context = currentPolicyOwner(verifiedLocalOwnerUserId);
     policyWriteInFlight = true;
     try {
-      const snapshot = await request("/v1/hosts/" + encodeURIComponent(hostId) +
-        "/grants", "GET", token);
-      if (!stillOwner()) throw new Error("云账号或本地用户已变更，权限操作已取消");
-      if (!snapshot || snapshot.hostId !== hostId ||
-          snapshot.accountId !== accountId || !snapshot.policyConfigured ||
-          !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
-          !Array.isArray(snapshot.policyScopes)) {
-        throw new Error("Cloud Auth Host 权限快照无效");
+      const snapshot = await trustedHostPolicySnapshot(context);
+      if (snapshot.revision !== expectedServerRevision) {
+        throw new Error("Host 权限版本已变化，请重新打开编辑面板后再保存");
       }
-      const previous = validateScopes(snapshot.policyScopes);
-      if (previous.length !== selected.length ||
-          previous.some((scope, index) => selected[index] !== scope)) {
-        if (!stillOwner()) throw new Error("云账号已变更，拒绝保存旧用户权限");
-        const result = await request("/v1/hosts/" + encodeURIComponent(hostId) +
-          "/grant-policy", "PUT", token, {
-            expectedRevision: snapshot.revision, scopes: selected,
-          });
-        if (!stillOwner()) throw new Error("云账号已变更，拒绝恢复旧用户状态");
-        if (!result || result.hostId !== hostId ||
+      const added = selected.filter((scope) => !snapshot.scopes.includes(scope));
+      if (added.length > 0) {
+        // Confirmation is owned by Electron Main, against the fresh SERVER
+        // snapshot. A renderer-supplied stale cache cannot waive this prompt.
+        if (typeof confirmWidening !== "function" ||
+            !(await confirmWidening(added))) {
+          throw new Error("已取消扩大 Host 权限");
+        }
+        if (!context.stillOwner()) {
+          throw new Error("云账号或本地用户已变更，权限操作已取消");
+        }
+      }
+      if (snapshot.scopes.length !== selected.length ||
+          snapshot.scopes.some((scope, index) => scope !== selected[index])) {
+        const result = await request("/v1/hosts/" +
+          encodeURIComponent(context.hostId) + "/grant-policy", "PUT",
+          context.token, { expectedRevision: snapshot.revision, scopes: selected });
+        if (!context.stillOwner()) {
+          throw new Error("云账号已变更，拒绝恢复旧用户状态");
+        }
+        if (!result || result.hostId !== context.hostId ||
             !Number.isSafeInteger(result.revision) ||
             result.revision <= snapshot.revision ||
             !Array.isArray(result.scopes)) {
@@ -540,13 +572,15 @@ function createCloudAccountController(options) {
           throw new Error("云端保存的权限与用户选择不一致");
         }
       }
-      if (!stillOwner()) throw new Error("云账号或本地用户已变更，权限操作已取消");
+      if (!context.stillOwner()) {
+        throw new Error("云账号或本地用户已变更，权限操作已取消");
+      }
       record = { ...record, scopes: selected };
       persist(record);
       return publish({ scopes: selected, message:
         "Host 授权上限已保存到 Cloud Auth；Desktop 将按快照刷新生效，单设备缩小或撤销继续有效。" });
     } catch (error) {
-      if (error?.code === "reauth" && stillOwner()) resetRejectedSession();
+      if (error?.code === "reauth" && context.stillOwner()) resetRejectedSession();
       if (error?.code === "conflict") {
         throw new Error("Host 权限版本已变化，请重新打开编辑面板后再保存");
       }
@@ -561,7 +595,7 @@ function createCloudAccountController(options) {
       expiresAt: record.expiresAt, hostId: result.hostId,
       scopes: result.scopes, permissionsConfigured: true,
       message: result.existingPolicy
-        ? "云账号已登录，已保留云端原有 Host 权限设置；修改请前往 Cloud Portal。"
+        ? "云账号已登录，已保留云端原有 Host 权限；本页可调整 Host 上限，单手机限制仍在 Cloud Portal 管理。"
         : "云账号已登录，Host 权限范围已保存。实际调用仍由 Desktop Gateway 决定。" });
   }
   async function retryHostSetup() {
@@ -806,7 +840,7 @@ function createCloudAccountController(options) {
   }
   return { initialize, begin, cancelAuthorization, handleCallback, retryHostSetup,
     resetLocalCredentials, signOut, status, withRelayHostTicket,
-    requestHostGrantSnapshot, updateHostPolicy, getBoundLocalOwnerUserId };
+    requestHostGrantSnapshot, readHostPolicy, updateHostPolicy, getBoundLocalOwnerUserId };
 }
 
 module.exports = { createCloudAccountController, parseCallback, validateScopes, SCOPES,

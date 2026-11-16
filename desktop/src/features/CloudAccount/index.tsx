@@ -35,6 +35,7 @@ export default function CloudAccountPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [editingPolicy, setEditingPolicy] = useState(false);
   const [policyScopes, setPolicyScopes] = useState<string[]>([]);
+  const [policyRevision, setPolicyRevision] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -43,6 +44,7 @@ export default function CloudAccountPage() {
     setSelected([]);
     setEditingPolicy(false);
     setPolicyScopes([]);
+    setPolicyRevision(null);
   }, [view.account?.id]);
 
   useEffect(() => {
@@ -98,23 +100,42 @@ export default function CloudAccountPage() {
     catch (err) { setError(err instanceof Error ? err.message : "云账号退出失败"); }
     finally { setBusy(false); }
   };
-  const updateHostPolicy = async () => {
+  const beginPolicyEdit = async () => {
     if (!api || !session?.token || isCheckingSession ||
         view.status !== "signed_in" || view.localOwnerBound !== true) {
       setError("请先登录当前 Mira 本地账户并确认云端 Host 身份");
       return;
     }
-    const added = policyScopes.filter((scope) => !view.scopes.includes(scope));
-    if (added.length > 0 && !window.confirm(english
-      ? "Expand this Desktop Host's allowed Mobile scopes? Newly eligible same-account devices may inherit them."
-      : "确定扩大此 Desktop Host 对同账号手机的权限上限吗？符合条件的手机可能自动继承新权限。")) {
+    setBusy(true);
+    setError("");
+    try {
+      // The server's CURRENT policy is the edit baseline, never the restored
+      // encrypted local snapshot or a renderer-owned default.
+      const fresh = await api.readHostPolicy(session.token);
+      setPolicyScopes(fresh.scopes);
+      setPolicyRevision(fresh.revision);
+      setEditingPolicy(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "读取云端 Host 权限失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const updateHostPolicy = async () => {
+    if (!api || !session?.token || isCheckingSession ||
+        view.status !== "signed_in" || view.localOwnerBound !== true ||
+        policyRevision === null) {
+      setError("请先从 Cloud Auth 读取最新 Host 授权，再保存");
       return;
     }
     setBusy(true);
     setError("");
     try {
-      setView(await api.updateHostPolicy(policyScopes, session.token));
+      // Native compares against the latest server snapshot and obtains a
+      // trusted Electron-owned confirmation before ANY scope widening.
+      setView(await api.updateHostPolicy(policyScopes, policyRevision, session.token));
       setEditingPolicy(false);
+      setPolicyRevision(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "云端 Host 授权保存失败");
     } finally {
@@ -216,15 +237,15 @@ export default function CloudAccountPage() {
                 <div className="space-y-3 pt-2">
                   {!editingPolicy ? (
                     <Button variant="outline" disabled={busy || isCheckingSession || !session?.token}
-                      onClick={() => { setPolicyScopes([...view.scopes]); setEditingPolicy(true); }}>
+                      onClick={() => void beginPolicyEdit()}>
                       {english ? "Edit Host permission ceiling" : "调整 Host 权限上限"}
                     </Button>
                   ) : (
                     <>
                       <p className="text-xs text-text-secondary">
                         {english
-                          ? "Only the verified local Desktop owner can save. Widening may let current and future same-account phones read more data. Existing per-device restrictions remain effective."
-                          : "仅当前绑定的 Mira 本地账户可保存。扩大权限后，现有及新加入的同账号手机可能获得相应访问能力，单设备限制仍然有效。"}
+                          ? "The editor loads the latest Cloud Auth policy. Widening requires a separate native confirmation, and current or future eligible devices may inherit the new ceiling."
+                          : "正在编辑 Cloud Auth 最新权限策略。扩大权限需要再次在系统确认框中授权，现有或未来符合条件的手机可能继承新的上限。"}
                       </p>
                       <div className="grid gap-2 sm:grid-cols-2">
                         {SCOPE_OPTIONS.map(([id, zh, en]) => (
@@ -242,7 +263,7 @@ export default function CloudAccountPage() {
                           {english ? "Save Host policy to Cloud Auth" : "保存 Host 授权"}
                         </Button>
                         <Button variant="outline" disabled={busy}
-                          onClick={() => setEditingPolicy(false)}>
+                          onClick={() => { setEditingPolicy(false); setPolicyRevision(null); }}>
                           {english ? "Cancel" : "取消"}
                         </Button>
                       </div>
