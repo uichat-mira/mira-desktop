@@ -152,6 +152,62 @@ describe("DSK-005 Cloud Account page", () => {
     expect(signIn).not.toHaveBeenCalled();
   });
 
+  it("only saves widened Host scope with an explicit signed-in owner confirmation", async () => {
+    const owned = {
+      ...empty,
+      status: "signed_in" as const,
+      account: { id: "cloud-a", username: "owner" },
+      hostId: "host-1",
+      scopes: ["threads:read"],
+      permissionsConfigured: true,
+      localOwnerBound: true,
+    };
+    const updateHostPolicy = vi.fn().mockResolvedValue({
+      ...owned, scopes: ["threads:read", "messages:read"],
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.cloudAccount = {
+      status: vi.fn().mockResolvedValue(owned),
+      signIn: vi.fn(), updateHostPolicy, cancelSignIn: vi.fn(), retryHostSetup: vi.fn(),
+      resetLocalCredentials: vi.fn(), signOut: vi.fn(),
+      subscribe: vi.fn().mockReturnValue(() => {}),
+    };
+    render(<CloudAccountPage />);
+    const edit = await screen.findByRole("button", { name: "调整 Host 权限上限" });
+    expect(updateHostPolicy).not.toHaveBeenCalled();
+    fireEvent.click(edit);
+    fireEvent.click(screen.getByLabelText("读取消息"));
+    expect(updateHostPolicy).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "保存 Host 授权" }));
+    await waitFor(() => expect(updateHostPolicy).toHaveBeenCalledWith(
+      ["threads:read", "messages:read"], "signed.local.jwt",
+    ));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(await screen.findByText("读取消息")).toBeInTheDocument();
+  });
+
+  it("does not offer Host ceiling editing to a Cloud Session without local owner binding", async () => {
+    const unbound = {
+      ...empty, status: "signed_in" as const,
+      account: { id: "cloud-a", username: "owner" },
+      hostId: "host-1",
+      scopes: ["threads:read"], permissionsConfigured: true,
+      localOwnerBound: false,
+    };
+    const updateHostPolicy = vi.fn();
+    window.cloudAccount = {
+      status: vi.fn().mockResolvedValue(unbound),
+      signIn: vi.fn(), updateHostPolicy, cancelSignIn: vi.fn(), retryHostSetup: vi.fn(),
+      resetLocalCredentials: vi.fn(), signOut: vi.fn(),
+      subscribe: vi.fn().mockReturnValue(() => {}),
+    };
+    render(<CloudAccountPage />);
+    expect(await screen.findByText("owner")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "调整 Host 权限上限" }))
+      .not.toBeInTheDocument();
+    expect(updateHostPolicy).not.toHaveBeenCalled();
+  });
+
   it("shows existing cloud account without reusing local credentials", async () => {
     const status = vi.fn().mockResolvedValue({
       ...empty,

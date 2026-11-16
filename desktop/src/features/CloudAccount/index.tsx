@@ -195,7 +195,7 @@ export default function CloudAccountPage() {
         </SectionCard>
 
         {signedIn && view.permissionsConfigured ? (
-          <SectionCard title={english ? "Desktop Host Mobile scope ceiling" : "Desktop Host 手机访问权限上限"}>
+          <SectionCard title={english ? "Authorized Mobile scopes" : "已保存的手机访问权限"}>
             <div className="space-y-2 px-4 py-4 text-sm">
               <p className="text-text-secondary">授权仅代表云端允许范围。具体执行还必须通过 Desktop Gateway 和 Harness 检查。</p>
               <div className="flex flex-wrap gap-2">
