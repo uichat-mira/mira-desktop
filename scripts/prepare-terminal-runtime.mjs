@@ -126,7 +126,10 @@ function extractArchive(componentName, component, archivePath, componentCacheRoo
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      `Expand-Archive -LiteralPath ${toPowerShellLiteral(archivePath)} -DestinationPath ${toPowerShellLiteral(extractedRoot)} -Force`,
+      // Windows PowerShell may load a PowerShell 7 Archive module from PSModulePath,
+      // whose three-argument ExtractToDirectory overload is unavailable under .NET Framework.
+      // The two-argument framework API extracts the already SHA-256-verified ZIP directly.
+      `Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory(${toPowerShellLiteral(archivePath)}, ${toPowerShellLiteral(extractedRoot)})`,
     ],
     { stdio: "inherit", windowsHide: true },
   );
