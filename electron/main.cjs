@@ -1,11 +1,136 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, safeStorage, net } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn, execFileSync } = require("child_process");
+const { createCloudAccountController } = require("./cloud-account.cjs");
+const { attachCloudRelayTicketIpc, attachCloudHostGrantIpc } = require("./cloud-relay-ticket-ipc.cjs");
 
 let mainWindow;
 let backendProcess;
+let cloudRelayTicketBridge = null;
+let cloudHostGrantBridge = null;
+
+let cloudAccount;
+let cloudCallbackRegistered = false;
+const queuedCloudCallbacks = [];
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+
+function receiveCloudCallback(url) {
+  if (typeof url !== "string" || !url.startsWith("mira-desktop://oauth/callback?")) return;
+  if (cloudAccount) void cloudAccount.handleCallback(url);
+  else if (queuedCloudCallbacks.length < 4) queuedCloudCallbacks.push(url);
+}
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  receiveCloudCallback(url);
+});
+app.on("second-instance", (_event, args) => {
+  const candidate = args.find((arg) => arg.startsWith("mira-desktop://oauth/callback?"));
+  if (candidate) receiveCloudCallback(candidate);
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
+function cloudIpcAuth(event) {
+  if (!mainWindow || event.sender !== mainWindow.webContents) {
+    throw new Error("Cloud Account IPC is only available to Mira's main window");
+  }
+}
+ipcMain.handle("cloud-account:status", (event) => {
+  cloudIpcAuth(event);
+  return cloudAccount?.status() ?? { status: "checking", account: null, hostId: null, scopes: [], message: "", expiresAt: null, permissionsConfigured: false };
+});
+// This bearer already belongs to the local renderer session; Native checks
+// it against the local Backend instead of trusting a renderer-claimed user ID.
+async function verifyCloudLocalOwner(token) {
+  if (typeof token !== "string" || token.length < 20 ||
+      token.length > 4096 || token.startsWith("mira_device_")) {
+    throw new Error("请先登录 Mira 本地账户，再关联云账号");
+  }
+  let response;
+  try {
+    response = await net.fetch(getBackendUrl() + "/me", {
+      method: "GET",
+      headers: { authorization: "Bearer " + token, accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    throw new Error("本地 Mira 身份校验暂不可用，请检查桌面 Backend");
+  }
+  if (!response.ok) throw new Error("本地 Mira 登录状态已失效，请重新登录");
+  const body = await response.json().catch(() => null);
+  const user = body?.success === true ? body.data?.user : null;
+  if (!Number.isSafeInteger(user?.id) || user.id <= 0 ||
+      typeof user.username !== "string" ||
+      (user.role !== "admin" && user.role !== "user")) {
+    throw new Error("本地 Mira 用户身份无效，拒绝关联云账号");
+  }
+  return user.id;
+}
+
+ipcMain.handle("cloud-account:login", async (event, scopes, localAccessToken) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  if (!cloudCallbackRegistered) {
+    throw new Error("当前桌面构建无法接收 Mira Cloud OAuth 回调；请使用已安装并注册协议的 Electron 版本。");
+  }
+  const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
+  return cloudAccount.begin(scopes, localOwnerUserId);
+});
+ipcMain.handle("cloud-account:read-host-policy", async (event, localAccessToken) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
+  return cloudAccount.readHostPolicy(localOwnerUserId);
+});
+ipcMain.handle("cloud-account:update-host-policy", async (event, scopes, expectedRevision,
+  localAccessToken) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
+  return cloudAccount.updateHostPolicy(scopes, localOwnerUserId, expectedRevision,
+    async (addedScopes) => {
+      cloudIpcAuth(event);
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: "warning",
+        title: "确认扩大手机访问权限",
+        message: "确认扩大本机 Host 对同账号手机的访问上限吗？",
+        detail: "新增权限：" + addedScopes.join("、") +
+          "\n已登录和未来登录的同账号手机可能获得上述能力，单设备限制仍然有效。",
+        buttons: ["取消", "确认扩大权限"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      return response === 1;
+    });
+});
+ipcMain.handle("cloud-account:cancel-login", (event) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  return cloudAccount.cancelAuthorization();
+});
+ipcMain.handle("cloud-account:retry-host", (event) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  return cloudAccount.retryHostSetup();
+});
+ipcMain.handle("cloud-account:reset-credentials", (event) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  return cloudAccount.resetLocalCredentials();
+});
+ipcMain.handle("cloud-account:logout", (event) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  return cloudAccount.signOut();
+});
+
 const BACKEND_START_TIMEOUT_MS = 15000;
+const CLOUD_PILOT_BACKEND_START_TIMEOUT_MS = 60000;
 const BACKEND_START_POLL_INTERVAL_MS = 300;
 
 const isDev = !app.isPackaged;
@@ -163,8 +288,10 @@ function createWindow() {
   });
 
   if (isDev) {
+    const rendererHost =
+      process.env.UI_CHAT_CLOUD_PILOT === "1" ? "127.0.0.1" : "localhost";
     void mainWindow
-      .loadURL(`http://localhost:${runtimeConfig.dev.desktopPort}`)
+      .loadURL(`http://${rendererHost}:${runtimeConfig.dev.desktopPort}`)
       .then(() => {
         mainWindow?.webContents.openDevTools({ mode: "detach" });
       })
@@ -343,10 +470,91 @@ ipcMain.handle("desktop:download-browser-extension", async () => {
   return destinationPath;
 });
 
+function attachBackendProcessHandlers(child) {
+  cloudRelayTicketBridge = attachCloudRelayTicketIpc(child, () => cloudAccount);
+  cloudHostGrantBridge = attachCloudHostGrantIpc(child, () => cloudAccount);
+
+  if (child.stdout) {
+    child.stdout.on("data", (data) => {
+      console.log(`Backend: ${data}`);
+    });
+  }
+
+  if (child.stderr) {
+    child.stderr.on("data", (data) => {
+      console.error(`Backend error: ${data}`);
+    });
+  }
+
+  child.on("close", (code) => {
+    cloudRelayTicketBridge?.dispose();
+    cloudRelayTicketBridge = null;
+    cloudHostGrantBridge?.dispose();
+    cloudHostGrantBridge = null;
+    console.log(`Backend process exited with code ${code}`);
+  });
+
+  child.on("error", (error) => {
+    console.error("Failed to start backend process:", error);
+  });
+}
+
+async function startCloudPilotDevBackend() {
+  // Keep the development-only launcher out of packaged builds.
+  const { resolveCloudPilotBackendLaunch } = require("./cloud-pilot-dev.cjs");
+  const nodeBinary = process.env.UI_CHAT_CLOUD_PILOT_NODE_BINARY;
+  if (!nodeBinary || !path.isAbsolute(nodeBinary) || !fs.existsSync(nodeBinary)) {
+    throw new Error(
+      "Cloud Pilot requires the Node executable supplied by electron/dev-launcher.cjs. Start it with the platform-specific dev:electron:<platform>:cloud-pilot script.",
+    );
+  }
+
+  const launch = resolveCloudPilotBackendLaunch({
+    workspaceRoot: path.resolve(__dirname, ".."),
+    nodeBinary,
+    baseEnv: process.env,
+    runtimeConfig,
+  });
+  for (const requiredPath of [launch.args[0], launch.args[1]]) {
+    if (!fs.existsSync(requiredPath)) {
+      throw new Error(`Cloud Pilot source Backend file is missing: ${requiredPath}`);
+    }
+  }
+
+  if (await isBackendHealthy()) {
+    throw new Error(
+      `Cloud Pilot refuses to reuse an independently started Backend at ${getBackendUrl()}; stop it and restart the Cloud Pilot launcher.`,
+    );
+  }
+
+  console.log("Cloud Pilot: Electron Main is starting the source Backend without watch mode.");
+  console.log("Cloud Pilot Backend runtime:", launch.nodeBinary);
+  backendProcess = spawn(launch.nodeBinary, launch.args, launch.options);
+  attachBackendProcessHandlers(backendProcess);
+
+  const backendReady = await waitForBackendReady(
+    CLOUD_PILOT_BACKEND_START_TIMEOUT_MS,
+  );
+  if (!backendReady) {
+    throw new Error(
+      `Cloud Pilot Backend did not become healthy within ${CLOUD_PILOT_BACKEND_START_TIMEOUT_MS}ms: ${getBackendUrl()}/health. Check the Backend output above; an occupied port is never reused.`,
+    );
+  }
+
+  console.log("Cloud Pilot Backend is healthy and attached to Electron's private IPC channel.");
+  return true;
+}
+
 async function startBackend() {
+  if (isDev && process.env.UI_CHAT_CLOUD_PILOT === "1") {
+    return startCloudPilotDevBackend();
+  }
   if (isDev) {
     console.log("Dev mode: backend server already started via concurrently");
     return true;
+  }
+  if (process.env.UI_CHAT_CLOUD_PILOT === "1") {
+    throw new Error("Cloud Pilot is a development-only startup mode.");
   }
 
   const backendPath = path.join(process.resourcesPath, "server", "server.cjs");
@@ -363,10 +571,13 @@ async function startBackend() {
     "model-runtime",
     "onnxruntime-web",
   );
-  const backendRuntime = fs.existsSync(bundledNodePath)
-    ? bundledNodePath
-    : process.execPath;
-  const usesBundledNode = backendRuntime === bundledNodePath;
+  if (!fs.existsSync(bundledNodePath)) {
+    throw new Error(
+      `Required bundled Node runtime is missing: ${bundledNodePath}. ` +
+      "Reinstall Mira; refusing to run native backend modules under Electron Node."
+    );
+  }
+  const backendRuntime = bundledNodePath;
 
   console.log("Starting backend from:", backendPath);
   console.log("Working directory:", cwd);
@@ -398,7 +609,6 @@ async function startBackend() {
     cwd,
     env: {
       ...process.env,
-      ...(usesBundledNode ? {} : { ELECTRON_RUN_AS_NODE: "1" }),
       NODE_ENV: "production",
       HOST: runtimeConfig.backend.host,
       PORT: String(runtimeConfig.backend.port),
@@ -406,6 +616,9 @@ async function startBackend() {
       SETTINGS_SECRET: settingsSecret,
       UI_CHAT_ALLOW_DEFAULT_BOOTSTRAP: "1",
       UI_CHAT_BACKEND_URL: getBackendUrl(),
+      // Non-secret marker: only this Electron-owned Backend child can ask
+      // its parent for current Cloud Host eligibility on startup.
+      UI_CHAT_CLOUD_IPC_CHILD: "1",
       UI_CHAT_DESKTOP_RESOURCES_ROOT: process.resourcesPath,
       UI_CHAT_DATABASE_DIR: dataDir,
       UI_CHAT_LOG_DIR: logDir,
@@ -414,29 +627,11 @@ async function startBackend() {
       LOCAL_MODEL_USER_DATA_DIR: userDataDir,
       LOCAL_ONNX_WASM_ROOT: localOnnxWasmRoot,
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    // Private parent/child IPC: never exposed via HTTP, preload or Renderer.
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
     windowsHide: true,
   });
-
-  if (backendProcess.stdout) {
-    backendProcess.stdout.on("data", (data) => {
-      console.log(`Backend: ${data}`);
-    });
-  }
-
-  if (backendProcess.stderr) {
-    backendProcess.stderr.on("data", (data) => {
-      console.error(`Backend error: ${data}`);
-    });
-  }
-
-  backendProcess.on("close", (code) => {
-    console.log(`Backend process exited with code ${code}`);
-  });
-
-  backendProcess.on("error", (error) => {
-    console.error("Failed to start backend process:", error);
-  });
+  attachBackendProcessHandlers(backendProcess);
 
   const backendReady = await waitForBackendReady();
   if (!backendReady) {
@@ -449,6 +644,61 @@ async function startBackend() {
 }
 
 app.whenReady().then(async () => {
+  // A secondary process must never initialize a competing Backend or OAuth owner.
+  if (!hasSingleInstanceLock) return;
+
+  // Electron owns the Cloud credential, browser callback and network exchange.
+  // No bearer, PKCE verifier, password, or callback code is exposed to React.
+  cloudAccount = createCloudAccountController({
+    app, shell, safeStorage,
+    // Cloud Auth's edge resets TLS 1.3 ClientHellos that advertise only
+    // classical key exchange: it requires a post-quantum hybrid group to be
+    // offered. This was diagnosed under Electron 31 / Chromium 126 / Node 20;
+    // do not assume those TLS capabilities apply to Electron 45 / Node 24.
+    // Cloud traffic continues using Chromium net.fetch, with platform-default
+    // certificate verification enabled.
+    fetcher: (input, init) => net.fetch(input, init),
+    notify: (snapshot) => {
+      // The official Cloud Host follows the authenticated native lifecycle,
+      // not a renderer setting or a second manual Relay activation.
+      // Non-ready states close the old account's socket before any new ticket.
+      cloudRelayTicketBridge?.notifyAvailability(
+        snapshot.status === "signed_in" &&
+        snapshot.permissionsConfigured === true &&
+        snapshot.localOwnerBound === true &&
+        typeof snapshot.hostId === "string" && snapshot.hostId.length > 0,
+      );
+      if (snapshot.status === "rejected" || snapshot.status === "signed_out") {
+        cloudRelayTicketBridge?.notifyRevoked(
+          snapshot.status === "rejected" ? "reauth" : "signout",
+        );
+        cloudHostGrantBridge?.notifyRevoked(
+          snapshot.status === "rejected" ? "reauth" : "signout",
+        );
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("cloud-account:changed", snapshot);
+      }
+    },
+  });
+  // Failure to register Cloud OAuth must never prevent local Mira startup.
+  // macOS dev is prepared before launch with a Mira-specific bundle id,
+  // CFBundleURLTypes and LaunchServices registration; unprepared direct
+  // launches fail closed because setAsDefaultProtocolClient returns false.
+  try {
+    if (app.isPackaged || process.platform === "darwin") {
+      cloudCallbackRegistered = app.setAsDefaultProtocolClient("mira-desktop");
+    } else if (process.argv[1]) {
+      cloudCallbackRegistered = app.setAsDefaultProtocolClient("mira-desktop", process.execPath, [path.resolve(process.argv[1])]);
+    }
+  } catch {
+    cloudCallbackRegistered = false;
+  }
+  const initialCallback = process.argv.find((arg) =>
+    arg.startsWith("mira-desktop://oauth/callback?"));
+  if (initialCallback) queuedCloudCallbacks.push(initialCallback);
+  for (const url of queuedCloudCallbacks.splice(0)) receiveCloudCallback(url);
+
   console.log("App ready, isDev:", isDev);
   console.log("__dirname:", __dirname);
   console.log("app.getAppPath():", app.getAppPath());
@@ -459,12 +709,18 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
+  void cloudAccount.initialize(); // never block local UI on Cloud availability
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+}).catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error("Electron startup failed:", error);
+  dialog.showErrorBox("UIChat Mira cannot start", message);
+  app.quit();
 });
 
 app.on("window-all-closed", () => {
@@ -474,6 +730,8 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  cloudRelayTicketBridge?.dispose();
+  cloudHostGrantBridge?.dispose();
   if (backendProcess) {
     backendProcess.kill();
   }

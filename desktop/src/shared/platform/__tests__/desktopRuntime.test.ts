@@ -9,6 +9,9 @@ import {
   getRuntimeDescription,
   openExternalUrl,
   getNativeMessagingHostStatus,
+  downloadBrowserExtension,
+  installNativeMessagingHost,
+  uninstallNativeMessagingHost,
   type DesktopRuntimeInfo,
 } from "../desktopRuntime";
 
@@ -47,6 +50,21 @@ describe("desktopRuntime", () => {
       isPackaged: false,
       backendUrl: "",
     });
+  });
+
+  it("已退役的 Tauri runtime 注入被拒绝，不会伪装成桌面环境", () => {
+    setWindow({
+      ...window,
+      desktopRuntime: {
+        hostKind: "tauri",
+        platform: "win32",
+        isPackaged: true,
+        backendUrl: "http://localhost:3000",
+      },
+    } as unknown as typeof globalThis.window);
+
+    expect(getDesktopRuntime().hostKind).toBe("browser");
+    expect(getApiBaseUrl()).toBe("/api");
   });
 
   it("window.desktopRuntime 注入时优先使用", () => {
@@ -99,14 +117,6 @@ describe("desktopRuntime", () => {
       isDesktopShell({
         hostKind: "electron",
         platform: "win32",
-        isPackaged: true,
-        backendUrl: "",
-      }),
-    ).toBe(true);
-    expect(
-      isDesktopShell({
-        hostKind: "tauri",
-        platform: "linux",
         isPackaged: true,
         backendUrl: "",
       }),
@@ -174,14 +184,6 @@ describe("desktopRuntime", () => {
       }),
     ).toBe("Electron · win32");
 
-    expect(
-      getRuntimeDisplayLabel({
-        hostKind: "tauri",
-        platform: "darwin",
-        isPackaged: true,
-        backendUrl: "",
-      }),
-    ).toBe("Tauri · darwin");
   });
 
   it("getRuntimeDescription 返回正确描述", () => {
@@ -234,6 +236,42 @@ describe("desktopRuntime", () => {
       "desktop:open-external",
       "https://example.com",
     );
+  });
+
+  it("Electron 桌面环境缺少 IPC 时不静默退回浏览器打开链接", async () => {
+    setWindow({
+      ...window,
+      desktopRuntime: {
+        hostKind: "electron",
+        platform: "win32",
+        isPackaged: true,
+        backendUrl: "http://localhost:3000",
+      },
+      open: vi.fn(),
+    } as unknown as typeof globalThis.window);
+
+    await expect(openExternalUrl("https://example.com")).rejects.toThrow("Electron IPC 不可用");
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it("Electron 缺少 IPC 时扩展与 Native Messaging 操作明确失败", async () => {
+    const open = vi.fn();
+    setWindow({
+      ...window,
+      desktopRuntime: {
+        hostKind: "electron",
+        platform: "win32",
+        isPackaged: true,
+        backendUrl: "http://localhost:3000",
+      },
+      open,
+    } as unknown as typeof globalThis.window);
+
+    await expect(downloadBrowserExtension()).rejects.toThrow("Electron IPC 不可用");
+    await expect(installNativeMessagingHost()).rejects.toThrow("Electron IPC 不可用");
+    await expect(getNativeMessagingHostStatus()).rejects.toThrow("Electron IPC 不可用");
+    await expect(uninstallNativeMessagingHost()).rejects.toThrow("Electron IPC 不可用");
+    expect(open).not.toHaveBeenCalled();
   });
 
   it("getNativeMessagingHostStatus electron 环境使用原生状态查询", async () => {

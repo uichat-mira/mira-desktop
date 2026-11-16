@@ -11,7 +11,6 @@ Canonical: true
 Related:
   - README.md
   - ../architecture/README.md
-  - ../platform/tauri.md
   - ../../scripts/terminal-runtime.lock.json
   - ../../scripts/prepare-terminal-runtime.mjs
   - ../../scripts/terminal-runtime-staging.js
@@ -28,8 +27,8 @@ Terminal Dev Runtime 只为现有 `terminal_session -> host_spawn / PTY -> Windo
 
 | Component | Version | Distribution | License |
 | --- | --- | --- | --- |
-| Node | 22.23.1 | 官方 Windows x64 archive | MIT |
-| npm / npx | 10.9.8 | Node archive 内置 | Artistic-2.0（npm 自身） |
+| Node | 24.22.1 | 官方 Windows x64 archive | MIT |
+| npm / npx | 11.19.1 | Node archive 内置 | Artistic-2.0（npm 自身） |
 | Git | 2.55.0.windows.3 | MinGit 64-bit | GPL-2.0-only 与随包组件许可证 |
 | uv | 0.11.31 | 官方 Windows x64 archive | Apache-2.0 OR MIT |
 | ripgrep | 15.2.0 | 官方 MSVC Windows x64 archive | Unlicense OR MIT |
@@ -78,7 +77,7 @@ resources/
       LICENSE.txt
 ```
 
-`scripts/terminal-runtime-staging.js` 是 Electron、Tauri 和 staged smoke 共用的复制与最终文件校验入口。Electron 把两棵 runtime 目录作为 `extraResources`；Tauri 把相同目录放入 `tauri/resources/`。两种壳层都把最终 resources 根目录通过 `UI_CHAT_DESKTOP_RESOURCES_ROOT` 传给 Backend。
+`scripts/terminal-runtime-staging.js` 是 Electron 与 staged smoke 共用的复制与最终文件校验入口。Electron 把两棵 runtime 目录作为 `extraResources`，并通过 `UI_CHAT_DESKTOP_RESOURCES_ROOT` 向 Backend 传递 resources 根目录。
 
 `server/build.js` 将 `node-pty` 作为外置 native dependency 复制到 Backend bundle，只保留 Windows x64 runtime 文件并删除 PDB；构建结束立即执行一次 `require("node-pty")`。
 
@@ -101,7 +100,7 @@ system PATH
 
 现有 `grep` 与 read content locate 共用内部 ripgrep provider：优先 `bundled-ripgrep`，bundled 缺失或完整性校验失败时由 Terminal Dev Runtime resolver 选择 `system-ripgrep`，两者都不可用或执行失败时使用 `node-content-scan`。实际 provider 会写入搜索结果 artifact metadata；这不会新增 Planner-facing Tool，也不改变现有 grep/read Tool Contract。
 
-Electron 在 bundled Node 缺失时保留现有 Electron-as-Node fallback。Tauri 先使用 bundled Node，再查找系统 `node.exe`，都不存在时返回明确错误。
+Electron 生产 Backend 必须使用随包独立 Node；若该运行时缺失，显示启动错误并退出，不再回退到 Electron-as-Node。
 
 ## 分层验证
 
@@ -121,11 +120,10 @@ pnpm smoke:terminal-runtime:staged
 
 它额外验证 HTTPS clone、Git status/diff/log/add/commit/branch/checkout/switch/fetch/pull/push/worktree、rg 搜索、npm install/build、uv Python install/venv/pip/run，以及 managed Python 脚本。
 
-完整 Electron/Tauri Installer 只在 Release Gate、CI 或人工明确批准后执行：
+完整 Electron Installer 只在 Release Gate、CI 或人工明确批准后执行：
 
 ```bash
 pnpm package:electron:win
-pnpm package:tauri:win
 ```
 
 ## 2026-07-22 体积记录
@@ -147,5 +145,5 @@ MiB 使用 `1 MiB = 1,048,576 bytes`。Installer 增量没有通过完整 Instal
 
 - 2026-07-22 本机已通过 quick 与 full staged smoke。
 - GitHub HTTPS 曾出现连接重置，同一 bundled MinGit 重试成功；通过用户临时提供的本机 SOCKS5 代理再次完成 GitHub shallow clone。最终可重复 smoke 使用小型公开 GitLab 仓库，避免单站点可达性影响 Runtime 判断。
-- 完整 Electron Installer 与 Tauri Installer 未在本机执行。
+- 完整 Electron Installer 未在本机执行。
 - 源码态 `terminal_session` 在 Windows Job Object 清理后，`node-pty` 的 console-list helper 可能向 stderr 输出一次非致命 `AttachConsole failed`；命令结果、Job Object 模式、session registry 清理和进程退出均成功。该现象涉及现有终端清理语义，本任务没有修改 Job Object 或 PTY 合同。

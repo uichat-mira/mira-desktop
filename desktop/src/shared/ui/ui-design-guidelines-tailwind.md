@@ -367,7 +367,7 @@
 - 业务型 dropdown 圆角建议收敛到 `8px ~ 10px`，避免浮层边界过软
 - Detail Drawer 应保持右侧上下文感，避免做成全屏打断式交互
 - 抽屉壳层优先复用共享 `Drawer`，业务页不要重复手写 portal、遮罩、滑入动画和 body 滚动锁
-- 外部文档链接优先复用共享 `ExternalLink`，不要在业务页直接写裸 `<a>` 后自行判断 Electron / Tauri 行为
+- 外部文档链接优先复用共享 `ExternalLink`，不要在业务页直接写裸 `<a>` 后自行判断 Electron 行为
 - 如果链接会跳出当前应用上下文，优先使用 `ExternalLink` 的 `confirmBeforeOpen`，不要在业务页零散拼确认弹窗
 - 图片遮罩预览和滚轮缩放优先复用共享 `ImagePreviewOverlay`，不要在业务页重复拼装黑色遮罩和缩放逻辑
 - ErrorBoundary 等异常兜底界面应优先使用柔和背景、轻量卡片和明确恢复动作，避免制造额外紧张感

@@ -61,6 +61,7 @@ Related:
 | `/` | 认证后首页 | `desktop/src/app/router.tsx` |
 | `/chat` | 聊天工作区 | `desktop/src/app/router.tsx` |
 | `/settings` | 设置工作区壳层 | `desktop/src/app/router.tsx` |
+| `/cloud-account` | 独立云账号页面，从手机图标菜单进入 | `desktop/src/app/routes/standaloneRoutes.tsx` |
 | `/login` | 游客态登录页 | `desktop/src/app/router.tsx` |
 
 ### 设置工作区路由
@@ -71,12 +72,7 @@ Related:
 | --- | --- | --- |
 | `/settings/general` | 是 | 顶层入口 |
 | `/settings/model-setting` | 是 | 顶层入口 |
-| `/settings/knowledge-base` | 是 | 顶层入口，下面还有深层页 |
-| `/settings/knowledge-base/add` | 否 | 深层页 |
-| `/settings/knowledge-base/detail` | 否 | 深层页 |
 | `/settings/roles` | 是 | 顶层入口 |
-| `/settings/evaluation/center` | 是 | 顶层入口 |
-| `/settings/evaluation/center/new` | 否 | 深层页 |
 | `/settings/development` | 是 | 顶层入口，下面还有深层页 |
 | `/settings/development/logs` | 否 | 深层页 |
 | `/settings/development/database` | 否 | 深层页 |
@@ -89,7 +85,20 @@ Related:
 | `/settings/integrations` | 是 | 顶层入口 |
 | `/settings/tools` | 是 | 顶层入口 |
 | `/settings/about` | 是 | 顶层入口 |
-| `/settings/account` | 否 | 重定向/过渡页 |
+
+### 手机图标菜单（2026-10-26）
+
+手机图标复用侧边栏通用 `DropdownMenu` 交互，菜单项顺序为“云账号”（`/cloud-account`）在前，“远程连接”（`/remote-access`）在后。任一页面激活时，手机图标高亮，菜单对应项目显示选中状态。
+
+云账号页面及测试位于 `desktop/src/features/CloudAccount/`，使用应用级 `AppPageLayout` 和 `StandaloneWorkspace`。设置导航及 `/settings/account` 路由已移除，原 `Settings/pages/Account/` 目录不再保留。此迁移只改变前端入口和页面归属，不改变云账号登录、权限或连接协议。
+
+### 侧边栏入口调整（2026-10-31）
+
+侧边栏已移除“知识与评测”入口（`LibraryMenu`，原包含“知识库”与“评测中心”两项），`AppNavigationRail.tsx` 不再渲染该菜单及其路由匹配辅助函数。
+
+`/knowledge-base` 与 `/evaluation/center` 路由保持不变，均为独立工作区页面。知识库页面可由扩展 → 连接器页的内置条目（`ConnectorCatalog`，`/extensions/connectors`）进入；评测中心入口当前放在知识库页面标题栏右侧（`desktop/src/features/KnowledgeBase/pages/index.tsx` 的 `AppPageLayout slot`），点击跳转 `/evaluation/center`。设置工作区不再注册 `/settings/knowledge-base` 与 `/settings/evaluation/center*` 路由。
+
+本次调整只改变前端入口，不改变路由、页面归属或业务能力。
 
 ## 协议目标
 

@@ -16,7 +16,6 @@ Related:
   - chat-agent-fast-review-2026-06-27.md
   - mcp-marketplace-agent-integration.md
   - multi-agent-execution-truth.md
-  - ../platform/tauri.md
 
 ## 单点真相范围
 
@@ -39,7 +38,7 @@ Related:
 | 层 | 当前技术 |
 | --- | --- |
 | Renderer | React + Vite + TypeScript |
-| Desktop shell | Electron main + preload，另有 Tauri 壳层 |
+| Desktop shell | Electron main + preload |
 | Backend | Fastify bundled Node service |
 | Database | SQLite (`better-sqlite3`) |
 | Workspace | pnpm workspace |
@@ -68,14 +67,36 @@ renderer 不应直接持有 native 或 Node 级能力真相。
 
 ### 开发态
 
+普通开发启动仍由 launcher 独立启动或复用 Backend：
+
 ```text
 renderer (Vite dev server) -- /api proxy --> Fastify backend
 desktop shell --------------------------------^
 ```
 
+Cloud Pilot 联调使用显式的 `dev:electron:<platform>:cloud-pilot` 启动脚本：
+
+```text
+renderer (Vite dev server) -- /api proxy --> Fastify backend
+desktop shell
+  └─ Electron Main -- private child IPC --> Node + tsx Backend (no watch)
+```
+
+官方 Cloud Relay 的 Backend WebSocket 仅在 Mira「通用」已配置 SOCKS5
+Host/Port 时使用独立的 `socks5h` 代理连接（DNS 在代理侧解析）；未配置则保持原有直连，
+已配置但代理失败时只报告 Cloud 传输不可用，不静默切换直连、Legacy Relay 或 Tailscale。
+该代理不接管 macOS 系统网络、Electron Cloud OAuth、Backend 本机 HTTP 健康检查，
+也不改变独立自建 Relay 的 WebSocket 连接策略。
+
+Cloud Pilot 不启动独立 Backend watcher；Backend 由 Electron Main 作为唯一子进程启动，
+因此可复用 packaged runtime 的原生 IPC ticket / Host Grant bridge。Vite renderer
+仍保持热更新，Backend 源码变化需要完整重启 Cloud Pilot。该模式拒绝复用已占用的
+Backend 端口；若配置的 Vite 端口被其它 IPv4 服务占用，则分配独立的开发端口而不复用
+未知服务。Electron 使用与 Vite 一致的 `127.0.0.1` renderer 地址，避免 Windows 上
+`localhost` 优先解析到另一个项目的 IPv6 loopback 服务。普通 Dev 和 packaged 进程模型不变。
+
 本地 renderer 开发服务默认监听 `http://127.0.0.1:5757`。端口统一来自
-`runtime.config.cjs`，需要覆盖时使用 `UI_CHAT_DESKTOP_PORT`，Electron、
-Tauri 和 Vite 不分别维护端口常量。
+`runtime.config.cjs`，需要覆盖时使用 `UI_CHAT_DESKTOP_PORT`，Electron 和 Vite 不分别维护端口常量。
 
 ### 打包态
 
@@ -87,9 +108,8 @@ UIChat.exe
        └─ terminal -> bundled Terminal Dev Runtime + system PATH fallback
 ```
 
-Tauri 形态下同样复用前端构建产物和 backend bundle，只是壳层实现不同。
 
-Electron 和 Tauri 还共享同一批 `node-runtime/` 与 `terminal-runtime/` staging 输入。桌面壳层只把 resources 根目录传给 Backend；终端 PATH 的组件校验、优先顺序和 system fallback 由 Backend 统一处理，不进入 renderer 或 preload 合同。详见 `../build/terminal-dev-runtime.md`。
+Electron 使用 `node-runtime/` 与 `terminal-runtime/` staging 输入。桌面壳层只把 resources 根目录传给 Backend；终端 PATH 的组件校验、优先顺序和 system fallback 由 Backend 统一处理，不进入 renderer 或 preload 合同。详见 `../build/terminal-dev-runtime.md`。
 
 ## 当前稳定边界
 
@@ -101,8 +121,7 @@ Electron 和 Tauri 还共享同一批 `node-runtime/` 与 `terminal-runtime/` st
 - Main Agent、forked Skill Agent、private Runtime、审批恢复和 Parent recovery 的当前合同见 `multi-agent-execution-truth.md`
 
 当前正式打包仍以 Windows 为基线。Electron 开发态对 renderer 暴露宿主
-`process.platform`，已验证 `win32` 与 `darwin`；Tauri 当前仍只按
-Windows 合同提供 `win32`，macOS 平台值对齐尚未进入实现。
+`process.platform`，已验证 `win32` 与 `darwin`。
 
 工作空间根目录由 backend 按宿主平台校验：Windows 接受盘符绝对路径或
 UNC 路径，POSIX 宿主接受以 `/` 开头的绝对路径。renderer 使用同一
@@ -115,7 +134,7 @@ UNC 路径，POSIX 宿主接受以 `/` 开头的绝对路径。renderer 使用�
 - 改请求链路
 - 改 backend host / port 来源
 - 改 preload 暴露面
-- 改 Electron / Tauri 打包边界
+- 改 Electron 打包边界
 
 涉及 Main Agent / Skill Agent 的任务局部执行所有权、私有 Runtime、approval checkpoint resume 或多 Agent 产品表述时，先读 `multi-agent-execution-truth.md`。
 
@@ -128,4 +147,3 @@ UNC 路径，POSIX 宿主接受以 `/` 开头的绝对路径。renderer 使用�
 - `chat-agent-fast-review-2026-06-27.md`
 - `mcp-marketplace-agent-integration.md`
 - `multi-agent-execution-truth.md`
-- `../platform/tauri.md`

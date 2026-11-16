@@ -43,7 +43,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Prepare test artifact directory
@@ -55,8 +55,11 @@ jobs:
       - name: Typecheck server
         run: pnpm --filter @ui-chat-mira/server typecheck
 
-      - name: Run full server test suite
-        run: pnpm --filter @ui-chat-mira/server test
+      - name: Run full server test suite (except real Chromium integration)
+        run: pnpm --filter @ui-chat-mira/server exec vitest run --exclude '**/*.playwright.test.ts'
+
+      - name: Run real Chromium integration suite separately
+        run: pnpm --filter @ui-chat-mira/server exec vitest run src/microapps/computer-use/__tests__/agt012-cutover.playwright.test.ts src/microapps/computer-use/__tests__/browser.playwright.test.ts --no-file-parallelism
 
       - name: Upload test artifacts
         if: always()
@@ -84,7 +87,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Prepare test artifact directory
@@ -96,8 +99,11 @@ jobs:
       - name: Typecheck server
         run: pnpm --filter @ui-chat-mira/server typecheck
 
-      - name: Run full server test suite
-        run: pnpm --filter @ui-chat-mira/server test
+      - name: Run full server test suite (except real Chromium integration)
+        run: pnpm --filter @ui-chat-mira/server exec vitest run --exclude '**/*.playwright.test.ts'
+
+      - name: Run real Chromium integration suite separately
+        run: pnpm --filter @ui-chat-mira/server exec vitest run src/microapps/computer-use/__tests__/agt012-cutover.playwright.test.ts src/microapps/computer-use/__tests__/browser.playwright.test.ts --no-file-parallelism
 
       - name: Upload test artifacts
         if: always()

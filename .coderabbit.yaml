@@ -36,12 +36,6 @@ reviews:
         - Check window, child-process, listener, startup/shutdown, error, and cleanup behavior for leaks or duplicate registration.
         - Treat approval, file-write, terminal-control, and outbound-data boundary changes as high risk.
 
-    - path: "tauri/**"
-      instructions: |
-        Review Tauri host/runtime behavior and platform-specific boundaries.
-        - Keep runtime configuration and host capabilities consistent with the repository's documented architecture.
-        - Do not assume Electron behavior proves Tauri behavior; flag unsupported parity claims.
-        - Check native capability, process lifecycle, resource cleanup, and packaging-impacting changes carefully.
 
     - path: "server/**"
       instructions: |
@@ -67,7 +61,7 @@ reviews:
     - path: "package.json"
       instructions: |
         Treat root scripts and dependencies as workspace-wide behavior.
-        - Check command topology, package filters, runtime/build assumptions, and dependency changes for effects across Electron, Tauri, renderer, server, and workspace packages.
+        - Check command topology, package filters, runtime/build assumptions, and dependency changes for effects across Electron, renderer, server, and workspace packages.
         - Do not infer that a script change is local merely because only package.json changed.
 
     - path: "pnpm-workspace.yaml"
@@ -78,5 +72,5 @@ reviews:
     - path: "runtime.config.cjs"
       instructions: |
         Treat runtime.config.cjs as the source of truth for runtime/network configuration.
-        - Check backend host/port, development proxy, packaged runtime, Electron/Tauri, and docs-site consumers for consistency.
+        - Check backend host/port, development proxy, packaged runtime, Electron, and docs-site consumers for consistency.
         - Do not duplicate numeric host/port assumptions elsewhere or broaden backend binding unintentionally.

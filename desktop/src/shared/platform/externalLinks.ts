@@ -11,9 +11,8 @@ const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
 /**
  * Route target=_blank links through the shared desktop runtime bridge.
  *
- * Electron otherwise creates a child BrowserWindow, while Tauri delegates
- * differently depending on the WebView. Keeping the decision in the renderer
- * gives both shells the same product behavior: open the user's system browser.
+ * Electron otherwise creates a child BrowserWindow. Route external links
+ * through native IPC so they open in the user's system browser.
  */
 export function installDesktopExternalLinkHandler(
   targetDocument: Document = document,

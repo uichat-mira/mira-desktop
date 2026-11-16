@@ -43,7 +43,6 @@ related:
 - [[knowledge-base/README]]
 - [[evaluation/README]]
 - [[microapp/README]]
-- [[platform/tauri]]
 
 ## 历史施工与项目控制证据
 

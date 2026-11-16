@@ -2,6 +2,18 @@
 
 > 当前产品更新日志的唯一真相源。官网可以做面向用户的公开投影，但版本事实与最终发布说明以本文件和 GitHub Release 为准。
 
+## 0.106.0 - 2026-11-01（发布候选，正式发布待验收）
+
+本版候选将 Mira Desktop 统一到 Electron 桌面壳，保留 Browser Preview。以下为已合入的源码范围；是否正式发布以对应版本的 Windows 安装运行、云端互通验收和 GitHub Release 结果为准。
+
+- **Electron 成为唯一 Desktop 壳**：退役 Tauri Rust 壳、依赖、双壳 UI 分支及未来版本的 Tauri 构建/下载路径；历史 Release 不做追溯删除。
+- **Windows / macOS 构建**：保留 Windows Electron NSIS 安装包及 blockmap、macOS Intel DMG 及 blockmap。macOS Intel DMG 仍未签名、公证，不宣称通过 Gatekeeper 正式分发要求。
+- **云账号与远程桌面协作**：纳入 Desktop Cloud Account、OAuth/Relay、Host grant 的现有集成改动；真实打包态 OAuth 恢复与 Mobile → Relay → Desktop 端到端调用须单独验收，CI 通过不代表互通已经通过。
+- **发布安全**：GitHub Release / Cloudflare R2 的公开最新包由稳定 Tag 发布链负责，Windows 和 macOS 分别验证并镜像；新增 Tag 必须指向 `prod` 历史的前置校验，Tag 管理权限仍需独立保护。
+- **单实例修正**：第二实例未获得运行锁时不再继续初始化窗口、Backend 和 OAuth 回调监听，避免抢占主实例。
+
+**发布前检查**：Windows 安装运行与 Backend `/health`、单实例和 OAuth 会话恢复、真实跨端授权调用、版本号一致性及 `v*` Tag 保护。通过前只作为候选安装包，不覆盖 R2 正式 `latest`。
+
 ## 0.105.0 - 2026-10-22
 
 本版汇集自 v0.104.0 后在 `dev` 上完成、并由维护者于 2026-10-22 确认验收的桌面端改动。

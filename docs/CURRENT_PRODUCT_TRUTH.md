@@ -62,7 +62,7 @@ UIChat Mira 是一个 **本地优先、桌面优先、多 Provider 的个人 AI 
 
 ### 桌面运行与发布
 
-- Electron 与 Tauri 两条桌面路径并存；
+- Electron 是唯一受支持的桌面壳层，Browser Preview 保留；
 - 主项目提供统一开发、构建、校验和发布脚本；
 - 桌面端是当前主要产品形态。
 

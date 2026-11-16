@@ -1,14 +1,13 @@
 import {
   Braces,
+  Cable,
   PlugZap,
   CircleHelp,
+  Cloud,
   ExternalLink,
-  FolderKanban,
   GitBranch,
   Info,
   LayoutDashboard,
-  LibraryBig,
-  ListChecks,
   LogOut,
   MessageSquareText,
   Puzzle,
@@ -24,8 +23,9 @@ import { useAuth } from "@/app/providers/AuthProvider";
 import DropdownMenu from "@/shared/ui/DropdownMenu";
 import { message } from "@/shared/ui/Message";
 import { openExternalUrl } from "@/shared/platform/desktopRuntime";
+import logoIcon from "@/assets/branding/uichat-logo-icon.png";
 
-type RailLinkId = "home" | "remote-access" | "dashboard" | "forge" | "settings";
+type RailLinkId = "home" | "dashboard" | "forge" | "settings";
 
 type RailLinkItem = {
   id: RailLinkId;
@@ -34,7 +34,7 @@ type RailLinkItem = {
   to: string;
 };
 
-type RailMenuItem = { id: "projects" } | { id: "extensions" };
+type RailMenuItem = { id: "extensions" } | { id: "remote-access" };
 
 type PrimaryRailItem = RailLinkItem | RailMenuItem;
 
@@ -45,19 +45,13 @@ const primaryItems: PrimaryRailItem[] = [
     icon: MessageSquareText,
     to: "/chat",
   },
-  {
-    id: "remote-access",
-    label: "app.navigation.remoteAccess",
-    icon: Smartphone,
-    to: "/remote-access",
-  },
+  { id: "remote-access" },
   {
     id: "dashboard",
     label: "app.navigation.dashboard",
     icon: LayoutDashboard,
     to: "/dashboard",
   },
-  { id: "projects" },
   { id: "extensions" },
   {
     id: "forge",
@@ -78,7 +72,6 @@ function resolveActiveItem(pathname: string): RailLinkId | null {
   }
   if (matchesRoute(pathname, "/settings")) return "settings";
   if (matchesRoute(pathname, "/forge")) return "forge";
-  if (matchesRoute(pathname, "/remote-access")) return "remote-access";
   if (matchesRoute(pathname, "/dashboard")) return "dashboard";
   return null;
 }
@@ -88,21 +81,6 @@ function isResourceRoute(pathname: string) {
     matchesRoute(pathname, "/about") ||
     matchesRoute(pathname, "/development")
   );
-}
-
-function isLibraryRoute(pathname: string) {
-  return (
-    matchesRoute(pathname, "/knowledge-base") ||
-    matchesRoute(pathname, "/evaluation")
-  );
-}
-
-function isKnowledgeBaseRoute(pathname: string) {
-  return matchesRoute(pathname, "/knowledge-base");
-}
-
-function isEvaluationRoute(pathname: string) {
-  return matchesRoute(pathname, "/evaluation");
 }
 
 function isAboutRoute(pathname: string) {
@@ -143,7 +121,7 @@ function RailButton({
   const Icon = item.icon;
   const className = `group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
     active
-      ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+      ? "bg-primary/10 text-primary"
       : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
   }`;
 
@@ -155,7 +133,7 @@ function RailButton({
       aria-current={active ? "page" : undefined}
       className={className}
     >
-      <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />
+      <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
     </NavLink>
   );
 }
@@ -219,7 +197,7 @@ function ExtensionsMenu({
   const { t } = useTranslation();
   const triggerClassName = `group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
     active
-      ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+      ? "bg-primary/10 text-primary"
       : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
   }`;
 
@@ -238,7 +216,7 @@ function ExtensionsMenu({
         >
           <Puzzle
             className="h-[18px] w-[18px]"
-            strokeWidth={active ? 2.2 : 1.8}
+            strokeWidth={1.8}
           />
         </button>
       }
@@ -298,13 +276,13 @@ function ResourceMenu({
           aria-current={active ? "page" : undefined}
           className={`group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
             active
-              ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+              ? "bg-primary/10 text-primary"
               : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
           }`}
         >
           <CircleHelp
             className="h-[18px] w-[18px]"
-            strokeWidth={active ? 2.2 : 1.8}
+            strokeWidth={1.8}
           />
         </button>
       }
@@ -342,20 +320,12 @@ function ResourceMenu({
   );
 }
 
-function LibraryMenu({
-  active = false,
-  pathname,
-}: {
-  active?: boolean;
-  pathname: string;
-}) {
+function RemoteAccessMenu({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const triggerClassName = `group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-    active
-      ? "bg-surface-primary text-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
-      : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
-  }`;
+  const remoteActive = matchesRoute(pathname, "/remote-access");
+  const cloudActive = matchesRoute(pathname, "/cloud-account");
+  const active = remoteActive || cloudActive;
 
   return (
     <DropdownMenu
@@ -365,38 +335,33 @@ function LibraryMenu({
       trigger={
         <button
           type="button"
-          aria-label={t("app.navigation.projects")}
-          title={t("app.navigation.projects")}
+          aria-label={t("app.navigation.remoteAccess")}
+          title={t("app.navigation.remoteAccess")}
           aria-current={active ? "page" : undefined}
-          className={triggerClassName}
+          className={`group relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+            active
+              ? "bg-primary/10 text-primary"
+              : "text-text-tertiary hover:bg-surface-primary/70 hover:text-text-primary"
+          }`}
         >
-          <FolderKanban
-            className="h-[18px] w-[18px]"
-            strokeWidth={active ? 2.2 : 1.8}
-          />
+          <Smartphone className="h-[18px] w-[18px]" strokeWidth={1.8} />
         </button>
       }
       items={[
         {
-          id: "knowledge-base",
-          label: t("app.navigation.knowledgeBase"),
-          leadingIcon: <LibraryBig className="h-4 w-4" />,
-          selected: isKnowledgeBaseRoute(pathname),
+          id: "cloud-account",
+          label: t("app.navigation.cloudAccount"),
+          leadingIcon: <Cloud className="h-4 w-4" />,
+          selected: cloudActive,
         },
         {
-          id: "evaluation",
-          label: t("app.navigation.evaluation"),
-          leadingIcon: <ListChecks className="h-4 w-4" />,
-          selected: isEvaluationRoute(pathname),
+          id: "remote-access",
+          label: t("app.navigation.remoteAccess"),
+          leadingIcon: <Cable className="h-4 w-4" />,
+          selected: remoteActive,
         },
       ]}
-      onSelect={(item) => {
-        void navigate(
-          item.id === "knowledge-base"
-            ? "/knowledge-base"
-            : "/evaluation/center",
-        );
-      }}
+      onSelect={(item) => void navigate(`/${item.id}`)}
     />
   );
 }
@@ -417,16 +382,20 @@ export function AppNavigationRail() {
         title={t("app.navigation.home")}
         className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-[11px] text-text-primary transition-colors hover:bg-surface-primary/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       >
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-[8px] bg-text-primary text-[11px] font-semibold text-surface-tertiary">
-          M
-        </span>
+        <img
+          src={logoIcon}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="h-7 w-7 rounded-[7px] object-contain"
+        />
       </NavLink>
 
       <div className="flex flex-col items-center gap-1">
         {primaryItems.map((item) => (
           <div key={item.id}>
-            {item.id === "projects" ? (
-              <LibraryMenu active={isLibraryRoute(pathname)} pathname={pathname} />
+            {item.id === "remote-access" ? (
+              <RemoteAccessMenu pathname={pathname} />
             ) : item.id === "extensions" ? (
               <ExtensionsMenu
                 active={isExtensionsRoute(pathname)}

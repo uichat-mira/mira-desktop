@@ -26,7 +26,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  fs.rmSync(tempRoot, { recursive: true, force: true });
+  // A deliberately stopped child can hold Windows file handles briefly after kill().
+  fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   delete process.env.UI_CHAT_WORKSPACE_ROOT;
   clearWorkspaceSelection();
 });

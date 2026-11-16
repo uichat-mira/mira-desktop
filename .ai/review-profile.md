@@ -48,10 +48,10 @@ Prioritize concrete regressions introduced by the PR in these areas:
 - networking/runtime identity: development `/api` remains a Vite proxy concern, backend routes remain prefix-free, production uses the runtime-provided backend URL, host/port remain sourced from `runtime.config.cjs`, and backend binding must not accidentally become public;
 - high-risk capability gates: terminal control, approval/resume semantics, file-write paths or policies, and external send/outbound data behavior must not be weakened, bypassed, or replaced with silent fallback paths;
 - persistence and local-first behavior: SQLite, migrations, local files, workspace paths, or state changes must preserve data semantics, error visibility, cleanup, and concurrency expectations;
-- Electron/Tauri/runtime lifecycle: preload exposure, IPC, windows, child processes, event listeners, PTY/native runtimes, startup/shutdown, and resource cleanup must not introduce leaks, duplicate registration, or platform-specific regressions;
+- Electron/runtime lifecycle: preload exposure, IPC, windows, child processes, event listeners, PTY/native runtimes, startup/shutdown, and resource cleanup must not introduce leaks, duplicate registration, or platform-specific regressions;
 - packaging/release contracts: bundled server/runtime assets, release payloads, versioning, retention behavior, signing/publishing boundaries, and platform-specific packaging assumptions must remain consistent with current scripts and workflows;
 - shared UI compatibility: changes under `desktop/src/shared/ui` must preserve public component behavior and keep the adjacent component/design documentation in sync when the contract changes;
-- cross-platform scope: Windows, macOS Electron, and Tauri behavior should only be claimed or changed where the trusted repository context supports that platform path.
+- cross-platform scope: Windows and macOS Electron behavior should only be claimed or changed where the trusted repository context supports that platform path.
 
 Existing deterministic checks remain owned by CI. Do not report “run `pnpm check`” or “build the app” as an AI defect when the diff itself does not establish a failure.
 

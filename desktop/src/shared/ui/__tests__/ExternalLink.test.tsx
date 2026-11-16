@@ -100,10 +100,10 @@ describe("ExternalLink", () => {
     expect(messageInfo).toHaveBeenCalledWith("ui.externalLink.openFailedCopied");
   });
 
-  it("uses copy-only behavior for configured hosts", async () => {
+  it("uses copy-only behavior for configured Electron host", async () => {
     const user = userEvent.setup();
     getDesktopRuntime.mockReturnValue({
-      hostKind: "tauri",
+      hostKind: "electron",
       platform: "darwin",
       isPackaged: true,
       backendUrl: "",
@@ -111,7 +111,7 @@ describe("ExternalLink", () => {
     copyTextToClipboard.mockResolvedValue(true);
 
     render(
-      <ExternalLink href="https://example.com" copyOnlyHosts={["tauri"]}>
+      <ExternalLink href="https://example.com" copyOnlyHosts={["electron"]}>
         Docs
       </ExternalLink>,
     );

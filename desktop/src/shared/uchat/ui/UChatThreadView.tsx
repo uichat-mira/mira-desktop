@@ -623,7 +623,7 @@ export function UChatThreadView({
                             src={chatStartLogo}
                             alt=""
                             aria-hidden="true"
-                            className="h-9 w-auto shrink-0 object-contain sm:h-10"
+                            className="h-11 w-auto shrink-0 object-contain sm:h-12"
                             draggable={false}
                           />
                           <span>{t("chat.thread.welcome.emptyComposerTitle")}</span>

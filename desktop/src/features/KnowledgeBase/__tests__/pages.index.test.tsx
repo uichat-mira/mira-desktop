@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import KnowledgeBaseSettings from "../pages";
 
+const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
+
 vi.mock("react-router-dom", () => ({
   useLocation: () => ({ pathname: "/knowledge-base" }),
-  useNavigate: () => vi.fn(),
+  useNavigate: () => navigateMock,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -64,8 +66,17 @@ vi.mock("../hooks/useKnowledgeBase", () => ({
 }));
 
 vi.mock("@/app/Layouts/AppPageLayout", () => ({
-  default: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="layout">{children}</div>
+  default: ({
+    children,
+    slot,
+  }: {
+    children: React.ReactNode;
+    slot?: React.ReactNode;
+  }) => (
+    <div data-testid="layout">
+      {slot}
+      {children}
+    </div>
   ),
 }));
 
@@ -90,6 +101,7 @@ vi.mock("../components/DocumentTable", () => ({
 describe("KnowledgeBaseSettings page", () => {
   beforeEach(() => {
     embeddingConnected = true;
+    navigateMock.mockClear();
   });
 
   it("renders layout with sidebar, toolbar and table", () => {
@@ -116,5 +128,17 @@ describe("KnowledgeBaseSettings page", () => {
     render(<KnowledgeBaseSettings />);
 
     expect(screen.getByTestId("notice")).toBeInTheDocument();
+  });
+
+  it("opens the evaluation center from the page header entry", () => {
+    render(<KnowledgeBaseSettings />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.evaluation.center.page.title",
+      }),
+    );
+
+    expect(navigateMock).toHaveBeenCalledWith("/evaluation/center");
   });
 });

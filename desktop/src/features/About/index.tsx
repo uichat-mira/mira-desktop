@@ -53,9 +53,8 @@ const platformLabel = (platform: string) => {
   return platform;
 };
 
-const hostLabel = (hostKind: "browser" | "electron" | "tauri") => {
+const hostLabel = (hostKind: "browser" | "electron") => {
   if (hostKind === "electron") return "Electron";
-  if (hostKind === "tauri") return "Tauri";
   return "Browser Preview";
 };
 

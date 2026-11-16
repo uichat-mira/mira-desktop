@@ -232,4 +232,3 @@ Native 只有同时满足以下条件，才能标记为完成：
 - `server/src/routes/webbridge.ts`
 - `desktop/src/shared/api/webbridge.ts`
 - `electron/main.cjs`
-- `tauri/src/main.rs`

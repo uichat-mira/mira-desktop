@@ -4,6 +4,10 @@ export const RELAY_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 export const RELAY_STREAM_CHUNK_BYTES = 48 * 1024;
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:~-]{1,220}$/u;
+// Relay V1 rewrites Client request IDs as "<server-UUID>~<original Client ID>".
+const CLOUD_CLIENT_REQUEST_ID = /^[A-Za-z0-9._:-]{1,160}$/u;
+const CLOUD_CONNECTION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const CLOUD_ROOM_ID = /^[A-Za-z0-9_-]{16,128}$/u;
 const METHOD_PATTERN = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/u;
 
 export type RelayHelloFrame = {
@@ -24,6 +28,22 @@ export type RelayHelloAckFrame = {
   hostConnected?: boolean;
 };
 
+/**
+ * Transport provenance is authored by the authenticated official Cloud Relay
+ * worker. It is NOT a Host Grant or a business permission. Do not accept the
+ * same fields from HTTP headers or from a Legacy Relay connection.
+ */
+export type RelayCloudProvenance = Readonly<{
+  version: 1;
+  transport: "cloud";
+  accountId: string;
+  deviceId: string;
+  room: string;
+  role: "client";
+  connectionId: string;
+  requestId: string;
+}>;
+
 export type RelayRequestFrame = {
   version: 1;
   type: "request";
@@ -32,6 +52,7 @@ export type RelayRequestFrame = {
   path: string;
   headers?: Record<string, string>;
   bodyBase64?: string;
+  relayProvenance?: RelayCloudProvenance;
 };
 
 export type RelayResponseFrame = {
@@ -60,6 +81,7 @@ export type RelayCancelFrame = {
   version: 1;
   type: "cancel";
   requestId: string;
+  relayProvenance?: RelayCloudProvenance;
 };
 
 export type RelayErrorFrame = {
@@ -124,8 +146,39 @@ const parsePath = (value: unknown) => {
   return value;
 };
 
+const isBoundedId = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && value.length <= 128;
+
+const parseCloudProvenance = (
+  raw: unknown,
+  requestId: string,
+  expectedRoom: string | undefined,
+): RelayCloudProvenance | null => {
+  if (!isRecord(raw) || !expectedRoom || !CLOUD_ROOM_ID.test(expectedRoom)) return null;
+  const keys = ["version", "transport", "accountId", "deviceId", "room",
+    "role", "connectionId", "requestId"];
+  if (Object.keys(raw).length !== keys.length ||
+      !keys.every((key) => Object.hasOwn(raw, key))) return null;
+  if (raw.version !== 1 || raw.transport !== "cloud" || raw.role !== "client" ||
+      !isBoundedId(raw.accountId) || !isBoundedId(raw.deviceId) ||
+      raw.room !== expectedRoom ||
+      typeof raw.connectionId !== "string" ||
+      !CLOUD_CONNECTION_ID.test(raw.connectionId) ||
+      raw.requestId !== requestId) return null;
+
+  const prefix = raw.connectionId + "~";
+  if (!requestId.startsWith(prefix) ||
+      !CLOUD_CLIENT_REQUEST_ID.test(requestId.slice(prefix.length))) return null;
+  return {
+    version: 1, transport: "cloud", accountId: raw.accountId,
+    deviceId: raw.deviceId, room: expectedRoom, role: "client",
+    connectionId: raw.connectionId, requestId,
+  };
+};
+
 export const parseRelayInboundHostFrame = (
   raw: string,
+  cloudRoom?: string,
 ): RelayInboundHostFrame | null => {
   let value: unknown;
   try {
@@ -160,7 +213,11 @@ export const parseRelayInboundHostFrame = (
   if (value.type === "request") {
     const path = parsePath(value.path);
     const headers = parseHeaders(value.headers);
+    const provenance = cloudRoom === undefined
+      ? undefined : parseCloudProvenance(value.relayProvenance,
+        typeof value.requestId === "string" ? value.requestId : "", cloudRoom);
     if (
+      (cloudRoom !== undefined && !provenance) ||
       !isRequestId(value.requestId) ||
       typeof value.method !== "string" ||
       !METHOD_PATTERN.test(value.method.toUpperCase()) ||
@@ -180,17 +237,30 @@ export const parseRelayInboundHostFrame = (
       ...(typeof value.bodyBase64 === "string"
         ? { bodyBase64: value.bodyBase64 }
         : {}),
+      ...(provenance ? { relayProvenance: provenance } : {}),
     };
   }
 
   if (value.type === "cancel") {
-    return isRequestId(value.requestId)
-      ? {
-          version: RELAY_PROTOCOL_VERSION,
-          type: "cancel",
-          requestId: value.requestId,
-        }
-      : null;
+    if (!isRequestId(value.requestId)) return null;
+    const provenance = cloudRoom === undefined
+      ? undefined : parseCloudProvenance(value.relayProvenance, value.requestId, cloudRoom);
+    // REL-001 Relay room-sockets.cleanupSocket emits bare cancellation on
+    // Client disconnect. It may only abort an existing local request, never
+    // establish Mobile identity or authorize a business request.
+    const split = value.requestId.indexOf("~");
+    const relayCleanupCancel = cloudRoom !== undefined &&
+      value.relayProvenance === undefined &&
+      split > 0 &&
+      CLOUD_CONNECTION_ID.test(value.requestId.slice(0, split)) &&
+      CLOUD_CLIENT_REQUEST_ID.test(value.requestId.slice(split + 1));
+    if (cloudRoom !== undefined && !provenance && !relayCleanupCancel) return null;
+    return {
+      version: RELAY_PROTOCOL_VERSION,
+      type: "cancel",
+      requestId: value.requestId,
+      ...(provenance ? { relayProvenance: provenance } : {}),
+    };
   }
 
   if (value.type === "error") {

@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
+import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stageTerminalDevRuntime } from "./terminal-runtime-staging.js";
@@ -293,6 +294,21 @@ const getFreePort = () => new Promise((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve(port));
   });
 });
+function requestLoopbackHealth(url) {
+  return new Promise((resolve, reject) => {
+    const request = http.get(url, { agent: new http.Agent({ proxyEnv: {} }) }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("error", reject);
+      response.on("end", () => resolve({
+        ok: response.statusCode >= 200 && response.statusCode < 300,
+        text: async () => Buffer.concat(chunks).toString("utf8"),
+      }));
+    });
+    request.on("error", reject);
+    request.setTimeout(2_000, () => request.destroy(new Error("Loopback health timed out")));
+  });
+}
 const backendPort = await getFreePort();
 const backendEnv = {
   ...cleanEnv,
@@ -323,7 +339,7 @@ try {
   let response;
   while (Date.now() < deadline) {
     try {
-      response = await fetch(`http://127.0.0.1:${backendPort}/health`);
+      response = await requestLoopbackHealth(`http://127.0.0.1:${backendPort}/health`);
       if (response.ok) break;
     } catch {
       // Backend is still starting.

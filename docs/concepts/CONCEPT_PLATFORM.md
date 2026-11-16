@@ -10,4 +10,4 @@ Doc Type: overview
 
 ## 含义
 
-`platform` covers Tauri, packaging, release behavior, and runtime packaging boundaries.
+`platform` covers Electron, packaging, release behavior, and runtime packaging boundaries.

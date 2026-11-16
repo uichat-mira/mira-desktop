@@ -13,11 +13,8 @@ Related:
   - local-model-packaging.md
   - terminal-dev-runtime.md
   - ../developments/release-management.md
-  - ../platform/tauri.md
   - ../../scripts/build-dist.js
   - ../../scripts/prepare-desktop-artifacts.js
-  - ../../scripts/build-tauri-dist.js
-  - ../../scripts/prepare-tauri-assets.js
 
 ## 单点真相范围
 
@@ -25,7 +22,7 @@ Related:
 
 它统一说明：
 
-- Electron / Tauri release 打包命令
+- Electron release 打包命令
 - `.artifacts/` 中间产物如何生成
 - 测试报告如何进入 release 包
 - release 输出目录和保留策略
@@ -45,12 +42,6 @@ Electron Windows release：
 pnpm package:electron:win
 ```
 
-Tauri Windows release：
-
-```bash
-pnpm package:tauri:win
-```
-
 清理临时构建产物：
 
 ```bash
@@ -67,8 +58,8 @@ pnpm version:sync
 
 桌面构建分为三个入口：
 
-- `.github/workflows/build-desktop.yml`：Windows 环境分支包与 Windows prod R2 发布。
-- `.github/workflows/build-macos-intel.yml`：Intel macOS 环境分支包与 macOS prod R2 发布；与 Windows workflow 独立并行。
+- `.github/workflows/build-desktop.yml`：Windows 环境分支包构建、测试与短期 Actions artifact，不写公共 R2。
+- `.github/workflows/build-macos-intel.yml`：Intel macOS 环境分支包及短期 artifact，不写公共 R2；与 Windows workflow 独立并行。
 - `.github/workflows/release-production.yml`：`v*` 标签正式发布；Windows 重型校验和打包由 `release-factory-v2.yml` 执行，并行调用 Intel macOS reusable build。
 
 当前触发规则：
@@ -76,17 +67,16 @@ pnpm version:sync
 | 事件 | 行为 |
 | --- | --- |
 | Pull Request → `dev/test/prod` | 轻量检查，不执行完整桌面打包 |
-| push → `dev` | Windows workflow 构建 Electron / Tauri；独立 macOS workflow 构建 Intel DMG。macOS dev 构建跳过重复 release test-report 生成，二者互不等待 |
-| push → `test` | Windows workflow 构建 Electron / Tauri；独立 macOS workflow 构建 Intel DMG。macOS test 构建跳过重复 release test-report 生成，二者互不等待 |
-| push → `prod` | Windows 与 Intel macOS 使用独立 workflow 完整构建；Windows 安装包同步 R2 `mira/latest/`，Intel macOS DMG 独立同步 `mira/macos-intel/latest/`，两条发布链互不阻塞 |
+| push → `dev` | Windows workflow 构建 Electron；独立 macOS workflow 构建 Intel DMG。macOS dev 构建跳过重复 release test-report 生成，二者互不等待 |
+| push → `test` | Windows workflow 构建 Electron；独立 macOS workflow 构建 Intel DMG。macOS test 构建跳过重复 release test-report 生成，二者互不等待 |
+| push → `prod` | Windows 与 Intel macOS 使用独立 workflow 完整构建并保存短期 artifact，**不覆盖公共 R2 latest** |
 | push → `v*` tag | Release Factory 完整校验 Windows 产物；并行构建 Intel macOS DMG。GitHub Release 保存 Windows + Intel macOS 资产；R2 分别更新 Windows `mira/latest/` 与 Intel macOS `mira/macos-intel/latest/` |
 
-Windows 分支构建仍由 Electron 与 Tauri 两个独立 job 并行执行；Intel macOS 已拆到独立 workflow，因此其长耗时不会延长 Windows `Build Desktop Apps` workflow。GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
+Windows 分支构建仍由 Electron 独立 job 执行；Intel macOS 已拆到独立 workflow，因此其长耗时不会延长 Windows `Build Desktop Apps` workflow。GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
 
 | 平台 | 分支包 / Release 资产 |
 | --- | --- |
 | Electron Windows | `*Setup*.exe`、对应 `.exe.blockmap` |
-| Tauri Windows | `msi/*.msi`、`nsis/*setup.exe` |
 | Electron macOS Intel | `*.dmg`、对应 `.dmg.blockmap`；当前未签名，仅作为 Intel 兼容性 / 内部发板资产 |
 | GitHub 自动生成 | Source code (`.zip`、`.tar.gz`，仅 GitHub Release) |
 
@@ -94,21 +84,20 @@ Actions artifact 为短期构建产物；GitHub Release 保存标签版本历史
 
 ### Cloudflare R2 当前版本分发
 
-R2 当前按平台拆分 latest 前缀，避免 Intel macOS 的慢构建阻塞 Windows 发布，也避免多个 job 对同一目录执行 `sync --delete` 时互相删除产物：
+公共镜像只由正式 `v*` 标签发布工作流 `.github/workflows/release-production.yml` 更新：
 
 ```text
-mira/latest/                 # Windows Electron + Tauri
+mira/latest/                 # Windows Electron
 mira/macos-intel/latest/     # Intel macOS Electron DMG
 ```
 
-两套前缀都由以下成功事件更新：
+普通 `prod` 分支推送只构建和保存短期 artifact，不能写公共 R2。只有稳定的 `vX.Y.Z` Tag 能进入正式发布；不同新版本发布共享串行组，防止相互覆盖。Windows 发布必须等待 Windows Release Factory 与 Intel macOS 构建都成功，且在更新 GitHub Release 前检查 R2 凭据。新的发布工作流拒绝非最新 Tag 覆盖公共 R2；**历史 Tag 自带的旧工作流不会被追溯修改，禁止重跑旧 Tag 发布工作流**。
 
-1. `prod` 分支对应平台构建成功；
-2. `v*` 标签对应平台正式发布成功。
+Tag 发布先验证 Windows Setup / macOS Intel DMG 和对应 blockmap 的文件名、版本及非零大小，再验证 GitHub Release 的对应文件和字节大小；R2 同步后还要检查该平台 latest 目录仅包含预期两个对象且大小匹配。Tauri 资产混入、文件缺失、尺寸不匹配或目录残留均阻断发布。Windows 与 macOS 两条发布链都通过后，整体发布状态才成功。
 
-在 `prod` 分支上，Windows 发布只依赖 Windows Electron / Tauri，Intel macOS R2 发布只依赖 Intel macOS 构建，因此两条链互不阻塞。`v*` 标签下，Windows Release/R2 仍不等待 Mac；Mac 在自身构建完成后等待现有 GitHub Release 建立，再追加 DMG 并更新独立 Mac R2 前缀。两套 R2 路径各自使用 `--delete` 维护本平台 latest。R2 不承担历史版本保存职责，标签历史仍由 GitHub Release 保存。
+这两套前缀仍各自使用 `--delete` 清理本平台 latest 中的旧产物，不删除历史 GitHub Release / Tag。GitHub 与 R2 上传存在短暂先后窗口；若发生部分失败，工作流必须标红，由维护者重试或修复，不能把部分成功描述为完全发布。旧 `mira/previous/` 不再由工作流主动删除。
 
-R2 所需 GitHub Secrets 为：
+R2 所需 GitHub Secrets：
 
 ```text
 R2_ACCOUNT_ID
@@ -118,11 +107,11 @@ R2_BUCKET
 R2_PUBLIC_BASE_URL
 ```
 
-Windows R2 公开地址格式为 `${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`；Intel macOS 地址格式为 `${R2_PUBLIC_BASE_URL}/mira/macos-intel/latest/<asset-name>`。两套 latest 各自使用 `--delete` 同步。旧的 Windows `mira/previous/` 仍会在 Windows 发布前清理。
+Windows 公开镜像：`${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`；macOS Intel 镜像：`${R2_PUBLIC_BASE_URL}/mira/macos-intel/latest/<asset-name>`。离线发布校验回归：`node --test scripts/release/verify-release-mirror.test.mjs`。
 
 ## 本地模型资源
 
-本地 embedding / rerank 模型包、`onnxruntime-web` WASM runtime、Electron / Tauri resources 复制、首启解压和 checksum 校验规则，见：
+本地 embedding / rerank 模型包、`onnxruntime-web` WASM runtime、Electron resources 复制、首启解压和 checksum 校验规则，见：
 
 - `local-model-packaging.md`
 
@@ -162,7 +151,7 @@ pnpm prepare:piper-runtime
 - 先复用 `.local-runtimes/` 持久缓存
 - 再复制到 `.artifacts/micro-apps/tts/piper/`
 - `prepare-desktop-artifacts` 会自动执行这一步
-- Electron resources 和 Tauri resources 都会带上 `micro-apps/tts/piper/` 目录
+- Electron resources 会带上 `micro-apps/tts/piper/` 目录
 
 服务端运行时解析顺序：
 
@@ -187,7 +176,7 @@ pnpm prepare:piper-runtime
 
 ## Terminal Dev Runtime
 
-Node/npm/npx、MinGit、uv、ripgrep 的固定版本、checksum、共享 Electron/Tauri staging、终端 PATH 与低资源 smoke 规则见：
+Node/npm/npx、MinGit、uv、ripgrep 的固定版本、checksum、共享 Electron staging、终端 PATH 与低资源 smoke 规则见：
 
 - `terminal-dev-runtime.md`
 
@@ -233,7 +222,7 @@ scripts/build-dist.js
    ```
 
 3. 清理旧的 `.artifacts/electron-app`。
-4. 执行 `pnpm version:sync`，同步 workspace 和 Tauri 版本字段。
+4. 执行 `pnpm version:sync`，同步 workspace 版本字段。
 5. 执行 `pnpm internal:prepare:desktop-artifacts`。
 6. 按目标平台解析 electron-builder flag。
 7. 进入 `.artifacts/electron-app`，执行 `electron-builder --win` 或 `electron-builder --mac`。
@@ -314,7 +303,7 @@ pnpm smoke:terminal:mac
 
 Electron Chat smoke 使用 `.test-artifact/` 下的隔离数据库、Workspace 和附件目录，并为 backend 与 Vite 分配动态端口。它验证真实 Electron 登录、Chat Composer、普通附件 Draft、鉴权上传与落盘，不要求配置外部 LLM，也不把 Provider 回复计入本项证据。Terminal smoke 单独验证 POSIX 临时命令、持久 PTY 会话复用与进程组清理。
 
-桌面端打包和用户下载统一使用 `Chujie.crx`，ZIP 产物使用 `Chujie.zip`。Electron、Tauri 和 shared desktop artifacts 必须引用相同文件名。
+桌面端打包和用户下载统一使用 `Chujie.crx`，ZIP 产物使用 `Chujie.zip`。Electron 和 shared desktop artifacts 必须引用相同文件名。
 
 改名不改变扩展身份：签名密钥路径、Chrome 扩展 ID、Native Host 注册名和 `MiraWebBridgeHost.exe` 文件名保持稳定，确保已有安装可以继续升级和连接。
 
@@ -500,6 +489,8 @@ server/test-report/
 
 这两个目录是开发页和 release 包共同复用的稳定报告源。
 
+> **报告时间性：** 这些 JSON 是最后一次完整生成留下的测试快照，不是当前 commit 的实时测试结论。源码变更后若完整 Vitest/coverage 生成失败，应保留原快照并在 PR 中披露失败用例，不能手工改动测试结果或把旧用例名当成当前支持能力的证据。尤其是 DSK-011 退役后的旧 Tauri 用例名，需要待完整测试恢复后由 `scripts/generate-test-report.js` 正式刷新；验证旧 Tauri runtime 注入被拒绝的负例仍应保留。
+
 ### `test-report.json`
 
 用于承载测试结果本体，至少包含：
@@ -597,75 +588,6 @@ coverage.reporter 包含 json 与 json-summary
 - `scripts/generate-test-report.js` 会优先把这两份 coverage 原始文件转换成官方 `coverage-report.json`
 - 如果某次运行仍然没有 coverage 明细落盘，脚本才会写入一个“coverage 不可用”的占位 JSON，而不是让前端或打包流程直接断掉
 
-## Tauri Release 流程
-
-入口脚本：
-
-```text
-scripts/build-tauri-dist.js
-```
-
-当前流程：
-
-0. 确认当前平台是 Windows。非 Windows 平台直接失败。
-1. 读取根目录 `package.json` 的 `version`。
-2. 生成 release 输出目录名：
-
-   ```text
-   release/v<version>_<YYYYMMDD>_<HHMMSS>/tauri/
-   ```
-
-3. 执行 `pnpm version:sync`。
-4. 清理 Tauri 旧 bundle cache：
-
-   ```text
-   tauri/target/release/bundle/
-   ```
-
-5. 执行：
-
-   ```bash
-   cross-env CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 pnpm tauri build --config tauri/tauri.conf.json
-   ```
-
-6. 把 Tauri bundle 输出复制到 release 目录。
-7. 清理 `.artifacts/`。
-8. 按 `RELEASE_KEEP_COUNT` 清理旧 release 目录。
-
-本地需要验证 Tauri 壳层与完整资源打包、但服务端测试报告生成暂时不可用时，可显式运行：
-
-```bash
-pnpm package:tauri:win:notest
-```
-
-该命令仅跳过前端和服务端的发布测试报告生成，仍会执行前端、后端、文档、Node runtime、Terminal Dev Runtime、Piper runtime 和 Tauri bundle 构建。正式发布仍应使用 `pnpm package:tauri:win`，并先处理测试失败。
-
-Tauri 在构建前通过 `beforeBuildCommand` 或相关准备链路复用：
-
-```text
-scripts/prepare-tauri-assets.js
-```
-
-该脚本会调用：
-
-```bash
-pnpm internal:prepare:desktop-artifacts
-```
-
-然后把共享 backend bundle 和 Node runtime 复制到：
-
-```text
-tauri/resources/server/
-tauri/resources/node-runtime/
-tauri/resources/terminal-runtime/
-tauri/resources/runtime.config.cjs
-```
-
-Tauri 当前同样是 Windows-only release。生产态 Rust 代码当前查找：
-
-```text
-resources/node-runtime/node.exe
-```
 
 ## Release 输出和保留策略
 
@@ -679,12 +601,6 @@ Electron：
 
 ```text
 release/v<version>_<YYYYMMDD>_<HHMMSS>/electron/
-```
-
-Tauri：
-
-```text
-release/v<version>_<YYYYMMDD>_<HHMMSS>/tauri/
 ```
 
 默认只保留最近 `3` 个 release 目录。
@@ -706,21 +622,20 @@ pnpm package:electron:win
 
 ## 当前平台边界
 
-正式 Release Factory V2 与 Tauri 发布仍以 Windows x64 为正式合同；R2 的 Windows 主分发前缀保持 `mira/latest/`，Intel macOS 兼容性包使用独立 `mira/macos-intel/latest/`。
+正式 Release Factory V2 的 Windows Electron 发布以 Windows x64 为正式合同；R2 的 Windows 主分发前缀保持 `mira/latest/`，Intel macOS 兼容性包使用独立 `mira/macos-intel/latest/`。
 
 Electron 另有一条独立的 Intel macOS CI / GitHub Release 路径：
 
 - GitHub-hosted `macos-15-intel` runner 上执行 `node scripts/build-dist.js mac`；
-- server native module、bundled Node 22.23.1 与 staged runtime smoke 按 `darwin-x64` 真实验证；
-- `dev/test/prod` 保存短期 Actions DMG artifact；其中 `dev/test` 为降低重复 CI 成本跳过 release test-report 重生成，`prod` 保持完整打包；
+- server native module、bundled Node 24.22.1 与 staged runtime smoke 应按 `darwin-x64` 实际验收；Node 22 的历史验收不代表 Node 24 已验证通过；
+- `dev/test/prod` 保存短期 Actions DMG artifact；其中 `dev/test` 为降低重复 CI 成本跳过 release test-report 重生成，`prod` 保持完整打包但不写公共 R2；
 - `v*` tag 使用完整 Intel macOS 打包并把 DMG 追加到 GitHub Release；
-- Intel DMG 当前**未做 Developer ID 签名与公证**；成功的 `prod` / `v*` 构建会同步到独立 R2 前缀 `mira/macos-intel/latest/`；
+- Intel DMG 当前**未做 Developer ID 签名与公证**；仅正式 `v*` 发布可同步到独立 R2 前缀 `mira/macos-intel/latest/`；
 - 这条 Intel 兼容性 lane 不改变 canonical macOS 首发目标 `darwin-arm64`，不能替代后续 arm64 release/payload 证据。
 
 其余边界：
 
-- Tauri backend/runtime 与打包脚本仍是 Windows-only；
-- 根命令目前仍只暴露 `package:electron:win` / `package:tauri:win`，macOS CI 直接调用 `build-dist.js mac`；
+- 根命令目前仍只暴露 `package:electron:win`，macOS CI 直接调用 `build-dist.js mac`；
 - `build-dist.js` 只接受 `win/windows/mac/macos`，未知平台直接失败。
 
 ## 改造优先级
@@ -738,7 +653,7 @@ scripts/generate-test-report.js
 后续可继续补充：
 
 - 报告生成耗时统计
-- 输出 `.artifacts/reports` 作为 Electron / Tauri 连续打包时的共享缓存
+- 输出 `.artifacts/reports` 作为 Electron 连续打包时的共享缓存
 - 更清晰的失败摘要输出
 
 ### P1：Artifact 分层
@@ -747,10 +662,10 @@ scripts/generate-test-report.js
 
 - `reports`：测试报告生成与校验
 - `stage`：准备 renderer/server/docs/runtime inputs
-- `package`：Electron/Tauri 调用各自打包器
+- `package`：Electron 调用各自打包器
 - `release-output`：时间戳目录、保留策略、清理
 
-这样可以减少 Electron/Tauri 脚本里的重复逻辑。
+这样可以减少 Electron 脚本里的重复逻辑。
 
 ### P2：平台显式化
 
@@ -758,10 +673,8 @@ scripts/generate-test-report.js
 
 - Windows 构建继续稳定
 - 未支持的平台显式失败
-- 未来支持 macOS / Linux 时再加入平台 native module 解析、Node runtime 命名和 Tauri resource 路径规则
+- 未来支持 macOS / Linux 时再加入平台 native module 解析、Node runtime 命名规则
 
 ## 相关文档
 
 - `../developments/release-management.md`
-- `../platform/tauri.md`
-- `../platform/tauri-setup.md`

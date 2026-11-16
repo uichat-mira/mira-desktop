@@ -322,7 +322,7 @@ GitHub 模式需要一个独立的本地施工现场，用于：
 
 默认数据库 Workspace 名为 `Mira BASE`，绑定桌面宿主提供的默认物理目录。`Mira BASE` 只是逻辑名称，不是站点目录名。
 
-默认目录的创建由 Electron / Tauri launcher 在 backend 启动前完成；MiraDocs Skill 不负责通过一次 Terminal 调用“补建”全局默认目录，也不能让通用 Workspace snapshot 隐式创建自定义路径。
+默认目录的创建由 Electron launcher 在 backend 启动前完成；MiraDocs Skill 不负责通过一次 Terminal 调用“补建”全局默认目录，也不能让通用 Workspace snapshot 隐式创建自定义路径。
 
 详细合同见：`docs/chat/workspace.md`。
 

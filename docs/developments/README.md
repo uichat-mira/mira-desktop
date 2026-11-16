@@ -10,7 +10,6 @@ Doc Type: overview
 Canonical: true
 Related:
   - ../architecture/README.md
-  - ../platform/tauri.md
   - ../knowledge-system/DIRECTORY_AND_CLASSIFICATION_RULES.md
 
 ## 单点真相范围

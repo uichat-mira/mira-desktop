@@ -17,12 +17,7 @@ function HomePage() {
   }, [backendState.detail, runtime.backendUrl]);
 
   const runtimeSummary = useMemo(() => {
-    const hostLabel =
-      runtime.hostKind === "electron"
-        ? "Electron"
-        : runtime.hostKind === "tauri"
-        ? "Tauri"
-        : "Browser";
+    const hostLabel = runtime.hostKind === "electron" ? "Electron" : "Browser";
     const statusLabel =
       backendState.status === "running"
         ? "API 正常"

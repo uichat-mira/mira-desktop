@@ -35,7 +35,7 @@ const remoteRoleSummaryRoute: FastifyPluginAsync = async (app) => {
     },
     routeHandler("Failed to list remote role summaries", async (request) => {
       const user = request.authUser;
-      if (!request.remoteDevice || !user) {
+      if (!(request.remoteDevice || request.cloudRemoteCaller) || !user) {
         throw forbidden("A paired remote device credential is required");
       }
 

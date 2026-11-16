@@ -404,6 +404,7 @@ export const runBoundedProcess = (input: {
     let stdout = "";
     let stderr = "";
     let outputBytes = 0;
+    let pagingStopResult: BoundedProcessResult | undefined;
     let child: ReturnType<typeof spawn> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -499,7 +500,7 @@ export const runBoundedProcess = (input: {
     stderrStream.setEncoding("utf8");
 
     const append = (stream: "stdout" | "stderr", chunk: string) => {
-      if (settled) return;
+      if (settled || pagingStopResult) return;
       outputBytes += Buffer.byteLength(chunk, "utf8");
       if (outputBytes > input.maxBufferBytes) {
         terminate();
@@ -518,14 +519,15 @@ export const runBoundedProcess = (input: {
           const lastNewline = stdout.lastIndexOf("\n");
           const completeStdout =
             lastNewline >= 0 ? stdout.slice(0, lastNewline + 1) : "";
-          terminate();
-          finish({
+          // Resolve paging success only after child close frees Windows cwd handles.
+          pagingStopResult = {
             status: "completed",
             exitCode: 0,
             stdout: completeStdout,
             stderr,
             stoppedByLimit: true,
-          });
+          };
+          terminate();
         }
       } else {
         stderr += chunk;
@@ -544,6 +546,10 @@ export const runBoundedProcess = (input: {
       });
     });
     activeChild.on("close", (code) => {
+      if (pagingStopResult) {
+        finish(pagingStopResult);
+        return;
+      }
       finish({
         status: "completed",
         exitCode: code,

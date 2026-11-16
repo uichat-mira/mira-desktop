@@ -131,7 +131,6 @@ const coreEntryPaths = [
   "provider/README",
   "evaluation/README",
   "microapp/README",
-  "platform/tauri",
 ];
 
 const withBase = (value: string) => {
