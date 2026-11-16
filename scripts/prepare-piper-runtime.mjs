@@ -105,7 +105,10 @@ function extractArchive() {
     [
       "-NoProfile",
       "-Command",
-      `Expand-Archive -LiteralPath ${toPsLiteral(archivePath)} -DestinationPath ${toPsLiteral(extractedRoot)} -Force`,
+      // Windows PowerShell can load a PowerShell 7 Archive module whose three-argument
+      // ExtractToDirectory overload is unavailable on .NET Framework. Use the
+      // two-argument framework API, as in prepare-terminal-runtime.mjs.
+      `Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory(${toPsLiteral(archivePath)}, ${toPsLiteral(extractedRoot)})`,
     ],
     {
       windowsHide: true,
