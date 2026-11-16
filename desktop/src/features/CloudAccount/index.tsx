@@ -33,11 +33,17 @@ export default function CloudAccountPage() {
   const english = i18n.resolvedLanguage?.toLowerCase().startsWith("en") ?? false;
   const [view, setView] = useState<CloudView>(emptyView);
   const [selected, setSelected] = useState<string[]>([]);
+  const [editingPolicy, setEditingPolicy] = useState(false);
+  const [policyScopes, setPolicyScopes] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   // Different Cloud accounts never inherit a previous user's initial Host scope choices.
-  useEffect(() => { setSelected([]); }, [view.account?.id]);
+  useEffect(() => {
+    setSelected([]);
+    setEditingPolicy(false);
+    setPolicyScopes([]);
+  }, [view.account?.id]);
 
   useEffect(() => {
     if (!api) return;
@@ -91,6 +97,34 @@ export default function CloudAccountPage() {
     try { setView(await api.signOut() as CloudView); setSelected([]); }
     catch (err) { setError(err instanceof Error ? err.message : "云账号退出失败"); }
     finally { setBusy(false); }
+  };
+  const updateHostPolicy = async () => {
+    if (!api || !session?.token || isCheckingSession ||
+        view.status !== "signed_in" || view.localOwnerBound !== true) {
+      setError("请先登录当前 Mira 本地账户并确认云端 Host 身份");
+      return;
+    }
+    const added = policyScopes.filter((scope) => !view.scopes.includes(scope));
+    if (added.length > 0 && !window.confirm(english
+      ? "Expand this Desktop Host's allowed Mobile scopes? Newly eligible same-account devices may inherit them."
+      : "确定扩大此 Desktop Host 对同账号手机的权限上限吗？符合条件的手机可能自动继承新权限。")) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      setView(await api.updateHostPolicy(policyScopes, session.token));
+      setEditingPolicy(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "云端 Host 授权保存失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const togglePolicyScope = (scope: string) => {
+    setPolicyScopes((current) => current.includes(scope)
+      ? current.filter((item) => item !== scope)
+      : [...current, scope]);
   };
   const toggle = (scope: string) => {
     setSelected((current) => current.includes(scope)
@@ -161,7 +195,7 @@ export default function CloudAccountPage() {
         </SectionCard>
 
         {signedIn && view.permissionsConfigured ? (
-          <SectionCard title={english ? "Authorized Mobile scopes" : "已保存的手机访问权限"}>
+          <SectionCard title={english ? "Desktop Host Mobile scope ceiling" : "Desktop Host 手机访问权限上限"}>
             <div className="space-y-2 px-4 py-4 text-sm">
               <p className="text-text-secondary">授权仅代表云端允许范围。具体执行还必须通过 Desktop Gateway 和 Harness 检查。</p>
               <div className="flex flex-wrap gap-2">
@@ -177,7 +211,45 @@ export default function CloudAccountPage() {
                   此云登录早于本地用户绑定，手机访问仍被拒绝。请退出云账号，再以当前 Mira 本地账户重新登录云账号。
                 </p>
               ) : null}
-              <p className="text-xs text-text-secondary">修改或撤销某台手机的权限，请前往 Mira Cloud Account Portal。</p>
+              <p className="text-xs text-text-secondary">本页修改 Host 的权限上限；单台手机的缩小或撤销仍在 Mira Cloud Account Portal 管理。</p>
+              {view.status === "signed_in" && view.localOwnerBound === true && api ? (
+                <div className="space-y-3 pt-2">
+                  {!editingPolicy ? (
+                    <Button variant="outline" disabled={busy || isCheckingSession || !session?.token}
+                      onClick={() => { setPolicyScopes([...view.scopes]); setEditingPolicy(true); }}>
+                      {english ? "Edit Host permission ceiling" : "调整 Host 权限上限"}
+                    </Button>
+                  ) : (
+                    <>
+                      <p className="text-xs text-text-secondary">
+                        {english
+                          ? "Only the verified local Desktop owner can save. Widening may let current and future same-account phones read more data. Existing per-device restrictions remain effective."
+                          : "仅当前绑定的 Mira 本地账户可保存。扩大权限后，现有及新加入的同账号手机可能获得相应访问能力，单设备限制仍然有效。"}
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {SCOPE_OPTIONS.map(([id, zh, en]) => (
+                          <label key={id} className="flex cursor-pointer items-center gap-3 rounded-ui-control border border-border px-3 py-2 text-sm text-text-primary">
+                            <input type="checkbox" checked={policyScopes.includes(id)}
+                              disabled={busy} onChange={() => togglePolicyScope(id)}
+                              aria-label={english ? en : zh} />
+                            <span>{english ? en : zh}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="primary" disabled={busy || isCheckingSession || !session?.token}
+                          onClick={() => void updateHostPolicy()}>
+                          {english ? "Save Host policy to Cloud Auth" : "保存 Host 授权"}
+                        </Button>
+                        <Button variant="outline" disabled={busy}
+                          onClick={() => setEditingPolicy(false)}>
+                          {english ? "Cancel" : "取消"}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : null}
             </div>
           </SectionCard>
         ) : !signedIn && hasNative ? (
@@ -185,8 +257,8 @@ export default function CloudAccountPage() {
             icon={<LockKeyhole size={16} />}>
             <div className="space-y-4 p-4">
               <p className="text-sm leading-6 text-text-secondary">
-                {english ? "Choose initial Mobile scopes before sign-in; all start disabled. If this Host already has a Cloud policy, its existing scopes are preserved. Change them later in Cloud Portal. No QR pairing is needed."
-                  : "首次登录可选择手机可调用的权限，默认全部关闭；若云端已有此 Host 的权限策略，将保留原设置，后续可在 Cloud Portal 修改。不需要二维码或现场配对。"}
+                {english ? "Choose initial Mobile scopes before sign-in; all start disabled. If this Host already has a Cloud policy, existing scopes are preserved. After login change the Host ceiling here; individual device restrictions remain in Cloud Portal. No QR pairing is needed."
+                  : "首次登录可选择手机可调用的权限，默认全部关闭；若云端已有此 Host 的权限策略，将保留原设置；登录后可在本页修改权限上限，单台手机权限在 Cloud Portal 管理。不需要二维码或现场配对。"}
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {SCOPE_OPTIONS.map(([id, zh, en]) => (

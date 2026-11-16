@@ -72,10 +72,16 @@ Remote V1 Tailscale pairing and cloud account remain separate.
   LaunchServices, and then registers the handler in Electron main. Bypassing that
   preparation fails closed instead of starting an OAuth flow that cannot return.
 - Native Electron IPC: `cloud-account:status`, `cloud-account:login`,
-  `cloud-account:cancel-login`, `cloud-account:retry-host`,
-  `cloud-account:reset-credentials`, `cloud-account:logout`; preload
-  exposes only the narrow `window.cloudAccount` wrapper and redacted
-  subscription. Host-setup retry uses the existing encrypted Cloud Session
+  `cloud-account:update-host-policy`, `cloud-account:cancel-login`,
+  `cloud-account:retry-host`, `cloud-account:reset-credentials`,
+  `cloud-account:logout`; preload exposes only the narrow
+  `window.cloudAccount` wrapper and redacted subscription. Updating an
+  existing Host scope ceiling is exclusively a verified owner action: Electron
+  revalidates the current Desktop-local JWT through the native Backend, matches
+  the user ID to the OS-encrypted Cloud Host owner and performs a server-owned
+  optimistic revision-checked policy mutation. It never gives Cloud Auth tokens
+  to the renderer or bypasses per-Mobile grant overrides and Host Gateway
+  scope checks. Host-setup retry uses the existing encrypted Cloud Session
   and the original encrypted scope selection; server-side Host policy remains
   authoritative. A broken encrypted local record can be reset **only by an
   explicit user action**, which cannot claim remote session revocation.

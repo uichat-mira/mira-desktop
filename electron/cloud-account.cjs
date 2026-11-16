@@ -187,6 +187,7 @@ function createCloudAccountController(options) {
   let presenceTimer = null;
   let presenceInFlight = false;
   let lastHostPresence = null;
+  let policyWriteInFlight = false;
   function clearPending() {
     if (authorizationTimer) clearTimeout(authorizationTimer);
     authorizationTimer = null;
@@ -490,6 +491,71 @@ function createCloudAccountController(options) {
     lastHostPresence = host;
     return { hostId: host.id, scopes, existingPolicy };
   }
+  async function updateHostPolicy(selectedScopes, verifiedLocalOwnerUserId) {
+    const selected = validateScopes(selectedScopes);
+    if (policyWriteInFlight) throw new Error("已有云端权限保存操作正在进行");
+    if (view.status !== "signed_in" || !record?.sessionToken ||
+        !record.permissionsConfigured || !record.hostId ||
+        !validLocalOwner(verifiedLocalOwnerUserId) ||
+        record.localOwnerUserId !== verifiedLocalOwnerUserId) {
+      throw new Error("只有当前绑定的 Mira 本地账户才能调整此 Host 权限");
+    }
+    const currentRevision = revision;
+    const token = record.sessionToken;
+    const hostId = record.hostId;
+    const accountId = record.account?.id;
+    const stillOwner = () => currentRevision === revision &&
+      view.status === "signed_in" && record?.sessionToken === token &&
+      record?.hostId === hostId &&
+      record?.localOwnerUserId === verifiedLocalOwnerUserId;
+    policyWriteInFlight = true;
+    try {
+      const snapshot = await request("/v1/hosts/" + encodeURIComponent(hostId) +
+        "/grants", "GET", token);
+      if (!stillOwner()) throw new Error("云账号或本地用户已变更，权限操作已取消");
+      if (!snapshot || snapshot.hostId !== hostId ||
+          snapshot.accountId !== accountId || !snapshot.policyConfigured ||
+          !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
+          !Array.isArray(snapshot.policyScopes)) {
+        throw new Error("Cloud Auth Host 权限快照无效");
+      }
+      const previous = validateScopes(snapshot.policyScopes);
+      if (previous.length !== selected.length ||
+          previous.some((scope, index) => selected[index] !== scope)) {
+        if (!stillOwner()) throw new Error("云账号已变更，拒绝保存旧用户权限");
+        const result = await request("/v1/hosts/" + encodeURIComponent(hostId) +
+          "/grant-policy", "PUT", token, {
+            expectedRevision: snapshot.revision, scopes: selected,
+          });
+        if (!stillOwner()) throw new Error("云账号已变更，拒绝恢复旧用户状态");
+        if (!result || result.hostId !== hostId ||
+            !Number.isSafeInteger(result.revision) ||
+            result.revision <= snapshot.revision ||
+            !Array.isArray(result.scopes)) {
+          throw new Error("Cloud Auth 权限保存响应无效");
+        }
+        const actual = validateScopes(result.scopes);
+        if (actual.length !== selected.length ||
+            actual.some((scope, index) => selected[index] !== scope)) {
+          throw new Error("云端保存的权限与用户选择不一致");
+        }
+      }
+      if (!stillOwner()) throw new Error("云账号或本地用户已变更，权限操作已取消");
+      record = { ...record, scopes: selected };
+      persist(record);
+      return publish({ scopes: selected, message:
+        "Host 授权上限已保存到 Cloud Auth；Desktop 将按快照刷新生效，单设备缩小或撤销继续有效。" });
+    } catch (error) {
+      if (error?.code === "reauth" && stillOwner()) resetRejectedSession();
+      if (error?.code === "conflict") {
+        throw new Error("Host 权限版本已变化，请重新打开编辑面板后再保存");
+      }
+      throw error;
+    } finally {
+      policyWriteInFlight = false;
+    }
+  }
+
   function publishConfiguredHost(result) {
     return publish({ status: "signed_in", account: record.account,
       expiresAt: record.expiresAt, hostId: result.hostId,
@@ -740,7 +806,7 @@ function createCloudAccountController(options) {
   }
   return { initialize, begin, cancelAuthorization, handleCallback, retryHostSetup,
     resetLocalCredentials, signOut, status, withRelayHostTicket,
-    requestHostGrantSnapshot, getBoundLocalOwnerUserId };
+    requestHostGrantSnapshot, updateHostPolicy, getBoundLocalOwnerUserId };
 }
 
 module.exports = { createCloudAccountController, parseCallback, validateScopes, SCOPES,

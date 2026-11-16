@@ -80,6 +80,12 @@ ipcMain.handle("cloud-account:login", async (event, scopes, localAccessToken) =>
   const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
   return cloudAccount.begin(scopes, localOwnerUserId);
 });
+ipcMain.handle("cloud-account:update-host-policy", async (event, scopes, localAccessToken) => {
+  cloudIpcAuth(event);
+  if (!cloudAccount) throw new Error("Cloud Account not initialized");
+  const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
+  return cloudAccount.updateHostPolicy(scopes, localOwnerUserId);
+});
 ipcMain.handle("cloud-account:cancel-login", (event) => {
   cloudIpcAuth(event);
   if (!cloudAccount) throw new Error("Cloud Account not initialized");

@@ -189,6 +189,7 @@ function fixture() {
   };
   let offline = false;
   let storedPolicy = null;
+  let policyRevision = 0;
   let beforePolicyPut = null;
   let beforeSessionRestore = null;
   let beforeOpenExternal = null;
@@ -234,12 +235,21 @@ function fixture() {
       if (beforeGrantRead) await beforeGrantRead();
       if (grantSnapshot) return Response.json(grantSnapshot);
       return Response.json({ hostId: "host-1", accountId: "account-a",
-        revision: storedPolicy ? 7 : 0, policyConfigured: Boolean(storedPolicy),
+        revision: policyRevision, policyConfigured: Boolean(storedPolicy),
         policyScopes: storedPolicy || [] });
     }
     if (url.endsWith("/v1/hosts/host-1/grant-policy")) {
-      if (beforePolicyPut) await beforePolicyPut();
-      return Response.json({ hostId: "host-1", revision: 1 });
+      const custom = beforePolicyPut ? await beforePolicyPut({ url, opts }) : null;
+      if (custom instanceof Response) return custom;
+      const input = JSON.parse(opts.body);
+      if (input.expectedRevision !== policyRevision) {
+        return Response.json({ error: { code: "HOST_GRANT_STALE_REVISION" } },
+          { status: 409 });
+      }
+      storedPolicy = input.scopes;
+      policyRevision += 1;
+      return Response.json({ hostId: "host-1", revision: policyRevision,
+        scopes: storedPolicy });
     }
     if (url.endsWith("/v1/auth/session")) {
       if (beforeSessionRestore) await beforeSessionRestore();
@@ -259,7 +269,7 @@ function fixture() {
   });
   return { dir, store, opened, calls, build,
     setOffline: (yes) => { offline = yes; },
-    setStoredPolicy: (scopes) => { storedPolicy = scopes; },
+    setStoredPolicy: (scopes) => { storedPolicy = scopes; policyRevision = 7; },
     failHostRegistration: (count = 1) => { hostFailuresRemaining = count; },
     setBeforePolicyPut: (hook) => { beforePolicyPut = hook; },
     setBeforeSessionRestore: (hook) => { beforeSessionRestore = hook; },
@@ -431,6 +441,107 @@ test("re-login keeps the Cloud owner's existing Host ceiling instead of overwrit
   assert.deepEqual(controller.status().scopes, ["threads:read"]);
   assert.match(controller.status().message, /保留云端原有/);
   assert.equal(f.calls.some((call) => call.url.endsWith("/grant-policy")), false);
+});
+
+test("verified Desktop owner can add only messages:read to an existing Host ceiling", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  assert.deepEqual(controller.status().scopes, ["threads:read"]);
+  const result = await controller.updateHostPolicy(["messages:read", "threads:read"], 7);
+  assert.equal(result.status, "signed_in");
+  assert.deepEqual(result.scopes, ["threads:read", "messages:read"]);
+  assert.equal(result.localOwnerBound, true);
+  assert.equal(JSON.stringify(result).includes("mcs_v1."), false);
+  const writes = f.calls.filter((call) => call.url.endsWith("/grant-policy"));
+  assert.equal(writes.length, 1);
+  assert.deepEqual(JSON.parse(writes[0].opts.body), {
+    expectedRevision: 7, scopes: ["threads:read", "messages:read"],
+  });
+  assert.equal(fs.readFileSync(f.store, "utf8").includes("messages:read"), false,
+    "native scoped permissions remain in OS-encrypted storage");
+  const restored = f.build();
+  await restored.initialize();
+  assert.deepEqual(restored.status().scopes, ["threads:read", "messages:read"]);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/v1/oauth/token")).length, 1);
+  await restored.signOut();
+});
+
+test("Host policy edit rejects other local users, invalid scopes and missing owner binding", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  await assert.rejects(controller.updateHostPolicy(["messages:read"], 8), /绑定的 Mira 本地账户/);
+  await assert.rejects(controller.updateHostPolicy(["tools:*"], 7), /无效的远程权限/);
+  await assert.rejects(controller.updateHostPolicy(["messages:read"], -1), /绑定的 Mira 本地账户/);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
+  await controller.signOut();
+  const legacy = f.build();
+  await legacy.initialize();
+  await legacy.begin(["threads:read"]);
+  const state = new URL(f.opened.at(-1)).searchParams.get("state");
+  await legacy.handleCallback("mira-desktop://oauth/callback?state=" + state +
+    "&code=mca_v1.id.secret");
+  assert.equal(legacy.status().localOwnerBound, false);
+  await assert.rejects(legacy.updateHostPolicy(["messages:read"], 7), /绑定的 Mira 本地账户/);
+  assert.equal(f.calls.filter((call) => call.url.endsWith("/grant-policy")).length, 0);
+});
+
+test("stale policy revision fails closed without broadening local scope", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  f.setBeforePolicyPut(() => Response.json(
+    { error: { code: "HOST_GRANT_STALE_REVISION" } }, { status: 409 }));
+  await assert.rejects(
+    controller.updateHostPolicy(["threads:read", "messages:read"], 7),
+    /权限版本已变化/,
+  );
+  assert.deepEqual(controller.status().scopes, ["threads:read"]);
+  await controller.signOut();
+});
+
+test("sign-out cancels the result of an in-flight owner Host policy edit", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  let entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  f.setBeforePolicyPut(async () => { entered(); await held; });
+  const write = controller.updateHostPolicy(["threads:read", "messages:read"], 7);
+  await started;
+  await controller.signOut();
+  release();
+  await assert.rejects(write, /云账号已变更/);
+  assert.equal(controller.status().status, "signed_out");
+  assert.deepEqual(controller.status().scopes, []);
+  const restored = f.build();
+  await restored.initialize();
+  assert.equal(restored.status().status, "signed_out");
+});
+
+test("revoked Cloud Session fails closed during owner policy edit", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  f.setStoredPolicy(["threads:read"]);
+  const controller = f.build();
+  await signIn(f, controller);
+  f.setBeforePolicyPut(() => Response.json(
+    { error: { code: "CLOUD_SESSION_REVOKED" } }, { status: 401 }));
+  await rejectsCode(controller.updateHostPolicy(["threads:read", "messages:read"], 7),
+    "reauth");
+  assert.equal(controller.status().status, "rejected");
+  assert.equal(controller.getBoundLocalOwnerUserId(), null);
 });
 
 test("logout wins when an in-flight Host grant write finishes later", async (t) => {
