@@ -76,6 +76,71 @@ test("createThread stores knowledgeBaseId only when provided", () => {
   assert.equal(kbThread.knowledgeBaseId, knowledgeBase.id);
 });
 
+test("canonical append keeps all earlier messages and atomically rejects stale, duplicate and concurrent tails", () => {
+  const user = userRepository.create({
+    username: "append-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id });
+  const first = threadService.createMessage(thread.id, user.id, {
+    id: "first-" + crypto.randomUUID(), role: "user",
+    content: "original question", parts: [{ type: "text", text: "original question" }],
+  });
+  const answer = threadService.createMessage(thread.id, user.id, {
+    id: "answer-" + crypto.randomUUID(), parentId: first.id,
+    role: "assistant", content: "original answer",
+    parts: [{ type: "text", text: "original answer" }],
+  });
+  const stableId = "mobile-" + crypto.randomUUID();
+  const append = () => threadService.appendMessageAtTail(
+    thread.id, user.id, answer.id, {
+      id: stableId, role: "user",
+      content: "followup", parts: [{ type: "text", text: "followup" }],
+    },
+  );
+  const result = append();
+  assert.deepEqual(result.messages.map(m => m.id), [first.id, answer.id, stableId]);
+  assert.equal(result.latestUserMessage.metadata.lineage?.parentId, answer.id);
+  assert.deepEqual(threadService.getMessages(thread.id,user.id).map(m => m.id),
+    [first.id, answer.id, stableId]);
+  assert.throws(append, /Desktop conversation changed/);
+  assert.deepEqual(threadService.getMessages(thread.id,user.id).map(m => m.id),
+    [first.id, answer.id, stableId]);
+  assert.throws(() => threadService.appendMessageAtTail(thread.id, user.id,
+    stableId, { id: "second-" + crypto.randomUUID(),role:"user",
+    content:"racing",parts:[{type:"text",text:"racing"}] }),
+    /previous turn is pending/);
+  assert.deepEqual(threadService.getMessages(thread.id,user.id).map(m => m.id),
+    [first.id, answer.id, stableId]);
+  const nextAnswer = threadService.createMessage(thread.id,user.id,{
+    id:"nextanswer-"+crypto.randomUUID(),role:"assistant",parentId:stableId,
+    content:"reply",parts:[{type:"text",text:"reply"}],
+  });
+  assert.throws(() => threadService.appendMessageAtTail(thread.id,user.id,nextAnswer.id,{
+    id:stableId,role:"user",content:"duplicate",parts:[{type:"text",text:"duplicate"}],
+  }),/message id has already been used/);
+  assert.equal(threadService.getMessages(thread.id,user.id).length, 4);
+});
+
+test("canonical append begins empty thread without deleting later revisions", () => {
+  const user = userRepository.create({
+    username:"empty-append-"+crypto.randomUUID(),passwordHash:"hash",
+    role:"user",isActive:true,
+  });
+  const thread=threadService.createThread({userId:user.id});
+  const id="empty-user-"+crypto.randomUUID();
+  const first=threadService.appendMessageAtTail(thread.id,user.id,null,{
+    id,role:"user",content:"start",parts:[{type:"text",text:"start"}],
+  });
+  assert.deepEqual(first.messages.map(m=>m.id),[id]);
+  assert.equal(first.latestUserMessage.metadata.lineage?.parentId,null);
+  assert.throws(() => threadService.appendMessageAtTail(thread.id,user.id,null,{
+    id:"stale-"+crypto.randomUUID(),role:"user",
+    content:"stale",parts:[{type:"text",text:"stale"}],
+  }),/Desktop conversation changed/);
+  assert.deepEqual(threadService.getMessages(thread.id,user.id).map(m=>m.id),[id]);
+});
+
 test("messages table foreign key targets threads after initialization", () => {
   const sqlite = getSqlite();
   const rows = sqlite
