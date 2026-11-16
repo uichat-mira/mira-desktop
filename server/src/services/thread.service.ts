@@ -12,7 +12,7 @@ import { getSqlite } from "@/db/index.js";
 import type { Message, MessageRole, Thread, ThreadStatus } from "@/db/schema";
 import { threadContextSummaryNode } from "@/services/shared-nodes/thread-context-summary.node.js";
 import { isValidWorkspaceRootPath } from "@/services/workspace-path-validation.js";
-import { THREAD_ACCESS_ERROR_MESSAGE } from "@/utils/errors.js";
+import { createAppError, THREAD_ACCESS_ERROR_MESSAGE } from "@/utils/errors.js";
 import { chatMediaService } from "@/services/chat-media.service.js";
 import { canonicalMessageCleanupService } from "@/services/canonical-message-cleanup.service.js";
 import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
@@ -837,6 +837,105 @@ export const threadService = {
     }
 
     return { deletedThreads, deletedMessages, failedThreads, failedAgentWorkspaces };
+  },
+
+  /**
+   * Cross-device append is NOT branch editing. Compare the Host's canonical
+   * tail and persist the user's next message in one SQLite transaction.
+   * This deliberately leaves explicit Desktop branch-edit semantics unchanged.
+   */
+  appendMessageAtTail(
+    threadId: string,
+    userId: number,
+    expectedTailMessageId: string | null,
+    input: CreateMessageInput,
+  ): { messages: MessageResponse[]; latestUserMessage: MessageResponse } {
+    const stableId = input.id;
+    if (input.role !== "user" || !stableId) {
+      throw createAppError({
+        statusCode: 400, code: "THREAD_APPEND_INVALID",
+        message: "An append turn requires a stable user message id",
+      });
+    }
+    return getSqlite().transaction(() => {
+      const ownerThread = threadRepository.findById(threadId, userId);
+      if (!ownerThread) {
+        throw createAppError({
+          statusCode: 404, code: "THREAD_NOT_FOUND",
+          message: THREAD_ACCESS_ERROR_MESSAGE,
+        });
+      }
+      const previous = messageRepository.listByThread(threadId);
+      const actualTail = previous.at(-1);
+      if ((actualTail?.id ?? null) !== expectedTailMessageId) {
+        throw createAppError({
+          statusCode: 409, code: "THREAD_TAIL_CONFLICT",
+          message: "Desktop conversation changed; reload history before sending",
+        });
+      }
+      if (actualTail?.role === "user" &&
+          (toMessageResponse(actualTail).metadata.remoteAppend as
+            { status?: unknown } | undefined)?.status !== "failed") {
+        // Unresolved user turns remain blocked: no automatic replay of
+        // uncertain provider/Agent side effects. Only a recorded, terminal
+        // generation failure may be followed by a new explicit user turn.
+        throw createAppError({
+          statusCode: 409, code: "THREAD_TURN_PENDING",
+          message: "A previous turn is pending; reload before another send",
+        });
+      }
+      if (messageRepository.findById(stableId)) {
+        throw createAppError({
+          statusCode: 409, code: "THREAD_MESSAGE_DUPLICATE",
+          message: "This message id has already been used; reload before retry",
+        });
+      }
+      const latestUserMessage = this.createMessage(threadId, userId, {
+        ...input,
+        id: stableId,
+        parentId: actualTail?.id ?? null,
+        metadata: {
+          ...input.metadata,
+          lineage: { parentId: actualTail?.id ?? null },
+          remoteAppend: { status: "pending" },
+        },
+      });
+      return {
+        messages: [...previous.map(toMessageResponse), latestUserMessage],
+        latestUserMessage,
+      };
+    })();
+  },
+
+  /**
+   * Mark only a still-terminal-tail Remote append as failed after the Host
+   * definitively emits an error finish. Ambiguous transport disconnects are
+   * NOT failures: the in-flight turn remains protected against replay.
+   */
+  markAppendMessageFailed(
+    threadId: string,
+    userId: number,
+    messageId: string,
+  ): boolean {
+    return getSqlite().transaction(() => {
+      if (!threadRepository.findById(threadId, userId)) return false;
+      const existing = messageRepository.findById(messageId);
+      if (!existing || existing.threadId !== threadId ||
+          existing.role !== "user") return false;
+      const tail = messageRepository.listByThread(threadId).at(-1);
+      if (tail?.id !== messageId) return false;
+      const message = toMessageResponse(existing);
+      const state = message.metadata.remoteAppend as
+        { status?: unknown } | undefined;
+      if (state?.status !== "pending") return false;
+      const updated = messageRepository.updateById(messageId, {
+        metadata: JSON.stringify({
+          ...message.metadata,
+          remoteAppend: { status: "failed" },
+        }),
+      });
+      return Boolean(updated);
+    })();
   },
 
   createMessage(

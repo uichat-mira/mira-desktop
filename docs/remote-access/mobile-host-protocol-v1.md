@@ -147,7 +147,7 @@ Host 不持久化长期可解密凭证明文。撤销后下一次 HTTP 请求立
 | --- | --- |
 | `threads:read` | 列出和读取当前用户 Thread；读取用于组织 Thread 的 Mobile-safe Workspace 元数据 |
 | `messages:read` | 读取 Thread Message |
-| `messages:write` | 当前 0.2.x 兼容的会话写能力：创建当前用户 Thread、删除单个当前用户 Thread、通过 persisted default chat stream 发送消息 |
+| `messages:write` | 当前 0.2.x 兼容的会话写能力：创建当前用户 Thread、删除单个当前用户 Thread、通过带 `appendAtTail` 的 persisted default chat stream 发送消息 |
 | `agent:read` | 读取 Agent Run |
 | `agent:approve` | 批准或拒绝 pending approval |
 | `agent:control` | 取消 Agent Run |
@@ -231,7 +231,7 @@ Host 本机 `rootPath` 永远不进入该 Remote response。Mobile 通过 `id` �
 
 `POST /threads` 复用 canonical Thread route 与 `threadService.createThread()`；Remote Gateway 不复制创建逻辑，owner user 来自 device credential 映射，Mobile body 不能指定 user。
 
-`POST /proxy/chat/default` 继续使用现有 persisted stream contract，因此 mobile 与 desktop 共享同一个 User Message 持久化、RAG / Agent 分支、Assistant Message、审批和 SSE 事件真相。
+`POST /proxy/chat/default` 继续使用现有 persisted stream contract，因此 mobile 与 desktop 共享同一个 User Message 持久化、RAG / Agent 分支、Assistant Message、审批和 SSE 事件真相。Remote 写入必须携带 append-follow-up cursor；Desktop 语义与 409 约定见下方非规范性 Desktop implementation note，规范性定义仍归属 Mobile `dev` canonical 文档。
 
 ## 7. 重连语义
 
@@ -276,3 +276,60 @@ V1 不伪造尚未存在的 durable event journal。重连采用 canonical state
 - `tools:approve` 必须校验 invocation owner、toolId 和原始 args inputHash；参数变化后旧批准无效。
 - `tools:control` 只能取消当前 owner user 的 invocation。
 - 旧 paired device 不静默获得新增 `tools:*` scope；缺少工具 scope 不影响其已有 Thread/Message 能力。
+
+
+## Desktop Host implementation note: append-follow-up turns
+
+> Non-normative. Transport, pairing, and Mobile-facing semantics remain owned
+> by `uichat-mira-mobile@dev:docs/remote-access/remote-connection-canonical-v1.md`.
+> This section records the Desktop Host implementation that already exists and
+> how consumers such as MOB-082 must use it. It must not be treated as a second
+> Remote V1 authority.
+
+Cloud Mobile and paired Mobile both reach the same Desktop business route:
+`POST /proxy/chat/default`. A follow-up write uses the persisted stream plus a
+single user message and an explicit append cursor:
+
+```json
+{
+  "id": "<thread id>",
+  "messageId": "<stable user message id>",
+  "appendAtTail": { "expectedTailMessageId": "<last canonical Host message id>" },
+  "messages": [
+    { "id": "<same stable id>", "role": "user", "parts": [{ "type": "text", "text": "..." }] }
+  ]
+}
+```
+
+`expectedTailMessageId` is `null` only when the Host thread is empty. Mobile
+obtains the cursor from a fresh canonical Host history read. It must not upload
+renderer-local history as conversation authority, and it must not infer the
+tail from a stale local cache.
+
+Host behavior:
+
+- The owner, thread, expected tail, pending prior turn, and stable message id
+  are checked in one SQLite transaction before any Provider, RAG, or Agent work
+  starts.
+- A changed tail returns `409 THREAD_TAIL_CONFLICT`; a trailing user turn
+  without a persisted answer returns `409 THREAD_TURN_PENDING`; a reused stable
+  id returns `409 THREAD_MESSAGE_DUPLICATE`.
+- A failed append check performs no canonical deletion, Provider call, Agent
+  run, or mutation replay. Mobile re-reads Host history before deciding whether
+  to retry, and never silently replays a side-effecting turn with a new id.
+- Accepted turns append after the canonical tail without deleting earlier
+  messages. Normal persisted SSE behavior follows, and model/Agent/RAG context
+  is rebuilt from Host-stored history rather than the one-message Mobile body.
+- Paired-device and Cloud provenance callers must send `appendAtTail`; a remote
+  request without it is rejected instead of using Desktop branch-edit
+  persistence. Without an effective `messages:write` grant the request is
+  rejected before this route.
+- A local Desktop request without `appendAtTail` keeps the intentional
+  branch-from-ancestor edit contract, including tail pruning. The append
+  contract does not change that Desktop behavior.
+
+For canonical Agent threads the Host uses its own `agentEnabled` state and can
+provision the isolated private Agent workspace even when `workspaceId` is null.
+This note does not add Mobile Tool approval UI, broaden Tool/Agent scopes, or
+bypass Harness authorization and exact-call approval. Cross-device T4 remains
+required before any release claim.

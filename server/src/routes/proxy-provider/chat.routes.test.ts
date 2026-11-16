@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
 import { Readable } from "node:stream";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, test, vi } from "vitest";
 import Fastify from "fastify";
-import { initializeAuthDatabase, createAccessToken } from "@/db/auth.db";
+import {
+  initializeAuthDatabase,
+  createAccessToken,
+  getAuthUserFromRequest,
+} from "@/db/auth.db";
 import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
 import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
@@ -18,6 +23,7 @@ import {
   roleRepository,
   userRepository,
 } from "@/db/repositories";
+import { tailscaleRemoteAccessRepository } from "@/db/repositories/tailscale-remote-access.repository.js";
 import proxyProviderRoute from "@/routes/proxy-provider/index.js";
 import { getLoggerConfig } from "@/logger";
 import { knowledgeBaseService } from "@/services/knowledge-base.service.js";
@@ -34,6 +40,10 @@ import {
   __chatToolSurfaceTestUtils,
 } from "./chat-tool-surface.js";
 import { executeDefaultChatToolLoop } from "./chat-tool-loop.js";
+import {
+  CLOUD_INTERNAL_REQUEST_HEADER,
+  cloudLocalRequestAuthority,
+} from "@/services/cloud-local-request-authority.service.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
 
 const testDbPath = createTimestampedTestArtifactPath(
@@ -109,6 +119,71 @@ const createAuthedApp = async (user: {
   });
   await app.register(proxyProviderRoute);
   return app;
+};
+
+// T3 Remote Gateway fixture: the real auth resolver is used so paired device
+// credentials and Cloud one-shot capabilities are exercised, not bypassed.
+const createRemoteGatewayApp = async () => {
+  const app = Fastify({
+    logger: getLoggerConfig(),
+    serializerOpts: { encoding: "utf8" },
+  });
+  app.setErrorHandler(sendRouteError);
+  app.addHook("preHandler", async (request, reply) => {
+    const user = getAuthUserFromRequest(request);
+    if (!user) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+    request.authUser = user;
+  });
+  await app.register(proxyProviderRoute);
+  return app;
+};
+
+const createPairedDeviceCredential = (
+  user: {
+    id: number;
+    username: string;
+    role: "admin" | "user";
+  },
+  permissions: Array<"messages:write" | "messages:read"> = [
+    "messages:write",
+    "messages:read",
+  ],
+) => {
+  const deviceId = `device-${crypto.randomUUID()}`;
+  const credential = `mira_device_${deviceId}.${randomBytes(32).toString("base64url")}`;
+  tailscaleRemoteAccessRepository.createDevice({
+    id: deviceId,
+    userId: user.id,
+    name: "Mira Mobile test",
+    platform: "android",
+    permissions,
+    tokenHash: createHash("sha256").update(credential, "utf8").digest("hex"),
+    createdAt: new Date().toISOString(),
+  });
+  return credential;
+};
+
+const issueCloudChatCapability = (user: {
+  id: number;
+  username: string;
+  role: "admin" | "user";
+}) => {
+  const capability = cloudLocalRequestAuthority.issue(
+    {
+      owner: { id: user.id, username: user.username, role: user.role },
+      accountId: "account-a",
+      hostId: "host-a",
+      mobileDeviceId: "phone-a",
+      revision: 1,
+      scopes: ["messages:write"],
+    },
+    "POST",
+    "/proxy/chat/default",
+  );
+  assert.ok(capability);
+  return capability;
 };
 
 test("shouldUseThreadRag only depends on knowledgeBaseId and required runtime inputs", () => {
@@ -616,6 +691,408 @@ test("POST /proxy/chat/default routes non-RAG threads into persisted default cha
     providerProxyService.streamChat = originalStreamChat;
     providerProxyService.createPersistedChatStream = originalPersistedStream;
     createAndRunAgentSpy.mockRestore();
+    await app.close();
+  }
+});
+
+test("paired device append uses Host history and never truncates earlier messages; stale turn conflicts", async () => {
+  const user = userRepository.create({
+    username: "remote-append-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id, title: "Existing history" });
+  const before = threadService.createMessage(thread.id,user.id,{
+    id:"before-"+crypto.randomUUID(),role:"user",
+    content:"Earlier question",parts:[{type:"text",text:"Earlier question"}],
+  });
+  const reply = threadService.createMessage(thread.id,user.id,{
+    id:"reply-"+crypto.randomUUID(),parentId:before.id,role:"assistant",
+    content:"Earlier answer",parts:[{type:"text",text:"Earlier answer"}],
+  });
+  const app = await createRemoteGatewayApp();
+  const credential = createPairedDeviceCredential(user);
+  const auth = { authorization: `Bearer ${credential}` };
+  const original = providerProxyService.createPersistedChatStream;
+  let modelMessages: Array<{role:string;content:string;id?:string}> = [];
+  providerProxyService.createPersistedChatStream = (input) => {
+    modelMessages = input.messages.map(m=>({
+      role: m.role, content: m.content, id: m.id,
+    }));
+    return Readable.from([""]);
+  };
+  const send = async (
+    cursor: string | null,
+    id: string,
+    append = true,
+  ) => app.inject({
+    method:"POST",url:"/proxy/chat/default",headers:auth,
+    payload:{
+      id:thread.id,messageId:id,
+      ...(append ? { appendAtTail:{expectedTailMessageId:cursor} } : {}),
+      messages:[{id,role:"user",parts:[{type:"text",text:"New question"}]}],
+    },
+  });
+  try {
+    const branchEdit = await send(reply.id, "legacy-"+crypto.randomUUID(), false);
+    assert.equal(branchEdit.statusCode,400,branchEdit.body);
+    assert.equal(threadService.getMessages(thread.id,user.id).length,2);
+
+    const readOnlyCredential = createPairedDeviceCredential(user, ["messages:read"]);
+    const deniedScope = await app.inject({
+      method: "POST", url: "/proxy/chat/default",
+      headers: { authorization: `Bearer ${readOnlyCredential}` },
+      payload: {
+        id: thread.id, messageId: "denied-" + crypto.randomUUID(),
+        appendAtTail: { expectedTailMessageId: reply.id },
+        messages: [{
+          id: "denied", role: "user",
+          parts: [{ type: "text", text: "Denied turn" }],
+        }],
+      },
+    });
+    assert.equal(deniedScope.statusCode, 403, deniedScope.body);
+    assert.equal(threadService.getMessages(thread.id,user.id).length,2);
+
+    const first = await send(reply.id,"remote-"+crypto.randomUUID());
+    assert.equal(first.statusCode,200,first.body);
+    assert.deepEqual(modelMessages.filter(m=>m.role==="user"||m.role==="assistant")
+      .map(m=>m.content),["Earlier question","Earlier answer","New question"]);
+    const snapshot=threadService.getMessages(thread.id,user.id);
+    assert.equal(snapshot.length,3);
+    assert.deepEqual(snapshot.slice(0,2).map(m=>m.id),[before.id,reply.id]);
+    const stale = await send(reply.id,"stale-"+crypto.randomUUID());
+    assert.equal(stale.statusCode,409,stale.body);
+    assert.equal(threadService.getMessages(thread.id,user.id).length,3);
+  } finally {
+    providerProxyService.createPersistedChatStream=original;
+    await app.close();
+  }
+});
+
+test("paired canonical append recovers after definitive empty-model failure without losing history", async () => {
+  const user = userRepository.create({
+    username: "failed-followup-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id, title: "Known conversation" });
+  const oldQuestion = threadService.createMessage(thread.id, user.id, {
+    id: "old-q-" + crypto.randomUUID(), role: "user",
+    content: "prior question", parts: [{ type: "text", text: "prior question" }],
+  });
+  const oldAnswer = threadService.createMessage(thread.id, user.id, {
+    id: "old-a-" + crypto.randomUUID(), parentId: oldQuestion.id,
+    role: "assistant", content: "prior answer",
+    parts: [{ type: "text", text: "prior answer" }],
+  });
+  const app = await createRemoteGatewayApp();
+  const credential = createPairedDeviceCredential(user);
+  const oldGenerate = providerProxyService.generateTextForRole;
+  const send = async (id: string, cursor: string) => app.inject({
+    method: "POST", url: "/proxy/chat/default",
+    headers: { authorization: `Bearer ${credential}` },
+    payload: {
+      id: thread.id, messageId: id,
+      appendAtTail: { expectedTailMessageId: cursor },
+      messages: [{ id, role: "user", parts: [{ type: "text", text: "new question" }] }],
+    },
+  });
+  try {
+    providerProxyService.generateTextForRole = async () => "";
+    const failedId = "failed-" + crypto.randomUUID();
+    const failed = await send(failedId, oldAnswer.id);
+    assert.equal(failed.statusCode, 200, failed.body);
+    assert.match(failed.body, /"finishReason":"error"/);
+    assert.deepEqual(threadService.getMessages(thread.id, user.id).map(m => m.id),
+      [oldQuestion.id, oldAnswer.id, failedId]);
+    assert.equal(threadService.getMessages(thread.id, user.id).at(-1)?.metadata.remoteAppend?.status,
+      "failed");
+    providerProxyService.generateTextForRole = async () => "Recovery worked";
+    const nextId = "recovery-" + crypto.randomUUID();
+    const recovered = await send(nextId, failedId);
+    assert.equal(recovered.statusCode, 200, recovered.body);
+    assert.match(recovered.body, /"finishReason":"stop"/);
+    const history = threadService.getMessages(thread.id, user.id);
+    assert.deepEqual(history.slice(0, 4).map(m => m.id),
+      [oldQuestion.id, oldAnswer.id, failedId, nextId]);
+    assert.equal(history[4]?.role, "assistant");
+    assert.equal(history[4]?.content, "Recovery worked");
+    const noReplay = await send(failedId, history[4]!.id);
+    assert.equal(noReplay.statusCode, 409, noReplay.body);
+    assert.equal(threadService.getMessages(thread.id, user.id).length, 5);
+  } finally {
+    providerProxyService.generateTextForRole = oldGenerate;
+    await app.close();
+  }
+});
+
+test("Cloud append shares the Host contract and rejects cross-owner threads and duplicate ids", async () => {
+  const owner = userRepository.create({
+    username: "cloud-owner-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const other = userRepository.create({
+    username: "cloud-other-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const thread = threadService.createThread({ userId: owner.id, title: "Cloud history" });
+  const question = threadService.createMessage(thread.id, owner.id, {
+    id: "cloud-question-" + crypto.randomUUID(), role: "user",
+    content: "Host question", parts: [{ type: "text", text: "Host question" }],
+  });
+  const answer = threadService.createMessage(thread.id, owner.id, {
+    id: "cloud-answer-" + crypto.randomUUID(), parentId: question.id,
+    role: "assistant", content: "Host answer",
+    parts: [{ type: "text", text: "Host answer" }],
+  });
+  const app = await createRemoteGatewayApp();
+  const otherCredential = createPairedDeviceCredential(other);
+  const capability = issueCloudChatCapability(owner);
+  const original = providerProxyService.createPersistedChatStream;
+  let modelMessages: string[] = [];
+  providerProxyService.createPersistedChatStream = (input) => {
+    modelMessages = input.messages.map((message) => message.content);
+    return Readable.from([""]);
+  };
+  const send = async (
+    credential: string,
+    messageId: string,
+    cursor: string | null,
+  ) => app.inject({
+    method: "POST", url: "/proxy/chat/default",
+    headers: { authorization: `Bearer ${credential}` },
+    payload: {
+      id: thread.id, messageId,
+      appendAtTail: { expectedTailMessageId: cursor },
+      messages: [{
+        id: messageId, role: "user",
+        parts: [{ type: "text", text: "Cloud follow up" }],
+      }],
+    },
+  });
+  try {
+    const denied = await send(otherCredential, "denied-" + crypto.randomUUID(), answer.id);
+    assert.equal(denied.statusCode, 404, denied.body);
+    assert.deepEqual(
+      threadService.getMessages(thread.id, owner.id).map((message) => message.id),
+      [question.id, answer.id],
+    );
+
+    const stableId = "cloud-turn-" + crypto.randomUUID();
+    const accepted = await app.inject({
+      method: "POST", url: "/proxy/chat/default",
+      headers: { [CLOUD_INTERNAL_REQUEST_HEADER]: capability },
+      payload: {
+        id: thread.id, messageId: stableId,
+        appendAtTail: { expectedTailMessageId: answer.id },
+        messages: [{
+          id: stableId, role: "user",
+          parts: [{ type: "text", text: "Cloud follow up" }],
+        }],
+      },
+    });
+    assert.equal(accepted.statusCode, 200, accepted.body);
+    assert.deepEqual(modelMessages, ["Host question", "Host answer", "Cloud follow up"]);
+
+    const duplicate = await app.inject({
+      method: "POST", url: "/proxy/chat/default",
+      headers: { [CLOUD_INTERNAL_REQUEST_HEADER]: issueCloudChatCapability(owner) },
+      payload: {
+        id: thread.id, messageId: stableId,
+        appendAtTail: { expectedTailMessageId: stableId },
+        messages: [{
+          id: stableId, role: "user",
+          parts: [{ type: "text", text: "Cloud follow up" }],
+        }],
+      },
+    });
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.deepEqual(
+      threadService.getMessages(thread.id, owner.id).map((message) => message.id),
+      [question.id, answer.id, stableId],
+    );
+  } finally {
+    providerProxyService.createPersistedChatStream = original;
+    await app.close();
+  }
+});
+
+test("paired device RAG append builds retrieval context from Host history", async () => {
+  const user = userRepository.create({
+    username: "remote-rag-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const knowledgeBase = knowledgeBaseRepository.create({
+    name: `KB-${crypto.randomUUID()}`,
+    description: "",
+    status: "active",
+    chunkingConfigJson: "{}",
+    metadataJson: "{}",
+  });
+  const thread = threadService.createThread({
+    userId: user.id,
+    title: "Existing RAG history",
+    knowledgeBaseId: knowledgeBase.id,
+  });
+  const previousQuestion = threadService.createMessage(thread.id, user.id, {
+    id: "rag-question-" + crypto.randomUUID(), role: "user",
+    content: "Earlier RAG question",
+    parts: [{ type: "text", text: "Earlier RAG question" }],
+  });
+  const previousAnswer = threadService.createMessage(thread.id, user.id, {
+    id: "rag-answer-" + crypto.randomUUID(), parentId: previousQuestion.id,
+    role: "assistant", content: "Earlier RAG answer",
+    parts: [{ type: "text", text: "Earlier RAG answer" }],
+  });
+  const app = await createRemoteGatewayApp();
+  const credential = createPairedDeviceCredential(user);
+  const originalAssistantStream = ragPipeline.assistantStream;
+  const originalGetKnowledgeBaseById = knowledgeBaseService.getKnowledgeBaseById;
+  let ragInput: Parameters<typeof ragPipeline.assistantStream>[0] | undefined;
+  knowledgeBaseService.getKnowledgeBaseById = ((id: string) => {
+    const current = originalGetKnowledgeBaseById(id);
+    return current
+      ? {
+          ...current,
+          enabledDocumentCount: Math.max(current.enabledDocumentCount, 1),
+        }
+      : null;
+  }) as typeof knowledgeBaseService.getKnowledgeBaseById;
+  ragPipeline.assistantStream = ((input) => {
+    ragInput = input;
+    return Readable.from(["data: [DONE]\n\n"]);
+  }) as typeof ragPipeline.assistantStream;
+  try {
+    const stableId = "rag-follow-up-" + crypto.randomUUID();
+    const response = await app.inject({
+      method: "POST", url: "/proxy/chat/default",
+      headers: { authorization: `Bearer ${credential}` },
+      payload: {
+        id: thread.id, messageId: stableId,
+        appendAtTail: { expectedTailMessageId: previousAnswer.id },
+        messages: [{
+          id: stableId, role: "user",
+          parts: [{ type: "text", text: "New RAG question" }],
+        }],
+      },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(ragInput?.question, "New RAG question");
+    assert.deepEqual(
+      ragInput?.conversationHistory?.map((message) => message.content),
+      ["Earlier RAG question", "Earlier RAG answer"],
+    );
+    assert.deepEqual(
+      threadService.getMessages(thread.id, user.id).map((message) => message.id),
+      [previousQuestion.id, previousAnswer.id, stableId],
+    );
+  } finally {
+    ragPipeline.assistantStream = originalAssistantStream;
+    knowledgeBaseService.getKnowledgeBaseById = originalGetKnowledgeBaseById;
+    await app.close();
+  }
+});
+
+test("Desktop branch edit without appendAtTail keeps intentional pruning", async () => {
+  const user = userRepository.create({
+    username: "desktop-branch-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const thread = threadService.createThread({ userId: user.id, title: "Branch thread" });
+  const parent = threadService.createMessage(thread.id, user.id, {
+    id: "branch-parent-" + crypto.randomUUID(), role: "user",
+    content: "Original question",
+    parts: [{ type: "text", text: "Original question" }],
+  });
+  const staleAssistant = threadService.createMessage(thread.id, user.id, {
+    id: "branch-stale-" + crypto.randomUUID(), parentId: parent.id,
+    role: "assistant", content: "Original answer",
+    parts: [{ type: "text", text: "Original answer" }],
+  });
+  const app = await createAuthedApp(user);
+  const original = providerProxyService.createPersistedChatStream;
+  providerProxyService.createPersistedChatStream = () => Readable.from([""]);
+  try {
+    const branchId = "branch-edit-" + crypto.randomUUID();
+    const response = await app.inject({
+      method: "POST", url: "/proxy/chat/default",
+      payload: {
+        id: thread.id, messageId: branchId,
+        messages: [
+          {
+            id: parent.id, role: "user",
+            parts: [{ type: "text", text: "Original question" }],
+          },
+          {
+            id: branchId, role: "user",
+            parts: [{ type: "text", text: "Branch replacement" }],
+          },
+        ],
+      },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(
+      threadService.getMessages(thread.id, user.id).map((message) => message.id),
+      [parent.id, branchId],
+    );
+    assert.equal(
+      threadService.getMessages(thread.id, user.id)
+        .some((message) => message.id === staleAssistant.id),
+      false,
+    );
+  } finally {
+    providerProxyService.createPersistedChatStream = original;
+    await app.close();
+  }
+});
+
+test("Cloud append never trusts client Agent override and preserves private Agent root", async () => {
+  const user=userRepository.create({
+    username:"remote-agent-"+crypto.randomUUID(),passwordHash:"hash",
+    role:"user",isActive:true,
+  });
+  const thread=threadService.createThread({
+    userId:user.id,title:"Private Agent",agentEnabled:true,
+  });
+  assert.equal(thread.workspaceId,null);
+  const app=await createRemoteGatewayApp();
+  const capability=issueCloudChatCapability(user);
+  const original=providerProxyService.createPersistedChatStream;
+  let executeFullAnswer:
+    Parameters<typeof providerProxyService.createPersistedChatStream>[0]["executeFullAnswer"]|undefined;
+  providerProxyService.createPersistedChatStream=(input)=>{
+    executeFullAnswer=input.executeFullAnswer;
+    return Readable.from([""]);
+  };
+  const spy=vi.spyOn(agentModule,"createAndRunAgent").mockResolvedValue({
+    run:{id:"test-run",status:"completed",threadId:thread.id,userId:user.id,
+      goal:{id:"goal",text:"agent action",successCriteria:[],constraints:[],riskLevel:"low"},
+      plan:{id:"plan",goalId:"goal",version:1,steps:[]},
+      observations:[],traceId:"trace",createdAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString()},
+    output:{answer:"Agent answer",status:"completed",observations:[],retrievedChunks:[]},
+  } as never);
+  try {
+    const response=await app.inject({
+      method:"POST",url:"/proxy/chat/default",
+      headers:{[CLOUD_INTERNAL_REQUEST_HEADER]:capability},
+      payload:{id:thread.id,messageId:"agent-"+crypto.randomUUID(),
+        appendAtTail:{expectedTailMessageId:null},
+        agentEnabled:false,
+        messages:[{role:"user",parts:[{type:"text",text:"agent action"}]}],
+      },
+    });
+    assert.equal(response.statusCode,200,response.body);
+    assert.ok(executeFullAnswer,"Host-owned Agent execution path should be used");
+    const result=await executeFullAnswer?.({
+      emitToolEvent:async()=>{},emitExecutionNode:async()=>{},
+    });
+    assert.equal(result?.answer,"Agent answer");
+    assert.equal(spy.mock.calls.length,1);
+    assert.ok(spy.mock.calls[0]?.[0].workspaceRoot);
+    assert.equal(threadService.getMessages(thread.id,user.id).length,1);
+  } finally {
+    spy.mockRestore();
+    providerProxyService.createPersistedChatStream=original;
     await app.close();
   }
 });
