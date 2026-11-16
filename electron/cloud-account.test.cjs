@@ -324,6 +324,85 @@ test("native PKCE exchanges once, sets the chosen Host ceiling and never exposes
   assert.match(restored.status().message, /云端撤销未确认/);
 });
 
+test("Cloud Host renews its OPS-018 directory lease while a healthy Relay socket stays established", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build({ presenceRefreshIntervalMs: 20 });
+  await signIn(f, controller);
+  const countAdvertisements = () => f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  const initial = countAdvertisements();
+  await new Promise((resolve) => setTimeout(resolve, 95));
+  assert.ok(countAdvertisements() > initial,
+    "native Host renews presence without recycling a healthy Relay ticket");
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/service-credentials")).length, 0,
+    "presence refresh does not acquire another transport ticket");
+  assert.equal(controller.status().localOwnerBound, true);
+  await controller.signOut();
+  const afterLogout = countAdvertisements();
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  assert.equal(countAdvertisements(), afterLogout,
+    "sign-out stops the trusted Host presence refresh");
+});
+
+test("restored signed-in Desktop resumes Host lease renewal without a second OAuth login", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const first = f.build();
+  await signIn(f, first);
+  const restored = f.build({ presenceRefreshIntervalMs: 20 });
+  await restored.initialize();
+  assert.equal(restored.status().status, "signed_in");
+  const before = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  await new Promise((resolve) => setTimeout(resolve, 75));
+  const after = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  assert.ok(after > before);
+  assert.equal(f.calls.filter((call) =>
+    call.url.endsWith("/v1/oauth/token")).length, 1,
+    "restored Host refresh never reauthenticates as a new account");
+  await restored.signOut();
+});
+
+test("in-flight Host presence renewal cannot reactivate after Cloud sign-out", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build({ presenceRefreshIntervalMs: 15 });
+  await signIn(f, controller);
+  let releaseRenewal;
+  f.setHostHandler(() => new Promise((resolve) => { releaseRenewal = resolve; }));
+  for (let tick = 0; tick < 30 && !releaseRenewal; tick += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(typeof releaseRenewal, "function");
+  await controller.signOut();
+  releaseRenewal(Response.json(hostPayload()));
+  await new Promise((resolve) => setTimeout(resolve, 45));
+  assert.equal(controller.status().status, "signed_out");
+  const postCalls = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST");
+  assert.equal(postCalls.length, 2,
+    "no stale timer or in-flight request may renew an abandoned Cloud account");
+});
+
+test("Host lease refresh network errors retry safely without exposing credentials", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  const controller = f.build({ presenceRefreshIntervalMs: 20 });
+  await signIn(f, controller);
+  f.failHostRegistration(1);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const count = f.calls.filter((call) =>
+    call.url.endsWith("/v1/hosts") && call.opts.method === "POST").length;
+  assert.ok(count >= 3, "failed renewal schedules another bounded attempt");
+  assert.equal(controller.status().status, "signed_in",
+    "temporary Cloud Auth outage must not invalidate local credentials");
+  assert.ok(!JSON.stringify(controller.status()).includes("mcs_v1."));
+  await controller.signOut();
+});
+
 test("Cloud offline preserves native session rather than invalidating local Mira", async (t) => {
   const f = fixture();
   t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
