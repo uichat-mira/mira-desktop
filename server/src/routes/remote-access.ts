@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { Readable } from "node:stream";
+import type { SocksProxyAgent } from "socks-proxy-agent";
 import {
   PairingServiceError,
   remoteAccessPairingService,
@@ -18,6 +19,8 @@ import {
 } from "@/services/remote-relay-config.service.js";
 import { tailscaleRemoteAccessService } from "@/services/tailscale-remote-access.service.js";
 import { CloudRelayTicketIpcClient } from "@/services/cloud-relay-ticket-ipc.service.js";
+import { generalSettingsRepository } from "@/db/repositories/general-settings.repository.js";
+import { createCloudRelaySocketFactory } from "@/services/cloud-relay-socket-proxy.service.js";
 import { CloudHostGrantIpcClient } from "@/services/cloud-host-grant-ipc.service.js";
 import { CloudHostGrantRuntime } from "@/services/cloud-host-grant-runtime.service.js";
 import {
@@ -141,12 +144,15 @@ const mapPushBindingError = (error: unknown): never => {
   throw error;
 };
 
-const createRelaySocketFactory = (app: FastifyInstance): RelaySocketFactory => {
+const createRelaySocketFactories = (app: FastifyInstance) => {
   const websocketServer = (
     app as unknown as {
       websocketServer?: {
         options?: {
-          WebSocket?: new (url: string) => ReturnType<RelaySocketFactory>;
+          WebSocket?: new (
+            url: string,
+            options?: { agent?: SocksProxyAgent },
+          ) => ReturnType<RelaySocketFactory>;
         };
       };
     }
@@ -158,7 +164,13 @@ const createRelaySocketFactory = (app: FastifyInstance): RelaySocketFactory => {
     );
   }
 
-  return (url) => new WebSocketCtor(url);
+  const direct: RelaySocketFactory = (url) => new WebSocketCtor(url);
+  const cloud = createCloudRelaySocketFactory(
+    direct,
+    (url, agent) => new WebSocketCtor(url, { agent }),
+    () => generalSettingsRepository.get(),
+  );
+  return { direct, cloud };
 };
 
 // The native Cloud Host state is authoritative for whether a Grant
@@ -173,7 +185,8 @@ export const reconcileCloudRelayOnGrantInvalidation = (
 };
 
 const remoteAccessRoute: FastifyPluginAsync = async (app) => {
-  const socketFactory = createRelaySocketFactory(app);
+  const { direct: socketFactory, cloud: cloudSocketFactory } =
+    createRelaySocketFactories(app);
   const remoteRelayConnectorService = new RemoteRelayConnectorService(
     resolvePersistedRemoteRelayConnectorConfig,
     socketFactory,
@@ -199,7 +212,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
   });
   const cloudRelayConnectorService = new RemoteRelayConnectorService(
     resolveCloudRelayConnectorConfig,
-    socketFactory,
+    cloudSocketFactory,
     fetch,
     undefined,
     Math.random,
