@@ -1,5 +1,8 @@
 appId: com.tomz.uichat
 productName: UIChat Mira
+# Native addons are built for the bundled Node backend, not for the Electron shell.
+# Do not rebuild bundled backend modules against the Electron ABI.
+npmRebuild: false
 protocols:
   - name: Mira Desktop OAuth
     schemes:
