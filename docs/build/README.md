@@ -54,6 +54,10 @@ pnpm clean:artifacts
 pnpm version:sync
 ```
 
+## Electron 原生模块封装边界
+
+`electron-builder.yml` 设置 `npmRebuild: false`。Electron 仅提供 Main/Preload 桌面壳，`better-sqlite3` 等原生依赖属于独立捆绑的 Node Backend（`resources/node-runtime` 和 `resources/server`），由 Payload 生成、staged Node runtime smoke 和完整测试负责验证，而非由 electron-builder 针对 Electron ABI 重新编译。新版本正式打包须仍验证 Setup 与 blockmap 产物；禁止为了放行而取消 Node Backend 的 native smoke 或缺失 native 依赖。
+
 ## GitHub Actions 发布流程
 
 桌面构建分为三个入口：
