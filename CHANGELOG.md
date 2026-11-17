@@ -2,6 +2,14 @@
 
 > 当前产品更新日志的唯一真相源。官网可以做面向用户的公开投影，但版本事实与最终发布说明以本文件和 GitHub Release 为准。
 
+## 0.106.1 - 2026-11-17（发布修复候选）
+
+该版本承接 0.106 Electron-only 的全部既定功能，不加入新的业务特性。
+
+- **Windows Release Factory 封装修复**：Electron 壳层不再尝试将独立 Node Backend 的 `better-sqlite3` 按 Electron 45.1.0 ABI 重新编译；原生数据库模块仍由 Payload 构建和 staged Node runtime smoke 验证，再作为独立 `resources/server` 入包。
+- **发布连续性**：`v0.106.0` Tag 的首次正式工作流在 Windows Electron 封装时失败，未生成公开 GitHub Release，故保留其不可变提交；改由新 `v0.106.1` Tag 执行正式发布，不重打或移动历史 Tag。
+- **验收边界**：安装包构建与 R2 镜像完整性由正式工作流验收；打包后真实 Cloud OAuth、Relay 远程调用需独立运行验收。macOS Intel DMG 尚未签名、公证。
+
 ## 0.106.0 - 2026-11-01（发布候选，正式发布待验收）
 
 本版候选将 Mira Desktop 统一到 Electron 桌面壳，保留 Browser Preview。以下为已合入的源码范围；是否正式发布以对应版本的 Windows 安装运行、云端互通验收和 GitHub Release 结果为准。
