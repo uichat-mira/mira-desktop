@@ -76,7 +76,7 @@ Conversation / Skill Flow preparation
 | 正常应用启动，未设置环境变量 | `pi_loop` |
 | `MIRA_AGENT_RUNTIME=pi_loop` | `pi_loop` |
 | `MIRA_AGENT_RUNTIME=langgraph` | LangGraph 兼容运行时 |
-| 测试环境且未显式指定 | LangGraph，保留历史测试行为 |
+| 测试环境且未显式指定 | `pi_loop`（与开发、正式运行一致） |
 
 Pi Loop 与 LangGraph 都通过：
 

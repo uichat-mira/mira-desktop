@@ -37,7 +37,7 @@ AgentRun
 | 正常应用未设置环境变量 | `pi_loop` |
 | `MIRA_AGENT_RUNTIME=pi_loop` | `pi_loop` |
 | `MIRA_AGENT_RUNTIME=langgraph` | LangGraph 兼容运行时 |
-| 测试环境未显式指定 | LangGraph，保留历史测试行为 |
+| 测试环境未显式指定 | `pi_loop`（与应用默认执行路径一致） |
 
 两种运行时共用 AgentRun、input / output、checkpoint、语义步骤、execution node、Planner、Harness、Evidence 与 Generate。
 
