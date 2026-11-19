@@ -9,6 +9,8 @@ let mainWindow;
 let backendProcess;
 let cloudRelayTicketBridge = null;
 let cloudHostGrantBridge = null;
+let devBackendLaunch = null;
+let devBackendWatcher = null;
 
 let cloudAccount;
 let cloudCallbackRegistered = false;
@@ -130,7 +132,7 @@ ipcMain.handle("cloud-account:logout", (event) => {
 });
 
 const BACKEND_START_TIMEOUT_MS = 15000;
-const CLOUD_PILOT_BACKEND_START_TIMEOUT_MS = 60000;
+const DEV_BACKEND_START_TIMEOUT_MS = 60000;
 const BACKEND_START_POLL_INTERVAL_MS = 300;
 
 const isDev = !app.isPackaged;
@@ -288,8 +290,9 @@ function createWindow() {
   });
 
   if (isDev) {
-    const rendererHost =
-      process.env.UI_CHAT_CLOUD_PILOT === "1" ? "127.0.0.1" : "localhost";
+    // Vite binds 127.0.0.1 (runtime.config.cjs). Using `localhost` here could
+    // resolve to another project's IPv6 loopback service on Windows.
+    const rendererHost = "127.0.0.1";
     void mainWindow
       .loadURL(`http://${rendererHost}:${runtimeConfig.dev.desktopPort}`)
       .then(() => {
@@ -471,8 +474,10 @@ ipcMain.handle("desktop:download-browser-extension", async () => {
 });
 
 function attachBackendProcessHandlers(child) {
-  cloudRelayTicketBridge = attachCloudRelayTicketIpc(child, () => cloudAccount);
-  cloudHostGrantBridge = attachCloudHostGrantIpc(child, () => cloudAccount);
+  const relayBridge = attachCloudRelayTicketIpc(child, () => cloudAccount);
+  const grantBridge = attachCloudHostGrantIpc(child, () => cloudAccount);
+  cloudRelayTicketBridge = relayBridge;
+  cloudHostGrantBridge = grantBridge;
 
   if (child.stdout) {
     child.stdout.on("data", (data) => {
@@ -487,10 +492,16 @@ function attachBackendProcessHandlers(child) {
   }
 
   child.on("close", (code) => {
-    cloudRelayTicketBridge?.dispose();
-    cloudRelayTicketBridge = null;
-    cloudHostGrantBridge?.dispose();
-    cloudHostGrantBridge = null;
+    // Only clear the module-level bridge if it still belongs to this child.
+    // A dev restart can attach a newer child before the old close event fires.
+    relayBridge.dispose();
+    grantBridge.dispose();
+    if (cloudRelayTicketBridge === relayBridge) {
+      cloudRelayTicketBridge = null;
+    }
+    if (cloudHostGrantBridge === grantBridge) {
+      cloudHostGrantBridge = null;
+    }
     console.log(`Backend process exited with code ${code}`);
   });
 
@@ -499,62 +510,151 @@ function attachBackendProcessHandlers(child) {
   });
 }
 
-async function startCloudPilotDevBackend() {
-  // Keep the development-only launcher out of packaged builds.
-  const { resolveCloudPilotBackendLaunch } = require("./cloud-pilot-dev.cjs");
-  const nodeBinary = process.env.UI_CHAT_CLOUD_PILOT_NODE_BINARY;
+async function stopDevBackendChild() {
+  const child = backendProcess;
+  backendProcess = null;
+  cloudRelayTicketBridge?.dispose();
+  cloudRelayTicketBridge = null;
+  cloudHostGrantBridge?.dispose();
+  cloudHostGrantBridge = null;
+
+  if (!child) {
+    return;
+  }
+
+  // Dev-only cleanup helper; packaged builds never execute this path.
+  const { terminateOwnedChild } = require("./dev-backend.cjs");
+  await terminateOwnedChild(child);
+}
+
+function spawnDevBackendChild(launch) {
+  const child = spawn(launch.nodeBinary, launch.args, launch.options);
+  try {
+    // Never continue with a Backend that cannot receive the private ticket /
+    // Host Grant IPC channel: an unattached process must fail closed.
+    require("./dev-backend.cjs").assertBackendIpcOwnership(child);
+  } catch (error) {
+    try {
+      child.kill();
+    } catch {
+      // The failed child may already have exited.
+    }
+    throw error;
+  }
+  backendProcess = child;
+  attachBackendProcessHandlers(child);
+  return child;
+}
+
+async function startDevBackendChildAndWait(launch) {
+  spawnDevBackendChild(launch);
+  const backendReady = await waitForBackendReady(DEV_BACKEND_START_TIMEOUT_MS);
+  if (!backendReady) {
+    await stopDevBackendChild();
+    return false;
+  }
+  return true;
+}
+
+async function restartOwnedDevBackend() {
+  try {
+    await stopDevBackendChild();
+    if (!devBackendLaunch) {
+      throw new Error("Dev Backend launch configuration is unavailable");
+    }
+    if (!(await startDevBackendChildAndWait(devBackendLaunch))) {
+      console.error(
+        `Dev Backend restart did not become healthy within ${DEV_BACKEND_START_TIMEOUT_MS}ms. ` +
+        "Cloud Host stays unavailable until a later source change restarts it successfully.",
+      );
+      return;
+    }
+    console.log("Dev Backend restarted and reattached to Electron's private IPC channel.");
+  } catch (error) {
+    console.error("Dev Backend restart failed:", error);
+  }
+}
+
+async function startOwnedDevBackend() {
+  // Dev-only modules stay out of packaged builds.
+  const {
+    DEV_BACKEND_NODE_BINARY_ENV,
+    assertBackendPortAvailable,
+    createDevBackendWatcher,
+    createRestartQueue,
+    resolveDevBackendLaunch,
+    resolveDevBackendSourceDir,
+  } = require("./dev-backend.cjs");
+  // Only electron/dev-launcher.cjs can supply the Node executable and the
+  // ownership marker for the standard development path.
+  const nodeBinary = process.env[DEV_BACKEND_NODE_BINARY_ENV];
   if (!nodeBinary || !path.isAbsolute(nodeBinary) || !fs.existsSync(nodeBinary)) {
     throw new Error(
-      "Cloud Pilot requires the Node executable supplied by electron/dev-launcher.cjs. Start it with the platform-specific dev:electron:<platform>:cloud-pilot script.",
+      "The standard Desktop dev launch must start through electron/dev-launcher.cjs " +
+      "(pnpm dev:electron:win or pnpm dev:electron:mac). No Electron-owned Backend was started.",
     );
   }
 
-  const launch = resolveCloudPilotBackendLaunch({
-    workspaceRoot: path.resolve(__dirname, ".."),
+  const workspaceRoot = path.resolve(__dirname, "..");
+  const launch = resolveDevBackendLaunch({
+    workspaceRoot,
     nodeBinary,
     baseEnv: process.env,
     runtimeConfig,
   });
-  for (const requiredPath of [launch.args[0], launch.args[1]]) {
+  for (const requiredPath of [launch.tsxCliPath, launch.serverEntryPath]) {
     if (!fs.existsSync(requiredPath)) {
-      throw new Error(`Cloud Pilot source Backend file is missing: ${requiredPath}`);
+      throw new Error(`Dev source Backend file is missing: ${requiredPath}`);
     }
   }
 
-  if (await isBackendHealthy()) {
+  const serverSourceDir = resolveDevBackendSourceDir(workspaceRoot);
+  if (!fs.existsSync(serverSourceDir) || !fs.statSync(serverSourceDir).isDirectory()) {
+    throw new Error(`Dev source Backend directory is missing: ${serverSourceDir}`);
+  }
+
+  await assertBackendPortAvailable(runtimeConfig.backend.host, runtimeConfig.backend.port);
+
+  console.log("Dev: Electron Main is starting the source Backend with its private Cloud IPC channel.");
+  if (!(await startDevBackendChildAndWait(launch))) {
     throw new Error(
-      `Cloud Pilot refuses to reuse an independently started Backend at ${getBackendUrl()}; stop it and restart the Cloud Pilot launcher.`,
+      `Dev Backend did not become healthy within ${DEV_BACKEND_START_TIMEOUT_MS}ms: ${getBackendUrl()}/health. ` +
+      "Check the Backend output above; an occupied port is never reused and Cloud Host stays unavailable.",
     );
   }
 
-  console.log("Cloud Pilot: Electron Main is starting the source Backend without watch mode.");
-  console.log("Cloud Pilot Backend runtime:", launch.nodeBinary);
-  backendProcess = spawn(launch.nodeBinary, launch.args, launch.options);
-  attachBackendProcessHandlers(backendProcess);
+  devBackendLaunch = launch;
+  const restartQueue = createRestartQueue(restartOwnedDevBackend);
+  devBackendWatcher = createDevBackendWatcher({
+    sourceDir: serverSourceDir,
+    onChange: ({ path: changedPath }) => {
+      console.log(`Dev Backend source changed: ${changedPath}`);
+      console.log("Dev Backend: restarting to apply the change...");
+      void restartQueue.request();
+    },
+  });
 
-  const backendReady = await waitForBackendReady(
-    CLOUD_PILOT_BACKEND_START_TIMEOUT_MS,
+  console.log(
+    "Dev Backend is healthy and attached to Electron's private IPC channel. " +
+    "Vite HMR and Main-owned Backend restart are active.",
   );
-  if (!backendReady) {
-    throw new Error(
-      `Cloud Pilot Backend did not become healthy within ${CLOUD_PILOT_BACKEND_START_TIMEOUT_MS}ms: ${getBackendUrl()}/health. Check the Backend output above; an occupied port is never reused.`,
-    );
-  }
-
-  console.log("Cloud Pilot Backend is healthy and attached to Electron's private IPC channel.");
   return true;
 }
 
 async function startBackend() {
-  if (isDev && process.env.UI_CHAT_CLOUD_PILOT === "1") {
-    return startCloudPilotDevBackend();
-  }
   if (isDev) {
-    console.log("Dev mode: backend server already started via concurrently");
+    const { DEV_BACKEND_OWNER_ENV } = require("./dev-backend.cjs");
+    if (process.env[DEV_BACKEND_OWNER_ENV] === "1") {
+      return startOwnedDevBackend();
+    }
+    // Keep direct Electron launches working for harnesses that manage their
+    // own Backend. Such a Backend has no private IPC channel, so Cloud Host
+    // remains unavailable instead of falling back to HTTP credentials.
+    console.log(
+      "Dev mode: Backend is managed outside this Electron process; " +
+      "Cloud Host requires the standard pnpm dev:electron:<platform> launch.",
+    );
     return true;
-  }
-  if (process.env.UI_CHAT_CLOUD_PILOT === "1") {
-    throw new Error("Cloud Pilot is a development-only startup mode.");
   }
 
   const backendPath = path.join(process.resourcesPath, "server", "server.cjs");
@@ -730,8 +830,12 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  devBackendWatcher?.close();
+  devBackendWatcher = null;
   cloudRelayTicketBridge?.dispose();
+  cloudRelayTicketBridge = null;
   cloudHostGrantBridge?.dispose();
+  cloudHostGrantBridge = null;
   if (backendProcess) {
     backendProcess.kill();
   }

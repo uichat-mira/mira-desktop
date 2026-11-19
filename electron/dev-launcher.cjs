@@ -5,11 +5,15 @@ const os = require("os");
 const { spawn } = require("child_process");
 const electronBinary = require("electron");
 const { pathToFileURL } = require("url");
+const {
+  DEV_BACKEND_NODE_BINARY_ENV,
+  DEV_BACKEND_OWNER_ENV,
+  assertBackendPortAvailable,
+  isTcpPortOpen,
+  terminateOwnedChild,
+} = require("./dev-backend.cjs");
 
 const STARTUP_TIMEOUT_MS = 60000;
-// Capture the explicit CLI opt-in before runtime.config.cjs loads local .env.
-// A stale .env value must never turn an ordinary Dev launch into Cloud Pilot.
-const cloudPilotRequested = process.env.UI_CHAT_CLOUD_PILOT === "1";
 const childProcesses = [];
 let isShuttingDown = false;
 
@@ -50,7 +54,10 @@ function buildBackendEnv(baseEnv = process.env, defaultWorkspaceRoot) {
 
   return {
     ...restEnv,
-    UI_CHAT_ALLOW_BACKEND_REUSE: "1",
+    // The standard dev Backend is always Electron-owned. A healthy listener
+    // already on the port is never reused because it cannot receive the
+    // private Cloud IPC channel.
+    UI_CHAT_ALLOW_BACKEND_REUSE: "0",
     UI_CHAT_WORKSPACE_ROOT: resolveBackendWorkspaceRoot(
       baseEnv,
       defaultWorkspaceRoot,
@@ -58,29 +65,26 @@ function buildBackendEnv(baseEnv = process.env, defaultWorkspaceRoot) {
   };
 }
 
-function isCloudPilotMode(baseEnv = process.env) {
-  return baseEnv.UI_CHAT_CLOUD_PILOT === "1";
-}
-
 function buildElectronEnv(
   baseEnv = process.env,
   nodeBinary = process.execPath,
   defaultWorkspaceRoot,
 ) {
-  if (!isCloudPilotMode(baseEnv)) {
-    return { ...baseEnv };
-  }
   if (typeof nodeBinary !== "string" || !path.isAbsolute(nodeBinary)) {
-    throw new TypeError("Cloud Pilot requires an absolute Node executable path");
+    throw new TypeError("The dev Backend requires an absolute Node executable path");
   }
 
+  // A stale local .env must not reintroduce the retired Cloud Pilot path.
+  const {
+    UI_CHAT_CLOUD_PILOT: _legacyCloudPilot,
+    UI_CHAT_CLOUD_PILOT_NODE_BINARY: _legacyCloudPilotNode,
+    ...baseWithoutLegacyFlags
+  } = baseEnv;
+
   return {
-    ...buildBackendEnv(baseEnv, defaultWorkspaceRoot),
-    UI_CHAT_CLOUD_PILOT: "1",
-    UI_CHAT_CLOUD_PILOT_NODE_BINARY: nodeBinary,
-    // The Electron-owned Backend must fail on EADDRINUSE, never reuse a
-    // separately started process that cannot receive its private IPC channel.
-    UI_CHAT_ALLOW_BACKEND_REUSE: "0",
+    ...buildBackendEnv(baseWithoutLegacyFlags, defaultWorkspaceRoot),
+    [DEV_BACKEND_OWNER_ENV]: "1",
+    [DEV_BACKEND_NODE_BINARY_ENV]: nodeBinary,
   };
 }
 
@@ -237,45 +241,18 @@ function spawnManagedProcess(name, cwd, command, options = {}) {
   };
 }
 
+function terminateChild(child) {
+  return terminateOwnedChild(child);
+}
+
 function shutdown(exitCode = 0) {
   if (isShuttingDown) {
     return;
   }
 
   isShuttingDown = true;
-
-  for (const child of childProcesses) {
-    if (!child.killed) {
-      try {
-        if (process.platform === "win32") {
-          spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `taskkill /PID ${child.pid} /T /F`], {
-            stdio: "ignore",
-            windowsHide: true,
-          });
-        } else {
-          child.kill("SIGTERM");
-        }
-      } catch {}
-    }
-  }
-
-  setTimeout(() => process.exit(exitCode), 300);
-}
-
-async function isTcpPortOpen(host, port) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ host, port });
-
-    const cleanup = (result) => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(result);
-    };
-
-    socket.setTimeout(1000);
-    socket.once("connect", () => cleanup(true));
-    socket.once("timeout", () => cleanup(false));
-    socket.once("error", () => cleanup(false));
+  void Promise.all(childProcesses.map(terminateChild)).finally(() => {
+    process.exit(exitCode);
   });
 }
 
@@ -287,7 +264,7 @@ async function findAvailableTcpPort(host) {
       const address = server.address();
       if (!address || typeof address === "string") {
         server.close();
-        reject(new Error("Unable to allocate a Cloud Pilot renderer port"));
+        reject(new Error("Unable to allocate a development renderer port"));
         return;
       }
       server.close((error) => {
@@ -298,21 +275,11 @@ async function findAvailableTcpPort(host) {
   });
 }
 
-async function isBackendHealthy(url) {
-  try {
-    const response = await fetch(url);
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 async function main() {
   const runtimeConfig = loadRuntimeConfig();
   const backendHost = runtimeConfig.backend.host;
   const backendPort = runtimeConfig.backend.port;
   let desktopPort = runtimeConfig.dev.desktopPort;
-  const backendHealthUrl = `http://${backendHost}:${backendPort}/health`;
 
   const workspaceRoot = path.resolve(__dirname, "..");
   const serverDir = path.join(workspaceRoot, "server");
@@ -326,78 +293,39 @@ async function main() {
     path.join(workspaceRoot, ".artifacts", "server-bundle", "app-meta.json"),
   ]);
 
-  const cloudPilot = cloudPilotRequested;
-  let desktopAlreadyRunning = false;
-  if (cloudPilot) {
-    if (await isTcpPortOpen("127.0.0.1", desktopPort)) {
-      const configuredPort = desktopPort;
-      desktopPort = await findAvailableTcpPort("127.0.0.1");
-      console.log(
-        `Cloud Pilot: renderer port ${configuredPort} is occupied; using a free development port ${desktopPort} without reusing the existing service.`,
-      );
-    }
-  } else {
-    desktopAlreadyRunning = await isTcpPortOpen("localhost", desktopPort);
-  }
-  const backendAlreadyHealthy = cloudPilot
-    ? false
-    : await isBackendHealthy(backendHealthUrl);
+  // Fail before starting Vite when another Backend owns the port. Reusing it
+  // would produce a Cloud-hostless session that looks superficially healthy.
+  await assertBackendPortAvailable(backendHost, backendPort);
+  console.log(
+    "Dev Backend ownership: Electron Main will start the source Backend with its private Cloud IPC channel.",
+  );
 
-  let backendReady = Promise.resolve();
-  let desktopReady = Promise.resolve();
-
-  if (cloudPilot) {
-    if (await isTcpPortOpen(backendHost, backendPort)) {
-      throw new Error(
-        `Cloud Pilot requires exclusive Backend ownership, but ${backendHost}:${backendPort} is already listening. Stop the existing Backend and retry.`,
-      );
-    }
+  if (await isTcpPortOpen("127.0.0.1", desktopPort)) {
+    const configuredPort = desktopPort;
+    desktopPort = await findAvailableTcpPort("127.0.0.1");
     console.log(
-      "Cloud Pilot: skipping the independent Backend dev server; Electron Main will own the Backend and its private IPC channel.",
+      `Renderer port ${configuredPort} is occupied; using free development port ${desktopPort} without reusing the existing service.`,
     );
-  } else if (backendAlreadyHealthy) {
-    console.log(`Reusing existing backend at ${backendHealthUrl}`);
-  } else {
-    console.log("Starting backend dev server...");
-    backendReady = spawnManagedProcess("server", serverDir, "pnpm dev", {
-      env: buildBackendEnv(process.env),
-      readyWhen: (_text, combined) =>
-        combined.includes(`Server running on http://${backendHost}:${backendPort}`),
-    }).ready;
   }
 
-  if (desktopAlreadyRunning) {
-    console.log(`Reusing existing desktop dev server on tcp://localhost:${desktopPort}`);
-  } else {
-    console.log("Starting desktop dev server...");
-    desktopReady = spawnManagedProcess("desktop", desktopDir, "pnpm dev", {
-      env: cloudPilot ? { UI_CHAT_DESKTOP_PORT: String(desktopPort) } : undefined,
-      readyWhen: (_text, combined) =>
-        combined.includes(`http://localhost:${desktopPort}/`) ||
-        combined.includes(`http://127.0.0.1:${desktopPort}/`),
-    }).ready;
-  }
+  console.log("Starting desktop dev server...");
+  const desktopReady = spawnManagedProcess("desktop", desktopDir, "pnpm dev", {
+    // Keep Vite and Electron on the exact same development port and host.
+    env: { UI_CHAT_DESKTOP_PORT: String(desktopPort) },
+    readyWhen: (_text, combined) =>
+      combined.includes(`http://localhost:${desktopPort}/`) ||
+      combined.includes(`http://127.0.0.1:${desktopPort}/`),
+  }).ready;
 
-  if (!desktopAlreadyRunning) {
-    console.log("Waiting for desktop dev server readiness signal...");
-  }
-
-  if (!cloudPilot && !backendAlreadyHealthy) {
-    console.log("Waiting for backend readiness signal...");
-  }
-
-  await Promise.all([desktopReady, backendReady]);
+  console.log("Waiting for desktop dev server readiness signal...");
+  await desktopReady;
 
   console.log(
-    cloudPilot
-      ? "Desktop renderer is ready. Launching Electron; Main will start the owned Backend..."
-      : "Desktop and backend are ready. Launching Electron...",
+    "Desktop renderer is ready. Launching Electron; Main will start the owned Backend...",
   );
   const electronEnv = {
     ...process.env,
-    // Do not inherit a stale Cloud Pilot flag from the local .env file.
-    UI_CHAT_CLOUD_PILOT: cloudPilot ? "1" : "0",
-    ...(cloudPilot ? { UI_CHAT_DESKTOP_PORT: String(desktopPort) } : {}),
+    UI_CHAT_DESKTOP_PORT: String(desktopPort),
   };
   const electronChild = spawn(electronBinary, ["."], {
     cwd: __dirname,
@@ -431,8 +359,8 @@ if (require.main === module) {
 module.exports = {
   buildBackendEnv,
   buildElectronEnv,
-  isCloudPilotMode,
   findAvailableTcpPort,
   resolveShellCommand,
   resolveBackendWorkspaceRoot,
+  waitForReadySignal,
 };
