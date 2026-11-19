@@ -406,8 +406,11 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
       UI_CHAT_REMOTE_RELAY_ENABLED: "1",
       UI_CHAT_REMOTE_RELAY_URL: "https://legacy.example.test",
       UI_CHAT_REMOTE_RELAY_HOST_TOKEN: "h".repeat(48),
-    })).toEqual({ kind: "cloud", enabled: true,
-      relayUrl: "wss://cloud-relay.tomz.io" });
+    })).toEqual({
+      kind: "cloud",
+      enabled: true,
+      relayUrl: "wss://cloud-relay.tomz.io",
+    });
     expect(resolveCloudRelayConnectorConfig({
       UI_CHAT_CLOUD_RELAY_ENABLED: "1",
       UI_CHAT_CLOUD_RELAY_URL: "https://official.example.test",
@@ -464,6 +467,30 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
       enabled: false,
       relayUrl: "wss://cloud-relay.tomz.io",
     });
+  });
+
+  it("does not acquire a Cloud ticket or open a socket when emergency-disabled", () => {
+    const factory = vi.fn();
+    const withHostTicket = vi.fn();
+    const service = new RemoteRelayConnectorService(
+      () => resolveCloudRelayConnectorConfig({
+        UI_CHAT_CLOUD_RELAY_ENABLED: "0",
+      }),
+      factory,
+      fetch,
+      "http://127.0.0.1:8787",
+      () => 0,
+      { withHostTicket, onRevoked: () => () => undefined },
+    );
+    service.start();
+    expect(service.getSnapshot()).toMatchObject({
+      enabled: false,
+      state: "disabled",
+      relayUrl: "wss://cloud-relay.tomz.io",
+    });
+    expect(withHostTicket).not.toHaveBeenCalled();
+    expect(factory).not.toHaveBeenCalled();
+    service.stop();
   });
 
   it("fails closed for malformed, unsafe and Legacy endpoint overrides", () => {
