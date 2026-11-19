@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "desktop-cloud-fast": {
+      "description": "Bounded Desktop Cloud Relay / Electron dev IPC validation for DSK-015 and DSK-016; real Windows/macOS dev smoke remains maintainer T3.",
+      "checks": [
+        {
+          "id": "dependencies",
+          "tier": "L1",
+          "requirement": "required",
+          "command": "corepack enable && pnpm install --frozen-lockfile",
+          "failure_result": "BLOCKED"
+        },
+        {
+          "id": "remote-relay-types",
+          "tier": "L1",
+          "requirement": "required",
+          "command": "pnpm check:remote-relay",
+          "failure_result": "REPAIR"
+        },
+        {
+          "id": "electron-cloud-contracts",
+          "tier": "L2",
+          "requirement": "required",
+          "command": "node --test electron/dev-launcher.test.cjs electron/cloud-pilot-dev.test.cjs electron/cloud-relay-ticket-ipc.test.cjs electron/cloud-account.test.cjs",
+          "failure_result": "REPAIR"
+        },
+        {
+          "id": "backend-cloud-contracts",
+          "tier": "L2",
+          "requirement": "required",
+          "command": "pnpm --dir server exec vitest run src/services/remote-relay-connector.service.test.ts src/services/cloud-relay-ticket-ipc.service.test.ts src/services/cloud-host-grant-ipc.service.test.ts",
+          "failure_result": "REPAIR"
+        },
+        {
+          "id": "workspace-typecheck",
+          "tier": "L3",
+          "requirement": "required",
+          "command": "pnpm -r --workspace-concurrency=1 typecheck",
+          "failure_result": "REPAIR"
+        },
+        {
+          "id": "no-worker-packaging",
+          "tier": "L4",
+          "requirement": "not_applicable"
+        }
+      ]
+    }
+  }
+}
