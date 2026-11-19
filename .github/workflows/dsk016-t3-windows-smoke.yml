@@ -40,6 +40,11 @@ jobs:
           $env:UI_CHAT_WORKSPACE_ROOT = Join-Path $env:RUNNER_TEMP "mira-dsk016-smoke-workspace"
           $env:UI_CHAT_DATABASE_DIR = Join-Path $env:RUNNER_TEMP "mira-dsk016-smoke-db"
           New-Item -ItemType Directory -Force $env:UI_CHAT_WORKSPACE_ROOT, $env:UI_CHAT_DATABASE_DIR | Out-Null
+          # The legacy Clipper dev build needs a signing key before Electron starts.
+          # Generate a disposable CI-only RSA key; never use a user or production key.
+          $keyPath = Join-Path $env:RUNNER_TEMP "mira-dsk016-ephemeral-dev-crx.pem"
+          node -e "const fs=require('node:fs');const c=require('node:crypto');const kp=c.generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs1',format:'pem'},publicKeyEncoding:{type:'pkcs1',format:'pem'}});fs.writeFileSync(process.argv[1],kp.privateKey)" $keyPath
+          $env:MIRA_CLIPPER_CRX_KEY_PATH = $keyPath
           $stdoutPath = Join-Path $env:RUNNER_TEMP "mira-dsk016-dev-out.log"
           $stderrPath = Join-Path $env:RUNNER_TEMP "mira-dsk016-dev-err.log"
           $process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/d", "/s", "/c", "pnpm dev:electron:win") -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -WindowStyle Hidden
