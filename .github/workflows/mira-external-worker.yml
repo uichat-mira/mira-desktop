@@ -15,7 +15,7 @@ on:
         description: Select repository-owned Validation profile for manual dispatch; comment dispatch retains legacy full check
         required: true
         type: choice
-        default: desktop-cloud-fast
+        default: legacy-full
         options:
           - desktop-cloud-fast
           - legacy-full
