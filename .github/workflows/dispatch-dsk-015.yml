@@ -1,5 +1,6 @@
 # One-shot branch-only trigger of the existing, reviewed Desktop Worker caller.
 # No direct Worker implementation here; Desktop dev remains the execution base.
+# Second attempt after Organization #90 and Desktop #484 repaired immutable Worker pin.
 name: Start DSK-015 Worker (one-shot)
 on:
   push:
