@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const net = require("node:net");
 const { EventEmitter } = require("node:events");
+const { spawn } = require("node:child_process");
 
 const {
   DEV_BACKEND_NODE_BINARY_ENV,
@@ -109,6 +110,37 @@ test("a Backend without the private IPC channel fails closed", () => {
   owned.connected = true;
   owned.send = () => true;
   assert.equal(assertBackendIpcOwnership(owned), owned);
+});
+
+test("Electron-owned Node child has a real private IPC round trip", async () => {
+  const child = spawn(process.execPath, [
+    "-e",
+    'process.on("message", (message) => { if (message === "ping") process.send("pong"); });',
+  ], {
+    stdio: ["ignore", "ignore", "pipe", "ipc"],
+    windowsHide: true,
+  });
+  try {
+    assert.equal(assertBackendIpcOwnership(child), child);
+    const reply = new Promise((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Private child IPC did not reply")),
+        5000,
+      );
+      child.once("message", (message) => {
+        clearTimeout(timeout);
+        resolve(message);
+      });
+      child.once("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+    });
+    child.send("ping");
+    assert.equal(await reply, "pong");
+  } finally {
+    await terminateOwnedChild(child);
+  }
 });
 
 test("an occupied Backend port is rejected instead of reused", async () => {
