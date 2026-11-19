@@ -1,0 +1,28 @@
+# One-shot branch-only dispatch of DSK-016 through the audited Desktop dev Worker.
+# Keep this isolated from dev/test/prod; do not trigger Desktop packaging.
+name: Start DSK-016 Worker (one-shot)
+on:
+  push:
+    branches:
+      - chore/dispatch-dsk-016
+    paths:
+      - .github/workflows/dispatch-dsk-016.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    if: ${{ github.repository == 'uichat-mira/mira-desktop' && github.ref == 'refs/heads/chore/dispatch-dsk-016' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch DSK-016 against dev with bounded Cloud validation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          jq -n '{ref:"dev",inputs:{issue_number:"482",validation_profile:"desktop-cloud-fast"}}' \
+          | gh api --method POST --input - "repos/${GITHUB_REPOSITORY}/actions/workflows/mira-external-worker.yml/dispatches"
+          echo "Dispatched dev Worker for Issue #482 with desktop-cloud-fast validation."
