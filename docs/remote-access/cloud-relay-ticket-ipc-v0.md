@@ -1,6 +1,6 @@
 # DSK-010 / Round 1 — Native Cloud Relay ticket IPC V0
 
-Status: implementation contract for DSK-010, scoped to [#429](https://github.com/uichat-mira/mira-desktop/issues/429).
+Status: implementation contract for DSK-010, scoped to [#429](https://github.com/uichat-mira/mira-desktop/issues/429); the DSK-016 section updates standard Dev ownership.
 
 ## Boundary and owner
 
@@ -13,7 +13,14 @@ Status: implementation contract for DSK-010, scoped to [#429](https://github.com
 
 Packaged Electron spawns the bundled Backend with Node's dedicated inherited IPC channel (`stdio: ["ignore", "pipe", "pipe", "ipc"]`) and attaches the native handler **only to that exact ChildProcess instance**. Messages use Node's `process.send` and ChildProcess `message` listeners. No TCP, localhost HTTP, named pipe listener, filesystem mailbox, bearer environment variable or renderer forwarding is added.
 
-Development Backend is currently started independently by `electron/dev-launcher.cjs` (and may reuse an existing process). **Do not change the dev launcher as part of this round.** Where `process.send` is absent, the Cloud ticket provider returns `bridge_unavailable` explicitly; self-hosted Relay, Tailscale and local Desktop continue working. Round 2 integration must test the packaged-shaped injectable provider and report this dev limitation, not secretly use HTTP.
+Development now uses the same ownership model through the standard
+`pnpm dev:electron:win` / `pnpm dev:electron:mac` entrypoints (see DSK-016 below).
+`electron/dev-launcher.cjs` starts only Vite; Electron Main spawns the source
+Backend with this same inherited IPC channel and attaches the native handler to
+that exact ChildProcess. A Backend launched any other way has no
+`process.send`; the Cloud ticket provider then returns `bridge_unavailable`
+explicitly while self-hosted Relay, Tailscale and local Desktop continue
+working. There is no HTTP or renderer credential fallback.
 
 ## Bounded protocol
 
@@ -115,22 +122,22 @@ history, not current release guidance.
   as the product default or silently route to the Legacy production hostname.
   Release wiring of an official Cloud-only endpoint and genuine Desktop
   sign-in/restart/Host revoke T3 remain separate acceptance evidence.
-- Ordinary development startup still launches or reuses an independent
-  Backend and therefore does not provide the Electron-owned child IPC channel.
-  It must continue to fail closed; no Cloud bearer is forwarded by HTTP,
-  preload, Renderer or another side channel.
-- Explicit Cloud Pilot startup (`pnpm dev:electron:win:cloud-pilot` or
-  `pnpm dev:electron:mac:cloud-pilot`) keeps the Vite renderer in watch mode,
-  but skips the independent Backend launcher. Electron Main starts the source
-  Backend directly with the workspace Node executable and `tsx` **without
-  watch mode**, attaches the same private ticket and Host Grant IPC bridges,
-  and marks only that exact child with `UI_CHAT_CLOUD_IPC_CHILD=1`.
-- Cloud Pilot refuses to start when the configured Backend port is already
-  occupied; it never reuses an independently started Backend. Renderer/Vite
-  hot reload remains available; Backend source changes require a full Cloud
-  Pilot restart. The normal Dev launcher and packaged startup remain unchanged.
-- Cloud Pilot resolves the same application-owned official Cloud endpoint
-  with no local `.env` requirement. An operator-only
+- The standard development entrypoints (`pnpm dev:electron:win` /
+  `pnpm dev:electron:mac`) keep the Vite renderer in HMR mode and skip the
+  independent Backend launcher. Electron Main starts the source Backend
+  directly with the workspace Node executable and `tsx`, attaches the same
+  private ticket and Host Grant IPC bridges, and marks only that exact child
+  with `UI_CHAT_CLOUD_IPC_CHILD=1`.
+- The standard dev launch refuses to start when the configured Backend port is
+  already occupied; it never reuses an independently started Backend. Backend
+  source changes are applied by an Electron Main restart loop that preserves
+  the private IPC relationship; `tsx watch` is not used because its
+  intermediate supervisor cannot receive Electron's child IPC channel.
+- `dev:electron:win:cloud-pilot` / `dev:electron:mac:cloud-pilot` remain only
+  as compatibility aliases for the standard commands. No development flow
+  requires `UI_CHAT_CLOUD_PILOT`.
+- Both development and packaged runtimes resolve the same application-owned
+  official Cloud endpoint with no local `.env` requirement. An operator-only
   `UI_CHAT_CLOUD_RELAY_URL` may override it for controlled testing; it never
   defaults to the isolated REL-005 Worker or a Legacy Relay hostname.
 
@@ -156,3 +163,37 @@ change the DSK-010 transport contract.
   disables Cloud transport without affecting Local, Tailscale Direct or the
   independent self-hosted Relay. No renderer, account UI or ordinary user
   configuration gains endpoint selection or credential visibility.
+
+## DSK-016 — standard Dev uses the packaged IPC ownership model (2026-11-19)
+
+This section closes the development/runtime parity gap in
+[#482](https://github.com/uichat-mira/mira-desktop/issues/482); it does not
+change the DSK-005 / DSK-007 / DSK-010 credential or transport contracts.
+
+- `electron/dev-launcher.cjs` now starts only the Vite renderer. It refuses to
+  continue when the configured Backend port is already listening, so a healthy
+  but independently owned Backend can never be mistaken for an IPC-attached
+  Host. The renderer port remains independently allocated when the configured
+  Vite port is occupied.
+- `electron/main.cjs` spawns the source Backend with the workspace Node
+  executable and `tsx` only when the launcher supplies the ownership marker.
+  The child keeps `stdio: ["ignore", "pipe", "pipe", "ipc"]`,
+  `UI_CHAT_CLOUD_IPC_CHILD=1` and `UI_CHAT_ALLOW_BACKEND_REUSE=0`; Main verifies
+  the child IPC channel before attaching the ticket and Host Grant bridges.
+  Missing ownership or a missing IPC channel fails closed instead of falling
+  back to an independent Backend.
+- `tsx watch` is deliberately not used: its intermediate supervisor would own
+  Electron's IPC channel instead of the actual Backend. Instead, Main watches
+  `server/src` runtime source changes (debounced, excluding tests and build
+  output), stops the old child, starts a new one and reattaches both private
+  bridges. Vite HMR remains unchanged. A failed restart leaves Cloud Host
+  unavailable until a later successful restart.
+- Electron Main remains the sole owner of the Cloud Account Session and the
+  Relay ticket / Host Grant acquisition boundary. Dev adds no Renderer, HTTP,
+  SQLite or log access to those secrets, and Local / Tailscale Direct /
+  self-hosted Relay paths remain independent.
+- Direct Electron launches or harnesses that manage their own Backend still
+  work but have no owned IPC channel; Cloud Host stays unavailable there with
+  the existing explicit bridge failure. Only the standard
+  `pnpm dev:electron:win` / `pnpm dev:electron:mac` entrypoints provide
+  Cloud-capable development.

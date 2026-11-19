@@ -56,6 +56,16 @@ test("secondary Electron instance cannot initialize Cloud OAuth, Backend or a wi
       attachCloudRelayTicketIpc: () => {},
       attachCloudHostGrantIpc: () => {},
     };
+    if (name === "./dev-backend.cjs") return {
+      DEV_BACKEND_NODE_BINARY_ENV: "UI_CHAT_DEV_NODE_BINARY",
+      DEV_BACKEND_OWNER_ENV: "UI_CHAT_DEV_OWN_BACKEND",
+      assertBackendIpcOwnership: () => {},
+      assertBackendPortAvailable: async () => {},
+      createDevBackendWatcher: () => ({ close: () => {} }),
+      createRestartQueue: () => ({ request: async () => {}, whenIdle: async () => {} }),
+      resolveDevBackendLaunch: () => ({}),
+      terminateOwnedChild: async () => {},
+    };
     if (name.endsWith("runtime.config.cjs")) return {
       backend: { host: "127.0.0.1", port: 6000 },
     };

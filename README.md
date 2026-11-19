@@ -43,9 +43,7 @@ root/
 ```bash
 pnpm install
 pnpm dev:electron:win
-pnpm dev:electron:win:cloud-pilot
 pnpm dev:electron:mac
-pnpm dev:electron:mac:cloud-pilot
 pnpm smoke:electron:chat:mac
 pnpm smoke:terminal:mac
 pnpm check
@@ -53,7 +51,9 @@ pnpm check:no-db-in-index
 pnpm clean:artifacts
 ```
 
-`dev:electron:win:cloud-pilot` / `dev:electron:mac:cloud-pilot` 是显式的 Cloud Host 联调模式：Vite renderer 仍热更新，但 Electron Main 直接启动一个不带 watch 的 Node/tsx Backend 子进程，并通过现有私有 IPC 连接 Cloud Relay Ticket 与 Host Grant bridge。该模式要求 Backend 端口空闲；不会复用独立 Backend。若配置的 Vite 端口已被其它项目占用，会为本次联调分配独立的开发端口，不会误用其它项目页面，也不会改变普通 Dev 或 packaged 启动路径。Cloud Relay 默认使用应用内置的官方 Cloud-only endpoint `https://cloud-relay.tomz.io`，开发与 packaged 运行时不依赖本机 `.env`；受控部署/联调仍可通过 operator-only `UI_CHAT_CLOUD_RELAY_URL` 覆盖，但 Legacy `relay.tomz.io` 与不安全配置会失败关闭。启动脚本不写死 endpoint。
+`pnpm dev:electron:win` / `pnpm dev:electron:mac` 是唯一标准开发入口，并直接提供 Cloud-capable Desktop Host：Vite renderer 保持 HMR；Electron Main 作为唯一属主启动源码 Backend，并通过现有私有 child IPC 挂载 Cloud Relay Ticket 与 Host Grant bridge。因此登录 Mira Cloud 后无需额外的 `:cloud-pilot` 命令或 `UI_CHAT_CLOUD_PILOT` 开关。该入口要求 Backend 端口空闲，不会复用独立 Backend；若配置的 Vite 端口已被占用，会为本次启动分配独立的开发端口。Backend 源码变更由 Main 安全重启子进程并重新挂载私有 IPC，Vite HMR 不受影响。Cloud Relay 默认使用应用内置的官方 Cloud-only endpoint `https://cloud-relay.tomz.io`，开发与 packaged 运行时不依赖本机 `.env`；受控部署/联调仍可通过 operator-only `UI_CHAT_CLOUD_RELAY_URL` 覆盖，但 Legacy `relay.tomz.io` 与不安全配置会失败关闭。启动脚本不写死 endpoint。
+
+`dev:electron:win:cloud-pilot` / `dev:electron:mac:cloud-pilot` 仅作为指向标准命令的兼容别名保留；它们不再启用第二套启动路径。
 
 `dev:electron:mac` 当前用于 Apple Silicon Electron Core 开发态验证，不构建仅支持 Windows 的 Native Messaging Host。启动前会为 npm 下载的 `Electron.app` 准备本机 ad-hoc 开发签名，并恢复 node-pty macOS `spawn-helper` 的执行位；这些动作只用于本地开发，macOS 正式包仍需 Developer ID、公证及独立 payload 验证。正式打包目前未支持，当前进度见 `docs/platform/macos-implementation-phases.md`。
 
