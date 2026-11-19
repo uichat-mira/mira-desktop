@@ -505,6 +505,8 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
       "ftp://cloud-relay.tomz.io",
       "https://relay.tomz.io",
       "https://relay.tomz.io.",
+      "https://relay.tomz.io...",
+      "https://relay.tomz.io" + ".".repeat(512),
       "wss://RELAY.TOMZ.IO",
     ]) {
       expect(

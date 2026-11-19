@@ -186,8 +186,12 @@ const normalizeRelayUrl = (
 const isLegacyRelayUrl = (url: string) => {
   // A trailing dot resolves to the same Legacy host, so canonicalize before
   // comparing. Cloud tickets must never reach the Legacy Relay transport.
-  const hostname = new URL(url).hostname.toLowerCase().replace(/\.+$/u, "");
-  return hostname === LEGACY_RELAY_HOSTNAME;
+  const hostname = new URL(url).hostname.toLowerCase();
+  let end = hostname.length;
+  while (end > 0 && hostname[end - 1] === ".") {
+    end--;
+  }
+  return hostname.slice(0, end) === LEGACY_RELAY_HOSTNAME;
 };
 
 export const resolveCloudRelayConnectorConfig = (
