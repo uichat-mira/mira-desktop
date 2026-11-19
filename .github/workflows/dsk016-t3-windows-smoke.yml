@@ -83,3 +83,6 @@ jobs:
             Write-Host "------ Dev stderr tail ------"
             Get-Content $stderrPath -Tail 40 -ErrorAction SilentlyContinue
           }
+          # taskkill /T /F is an expected test cleanup; its native exit code must
+          # not replace a proven Vite + health + Main-owned IPC T3 result.
+          if ($success) { exit 0 }
