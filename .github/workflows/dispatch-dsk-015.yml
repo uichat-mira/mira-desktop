@@ -1,6 +1,6 @@
-# One-shot, branch-scoped start for DSK-015 only.
-# Deliberately isolated from dev/test/prod so no packaging or branch promotion occurs.
-name: Start DSK-015 bounded Worker (one-shot)
+# One-shot branch-only trigger of the existing, reviewed Desktop Worker caller.
+# No direct Worker implementation here; Desktop dev remains the execution base.
+name: Start DSK-015 Worker (one-shot)
 on:
   push:
     branches:
@@ -9,21 +9,20 @@ on:
       - .github/workflows/dispatch-dsk-015.yml
 
 permissions:
-  actions: read
-  contents: write
-  issues: write
-  pull-requests: write
+  actions: write
+  contents: read
 
 jobs:
-  worker:
+  dispatch:
     if: ${{ github.repository == 'uichat-mira/mira-desktop' && github.ref == 'refs/heads/chore/dispatch-dsk-015' }}
-    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@d26f48116d042efd03287bfa93d78cf417fbb7ca
-    with:
-      issue_number: 481
-      base_branch: dev
-      timeout_minutes: 60
-      validation_profile: desktop-cloud-fast
-      validation_max_tier: L3
-    secrets:
-      opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
-      haomai_reporter_hmac_secret: ${{ secrets.HAOMAI_REPORTER_HMAC_SECRET }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch approved DSK-015 on dev with bounded validation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          jq -n '{ref:"dev",inputs:{issue_number:"481",validation_profile:"desktop-cloud-fast"}}' \
+          | gh api --method POST --input - "repos/${GITHUB_REPOSITORY}/actions/workflows/mira-external-worker.yml/dispatches"
+          echo "Requested existing dev Worker dispatch for Issue #481 and desktop-cloud-fast."
