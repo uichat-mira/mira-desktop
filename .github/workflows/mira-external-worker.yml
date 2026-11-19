@@ -11,6 +11,14 @@ on:
         description: Open GitHub Issue number to execute
         required: true
         type: string
+      validation_profile:
+        description: Select repository-owned Validation profile for manual dispatch; comment dispatch retains legacy full check
+        required: true
+        type: choice
+        default: desktop-cloud-fast
+        options:
+          - desktop-cloud-fast
+          - legacy-full
 
 permissions:
   contents: read
@@ -124,11 +132,15 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
-    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@980fd8179bcaf8823189a0ff4c6622027c5883b4
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@d26f48116d042efd03287bfa93d78cf417fbb7ca
     with:
       issue_number: ${{ fromJSON(needs.enrollment.outputs.issue_number) }}
       base_branch: dev
       timeout_minutes: 60
+      # Only trusted manual dispatch selects a profile. Existing `/worker run`
+      # comments retain their full legacy check until a repo-wide profile is approved.
+      validation_profile: ${{ github.event_name == 'workflow_dispatch' && inputs.validation_profile == 'desktop-cloud-fast' && 'desktop-cloud-fast' || '' }}
+      validation_max_tier: L3
       verification_command: |
         corepack enable
         pnpm install --frozen-lockfile
