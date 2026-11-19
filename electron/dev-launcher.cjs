@@ -346,7 +346,7 @@ async function main() {
   });
 }
 
-if (require.main === module) {
+if (require.main?.filename === __filename) {
   process.on("SIGINT", () => shutdown(0));
   process.on("SIGTERM", () => shutdown(0));
 
