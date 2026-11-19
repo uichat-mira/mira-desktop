@@ -1,0 +1,80 @@
+# One-shot DSK-016 T3 runtime smoke. Does not package or deploy Desktop.
+name: DSK-016 Windows dev runtime T3 (one-shot)
+on:
+  push:
+    branches:
+      - chore/dsk016-t3-windows-smoke
+    paths:
+      - .github/workflows/dsk016-t3-windows-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  windows-dev-t3:
+    name: Standard Windows Dev startup, health, Main-owned IPC
+    runs-on: windows-2022
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e635ed8aaf2274565849b96f685828d2e1adb036
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Clipper extension dev dependencies
+        run: npm ci --prefix mira-clipper-ext --ignore-scripts
+      - name: Start the real standard Dev and inspect Vite, backend and IPC
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          UI_CHAT_CLOUD_RELAY_ENABLED: "0"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:UI_CHAT_WORKSPACE_ROOT = Join-Path $env:RUNNER_TEMP "mira-dsk016-smoke-workspace"
+          $env:UI_CHAT_DATABASE_DIR = Join-Path $env:RUNNER_TEMP "mira-dsk016-smoke-db"
+          New-Item -ItemType Directory -Force $env:UI_CHAT_WORKSPACE_ROOT, $env:UI_CHAT_DATABASE_DIR | Out-Null
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "mira-dsk016-dev-out.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "mira-dsk016-dev-err.log"
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/d", "/s", "/c", "pnpm dev:electron:win") -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -WindowStyle Hidden
+          $success = $false
+          try {
+            for ($i = 0; $i -lt 150; $i++) {
+              Start-Sleep -Seconds 1
+              $logs = (Get-Content $stdoutPath -Raw -ErrorAction SilentlyContinue) + (Get-Content $stderrPath -Raw -ErrorAction SilentlyContinue)
+              $mainIpc = $logs -match "Dev Backend is healthy and attached to Electron's private IPC channel"
+              $vite = $false
+              $health = $false
+              try {
+                $site = Invoke-WebRequest "http://127.0.0.1:5757/" -UseBasicParsing -TimeoutSec 2
+                $vite = $site.StatusCode -eq 200
+              } catch { }
+              try {
+                $backend = Invoke-WebRequest "http://127.0.0.1:8787/health" -UseBasicParsing -TimeoutSec 2
+                $health = $backend.StatusCode -eq 200
+              } catch { }
+              if ($mainIpc -and $vite -and $health) {
+                Write-Host "T3 PASS: standard dev entrypoint started Vite + real Backend /health + Main-owned private IPC"
+                $success = $true
+                break
+              }
+              if ($process.HasExited) { break }
+            }
+            if (-not $success) {
+              throw "T3 not proven: Vite, Backend health and Main private IPC did not become simultaneously ready"
+            }
+          } finally {
+            if (-not $process.HasExited) {
+              taskkill /PID $process.Id /T /F 2>$null | Out-Null
+            }
+            Write-Host "------ Dev stdout tail ------"
+            Get-Content $stdoutPath -Tail 65 -ErrorAction SilentlyContinue
+            Write-Host "------ Dev stderr tail ------"
+            Get-Content $stderrPath -Tail 40 -ErrorAction SilentlyContinue
+          }
