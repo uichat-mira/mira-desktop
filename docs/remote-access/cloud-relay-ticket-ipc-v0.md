@@ -97,13 +97,17 @@ history, not current release guidance.
   verified restoration reacquires a new ticket. Backend must be listening
   before a Cloud socket is created. The independent self-hosted Relay and
   Tailscale paths are not started, stopped or reconfigured by this gate.
-- **Operator endpoint remains a release precondition:** the platform must
-  supply `UI_CHAT_CLOUD_RELAY_URL` pointing to a verified Cloud-only
-  official TLS endpoint, with no user-visible per-account URL/room/token.
-  The Client no longer requires a user or operator to flip an extra
-  `UI_CHAT_CLOUD_RELAY_ENABLED=1` switch. A missing, plaintext or
-  `relay.tomz.io` Legacy endpoint fails visibly as
-  `cloud_relay_endpoint_unavailable`. An **operator-only emergency**
+- **Official endpoint is application-owned:** both development and
+  packaged runtimes default to the approved Cloud-only endpoint
+  `https://cloud-relay.tomz.io` (normalized to `wss://cloud-relay.tomz.io`)
+  without any local `.env` value. The Client does not require a user or
+  operator to flip an extra `UI_CHAT_CLOUD_RELAY_ENABLED=1` switch, and no
+  user-visible per-account URL/room/token exists. A valid, TLS-only
+  `UI_CHAT_CLOUD_RELAY_URL` may remain as an **operator-only override** for
+  controlled deployment/testing, never as an account setting. An explicitly
+  malformed, plaintext or `relay.tomz.io` Legacy override fails visibly as
+  `cloud_relay_endpoint_unavailable`; it never falls back to the default or
+  routes a Cloud ticket to Legacy Relay. An **operator-only emergency**
   `UI_CHAT_CLOUD_RELAY_ENABLED=0` can suspend official Cloud transport
   without affecting local/Tailscale/self-hosted connectivity.
 - The isolated REL-005 `workers.dev` Worker is a **test service**, not
@@ -125,6 +129,30 @@ history, not current release guidance.
   occupied; it never reuses an independently started Backend. Renderer/Vite
   hot reload remains available; Backend source changes require a full Cloud
   Pilot restart. The normal Dev launcher and packaged startup remain unchanged.
-- Cloud Pilot consumes the same operator-provided `UI_CHAT_CLOUD_RELAY_URL`
-  from local environment configuration. It does not invent or default to the
-  isolated REL-005 Worker or a Legacy Relay hostname.
+- Cloud Pilot resolves the same application-owned official Cloud endpoint
+  with no local `.env` requirement. An operator-only
+  `UI_CHAT_CLOUD_RELAY_URL` may override it for controlled testing; it never
+  defaults to the isolated REL-005 Worker or a Legacy Relay hostname.
+
+## DSK-015 — official Cloud-only endpoint default (2026-11-19)
+
+This section closes the remaining endpoint-configuration gap in
+[#481](https://github.com/uichat-mira/mira-desktop/issues/481); it does not
+change the DSK-010 transport contract.
+
+- `resolveCloudRelayConnectorConfig()` owns the default in
+  `server/src/services/remote-relay-connector.service.ts`: an absent or blank
+  `UI_CHAT_CLOUD_RELAY_URL` resolves to
+  `wss://cloud-relay.tomz.io` in every runtime. The value is bundled into
+  `server.cjs`, so a packaged Host does not need a developer-local `.env`.
+- An explicit operator-only `UI_CHAT_CLOUD_RELAY_URL` remains available for
+  controlled deployment/testing. Because Cloud admission is always TLS-only,
+  the override must be `https://` or `wss://`; malformed URLs, embedded
+  credentials, paths, query strings, fragments, plaintext protocols and the
+  Legacy `relay.tomz.io` host all resolve to `null` and fail as
+  `cloud_relay_endpoint_unavailable`. An invalid override never falls back to
+  the official default.
+- The operator-only emergency switch `UI_CHAT_CLOUD_RELAY_ENABLED=0` still
+  disables Cloud transport without affecting Local, Tailscale Direct or the
+  independent self-hosted Relay. No renderer, account UI or ordinary user
+  configuration gains endpoint selection or credential visibility.
