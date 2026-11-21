@@ -406,7 +406,11 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
       UI_CHAT_REMOTE_RELAY_ENABLED: "1",
       UI_CHAT_REMOTE_RELAY_URL: "https://legacy.example.test",
       UI_CHAT_REMOTE_RELAY_HOST_TOKEN: "h".repeat(48),
-    })).toEqual({ kind: "cloud", enabled: true, relayUrl: null });
+    })).toEqual({
+      kind: "cloud",
+      enabled: true,
+      relayUrl: "wss://cloud-relay.tomz.io",
+    });
     expect(resolveCloudRelayConnectorConfig({
       UI_CHAT_CLOUD_RELAY_ENABLED: "1",
       UI_CHAT_CLOUD_RELAY_URL: "https://official.example.test",
@@ -435,6 +439,136 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
       UI_CHAT_CLOUD_RELAY_URL: "http://insecure.example.test",
       NODE_ENV: "development",
     }).relayUrl).toBeNull();
+  });
+
+  it("resolves the application-owned official endpoint without local environment", () => {
+    const expected = {
+      kind: "cloud" as const,
+      enabled: true,
+      relayUrl: "wss://cloud-relay.tomz.io",
+    };
+    expect(resolveCloudRelayConnectorConfig({})).toEqual(expected);
+    expect(resolveCloudRelayConnectorConfig({ NODE_ENV: "development" }))
+      .toEqual(expected);
+    expect(resolveCloudRelayConnectorConfig({ NODE_ENV: "production" }))
+      .toEqual(expected);
+    expect(resolveCloudRelayConnectorConfig({ UI_CHAT_CLOUD_RELAY_URL: "  " }))
+      .toEqual(expected);
+    expect(resolveCloudRelayConnectorConfig({
+      UI_CHAT_CLOUD_RELAY_URL: "https://cloud-relay.tomz.io/",
+    }).relayUrl).toBe("wss://cloud-relay.tomz.io");
+  });
+
+  it("keeps the operator-only emergency disable independent of the endpoint", () => {
+    expect(resolveCloudRelayConnectorConfig({
+      UI_CHAT_CLOUD_RELAY_ENABLED: "0",
+    })).toEqual({
+      kind: "cloud",
+      enabled: false,
+      relayUrl: "wss://cloud-relay.tomz.io",
+    });
+  });
+
+  it("does not acquire a Cloud ticket or open a socket when emergency-disabled", () => {
+    const factory = vi.fn();
+    const withHostTicket = vi.fn();
+    const service = new RemoteRelayConnectorService(
+      () => resolveCloudRelayConnectorConfig({
+        UI_CHAT_CLOUD_RELAY_ENABLED: "0",
+      }),
+      factory,
+      fetch,
+      "http://127.0.0.1:8787",
+      () => 0,
+      { withHostTicket, onRevoked: () => () => undefined },
+    );
+    service.start();
+    expect(service.getSnapshot()).toMatchObject({
+      enabled: false,
+      state: "disabled",
+      relayUrl: "wss://cloud-relay.tomz.io",
+    });
+    expect(withHostTicket).not.toHaveBeenCalled();
+    expect(factory).not.toHaveBeenCalled();
+    service.stop();
+  });
+
+  it("fails closed for malformed, unsafe and Legacy endpoint overrides", () => {
+    for (const relayUrl of [
+      "not-a-url",
+      "https://cloud-relay.tomz.io/relay",
+      "https://user:pass@cloud-relay.tomz.io",
+      "https://cloud-relay.tomz.io/?token=secret",
+      "wss://cloud-relay.tomz.io#fragment",
+      "ws://cloud-relay.tomz.io",
+      "http://cloud-relay.tomz.io",
+      "ftp://cloud-relay.tomz.io",
+      "https://relay.tomz.io",
+      "https://relay.tomz.io.",
+      "https://relay.tomz.io...",
+      "https://relay.tomz.io" + ".".repeat(512),
+      "wss://RELAY.TOMZ.IO",
+    ]) {
+      expect(
+        resolveCloudRelayConnectorConfig({
+          UI_CHAT_CLOUD_RELAY_URL: relayUrl,
+        }).relayUrl,
+        relayUrl,
+      ).toBeNull();
+    }
+  });
+
+  it("uses only the resolved default endpoint when acquiring a Cloud ticket", async () => {
+    const urls: string[] = [];
+    const sockets: FakeRelaySocket[] = [];
+    const source: CloudRelayTicketSource = {
+      withHostTicket: async (consumer) => consumer(ticket("cloud.jwt.signature")),
+      onRevoked: () => () => undefined,
+    };
+    const service = new RemoteRelayConnectorService(
+      () => resolveCloudRelayConnectorConfig({}),
+      (url) => {
+        urls.push(url);
+        const socket = new FakeRelaySocket();
+        sockets.push(socket);
+        return socket;
+      },
+      fetch,
+      "http://127.0.0.1:8787",
+      () => 0,
+      source,
+    );
+    service.start();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(urls).toEqual([
+      `wss://cloud-relay.tomz.io/v1/relay/${cloudRoom}/socket`,
+    ]);
+    service.stop();
+  });
+
+  it("fails closed before ticket acquisition when the endpoint is Legacy", () => {
+    const factory = vi.fn();
+    const withHostTicket = vi.fn();
+    const service = new RemoteRelayConnectorService(
+      () => resolveCloudRelayConnectorConfig({
+        UI_CHAT_CLOUD_RELAY_URL: "https://relay.tomz.io",
+      }),
+      factory,
+      fetch,
+      "http://127.0.0.1:8787",
+      () => 0,
+      { withHostTicket, onRevoked: () => () => undefined },
+    );
+    service.start();
+    expect(service.getSnapshot()).toMatchObject({
+      enabled: true,
+      state: "misconfigured",
+      relayUrl: null,
+      lastError: "cloud_relay_endpoint_unavailable",
+    });
+    expect(factory).not.toHaveBeenCalled();
+    expect(withHostTicket).not.toHaveBeenCalled();
+    service.stop();
   });
 
   it("uses the native ticket for Host hello, never sends a legacy clientToken and blocks all business", async () => {

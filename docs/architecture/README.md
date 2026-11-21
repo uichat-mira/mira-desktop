@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: runtime
-Last verified: 2026-07-25
+Last verified: 2026-11-19
 Layer: raw-source
 Module: Develoments
 Feature: RuntimeArchitecture
@@ -67,33 +67,37 @@ renderer 不应直接持有 native 或 Node 级能力真相。
 
 ### 开发态
 
-普通开发启动仍由 launcher 独立启动或复用 Backend：
-
-```text
-renderer (Vite dev server) -- /api proxy --> Fastify backend
-desktop shell --------------------------------^
-```
-
-Cloud Pilot 联调使用显式的 `dev:electron:<platform>:cloud-pilot` 启动脚本：
+标准开发入口（`pnpm dev:electron:win` / `pnpm dev:electron:mac`）只有一个进程模型：
 
 ```text
 renderer (Vite dev server) -- /api proxy --> Fastify backend
 desktop shell
-  └─ Electron Main -- private child IPC --> Node + tsx Backend (no watch)
+  └─ Electron Main -- private child IPC --> Node + tsx source Backend
 ```
+
+Electron Main 是唯一启动 Backend 的进程，因此 Dev 与 packaged runtime 使用同一套
+Cloud Relay Ticket / Host Grant 私有 IPC 边界。`electron/dev-launcher.cjs` 只启动
+Vite 并等待其就绪，不再独立启动或复用 Backend；若配置的 Backend 端口已被占用，
+标准开发启动直接失败，绝不复用无法接收私有 IPC 的独立进程。
+
+Backend 源码热重载由 Main 负责：直接执行 `node <tsx>/cli.mjs src/index.ts`，
+刻意不使用 `tsx watch`，因为 watcher 会插入一个无法继承 Electron child IPC 的
+中间进程。Main 监听 `server/src` 的运行时代码变更（防抖并排除测试与构建产物），
+终止旧子进程后启动新进程，并重新挂载 Ticket / Host Grant bridge。Vite renderer
+仍由 Vite HMR 更新。若配置的 Vite 端口被其它 IPv4 服务占用，则分配独立的开发
+端口而不复用未知服务；Electron 使用与 Vite 一致的 `127.0.0.1` renderer 地址，
+避免 Windows 上 `localhost` 优先解析到另一个项目的 IPv6 loopback 服务。
+
+直接通过其它方式启动 Electron、或由测试 harness 自行管理 Backend 时，该 Backend
+没有 Electron-owned IPC channel，Cloud Host 会按既有契约失败关闭；只有标准
+`pnpm dev:electron:<platform>` 入口提供 Cloud-capable development。
+`dev:electron:*:cloud-pilot` 仅保留为指向标准命令的兼容别名。
 
 官方 Cloud Relay 的 Backend WebSocket 仅在 Mira「通用」已配置 SOCKS5
 Host/Port 时使用独立的 `socks5h` 代理连接（DNS 在代理侧解析）；未配置则保持原有直连，
 已配置但代理失败时只报告 Cloud 传输不可用，不静默切换直连、Legacy Relay 或 Tailscale。
 该代理不接管 macOS 系统网络、Electron Cloud OAuth、Backend 本机 HTTP 健康检查，
 也不改变独立自建 Relay 的 WebSocket 连接策略。
-
-Cloud Pilot 不启动独立 Backend watcher；Backend 由 Electron Main 作为唯一子进程启动，
-因此可复用 packaged runtime 的原生 IPC ticket / Host Grant bridge。Vite renderer
-仍保持热更新，Backend 源码变化需要完整重启 Cloud Pilot。该模式拒绝复用已占用的
-Backend 端口；若配置的 Vite 端口被其它 IPv4 服务占用，则分配独立的开发端口而不复用
-未知服务。Electron 使用与 Vite 一致的 `127.0.0.1` renderer 地址，避免 Windows 上
-`localhost` 优先解析到另一个项目的 IPv6 loopback 服务。普通 Dev 和 packaged 进程模型不变。
 
 本地 renderer 开发服务默认监听 `http://127.0.0.1:5757`。端口统一来自
 `runtime.config.cjs`，需要覆盖时使用 `UI_CHAT_DESKTOP_PORT`，Electron 和 Vite 不分别维护端口常量。

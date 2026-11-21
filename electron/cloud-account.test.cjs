@@ -56,6 +56,16 @@ test("secondary Electron instance cannot initialize Cloud OAuth, Backend or a wi
       attachCloudRelayTicketIpc: () => {},
       attachCloudHostGrantIpc: () => {},
     };
+    if (name === "./dev-backend.cjs") return {
+      DEV_BACKEND_NODE_BINARY_ENV: "UI_CHAT_DEV_NODE_BINARY",
+      DEV_BACKEND_OWNER_ENV: "UI_CHAT_DEV_OWN_BACKEND",
+      assertBackendIpcOwnership: () => {},
+      assertBackendPortAvailable: async () => {},
+      createDevBackendWatcher: () => ({ close: () => {} }),
+      createRestartQueue: () => ({ request: async () => {}, whenIdle: async () => {} }),
+      resolveDevBackendLaunch: () => ({}),
+      terminateOwnedChild: async () => {},
+    };
     if (name.endsWith("runtime.config.cjs")) return {
       backend: { host: "127.0.0.1", port: 6000 },
     };
@@ -332,6 +342,73 @@ test("native PKCE exchanges once, sets the chosen Host ceiling and never exposes
   await restored.signOut();
   assert.equal(restored.status().status, "signed_out");
   assert.match(restored.status().message, /云端撤销未确认/);
+});
+
+test("only a revoked installation can start explicit OAuth re-enrollment", async (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.dir, { recursive: true, force: true }));
+  let responseCode = "OAUTH_INVALID_GRANT";
+  const exchanges = [];
+  const account = { id: "account-a", username: "test-a" };
+  const expiresAt = "2026-12-12T00:00:00.000Z";
+  const fetcher = async (url, opts) => {
+    if (url.endsWith("/v1/oauth/token")) {
+      exchanges.push(JSON.parse(opts.body));
+      if (responseCode === "network") throw new Error("connection reset");
+      return responseCode ? Response.json({ error: { code: responseCode } }, { status: 400 })
+        : Response.json({ sessionToken: "mcs_v1.session.secret", account, expiresAt });
+    }
+    if (url.endsWith("/v1/auth/session")) return Response.json({ account, expiresAt });
+    if (url.endsWith("/v1/hosts")) return Response.json(hostPayload());
+    if (url.endsWith("/grants")) return Response.json({
+      hostId: "host-1", accountId: account.id, revision: 0, policyConfigured: false, policyScopes: [],
+    });
+    if (url.endsWith("/grant-policy")) return Response.json({ hostId: "host-1", revision: 1, scopes: [] });
+    throw new Error("unexpected route " + url);
+  };
+  async function finish(controller, index = -1) {
+    const state = new URL(f.opened.at(index)).searchParams.get("state");
+    return controller.handleCallback("mira-desktop://oauth/callback?state=" + state + "&code=mca_v1.id.secret");
+  }
+  const first = f.build({ fetcher });
+  await first.initialize();
+  await assert.rejects(first.begin([], 7, true), /重新登记/);
+  await first.begin([], 7);
+  await finish(first);
+  assert.equal(first.status().canReenroll, false);
+  responseCode = "OAUTH_DEVICE_REVOKED";
+  await first.begin([], 7);
+  await finish(first);
+  assert.equal(first.status().canReenroll, true);
+  const originalId = exchanges[1].installation_id;
+  assert.equal(originalId, exchanges[0].installation_id);
+
+  const restored = f.build({ fetcher });
+  await restored.initialize();
+  assert.equal(restored.status().canReenroll, true);
+  await assert.rejects(restored.begin([], 7), /重新登记/);
+  await restored.begin([], 7, true);
+  restored.cancelAuthorization();
+  assert.equal(restored.status().canReenroll, true);
+  assert.equal(await finish(restored), false);
+
+  responseCode = "network";
+  await restored.begin([], 7, true);
+  await finish(restored);
+  assert.equal(restored.status().canReenroll, true);
+
+  const retry = f.build({ fetcher });
+  assert.equal((await retry.initialize()).canReenroll, true);
+  responseCode = null;
+  await retry.begin([], 7, true);
+  await finish(retry);
+  assert.equal(retry.status().status, "signed_in");
+  assert.equal(retry.status().canReenroll, false);
+  assert.notEqual(exchanges[2].installation_id, originalId);
+  assert.equal(exchanges[3].installation_id, exchanges[2].installation_id);
+  assert.notEqual(exchanges[3].code_verifier, exchanges[2].code_verifier);
+  const afterSuccess = f.build({ fetcher });
+  assert.equal((await afterSuccess.initialize()).status, "signed_in");
 });
 
 test("Cloud Host renews its OPS-018 directory lease while a healthy Relay socket stays established", async (t) => {

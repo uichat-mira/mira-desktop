@@ -11,6 +11,14 @@ on:
         description: Open GitHub Issue number to execute
         required: true
         type: string
+      validation_profile:
+        description: Select repository-owned Validation profile for manual dispatch; comment dispatch retains legacy full check
+        required: true
+        type: choice
+        default: legacy-full
+        options:
+          - desktop-cloud-fast
+          - legacy-full
 
 permissions:
   contents: read
@@ -120,17 +128,23 @@ jobs:
   worker:
     needs: enrollment
     permissions:
+      actions: read
       contents: write
-      issues: read
+      issues: write
       pull-requests: write
-    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@1380017dbedd147fdfec4c5b2404443e12967182
+    uses: uichat-mira/.github/.github/workflows/mira-external-worker.yml@ffafbf0c79ad59daeaf3f78f88f9942a219a02e1
     with:
       issue_number: ${{ fromJSON(needs.enrollment.outputs.issue_number) }}
       base_branch: dev
       timeout_minutes: 60
+      # Only trusted manual dispatch selects a profile. Existing `/worker run`
+      # comments retain their full legacy check until a repo-wide profile is approved.
+      validation_profile: ${{ github.event_name == 'workflow_dispatch' && inputs.validation_profile == 'desktop-cloud-fast' && 'desktop-cloud-fast' || '' }}
+      validation_max_tier: L3
       verification_command: |
         corepack enable
         pnpm install --frozen-lockfile
         pnpm check
     secrets:
       opencode_go_api_key: ${{ secrets.AI_PROVIDER_OPENCODE_GO_KEY }}
+      haomai_reporter_hmac_secret: ${{ secrets.HAOMAI_REPORTER_HMAC_SECRET }}
