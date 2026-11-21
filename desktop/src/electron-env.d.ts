@@ -10,9 +10,10 @@ declare global {
         permissionsConfigured: boolean;
         localOwnerBound?: boolean;
         canResetCredentials?: boolean;
+        canReenroll?: boolean;
         message: string;
       }>;
-      signIn: (scopes: string[], localAccessToken: string) => Promise<unknown>;
+      signIn: (scopes: string[], localAccessToken: string, reenroll?: boolean) => Promise<unknown>;
       readHostPolicy: (localAccessToken: string) =>
         Promise<{ scopes: string[]; revision: number }>;
       updateHostPolicy: (scopes: string[], revision: number, localAccessToken: string) =>

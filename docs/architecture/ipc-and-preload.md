@@ -120,6 +120,12 @@ Remote V1 Tailscale pairing and cloud account remain separate.
   registers its installation as a Cloud Desktop Host, and sets the owner's initial
   Host scope ceiling. No hosted Relay ticket or Tool execution authority is
   derived from this alone.
+- If Cloud Auth identifies a revoked Desktop installation during token exchange,
+  Main saves that state in the encrypted record and offers re-enrollment. Main
+  confirms the action in a native dialog and starts fresh browser authorization.
+  It reuses the candidate identity on retry and makes it current after a
+  successful exchange. The new Host uses the normal initial permission setup
+  and never inherits the old Host grants.
 - The OS secret store must be available; plaintext fallbacks are forbidden. If
   Cloud is unreachable, the local Desktop account and its other transports remain
   usable. Cloud credential revocation is not reported as confirmed if the server

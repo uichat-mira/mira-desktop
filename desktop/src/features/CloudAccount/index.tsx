@@ -63,7 +63,9 @@ export default function CloudAccountPage() {
       if (isCheckingSession || !session?.token) {
         throw new Error("请先登录 Mira 本地账户，再关联云账号");
       }
-      const result = await api.signIn(selected, session.token);
+      const result = view.canReenroll
+        ? await api.signIn(selected, session.token, true)
+        : await api.signIn(selected, session.token);
       if (result && typeof result === "object" && "status" in result) {
         setView(result as CloudView);
       }
@@ -293,7 +295,9 @@ export default function CloudAccountPage() {
               </div>
               <Button variant="primary" disabled={!canSignIn} onClick={() => void signIn()}>
                 {busy ? <RefreshCw size={16} /> : <Cloud size={16} />}
-                {english ? "Sign in via system browser" : "使用系统浏览器登录云账号"}
+                {view.canReenroll
+                  ? (english ? "Re-enroll this device" : "重新登记此设备")
+                  : (english ? "Sign in via system browser" : "使用系统浏览器登录云账号")}
               </Button>
               <p className="text-xs text-text-secondary">Cloud 登录不会替换本地账户、Provider Key、MCP 密钥或 Tailscale 配对。</p>
             </div>

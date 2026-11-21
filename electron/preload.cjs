@@ -30,8 +30,8 @@ const desktopRuntime = {
 
 contextBridge.exposeInMainWorld("cloudAccount", {
   status: () => ipcRenderer.invoke("cloud-account:status"),
-  signIn: (scopes, localAccessToken) =>
-    ipcRenderer.invoke("cloud-account:login", scopes, localAccessToken),
+  signIn: (scopes, localAccessToken, reenroll) =>
+    ipcRenderer.invoke("cloud-account:login", scopes, localAccessToken, reenroll),
   readHostPolicy: (localAccessToken) =>
     ipcRenderer.invoke("cloud-account:read-host-policy", localAccessToken),
   updateHostPolicy: (scopes, revision, localAccessToken) =>

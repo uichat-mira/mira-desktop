@@ -51,6 +51,21 @@ describe("DSK-005 Cloud Account page", () => {
     expect(subscribe).toHaveBeenCalled();
   });
 
+  it("offers re-enrollment after Cloud Auth identifies a revoked device", async () => {
+    const signIn = vi.fn().mockResolvedValue({ ...empty, status: "authorizing" });
+    window.cloudAccount = {
+      status: vi.fn().mockResolvedValue({ ...empty, canReenroll: true }),
+      signIn, cancelSignIn: vi.fn(), retryHostSetup: vi.fn(), resetLocalCredentials: vi.fn(),
+      signOut: vi.fn(), subscribe: vi.fn().mockReturnValue(() => {}),
+    };
+    render(<CloudAccountPage />);
+    const reenroll = await screen.findByRole("button", { name: "重新登记此设备" });
+    expect(screen.queryByRole("button", { name: /使用系统浏览器登录云账号/ })).not.toBeInTheDocument();
+    fireEvent.click(reenroll);
+    await waitFor(() => expect(signIn).toHaveBeenCalledWith([], "signed.local.jwt", true));
+    expect(await screen.findByRole("button", { name: "取消本次授权" })).toBeEnabled();
+  });
+
   it("provides a cancel action during browser authorization and returns to sign-in", async () => {
     const signIn = vi.fn().mockResolvedValue({ ...empty, status: "authorizing" });
     const cancelSignIn = vi.fn().mockResolvedValue(empty);
