@@ -73,13 +73,28 @@ async function verifyCloudLocalOwner(token) {
   return user.id;
 }
 
-ipcMain.handle("cloud-account:login", async (event, scopes, localAccessToken) => {
+ipcMain.handle("cloud-account:login", async (event, scopes, localAccessToken, reenroll) => {
   cloudIpcAuth(event);
   if (!cloudAccount) throw new Error("Cloud Account not initialized");
   if (!cloudCallbackRegistered) {
     throw new Error("当前桌面构建无法接收 Mira Cloud OAuth 回调；请使用已安装并注册协议的 Electron 版本。");
   }
   const localOwnerUserId = await verifyCloudLocalOwner(localAccessToken);
+  if (reenroll === true) {
+    if (!cloudAccount.status().canReenroll) throw new Error("当前设备无法重新登记");
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: "question",
+      title: "重新登记此设备",
+      message: "要使用新的设备身份登录 Mira Cloud 吗？",
+      detail: "你需要在系统浏览器重新授权。旧设备的会话和手机访问授权仍处于撤销状态。",
+      buttons: ["取消", "重新登记"],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    if (response !== 1) return cloudAccount.status();
+    cloudIpcAuth(event);
+    return cloudAccount.begin(scopes, await verifyCloudLocalOwner(localAccessToken), true);
+  }
   return cloudAccount.begin(scopes, localOwnerUserId);
 });
 ipcMain.handle("cloud-account:read-host-policy", async (event, localAccessToken) => {
