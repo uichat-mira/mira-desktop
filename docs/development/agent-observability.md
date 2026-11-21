@@ -23,8 +23,8 @@ related:
 
 ```text
 MIRA_AGENT_RUNTIME 未设置
-  -> 应用：pi_loop
-  -> 测试：langgraph（历史兼容）
+  -> 应用 / 开发 / 测试：pi_loop
+  -> 历史 LangGraph 对照必须显式设置 MIRA_AGENT_RUNTIME=langgraph
 ```
 
 显式选择：

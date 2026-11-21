@@ -12,6 +12,7 @@ const SCOPES = Object.freeze([
   "tools:approve", "tools:control", "artifacts:read",
 ]);
 const SAFE_ERROR = "Mira Cloud 请求失败。请检查网络或稍后重试。";
+const DEVICE_REVOKED_MESSAGE = "此设备已在 Mira Cloud 被撤销。重新登记此设备后即可登录。";
 // DSK-009: mirrored from @uichat-mira/cloud-auth-contracts. Relay tickets are
 // transport-only; they never grant Host tools or business capabilities.
 const SERVICE_CREDENTIAL_ISSUER = "mira:cloud-auth";
@@ -246,6 +247,7 @@ function createCloudAccountController(options) {
   }
   function status() {
     return { ...view, scopes: [...view.scopes],
+      canReenroll: view.status === "signed_out" && record?.deviceRevoked === true,
       localOwnerBound: Boolean(record?.sessionToken &&
         validLocalOwner(record.localOwnerUserId)) };
   }
@@ -357,7 +359,10 @@ function createCloudAccountController(options) {
         persist(record);
         return status();
       }
-      if (!record.sessionToken) return status();
+      if (!record.sessionToken) {
+        if (record.deviceRevoked === true) return publish({ message: DEVICE_REVOKED_MESSAGE });
+        return status();
+      }
       const restoreRevision = revision;
       const restoreToken = record.sessionToken;
       publish({ status: "checking", message: "正在验证云账号会话" });
@@ -413,20 +418,30 @@ function createCloudAccountController(options) {
       canResetCredentials: false,
       message: "已重置本机 Cloud 凭据；旧云端会话未确认撤销，请在 Cloud Portal 检查并撤销旧设备。" });
   }
-  async function begin(scopes, localOwnerUserId = null) {
+  async function begin(scopes, localOwnerUserId = null, reenroll = false) {
     const selected = validateScopes(scopes);
     if (localOwnerUserId !== null && !validLocalOwner(localOwnerUserId)) {
       throw new Error("本地 Mira 用户 ID 无效");
     }
     if (!secureAvailable()) throw new Error("系统安全凭据存储不可用，无法安全登录");
     if (pending) throw new Error("已有登录流程正在等待浏览器授权");
+    if (view.status === "checking") throw new Error("正在验证云账号，请稍候");
     if (record && record.sessionToken) throw new Error("请先退出当前云账号");
+    if (reenroll && !status().canReenroll) throw new Error("当前设备无法重新登记");
+    if (!reenroll && record?.deviceRevoked === true) throw new Error(DEVICE_REVOKED_MESSAGE);
     if (!record) { record = { installationId: crypto.randomUUID() }; persist(record); }
+    if (reenroll && !record.reenrollmentId) {
+      // Reuse the candidate after a lost exchange response to avoid registering a second device.
+      const recoveryRecord = { ...record, reenrollmentId: crypto.randomUUID() };
+      persist(recoveryRecord);
+      record = recoveryRecord;
+    }
     const verifier = crypto.randomBytes(32).toString("base64url");
     const state = crypto.randomBytes(32).toString("base64url");
     const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
     const transaction = {
       state, verifier, selected, localOwnerUserId, revision: ++revision,
+      installationId: reenroll ? record.reenrollmentId : record.installationId,
     };
     pending = transaction;
     authorizationTimer = setTimeout(() => {
@@ -780,7 +795,15 @@ function createCloudAccountController(options) {
       const result = await request("/v1/oauth/token", "POST", null, {
         grant_type: "authorization_code", client_id: "mira-desktop",
         redirect_uri: CALLBACK, code: parsed.code, code_verifier: transaction.verifier,
-        installation_id: record.installationId, platform: "desktop",
+        installation_id: transaction.installationId, platform: "desktop",
+      }).catch((error) => {
+        if (transaction.revision === revision && error.status === 400 &&
+            error.serverCode === "OAUTH_DEVICE_REVOKED") {
+          const revokedRecord = { installationId: record.installationId, deviceRevoked: true };
+          persist(revokedRecord);
+          record = revokedRecord;
+        }
+        throw error;
       });
       if (!result || typeof result.sessionToken !== "string" ||
           !result.sessionToken.startsWith("mcs_v1.")) throw new Error("Cloud Auth 凭据响应无效");
@@ -793,12 +816,13 @@ function createCloudAccountController(options) {
         return true;
       }
       const sessionToken = result.sessionToken;
-      record = { installationId: record.installationId,
+      const authenticatedRecord = { installationId: transaction.installationId,
         sessionToken, account: result.account, expiresAt: result.expiresAt,
         requestedScopes: transaction.selected,
         ...(validLocalOwner(transaction.localOwnerUserId)
           ? { localOwnerUserId: transaction.localOwnerUserId } : {}) };
-      persist(record); // token and pending Host selection never reach React or local JWT/DB
+      persist(authenticatedRecord); // token and pending Host selection never reach React or local JWT/DB
+      record = authenticatedRecord;
       // A successful code exchange is durable even if Host setup is interrupted.
       // The owner's initial choice stays in the same encrypted native record.
       const hostSetup = await configureHost(sessionToken, transaction.selected, transaction.revision);
@@ -815,7 +839,10 @@ function createCloudAccountController(options) {
           scopes: [], permissionsConfigured: false,
           message: "云账号已登录，但 Host 权限设置未完成：" + error.message });
       } else {
-        publish({ status: "signed_out", message: "云登录失败：" + error.message });
+        const deviceRevoked = record?.deviceRevoked === true && error.status === 400 &&
+          error.serverCode === "OAUTH_DEVICE_REVOKED";
+        publish({ status: "signed_out", message: deviceRevoked
+          ? DEVICE_REVOKED_MESSAGE : "云登录失败：" + error.message });
       }
     }
     return true;
@@ -826,7 +853,7 @@ function createCloudAccountController(options) {
     lastHostPresence = null;
     const token = record && record.sessionToken;
     const installationId = (record && record.installationId) || crypto.randomUUID();
-    record = { installationId };
+    if (record?.deviceRevoked !== true) record = { installationId };
     persist(record);
     publish({ status: "signed_out", account: null, hostId: null, scopes: [],
       expiresAt: null, permissionsConfigured: false, message: "" });

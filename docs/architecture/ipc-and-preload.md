@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: runtime
-Last verified: 2026-06-25
+Last verified: 2026-11-19
 Layer: raw-source
 Module: Develoments
 Feature: NativeBridge
@@ -54,6 +54,19 @@ Electron 直接暴露 Node 平台值，Windows 为 `win32`、macOS 为
 - renderer 统一通过 `desktopRuntime.getNativeMessagingHostStatus()` 调用
 
 返回状态为 `installed`、`not_installed`、`repair_needed` 或 `unsupported`。检查会验证 Chrome 注册表、Native manifest、Host exe 和同目录 `host.mjs`；页面进入、安装和解除注册后都重新读取该状态。
+
+## Dev Backend private IPC ownership
+
+标准开发入口（`pnpm dev:electron:win` / `pnpm dev:electron:mac`）不通过 preload
+或 renderer 暴露 Cloud 凭证。`electron/dev-launcher.cjs` 只启动 Vite；Electron
+Main 以唯一属主启动源码 Backend，并使用 `stdio: ["ignore","pipe","pipe","ipc"]`
+建立仅供该子进程使用的私有通道。Cloud Relay Ticket 与 Host Grant 的请求/响应
+只在这条 child IPC 上传输，不会进入 renderer、preload、HTTP、SQLite 或日志。
+
+标准开发启动要求 Backend 端口空闲且由 Main 启动；没有该 IPC channel 的独立
+Backend 会让 Cloud Host 按既有契约失败关闭。`tsx watch` 会插入无法继承该通道的
+中间进程，因此 Backend 源码热重载由 Main 的受控重启循环负责：停止旧子进程、
+启动新子进程并重新挂载两个私有 bridge；Vite HMR 保持独立。
 
 ## DSK-005 Cloud Account native boundary
 
@@ -107,6 +120,12 @@ Remote V1 Tailscale pairing and cloud account remain separate.
   registers its installation as a Cloud Desktop Host, and sets the owner's initial
   Host scope ceiling. No hosted Relay ticket or Tool execution authority is
   derived from this alone.
+- If Cloud Auth identifies a revoked Desktop installation during token exchange,
+  Main saves that state in the encrypted record and offers re-enrollment. Main
+  confirms the action in a native dialog and starts fresh browser authorization.
+  It reuses the candidate identity on retry and makes it current after a
+  successful exchange. The new Host uses the normal initial permission setup
+  and never inherits the old Host grants.
 - The OS secret store must be available; plaintext fallbacks are forbidden. If
   Cloud is unreachable, the local Desktop account and its other transports remain
   usable. Cloud credential revocation is not reported as confirmed if the server

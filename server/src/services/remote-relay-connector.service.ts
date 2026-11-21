@@ -21,6 +21,11 @@ import {
 const RELAY_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/u;
 const TOKEN_MIN_LENGTH = 32;
 const TOKEN_MAX_LENGTH = 512;
+// Approved official Cloud-only transport. This is application policy, not a
+// developer-local or per-user prerequisite, so development and packaged
+// runtimes resolve it with no `.env` value.
+export const OFFICIAL_CLOUD_RELAY_URL = "https://cloud-relay.tomz.io";
+const LEGACY_RELAY_HOSTNAME = "relay.tomz.io";
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
@@ -178,14 +183,30 @@ const normalizeRelayUrl = (
   }
 };
 
+const isLegacyRelayUrl = (url: string) => {
+  // A trailing dot resolves to the same Legacy host, so canonicalize before
+  // comparing. Cloud tickets must never reach the Legacy Relay transport.
+  const hostname = new URL(url).hostname.toLowerCase();
+  let end = hostname.length;
+  while (end > 0 && hostname[end - 1] === ".") {
+    end--;
+  }
+  return hostname.slice(0, end) === LEGACY_RELAY_HOSTNAME;
+};
+
 export const resolveCloudRelayConnectorConfig = (
   env: NodeJS.ProcessEnv = process.env,
 ): CloudRelayConnectorConfig => {
-  // The official endpoint belongs to Mira's deployment, never a per-user
-  // setting. Missing/unsafe infrastructure stays visibly misconfigured rather
-  // than silently sending a Cloud ticket to the Legacy production Relay.
-  const url = normalizeRelayUrl(env.UI_CHAT_CLOUD_RELAY_URL, "production");
-  const relayUrl = url && new URL(url).hostname !== "relay.tomz.io" ? url : null;
+  // Missing/unsafe configuration stays visibly misconfigured rather than
+  // silently sending a Cloud ticket to the Legacy production Relay. An
+  // operator-only override remains available for controlled deployments, but
+  // an explicitly invalid value never falls back to the official default.
+  const configured = env.UI_CHAT_CLOUD_RELAY_URL?.trim();
+  const url = normalizeRelayUrl(
+    configured || OFFICIAL_CLOUD_RELAY_URL,
+    "production",
+  );
+  const relayUrl = url && !isLegacyRelayUrl(url) ? url : null;
   return {
     kind: "cloud",
     // Cloud login is the activation gate. This operator-only emergency switch
