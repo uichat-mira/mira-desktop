@@ -2,6 +2,12 @@
 
 > 当前产品更新日志的唯一真相源。官网可以做面向用户的公开投影，但版本事实与最终发布说明以本文件和 GitHub Release 为准。
 
+## 0.106.2 - 2026-11-21
+
+- **云账号恢复**：设备被撤销后，Mira Desktop 提示重新登记此设备。确认并在浏览器重新授权后，新设备可以登录，旧会话和旧 Host 授权保持撤销。
+- **Cloud Relay**：采用官方 Cloud-only Relay 地址。标准 Desktop 开发入口由 Electron Main 启动 Backend，并使用私有 IPC 提供 Cloud Host 能力。
+- **Agent**：Pi Loop 成为默认运行时。
+
 ## 0.106.1 - 2026-11-17（发布修复候选）
 
 该版本承接 0.106 Electron-only 的全部既定功能，不加入新的业务特性。
