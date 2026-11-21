@@ -18,7 +18,10 @@
     "smoke:planner-delegation": "node --env-file-if-exists=../.env ./node_modules/tsx/dist/cli.mjs scripts/smoke-planner-delegation-selection.ts 5",
     "smoke:planner-skill-vs-delegation": "node --env-file-if-exists=../.env ./node_modules/tsx/dist/cli.mjs scripts/smoke-planner-skill-vs-delegation.ts 3",
     "bench:sandbox:direct": "tsx src/harness/sandbox/bench/runner.ts",
-    "bench:context:read": "tsx src/harness/context/bench/runner.ts"
+    "bench:context:read": "tsx src/harness/context/bench/runner.ts",
+    "test:progressive:acceptance": "vitest run src/agent/progressive-acceptance/cases.test.ts",
+    "bench:progressive:acceptance": "tsx src/agent/progressive-acceptance/runner.ts",
+    "bench:progressive:acceptance:live": "tsx src/agent/progressive-acceptance/runner.ts --live --max-live-calls=4"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.5",

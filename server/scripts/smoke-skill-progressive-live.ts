@@ -120,6 +120,9 @@ const runner = async () => {
     usage: { input: usage.prompt_tokens ?? null, output: usage.completion_tokens ?? null, total: usage.total_tokens ?? null },
     selectedAction: action?.type ?? "invalid",
     selectedSkillId: action?.type === "activate_skill" ? action.skillId : null,
+    selectedToolId: action?.type === "use_tool" ? action.toolId : null,
+    toolSchemasExposedAtDecision: 0,
+    decisionReason: action?.reason?.slice(0, 180) ?? null,
   }));
 
   if (action?.type !== "activate_skill" || action.skillId !== "tabular-planning") {
