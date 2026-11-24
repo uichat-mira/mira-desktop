@@ -70,6 +70,10 @@ const connectedSnapshot = {
     error: null,
   },
   pairedDevices: [],
+  cloudRemoteAccess: {
+    mode: "signed_out" as const,
+    directAllowed: true,
+  },
 };
 
 const readySnapshot = {
@@ -89,6 +93,7 @@ const readySnapshot = {
 };
 
 beforeEach(() => {
+  delete window.cloudAccount;
   apiMocks.get.mockReset();
   apiMocks.check.mockReset();
   apiMocks.update.mockReset();
@@ -200,5 +205,88 @@ describe("RemoteAccessSettings", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("继续使用 Mira 认证")).toBeInTheDocument();
+  });
+
+  it("disables Direct actions while Mira Cloud owns remote access", async () => {
+    apiMocks.get.mockResolvedValue({
+      ...readySnapshot,
+      cloudRemoteAccess: { mode: "signed_in", directAllowed: false },
+    });
+    render(<RemoteAccessSettings />);
+
+    expect(
+      await screen.findByText(
+        "远程访问由 Mira Cloud 提供。退出 Mira Cloud 登录后，才能继续使用 Tailscale Direct。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "启用 Tailscale" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "配对新设备" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "配对新设备" }),
+    ).toHaveAttribute("title", "Mira Cloud 登录期间不能配对 Tailscale Direct 设备");
+    expect(screen.queryByText("可访问")).not.toBeInTheDocument();
+    expect(screen.getByText("由 Mira Cloud 接管")).toBeInTheDocument();
+  });
+
+  it("fails closed while the Cloud session is restoring or unknown", async () => {
+    apiMocks.get.mockResolvedValue({
+      ...readySnapshot,
+      cloudRemoteAccess: { mode: "restoring", directAllowed: false },
+    });
+    const { unmount } = render(<RemoteAccessSettings />);
+
+    expect(
+      await screen.findByText(
+        "正在确认 Mira Cloud 会话，Tailscale Direct 暂不可用。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "启用 Tailscale" })).toBeDisabled();
+    unmount();
+
+    apiMocks.get.mockResolvedValue({
+      ...readySnapshot,
+      cloudRemoteAccess: { mode: "unknown", directAllowed: false },
+    });
+    render(<RemoteAccessSettings />);
+
+    expect(
+      await screen.findByText(
+        "无法确认 Mira Cloud 会话状态，Tailscale Direct 已暂停。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "启用 Tailscale" })).toBeDisabled();
+  });
+
+  it("refreshes the authoritative mode when the native Cloud identity changes", async () => {
+    let notify: (() => void) | undefined;
+    window.cloudAccount = {
+      subscribe: (listener: () => void) => {
+        notify = listener;
+        return () => {
+          notify = undefined;
+        };
+      },
+    } as unknown as NonNullable<Window["cloudAccount"]>;
+    apiMocks.get
+      .mockResolvedValueOnce(readySnapshot)
+      .mockResolvedValue({
+        ...readySnapshot,
+        cloudRemoteAccess: { mode: "signed_in", directAllowed: false },
+      });
+
+    render(<RemoteAccessSettings />);
+    expect(await screen.findByText("可访问")).toBeInTheDocument();
+
+    notify?.();
+
+    expect(
+      await screen.findByText(
+        "远程访问由 Mira Cloud 提供。退出 Mira Cloud 登录后，才能继续使用 Tailscale Direct。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "启用 Tailscale" })).toBeDisabled();
+    expect(apiMocks.get).toHaveBeenCalledTimes(2);
   });
 });

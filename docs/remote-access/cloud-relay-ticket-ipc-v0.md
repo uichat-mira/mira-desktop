@@ -218,3 +218,17 @@ retained beside the official Cloud path:
   can never be routed there.
 - Cloud account session, Cloud ticket IPC and Host Grant contracts are
   unchanged.
+
+## DSK-018 — Direct admission follows the native Cloud login mode (2026-11-24)
+
+- A second private child IPC channel (`mira:cloud-session:state:v1`) projects
+  only the native Cloud lifecycle as `signed_out`, `signed_in`, `restoring` or
+  `unknown`. It carries no account, token, Host room or scope.
+- Only `signed_out` permits Tailscale Direct pairing and paired-device
+  admission. `signed_in`, `restoring`, `unknown`, a missing bridge and a
+  disconnected bridge all fail closed at the Backend authentication boundary.
+  This supersedes the earlier DSK-010 note that a standalone Backend keeps
+  Tailscale Direct working: Direct now requires native proof of sign-out.
+- Local Desktop JWT, official Cloud ticket/Grant eligibility, lease renewal and
+  Relay protocol behavior are unchanged. Existing paired device records are
+  retained; no re-pairing is required after sign-out.

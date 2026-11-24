@@ -31,6 +31,38 @@ Mira Host
         └── Agent approval and evidence
 ```
 
+## 1.1 Desktop 登录模式（DSK-018）
+
+Desktop 的远程访问模式与 Mira Cloud 账号互斥，唯一权威来源是 Electron Main
+持有的原生 Cloud Session 生命周期，而不是 Relay 连接状态、renderer 开关或
+本地持久化标记：
+
+| 原生状态 | Direct 模式 | 行为 |
+| --- | --- | --- |
+| `signed_out` / `rejected` | 允许 | 创建配对挑战、领取/批准、已配对设备请求 |
+| `signed_in` | 禁止 | 远程访问由 Mira Cloud 提供；Mira 暂停自己拥有的 Serve 暴露 |
+| `restoring`（`checking` / `authorizing` / Cloud 暂时不可达但保留会话） | 禁止 | 等待权威结论，界面显示确认中 |
+| `unknown`（未完成恢复、凭据不可读或没有 native IPC） | 禁止 | 失败关闭，界面显示状态未知 |
+
+- 只有明确确认的 `signed_out` 才会放行 Direct。网络中断、Relay 断开或 Host
+  未完成配置都不会被解释成退出登录。
+- 已配对的 Direct 设备记录与设备凭据不会被删除；登录期间的请求在认证入口
+  返回 `403`，退出登录后无需重新配对即可恢复使用。
+- 登录期间重启 Desktop 时，恢复完成前一律按 `unknown` 处理，避免启动窗口内
+  把“尚未确认”当成已退出。
+- 同一规则在运行时强制执行：配对挑战/领取/审批/轮询与已配对设备业务请求都会
+  被拒绝，旧 URL 即使仍可达也不会绕过认证入口。本地 Desktop JWT 与官方 Cloud
+  一次授权路径不受影响。
+- Mira 只关闭自己独占管理的 Tailscale Serve 入口；不关闭系统 Tailscale、
+  不修改其他 Serve/Funnel 配置，也不从 Mira 模式推断整机 VPN 状态。确认退出后
+  若用户此前已启用 Mira Serve，会尝试恢复该入口。
+- Mobile 0.4.0 A2 边界：该互斥只约束“同一台 Desktop 上的 Direct 远程访问模式”。
+  Mobile 自身登录 Mira Cloud 与使用另一台已退出 Cloud 的 Desktop 的 Direct 服务
+  不互斥；本文件不改变 Mobile 账号语义，也不新增 Mobile 端开关。
+- 已知限制：登录发生时已经建立的 Direct 长连接（例如进行中的 Chat SSE 或工具
+  SSE）不会被强制中断；新的请求与配对准入会被拒绝。若需要强制终止现有流，
+  需要另一项跨运行时改动。
+
 ## 2. 首版范围
 
 首版必须形成以下真实闭环：
@@ -125,7 +157,7 @@ tailscale serve --https=<serve port> off
 GET /general-settings/tailscale-remote-access
 ```
 
-返回：持久化配置、运行时状态、自动识别的 DNS / IP、访问地址、Serve 状态、诊断信息与已登记设备。
+返回：持久化配置、运行时状态、自动识别的 DNS / IP、访问地址、Serve 状态、诊断信息、已登记设备，以及非机密的 `cloudRemoteAccess` 投影（`mode` 与 `directAllowed`）。只有 `mode: "signed_out"` 时 `directAllowed` 为 `true`。
 
 ### 主动检查
 

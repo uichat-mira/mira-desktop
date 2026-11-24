@@ -15,9 +15,11 @@ import {
 } from "@/services/cloud-local-request-authority.service.js";
 import {
   getRequiredRemoteScope,
+  isRemoteDeviceToken,
   remoteDeviceHasScope,
   verifyRemoteDeviceToken,
 } from "@/services/remote-device-auth.service.js";
+import { cloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 
 export type AuthenticatedUser = {
   id: number;
@@ -349,6 +351,17 @@ export const getAuthUserFromRequest = (
   const jwtUser = verifyAccessToken(token);
   if (jwtUser) {
     return jwtUser;
+  }
+
+  // DSK-018: a paired Direct device credential is admitted only while the
+  // native Cloud lifecycle confirms a signed-out Desktop. This single gate
+  // covers every Direct business route, cached UI, and deep link; local JWT and
+  // official Cloud one-shot capabilities are unaffected.
+  if (isRemoteDeviceToken(token) &&
+      !cloudRemoteAccessMode.isDirectRemoteAccessAllowed()) {
+    throw forbidden(
+      "Tailscale Direct remote access is unavailable while this Desktop is signed in to Mira Cloud",
+    );
   }
 
   const remote = verifyRemoteDeviceToken(token);

@@ -5,7 +5,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { EventEmitter } = require("node:events");
 const { randomUUID } = require("node:crypto");
-const { attachCloudRelayTicketIpc, attachCloudHostGrantIpc, CHANNEL, GRANT_CHANNEL } = require("./cloud-relay-ticket-ipc.cjs");
+const { attachCloudRelayTicketIpc, attachCloudHostGrantIpc,
+  attachCloudSessionStateIpc, projectCloudSessionState,
+  CHANNEL, GRANT_CHANNEL, SESSION_CHANNEL } = require("./cloud-relay-ticket-ipc.cjs");
 
 class FakeChild extends EventEmitter {
   connected = true;
@@ -250,5 +252,48 @@ test("DSK-007 native grant IPC rejects snapshots from legacy unbound Cloud sessi
     channel: GRANT_CHANNEL, type: "result", requestId: id,
     ok: false, errorCode: "cloud_grant_invalid_response",
   }]);
+  bridge.dispose();
+});
+
+test("DSK-018 projects only confirmed Cloud lifecycle states for Direct admission", () => {
+  assert.equal(projectCloudSessionState({ status: "signed_out" }), "signed_out");
+  assert.equal(projectCloudSessionState({ status: "rejected" }), "signed_out");
+  assert.equal(projectCloudSessionState({ status: "signed_in" }), "signed_in");
+  assert.equal(projectCloudSessionState({ status: "setup_failed" }), "signed_in");
+  assert.equal(projectCloudSessionState({ status: "checking" }), "restoring");
+  assert.equal(projectCloudSessionState({ status: "authorizing" }), "restoring");
+  assert.equal(projectCloudSessionState({
+    status: "unavailable", account: { id: "account-a" },
+  }), "restoring");
+  assert.equal(projectCloudSessionState({ status: "unavailable", account: null }), "unknown");
+  assert.equal(projectCloudSessionState(null), "unknown");
+  assert.equal(projectCloudSessionState({ status: "unexpected" }), "unknown");
+});
+
+test("DSK-018 replays the nonsecret Cloud mode to the owned Backend child", () => {
+  const child = new FakeChild();
+  let state = "unknown";
+  const bridge = attachCloudSessionStateIpc(child, () => state);
+  child.emit("message", { channel: SESSION_CHANNEL, type: "state_request",
+    accountId: "forged" });
+  assert.equal(child.sent.length, 0, "reject extra fields in state request");
+  child.emit("message", { channel: SESSION_CHANNEL, type: "state_request" });
+  assert.deepEqual(child.sent, [{
+    channel: SESSION_CHANNEL, type: "state", state: "unknown",
+  }]);
+  state = "signed_out";
+  child.emit("message", { channel: SESSION_CHANNEL, type: "state_request" });
+  assert.deepEqual(child.sent[1], {
+    channel: SESSION_CHANNEL, type: "state", state: "signed_out",
+  });
+  bridge.notifyState("signed_out");
+  assert.equal(child.sent.length, 2, "duplicate mode is not resent");
+  bridge.notifyState("signed_in");
+  assert.deepEqual(child.sent[2], {
+    channel: SESSION_CHANNEL, type: "state", state: "signed_in",
+  });
+  bridge.notifyState("token-or-account");
+  assert.equal(child.sent.length, 3, "invalid mode is never forwarded");
+  assert.equal(JSON.stringify(child.sent).includes("mcs_v1."), false);
   bridge.dispose();
 });

@@ -62,11 +62,15 @@ Electron 直接暴露 Node 平台值，Windows 为 `win32`、macOS 为
 Main 以唯一属主启动源码 Backend，并使用 `stdio: ["ignore","pipe","pipe","ipc"]`
 建立仅供该子进程使用的私有通道。Cloud Relay Ticket 与 Host Grant 的请求/响应
 只在这条 child IPC 上传输，不会进入 renderer、preload、HTTP、SQLite 或日志。
+DSK-018 另有一条单向、非机密的 Cloud Session 模式投影（`signed_out` /
+`signed_in` / `restoring` / `unknown`）供 Backend 的 Direct 准入与 Tailscale
+Serve 收放使用；它不包含账号、票据或 scope。只有明确 `signed_out` 才等价于允许
+Direct，恢复中或未知状态一律失败关闭。
 
 标准开发启动要求 Backend 端口空闲且由 Main 启动；没有该 IPC channel 的独立
 Backend 会让 Cloud Host 按既有契约失败关闭。`tsx watch` 会插入无法继承该通道的
 中间进程，因此 Backend 源码热重载由 Main 的受控重启循环负责：停止旧子进程、
-启动新子进程并重新挂载两个私有 bridge；Vite HMR 保持独立。
+启动新子进程并重新挂载私有 bridge；Vite HMR 保持独立。
 
 ## DSK-005 Cloud Account native boundary
 

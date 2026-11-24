@@ -1,4 +1,7 @@
-import type { TailscaleRemoteRuntimeState } from "@/shared/api/generalSettings";
+import type {
+  CloudRemoteAccessMode,
+  TailscaleRemoteRuntimeState,
+} from "@/shared/api/generalSettings";
 
 const zh = {
   page: {
@@ -40,6 +43,19 @@ const zh = {
     revoke: "撤销",
     revoked: "设备已撤销",
     revokeFailed: "撤销设备失败",
+  },
+  cloud: {
+    title: "Mira Cloud 登录模式",
+    signed_in: "远程访问由 Mira Cloud 提供。退出 Mira Cloud 登录后，才能继续使用 Tailscale Direct。",
+    restoring: "正在确认 Mira Cloud 会话，Tailscale Direct 暂不可用。",
+    unknown: "无法确认 Mira Cloud 会话状态，Tailscale Direct 已暂停。",
+    states: {
+      signed_in: "由 Mira Cloud 接管",
+      restoring: "确认账号中",
+      unknown: "状态未知",
+      signed_out: "",
+    } satisfies Record<CloudRemoteAccessMode, string>,
+    pairBlocked: "Mira Cloud 登录期间不能配对 Tailscale Direct 设备",
   },
   diagnostics: {
     title: "诊断信息",
@@ -121,6 +137,19 @@ const en = {
     revoke: "Revoke",
     revoked: "Device revoked",
     revokeFailed: "Failed to revoke device",
+  },
+  cloud: {
+    title: "Mira Cloud sign-in mode",
+    signed_in: "Remote access is provided by Mira Cloud. Sign out of Mira Cloud to use Tailscale Direct again.",
+    restoring: "Confirming the Mira Cloud session; Tailscale Direct is unavailable until it settles.",
+    unknown: "The Mira Cloud session state cannot be confirmed, so Tailscale Direct is suspended.",
+    states: {
+      signed_in: "Mira Cloud owns access",
+      restoring: "Confirming account",
+      unknown: "Unknown state",
+      signed_out: "",
+    } satisfies Record<CloudRemoteAccessMode, string>,
+    pairBlocked: "Tailscale Direct device pairing is unavailable while Mira Cloud is signed in",
   },
   diagnostics: {
     title: "Diagnostics",
