@@ -189,6 +189,7 @@ vi.mock("react-i18next", () => ({
       "settings.development.capabilities.consoleTabs.trace": "Trace",
       "settings.development.capabilities.consoleTabs.source": "Source",
       "settings.development.capabilities.actions.toolDetails": "工具详情",
+      "settings.development.capabilities.catalogKind.core": "Core",
       "settings.development.capabilities.catalogKind.native": "Native",
       "settings.development.capabilities.catalogKind.extension": "Extension",
       "settings.development.capabilities.caseGroups.extension": "External MCP",
@@ -229,6 +230,7 @@ describe("CapabilitiesPage", () => {
       description: "Write workspace files.",
       domain: "edit",
       source: "internal" as const,
+      coreCapability: true,
       sourceInfo: {
         kind: "native" as const,
         label: "Native",
@@ -298,6 +300,16 @@ describe("CapabilitiesPage", () => {
     ]);
     expect(filterCapabilityGroups(groups, "native")).toHaveLength(1);
     expect(filterCapabilityGroups(groups, "extension")).toHaveLength(1);
+  });
+
+  it("marks a capability group from the backend core admission flag", () => {
+    render(
+      <MemoryRouter>
+        <CapabilitiesPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Core")).toBeInTheDocument();
   });
 
   it("localizes native group metadata instead of rendering runtime locale text", () => {

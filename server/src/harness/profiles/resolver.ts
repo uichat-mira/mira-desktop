@@ -8,6 +8,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
   domain: ToolDefinition["domain"];
   tags: string[];
   preferredToolId?: string;
+  core?: boolean;
   supportingToolIds: string[];
   disclosureToolIds?: string[];
   aliases?: string[];
@@ -23,6 +24,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
       "Inspect workspace paths and contents when local file context is relevant to the current task.",
     domain: "read",
     tags: ["workspace", "read", "list", "directory", "glob", "pattern", "lookup", "locate", "search", "grep", "symbol", "reference", "open"],
+    core: true,
     supportingToolIds: ["glob", "grep", "list", "read"],
   },
   {
@@ -50,6 +52,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
       "Modify workspace files or path identity when governed local file mutation is relevant.",
     domain: "edit",
     tags: ["workspace", "edit", "write", "replace", "delete", "move", "rename"],
+    core: true,
     supportingToolIds: ["write", "edit", "delete", "move", "apply_patch"],
   },
   {
@@ -59,6 +62,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     domain: "web_search",
     tags: ["web", "search", "public", "current", "realtime", "research", "internet", "fetch", "url", "retrieve", "page"],
     preferredToolId: "web_search",
+    core: true,
     supportingToolIds: ["web_search", "web_fetch"],
   },
   {
@@ -118,6 +122,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
       "断言",
       "截图",
     ],
+    core: true,
     supportingToolIds: [
       "browser_navigate",
       "browser_snapshot",
@@ -220,6 +225,7 @@ const INTERNAL_PROFILE_BLUEPRINTS: Array<{
     domain: "terminal",
     tags: ["terminal", "command", "shell", "process"],
     preferredToolId: "terminal",
+    core: true,
     supportingToolIds: ["terminal"],
     actionProfileId: "terminal_execute_command",
     actionProfileTitle: "Terminal Execute Command",
@@ -287,6 +293,7 @@ export const resolveHarnessCapabilityProfiles = (
       domain: blueprint.domain,
       source: "internal",
       tags: blueprint.tags,
+      ...(blueprint.core ? { core: true } : {}),
       ...(blueprint.preferredToolId ? { preferredToolId: blueprint.preferredToolId } : {}),
       supportingToolIds: matchedToolIds,
       ...(blueprint.disclosureToolIds

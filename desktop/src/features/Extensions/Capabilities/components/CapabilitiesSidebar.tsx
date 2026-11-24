@@ -246,6 +246,10 @@ export default function CapabilitiesSidebar({
                     <Badge variant="primary" className="justify-self-end">
                       {t("settings.development.capabilities.catalogKind.extension")}
                     </Badge>
+                  ) : group.tools.some((tool) => tool.coreCapability === true) ? (
+                    <Badge variant="muted" className="justify-self-end">
+                      {t("settings.development.capabilities.catalogKind.core")}
+                    </Badge>
                   ) : null}
                 </button>
               </li>

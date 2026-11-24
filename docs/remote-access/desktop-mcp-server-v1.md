@@ -39,7 +39,7 @@ Official Cloud Host Grant ──────────┼─> POST /mcp
                                     │     resources/list / resources/read
                                     ▼
                          existing Remote tool catalog
-                         (agent_intent exposure + readiness)
+                         (core admission + readiness)
                                     ▼
                     existing Harness Policy / Approval / invocation
 ```
@@ -99,37 +99,66 @@ the server returns `2025-06-18`. Requests carrying an unsupported
 
 The request body is bounded to 1 MiB.
 
-## 4. Eligibility is the existing runtime projection
+## 4. Eligibility is the shared core admission projection
 
 MCP and Remote V1 both consume `resolveRemoteToolCatalog()` from
-`server/src/services/remote-tool-gateway.service.ts`. That catalog is built from:
+`server/src/services/remote-tool-gateway.service.ts`. The catalog is built from:
 
 1. the initialized Harness registry;
-2. the existing `agent_intent` Tool Exposure;
-3. explicit external-MCP Agent Access eligibility;
-4. current runtime readiness;
-5. the existing workspace-edit facade materialization.
+2. the authored **core** capability profiles that also define the Desktop
+   capability surface's `核心` groups;
+3. the existing `agent_intent` exposure with `editFacade: "all"` for runtime
+   readiness, sandbox availability, and legacy-alias blocking;
+4. the existing exact Tool Core ids, descriptions, and `inputSchema` values.
+
+Core is a property of authored Harness capability profiles
+(`server/src/harness/profiles/resolver.ts`), not a second MCP-only allowlist.
+The current core profiles are:
+
+| Core capability | Tools |
+| --- | --- |
+| `workspace_lookup` | `glob`, `grep`, `list`, `read` |
+| `workspace_edit` | `write`, `edit`, `move`, `delete`, `apply_patch` |
+| `web` | `web_search`, `web_fetch` |
+| `browser` | `browser_navigate`, `browser_snapshot`, `browser_screenshot`, `browser_click`, `browser_fill`, `browser_press_key`, `browser_select_option`, `browser_scroll`, `browser_wait_for`, `browser_assert`, `browser_tabs_list`, `browser_tab_select` |
+| `terminal_execution` | `terminal` |
+
+Only Tools that are both in a core profile and currently registered create this
+projection. Acceptance placeholders are not core Tools. A registered Tool that
+is outside these profiles (for example GitHub, Mail, News, External Expert,
+Attached Browser, CodeGraph, or an external MCP capability) does not become
+remotely available merely because it was registered or granted Agent access.
+
+The same core mark is projected as `coreCapability` on
+`GET /mcp/tools`, which is what the Desktop capability page uses to label a
+group `核心`. The page may still show an acceptance-case placeholder for an
+unregistered Tool, but that placeholder is not core and cannot enter the MCP
+catalog.
+
+A core Tool is not excluded by a second product filter. If it is registered,
+authorized, and ready, it appears in `tools/list`. If readiness blocks it, the
+exact reason is available through `describeRemoteToolAdmission()` in
+`remote-tool-gateway.service.ts`; the Tool stays absent from `tools/list` rather
+than being advertised as callable.
 
 `tools/list` exposes the exact eligible Tool Core ids, descriptions, and
 `inputSchema` values from that projection. Name aliases are deterministic and
 collision-checked; a collision fails closed instead of binding one MCP name to a
 different tool. `tools/call` resolves the alias back to the canonical id and the
-existing invocation path revalidates availability.
+existing invocation path revalidates the same core availability.
 
-Ungrouped tools remain real `tools/list` entries. They are not invented into a
-semantic capability group.
+Ungrouped Tools inside the core scope remain real `tools/list` entries. They are
+not invented into a semantic capability group.
 
-### UI visibility is not runtime authority
+### UI marking and runtime authority
 
-The desktop Capability sidebar is currently built from explicit acceptance
-cases plus manual and Managed Browser tool presentation in
-`desktop/src/features/Extensions/Capabilities/`. It is a validation/product
-surface, not the runtime eligibility projection. A Tool being absent there does
-not remove it from the runtime catalog, and a Tool being visible there does not
-authorize MCP execution.
+The capability page's `核心` marking and the remote catalog read the same core
+projection. That mark is product admission scope only:
 
-MCP deliberately uses the runtime catalog, not the sidebar filter. Do not turn
-the sidebar's acceptance-case list into a second allowlist.
+- it is not execution authority, a scope grant, or a readiness override;
+- Policy, exact-call approval, workspace boundaries, runtime readiness, device
+  identity, and Cloud Host Grant enforcement remain authoritative;
+- Direct and official Relay use the same service identity and the same catalog.
 
 ## 5. Optional semantic capability resource
 
@@ -313,19 +342,24 @@ pnpm --dir server exec vitest run \
   src/routes/remote-mcp.test.ts \
   src/routes/remote-mcp-auth.test.ts \
   src/services/remote-tool-gateway.service.test.ts \
+  src/harness/core-capability-scope.test.ts \
+  src/harness/capability-profiles.test.ts \
   src/services/remote-device-auth.service.test.ts \
   src/services/cloud-host-grant-authority.service.test.ts \
   src/services/cloud-host-grant-runtime.service.test.ts \
-  src/routes/remote-access.test.ts \
-  src/harness/capability-profiles.test.ts
+  src/routes/remote-access.test.ts
 pnpm --dir server typecheck
 ```
 
 The route tests include a real listening Fastify HTTP client in addition to
 in-process protocol calls. They cover initialize, real `tools/list` schema
-projection, alias mapping, the optional capability resource, a safe read-only
-invocation through the existing Harness chain, missing scopes, unknown tools,
-awaiting approval, notifications, and Direct/Cloud caller parity. The auth test uses a real
+projection, the shared core catalog, alias mapping, the optional capability
+resource, a safe read-only invocation through the existing Harness chain, a
+registered non-core Tool rejected before execution, missing scopes, unknown
+tools, awaiting approval, notifications, and Direct/Cloud caller parity. The
+core/capability tests prove authored core profiles resolve to the registered
+Tool set, fallback Tools stay non-core, and an unavailable core Tool reports its
+exact readiness reason instead of entering the catalog. The auth test uses a real
 SQLite-backed owner/device to cover a positive local JWT, positive Direct
 device, DSK-018 signed-in Direct denial, revoked-device denial, and denial of a
 Desktop JWT at `/mcp`. The Cloud Grant runtime test proves a positive
