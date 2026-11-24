@@ -33,6 +33,7 @@ import {
   registerTool,
 } from "@/harness/registry.js";
 import { clearHarnessInvocations } from "@/harness/invocations.js";
+import { describeRemoteToolAdmission } from "@/services/remote-tool-gateway.service.js";
 import remoteMcpRoute, { MCP_PROTOCOL_VERSION } from "./remote-mcp.js";
 
 const readDefinition: ToolDefinition = {
@@ -67,6 +68,50 @@ const writeDefinition: ToolDefinition = {
   capabilities: { sideEffect: "local-write", requiresApproval: true },
 };
 
+const applyPatchDefinition: ToolDefinition = {
+  id: "apply_patch",
+  title: "Apply Patch",
+  description: "Apply a governed workspace patch",
+  domain: "edit",
+  source: "internal",
+  mode: "sync",
+  inputSchema: {
+    type: "object",
+    properties: { patchText: { type: "string" } },
+    required: ["patchText"],
+  },
+  tags: ["edit"],
+  capabilities: { sideEffect: "local-write", requiresApproval: true },
+};
+
+const nonCoreDefinition: ToolDefinition = {
+  id: "github_repository",
+  title: "GitHub Repository",
+  description: "Registered but not part of the curated core scope",
+  domain: "github",
+  source: "internal",
+  mode: "sync",
+  inputSchema: { type: "object" },
+  tags: ["github"],
+  capabilities: { sideEffect: "network", requiresApproval: true },
+};
+
+const unavailableCoreDefinition: ToolDefinition = {
+  id: "terminal",
+  title: "Terminal",
+  description: "Core terminal Tool with an unavailable runtime",
+  domain: "terminal",
+  source: "internal",
+  mode: "stream",
+  inputSchema: {
+    type: "object",
+    properties: { command: { type: "string" } },
+    required: ["command"],
+  },
+  tags: ["terminal"],
+  capabilities: { sideEffect: "process", requiresApproval: true },
+};
+
 const unavailableDefinition: ToolDefinition = {
   id: "unavailable_tool",
   title: "Unavailable",
@@ -81,6 +126,10 @@ const unavailableDefinition: ToolDefinition = {
 
 const user = { id: 7, username: "tester", role: "user" as const };
 const writeExecute = vi.fn(() => ({
+  content: [{ type: "text", text: "should not execute" }],
+  isError: false,
+}));
+const nonCoreExecute = vi.fn(() => ({
   content: [{ type: "text", text: "should not execute" }],
   isError: false,
 }));
@@ -102,6 +151,27 @@ const installTestTools = () => {
     definition: writeDefinition,
     execute: writeExecute,
   });
+  registerTool({
+    definition: applyPatchDefinition,
+    execute: () => ({ content: [{ type: "text", text: "patched" }] }),
+  });
+  registerTool({
+    definition: nonCoreDefinition,
+    execute: nonCoreExecute,
+  });
+  registerTool(
+    {
+      definition: unavailableCoreDefinition,
+      execute: () => ({ content: [{ type: "text", text: "should not run" }] }),
+    },
+    {
+      resolveReadiness: () => ({
+        state: "unavailable",
+        reason: "Terminal sandbox is unavailable.",
+        code: "terminal_sandbox_unavailable",
+      }),
+    },
+  );
   registerTool(
     {
       definition: unavailableDefinition,
@@ -192,6 +262,7 @@ beforeEach(() => {
   clearHarnessRegistry();
   clearHarnessInvocations();
   writeExecute.mockClear();
+  nonCoreExecute.mockClear();
   installTestTools();
 });
 
@@ -223,15 +294,17 @@ describe("remote MCP outlet", () => {
     await app.close();
   });
 
-  it("lists exactly the genuine eligible projection with the original schemas", async () => {
+  it("lists exactly the genuine eligible core projection with the original schemas", async () => {
     const app = await createApp();
 
     const { response, body } = await rpc(app, "tools/list");
     assert.equal(response.statusCode, 200, response.body);
     const tools = body.result.tools as Array<Record<string, unknown>>;
-    expect(tools.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(["read", "write"]),
-    );
+    expect(tools.map((tool) => tool.name).sort()).toEqual([
+      "apply_patch",
+      "read",
+      "write",
+    ]);
     const read = tools.find((tool) => tool.name === "read");
     expect(read).toMatchObject({
       name: "read",
@@ -239,11 +312,36 @@ describe("remote MCP outlet", () => {
       inputSchema: readDefinition.inputSchema,
       annotations: { readOnlyHint: true },
     });
-    const external = tools.find((tool) => String(tool.name).startsWith("mcp"));
-    expect(external).toBeDefined();
-    expect(external!.name).not.toContain(":");
-    expect(external!.inputSchema).toEqual(externalTool.inputSchema);
+    expect(tools.some((tool) => tool.name === "github_repository")).toBe(false);
     expect(tools.some((tool) => tool.name === "unavailable_tool")).toBe(false);
+    expect(tools.some((tool) => tool.name === "terminal")).toBe(false);
+    expect(tools.some((tool) => String(tool.name).startsWith("mcp"))).toBe(false);
+    await app.close();
+  });
+
+  it("reports the core mapping and the exact reason a registered core Tool is unavailable", async () => {
+    const app = await createApp();
+    const admission = await describeRemoteToolAdmission();
+
+    expect(admission.coreProfiles.map((profile) => profile.id).sort()).toEqual([
+      "terminal_execution",
+      "workspace_edit",
+      "workspace_lookup",
+    ]);
+    expect(admission.exposedCoreToolIds.sort()).toEqual([
+      "apply_patch",
+      "read",
+      "write",
+    ]);
+    expect(admission.excludedCoreTools).toEqual([
+      {
+        toolId: "terminal",
+        reason: "Terminal sandbox is unavailable.",
+      },
+    ]);
+    expect(admission.nonCoreRegisteredToolIds).toEqual(
+      expect.arrayContaining(["github_repository", "unavailable_tool"]),
+    );
     await app.close();
   });
 
@@ -427,6 +525,19 @@ describe("remote MCP outlet", () => {
 
     expect(body.error).toMatchObject({ code: -32602 });
     expect(writeExecute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("rejects a registered non-core tool without executing anything", async () => {
+    const app = await createApp();
+
+    const { body } = await rpc(app, "tools/call", {
+      name: "github_repository",
+      arguments: {},
+    });
+
+    expect(body.error).toMatchObject({ code: -32602 });
+    expect(nonCoreExecute).not.toHaveBeenCalled();
     await app.close();
   });
 

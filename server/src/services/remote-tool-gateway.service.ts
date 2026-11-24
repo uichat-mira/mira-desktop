@@ -7,6 +7,11 @@ import {
 } from "@/harness/invocations.js";
 import { resolveHarnessToolExposure } from "@/harness/exposure.js";
 import { initializeHarnessRuntime } from "@/mcp/bootstrap.js";
+import {
+  resolveCoreCapabilityScope,
+  resolveCoreCapabilityToolIds,
+} from "@/harness/core-capability-scope.js";
+import { listInternalToolDefinitions } from "@/harness/registry.js";
 import type {
   ToolInvocationFailureCode,
   ToolInvocationEvent,
@@ -18,7 +23,6 @@ import {
   resolveInvocationApproval,
 } from "@/mcp/core/invocations.js";
 import { mcpBadRequest, mcpNotFound } from "@/mcp/core/errors.js";
-import { resolveAgentEligibleExternalMcpCapabilities } from "@/mcp/external.js";
 import { getHarnessLlmContentText } from "@/harness/llm-content.js";
 
 const MODEL_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/u;
@@ -115,17 +119,71 @@ const toModelToolName = (toolId: string) => {
 
 const resolveRemoteToolDefinitions = async (): Promise<ToolDefinition[]> => {
   initializeHarnessRuntime();
-  const eligibleExternalToolIds = process.env.DATABASE_URL
-    ? resolveAgentEligibleExternalMcpCapabilities().map((definition) => definition.id)
-    : [];
+  const coreToolIds = resolveCoreCapabilityToolIds(listInternalToolDefinitions());
 
+  // Remote MCP consumes the same authored core capability scope as the Desktop
+  // capability surface. `editFacade: "all"` keeps a core write tool such as
+  // apply_patch from being dropped by a second, unrelated presentation filter;
+  // readiness and legacy-alias blocking still come from the existing exposure.
   const exposure = resolveHarnessToolExposure({
     source: "agent_intent",
-    allowExternal: true,
-    allowedExternalToolIds: eligibleExternalToolIds,
+    editFacade: "all",
   });
 
-  return exposure.exposedDefinitions;
+  return exposure.exposedDefinitions.filter(
+    (definition) =>
+      definition.source === "internal" && coreToolIds.has(definition.id),
+  );
+};
+
+export type RemoteToolAdmissionDiagnostic = {
+  coreProfiles: Array<{ id: string; title: string; toolIds: string[] }>;
+  exposedCoreToolIds: string[];
+  excludedCoreTools: Array<{ toolId: string; reason: string }>;
+  nonCoreRegisteredToolIds: string[];
+};
+
+/**
+ * Reports the exact core admission mapping and why a registered core Tool is
+ * not currently in the remote catalog. It is diagnostic evidence, not a second
+ * gate: the catalog and invocation path both consume the same core scope plus
+ * the existing exposure/readiness checks.
+ */
+export const describeRemoteToolAdmission = async (): Promise<RemoteToolAdmissionDiagnostic> => {
+  initializeHarnessRuntime();
+  const internalDefinitions = listInternalToolDefinitions();
+  const coreScope = resolveCoreCapabilityScope(internalDefinitions);
+  const exposure = resolveHarnessToolExposure({
+    source: "agent_intent",
+    editFacade: "all",
+  });
+  const exposedToolIds = new Set(exposure.exposedToolIds);
+
+  return {
+    coreProfiles: coreScope.profiles,
+    exposedCoreToolIds: internalDefinitions
+      .filter(
+        (definition) =>
+          coreScope.toolIds.has(definition.id) &&
+          exposedToolIds.has(definition.id),
+      )
+      .map((definition) => definition.id),
+    excludedCoreTools: internalDefinitions
+      .filter(
+        (definition) =>
+          coreScope.toolIds.has(definition.id) &&
+          !exposedToolIds.has(definition.id),
+      )
+      .map((definition) => ({
+        toolId: definition.id,
+        reason:
+          exposure.blockedCapabilityReasons[definition.id] ??
+          "Tool is not in the current Agent exposure.",
+      })),
+    nonCoreRegisteredToolIds: internalDefinitions
+      .filter((definition) => !coreScope.toolIds.has(definition.id))
+      .map((definition) => definition.id),
+  };
 };
 
 const buildRemoteToolAliases = (definitions: readonly ToolDefinition[]) => {
