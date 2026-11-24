@@ -10,13 +10,6 @@ import {
   resolveCloudRelayConnectorConfig,
   type RelaySocketFactory,
 } from "@/services/remote-relay-connector.service.js";
-import {
-  RemoteRelayConfigError,
-  getRemoteRelayPairingMetadata,
-  getRemoteRelayUserConfig,
-  resolvePersistedRemoteRelayConnectorConfig,
-  updateRemoteRelayUserConfig,
-} from "@/services/remote-relay-config.service.js";
 import { tailscaleRemoteAccessService } from "@/services/tailscale-remote-access.service.js";
 import { CloudRelayTicketIpcClient } from "@/services/cloud-relay-ticket-ipc.service.js";
 import { generalSettingsRepository } from "@/db/repositories/general-settings.repository.js";
@@ -99,13 +92,6 @@ const mapPairingError = (error: unknown): never => {
   throw error;
 };
 
-const mapRelayConfigError = (error: unknown): never => {
-  if (error instanceof RemoteRelayConfigError) {
-    throw badRequest(error.message, { cause: error });
-  }
-  throw error;
-};
-
 const compareStrings = (left: string, right: string) =>
   left < right ? -1 : left > right ? 1 : 0;
 
@@ -165,12 +151,11 @@ const createRelaySocketFactories = (app: FastifyInstance) => {
   }
 
   const direct: RelaySocketFactory = (url) => new WebSocketCtor(url);
-  const cloud = createCloudRelaySocketFactory(
+  return createCloudRelaySocketFactory(
     direct,
     (url, agent) => new WebSocketCtor(url, { agent }),
     () => generalSettingsRepository.get(),
   );
-  return { direct, cloud };
 };
 
 // The native Cloud Host state is authoritative for whether a Grant
@@ -185,14 +170,9 @@ export const reconcileCloudRelayOnGrantInvalidation = (
 };
 
 const remoteAccessRoute: FastifyPluginAsync = async (app) => {
-  const { direct: socketFactory, cloud: cloudSocketFactory } =
-    createRelaySocketFactories(app);
-  const remoteRelayConnectorService = new RemoteRelayConnectorService(
-    resolvePersistedRemoteRelayConnectorConfig,
-    socketFactory,
-  );
-  // Completely independent from user-configured/self-hosted Relay and Tailscale.
-  // This provider uses Electron's private child IPC, never an HTTP credential API.
+  const cloudSocketFactory = createRelaySocketFactories(app);
+  // Official Mira Cloud is the only Relay transport. It uses Electron's
+  // private child IPC, never an HTTP credential API or persisted room token.
   const cloudTicketIpc = new CloudRelayTicketIpcClient();
   const cloudGrantIpc = new CloudHostGrantIpcClient();
   const cloudGrantRuntime = new CloudHostGrantRuntime(cloudGrantIpc, (id) => {
@@ -229,8 +209,8 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
   );
 
   // Only the native Cloud Account owner may make an official Host eligible.
-  // The local/Tailscale/self-hosted connector remains independent. Wait for
-  // Backend listen before creating a Cloud socket, including restore races.
+  // Wait for Backend listen before creating a Cloud socket, including restore
+  // races.
   let backendListening = false;
   const unsubscribeCloudAvailability = cloudTicketIpc.onAvailabilityChanged(
     (available) => {
@@ -242,7 +222,6 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
 
   app.addHook("onListen", async () => {
     backendListening = true;
-    remoteRelayConnectorService.start();
     if (cloudTicketIpc.isHostAvailable()) cloudRelayConnectorService.start();
   });
 
@@ -255,96 +234,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     cloudGrantRuntime.dispose();
     cloudGrantIpc.dispose();
     cloudTicketIpc.dispose();
-    remoteRelayConnectorService.stop();
   });
-
-  app.get(
-    "/remote/admin/relay/config",
-    {
-      schema: {
-        tags: ["Remote Access"],
-        summary: "Get Mira Relay configuration",
-        operationId: "getRemoteRelayConfig",
-        response: {
-          200: successEnvelope(looseObjectSchema),
-          401: errorEnvelope,
-          500: errorEnvelope,
-        },
-      },
-    },
-    routeHandler("Failed to get Mira Relay configuration", async (request) => {
-      if (!request.authUser) {
-        throw forbidden("Desktop authentication is required");
-      }
-      return success(getRemoteRelayUserConfig());
-    }),
-  );
-
-  app.put<{
-    Body: {
-      enabled?: boolean;
-      endpointMode?: "default" | "custom";
-      customUrl?: string;
-    };
-  }>(
-    "/remote/admin/relay/config",
-    {
-      schema: {
-        tags: ["Remote Access"],
-        summary: "Update Mira Relay configuration",
-        operationId: "updateRemoteRelayConfig",
-        body: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            enabled: { type: "boolean" },
-            endpointMode: { type: "string", enum: ["default", "custom"] },
-            customUrl: { type: "string", maxLength: 2048 },
-          },
-        },
-        response: {
-          200: successEnvelope(looseObjectSchema),
-          400: errorEnvelope,
-          401: errorEnvelope,
-          500: errorEnvelope,
-        },
-      },
-    },
-    routeHandler("Failed to update Mira Relay configuration", async (request) => {
-      if (!request.authUser) {
-        throw forbidden("Desktop authentication is required");
-      }
-      try {
-        const config = updateRemoteRelayUserConfig(request.body);
-        remoteRelayConnectorService.restart();
-        return success(config, "Mira Relay configuration updated");
-      } catch (error) {
-        return mapRelayConfigError(error);
-      }
-    }),
-  );
-
-  app.get(
-    "/remote/admin/relay/status",
-    {
-      schema: {
-        tags: ["Remote Access"],
-        summary: "Get Mira Relay connector status",
-        operationId: "getRemoteRelayConnectorStatus",
-        response: {
-          200: successEnvelope(looseObjectSchema),
-          401: errorEnvelope,
-          500: errorEnvelope,
-        },
-      },
-    },
-    routeHandler("Failed to get Mira Relay connector status", async (request) => {
-      if (!request.authUser) {
-        throw forbidden("Desktop authentication is required");
-      }
-      return success(remoteRelayConnectorService.getSnapshot());
-    }),
-  );
 
   app.get(
     "/remote/admin/cloud-relay/status",
@@ -364,9 +254,8 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!request.authUser) {
         throw forbidden("Desktop authentication is required");
       }
-      const snapshot = cloudRelayConnectorService.getSnapshot();
       // Deliberately do not report the Cloud Host room or bearer ticket.
-      return success({ ...snapshot, relayId: null });
+      return success(cloudRelayConnectorService.getSnapshot());
     }),
   );
 
@@ -398,26 +287,24 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
         tailscale.runtime.state === "ready" && tailscale.runtime.accessUrl
           ? tailscale.runtime.accessUrl
           : null;
-      const relaySnapshot = remoteRelayConnectorService.getSnapshot();
-      const relay =
-        relaySnapshot.state === "connected"
-          ? getRemoteRelayPairingMetadata()
-          : null;
 
-      if (!directHostUrl && !relay) {
+      if (!directHostUrl) {
         throw badRequest(
-          "A reachable Tailscale or Mira Relay connection is required before pairing a mobile device",
+          "Tailscale Direct remote access must be ready before pairing a mobile device",
         );
       }
 
-      return success(
-        remoteAccessPairingService.createChallenge({
-          userId: user.id,
-          hostUrl: directHostUrl,
-          relay,
-        }),
-        "Pairing challenge created",
-      );
+      try {
+        return success(
+          remoteAccessPairingService.createChallenge({
+            userId: user.id,
+            hostUrl: directHostUrl,
+          }),
+          "Pairing challenge created",
+        );
+      } catch (error) {
+        return mapPairingError(error);
+      }
     }),
   );
 
@@ -557,7 +444,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       code: string;
       deviceName?: string;
       platform?: string;
-      transport?: "relay" | "direct";
+      transport?: "direct";
       publicKey?: string;
       requestedScopes?: string[];
     };

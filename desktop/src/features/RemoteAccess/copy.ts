@@ -6,26 +6,6 @@ const zh = {
     title: "远程连接",
     description: "",
   },
-  relay: {
-    title: "Mira Relay",
-    default: "默认服务",
-    custom: "自定义地址",
-    customAddress: "Relay 地址",
-    customPlaceholder: "https://relay.example.com",
-    states: {
-      disabled: "未启用",
-      misconfigured: "配置异常",
-      connecting: "连接中",
-      connected: "已连接",
-      disconnected: "已断开",
-      stopped: "已停止",
-      unavailable: "不可用",
-    },
-    messages: {
-      loadFailed: "加载 Mira Relay 状态失败",
-      saveFailed: "保存 Mira Relay 设置失败",
-    },
-  },
   status: {
     title: "连接状态",
     connection: "Tailscale 连接",
@@ -106,26 +86,6 @@ const en = {
     miniTitle: "REMOTE ACCESS",
     title: "Remote Access",
     description: "",
-  },
-  relay: {
-    title: "Mira Relay",
-    default: "Default service",
-    custom: "Custom address",
-    customAddress: "Relay address",
-    customPlaceholder: "https://relay.example.com",
-    states: {
-      disabled: "Off",
-      misconfigured: "Invalid",
-      connecting: "Connecting",
-      connected: "Connected",
-      disconnected: "Disconnected",
-      stopped: "Stopped",
-      unavailable: "Unavailable",
-    },
-    messages: {
-      loadFailed: "Failed to load Mira Relay status",
-      saveFailed: "Failed to save Mira Relay settings",
-    },
   },
   status: {
     title: "Connection status",
