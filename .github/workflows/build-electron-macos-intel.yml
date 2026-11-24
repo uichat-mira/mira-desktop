@@ -36,11 +36,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 26.13.1
           cache: pnpm
 
       - name: Verify Intel runner
-        run: node -e "if (process.platform !== 'darwin' || process.arch !== 'x64') { throw new Error(`Expected darwin/x64, received ${process.platform}/${process.arch}`); }"
+        run: node -e 'if (process.platform !== "darwin" || process.arch !== "x64") { throw new Error("Expected darwin/x64, received " + process.platform + "/" + process.arch); }'
 
       - name: Cache Electron builder and Node runtime
         uses: actions/cache@v4

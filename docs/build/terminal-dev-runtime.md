@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: runtime
-Last verified: 2026-07-22
+Last verified: 2026-11-24
 Layer: raw-source
 Module: Build
 Feature: TerminalDevRuntime
@@ -27,8 +27,8 @@ Terminal Dev Runtime 只为现有 `terminal_session -> host_spawn / PTY -> Windo
 
 | Component | Version | Distribution | License |
 | --- | --- | --- | --- |
-| Node | 24.22.1 | 官方 Windows x64 archive | MIT |
-| npm / npx | 11.19.1 | Node archive 内置 | Artistic-2.0（npm 自身） |
+| Node | 26.13.1 | 官方 Windows x64 archive | MIT |
+| npm / npx | 11.20.0 | Node archive 内置 | Artistic-2.0（npm 自身） |
 | Git | 2.55.0.windows.3 | MinGit 64-bit | GPL-2.0-only 与随包组件许可证 |
 | uv | 0.11.31 | 官方 Windows x64 archive | Apache-2.0 OR MIT |
 | ripgrep | 15.2.0 | 官方 MSVC Windows x64 archive | Unlicense OR MIT |

@@ -1,0 +1,33 @@
+name: Build macOS arm64
+
+on:
+  push:
+    branches: [dev, test, prod]
+  pull_request:
+    branches: [dev, test, prod]
+    paths:
+      - '.github/workflows/build-macos-arm64.yml'
+      - '.github/workflows/build-electron-macos-arm64.yml'
+      - '.github/workflows/release-production.yml'
+      - 'scripts/build-dist.js'
+      - 'scripts/node-runtime.lock.json'
+      - 'scripts/terminal-runtime.lock.json'
+      - 'scripts/prepare-node-runtime*'
+      - 'scripts/stage-*'
+      - 'electron/**'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos-arm64:
+    name: Build Electron (macOS arm64)
+    uses: ./.github/workflows/build-electron-macos-arm64.yml
+    with:
+      skip_release_tests: ${{ github.ref_name != 'prod' }}
