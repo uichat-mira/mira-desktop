@@ -16,7 +16,6 @@ export type RelayHelloFrame = {
   role: "host";
   relayId: string;
   token: string;
-  clientToken: string;
 };
 
 export type RelayHelloAckFrame = {

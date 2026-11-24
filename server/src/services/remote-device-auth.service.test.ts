@@ -73,6 +73,8 @@ describe("remote device route gateway", () => {
     expect(getRequiredRemoteScope("GET", "/remote/v1/tools")).toBe(
       "tools:read",
     );
+    expect(getRequiredRemoteScope("POST", "/mcp")).toBe("tools:read");
+    expect(getRequiredRemoteScope("GET", "/mcp")).toBeNull();
     expect(
       getRequiredRemoteScope("POST", "/remote/v1/tool-invocations/stream"),
     ).toBe("tools:invoke");

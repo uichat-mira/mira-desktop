@@ -29,7 +29,9 @@ Related:
 - 明确不做项与未决决策。
 
 
-> **历史版本说明（2026-10-28）：** 本文 L6 中 Electron 31 / Node 22.23.1 是当时的实测和修复记录，不代表当前安装包版本。当前独立 Node 锁定版本以 `scripts/node-runtime.lock.json` 为准（Node 24.22.1），升级的运行验收另行记录。
+> **历史版本说明（2026-10-28）：** 本文 L6 中 Electron 31 / Node 22.23.1 是当时的实测和修复记录，不代表当前安装包版本。当前独立 Node 锁定版本以 `scripts/node-runtime.lock.json` 为准（Node 26.13.1），升级后的运行验收另行记录。
+
+> **当前分支验收（2026-11-24）：** `codex/node26-macos-arm64` 已在 Apple Silicon 主机上用 Node 26.13.1 完成 staged server smoke，并生成 arm64 内部 DMG。本文下方的 Intel-first 分期与 Node 22 历史表格保留作原始证据；当前构建、发布与未签名边界以 [`docs/build/README.md`](../build/README.md) 和 [`macos-implementation-phases.md`](./macos-implementation-phases.md) 为准。
 
 这页是 **Planning 文档**，不是 current-contract。它不宣称 macOS 已支持。执行前必须逐层经项目负责人确认；每层只在该层验证有实测证据后才可标记通过。
 

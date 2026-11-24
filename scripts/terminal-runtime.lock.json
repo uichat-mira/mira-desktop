@@ -4,12 +4,12 @@
   "architecture": "x64",
   "components": {
     "node": {
-      "version": "24.22.1",
-      "archiveName": "node-v24.22.1-win-x64.zip",
-      "url": "https://nodejs.org/download/release/v24.22.1/node-v24.22.1-win-x64.zip",
-      "sha256": "d2046d28c2c3dcd211ac5145c0bf30e2047ef9dfb306693c8c6e2eccd8b95fa5",
+      "version": "26.13.1",
+      "archiveName": "node-v26.13.1-win-x64.zip",
+      "url": "https://nodejs.org/download/release/v26.13.1/node-v26.13.1-win-x64.zip",
+      "sha256": "e2edda75bfb089654705cf65a13b58933bfd5f57148e8ebda916f58a2474f1f7",
       "license": "MIT",
-      "licenseUrl": "https://github.com/nodejs/node/blob/v24.22.1/LICENSE"
+      "licenseUrl": "https://github.com/nodejs/node/blob/v26.13.1/LICENSE"
     },
     "git": {
       "version": "2.55.0.windows.3",

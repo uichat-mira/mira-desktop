@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Check,
-  Cloud,
   ExternalLink,
   HelpCircle,
   Link2,
@@ -22,15 +21,6 @@ import {
   type TailscaleRemoteAccessSnapshot,
   type TailscaleRemoteRuntimeState,
 } from "@/shared/api/generalSettings";
-import {
-  getRemoteRelayConfig,
-  getRemoteRelayStatus,
-  updateRemoteRelayConfig,
-  type RemoteRelayConnectorSnapshot,
-  type RemoteRelayConnectorState,
-  type RemoteRelayEndpointMode,
-  type RemoteRelayUserConfig,
-} from "@/shared/api/remoteAccess";
 import { ApiError } from "@/shared/lib/request";
 import { openExternalUrl } from "@/shared/platform/desktopRuntime";
 import { Badge, Button, Switch, TextInput } from "@/shared/ui";
@@ -60,15 +50,6 @@ const tailscaleStatusVariant = (state: TailscaleRemoteRuntimeState) => {
   return "muted" as const;
 };
 
-const relayStatusVariant = (state: RemoteRelayConnectorState | null) => {
-  if (state === "connected") return "success" as const;
-  if (state === "connecting") return "warning" as const;
-  if (state === "misconfigured" || state === "disconnected") {
-    return "danger" as const;
-  }
-  return "muted" as const;
-};
-
 const readErrorMessage = (error: unknown, fallback: string) =>
   error instanceof ApiError || error instanceof Error ? error.message : fallback;
 
@@ -85,17 +66,6 @@ export default function RemoteAccessSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const [relayConfig, setRelayConfig] =
-    useState<RemoteRelayUserConfig | null>(null);
-  const [relaySnapshot, setRelaySnapshot] =
-    useState<RemoteRelayConnectorSnapshot | null>(null);
-  const [relayMode, setRelayMode] =
-    useState<RemoteRelayEndpointMode>("default");
-  const [relayCustomUrl, setRelayCustomUrl] = useState("");
-  const [relayLoading, setRelayLoading] = useState(true);
-  const [relaySaving, setRelaySaving] = useState(false);
-  const [relayError, setRelayError] = useState("");
-
   const [revokingDeviceId, setRevokingDeviceId] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [pairingOpen, setPairingOpen] = useState(false);
@@ -107,21 +77,9 @@ export default function RemoteAccessSettings() {
     setEnabled(next.config.enabled);
   };
 
-  const applyRelayConfig = (next: RemoteRelayUserConfig) => {
-    setRelayConfig(next);
-    setRelayMode(next.endpointMode);
-    setRelayCustomUrl(next.customUrl);
-  };
-
   const refreshSnapshot = async () => {
     const next = await getTailscaleRemoteAccess();
     applySnapshot(next);
-    return next;
-  };
-
-  const refreshRelayStatus = async () => {
-    const next = await getRemoteRelayStatus();
-    setRelaySnapshot(next);
     return next;
   };
 
@@ -150,117 +108,63 @@ export default function RemoteAccessSettings() {
     };
   }, [copy.messages.loadFailed]);
 
+  // Identity changes are owned by the native Cloud lifecycle. Refresh the
+  // authoritative backend projection instead of deriving a local switch, and
+  // never leave a pairing dialog open after Cloud takes over remote access.
   useEffect(() => {
-    let cancelled = false;
+    const subscribe = window.cloudAccount?.subscribe;
+    if (typeof subscribe !== "function") return;
 
-    void (async () => {
-      try {
-        setRelayLoading(true);
-        const [config, status] = await Promise.all([
-          getRemoteRelayConfig(),
-          getRemoteRelayStatus(),
-        ]);
-        if (!cancelled) {
-          applyRelayConfig(config);
-          setRelaySnapshot(status);
-          setRelayError("");
+    let cancelled = false;
+    const unsubscribe = subscribe(() => {
+      void (async () => {
+        try {
+          const next = await getTailscaleRemoteAccess();
+          if (cancelled) return;
+          applySnapshot(next);
+          if (!next.cloudRemoteAccess?.directAllowed) {
+            setPairingOpen(false);
+          }
+          setError("");
+        } catch (requestError) {
+          if (!cancelled) {
+            setError(readErrorMessage(requestError, copy.messages.loadFailed));
+          }
         }
-      } catch (requestError) {
-        if (!cancelled) {
-          setRelayError(
-            readErrorMessage(requestError, copy.relay.messages.loadFailed),
-          );
-        }
-      } finally {
-        if (!cancelled) setRelayLoading(false);
-      }
-    })();
+      })();
+    });
 
     return () => {
       cancelled = true;
+      unsubscribe();
     };
-  }, [copy.relay.messages.loadFailed]);
+  }, [copy.messages.loadFailed]);
 
   const runtime = snapshot?.runtime;
+  const cloudMode = snapshot?.cloudRemoteAccess?.mode ?? "unknown";
+  const directAllowed =
+    cloudMode === "signed_out" &&
+    snapshot?.cloudRemoteAccess?.directAllowed === true;
   const statusCopy = runtime
     ? copy.status.states[runtime.state]
     : copy.status.states.connecting;
-  const relayState = relaySnapshot?.state ?? null;
-  const relayLabel = relayLoading
-    ? copy.actions.checking
-    : relayState
-      ? copy.relay.states[relayState]
-      : copy.relay.states.unavailable;
   const dirty = snapshot ? enabled !== snapshot.config.enabled : false;
   const canChangeRemoteAccess =
-    runtime?.state === "connected" ||
-    runtime?.state === "ready" ||
-    runtime?.state === "unreachable" ||
-    runtime?.state === "serve_not_configured";
+    directAllowed &&
+    (runtime?.state === "connected" ||
+      runtime?.state === "ready" ||
+      runtime?.state === "unreachable" ||
+      runtime?.state === "serve_not_configured");
   const canPairDevice =
-    (runtime?.state === "ready" || relayState === "connected") &&
-    !loading &&
-    !checking &&
-    !saving &&
-    !relayLoading &&
-    !relaySaving;
-
-  const saveRelay = async (input: {
-    enabled?: boolean;
-    endpointMode?: RemoteRelayEndpointMode;
-    customUrl?: string;
-  }) => {
-    setRelaySaving(true);
-    setRelayError("");
-    try {
-      const next = await updateRemoteRelayConfig(input);
-      applyRelayConfig(next);
-      await refreshRelayStatus();
-      return next;
-    } catch (requestError) {
-      setRelayError(
-        readErrorMessage(requestError, copy.relay.messages.saveFailed),
-      );
-      return null;
-    } finally {
-      setRelaySaving(false);
-    }
-  };
-
-  const handleRelayEnabledChange = () => {
-    if (!relayConfig) return;
-    void saveRelay({
-      enabled: !relayConfig.enabled,
-      endpointMode: relayMode,
-      customUrl: relayCustomUrl,
-    });
-  };
-
-  const handleRelayModeChange = (mode: RemoteRelayEndpointMode) => {
-    setRelayMode(mode);
-    if (!relayConfig) return;
-
-    if (mode === "default") {
-      void saveRelay({ endpointMode: mode });
-      return;
-    }
-
-    if (!relayConfig.enabled || relayCustomUrl.trim()) {
-      void saveRelay({ endpointMode: mode, customUrl: relayCustomUrl });
-    }
-  };
-
-  const commitRelayCustomUrl = () => {
-    if (!relayConfig || relayMode !== "custom") return;
-    const normalized = relayCustomUrl.trim();
-    if (
-      relayConfig.endpointMode === "custom" &&
-      relayConfig.customUrl === normalized
-    ) {
-      return;
-    }
-    void saveRelay({ endpointMode: "custom", customUrl: normalized });
-  };
+    directAllowed && runtime?.state === "ready" && !loading && !checking && !saving;
+  const cloudNotice =
+    cloudMode === "signed_in"
+      ? copy.cloud.signed_in
+      : cloudMode === "restoring"
+        ? copy.cloud.restoring
+        : cloudMode === "unknown"
+          ? copy.cloud.unknown
+          : null;
 
   const renderDiagnostics = (nextSnapshot: TailscaleRemoteAccessSnapshot) => {
     const nextRuntime = nextSnapshot.runtime;
@@ -320,7 +224,7 @@ export default function RemoteAccessSettings() {
                 <Button
                   size="xs"
                   variant="ghost"
-                  disabled={nextRuntime.state !== "ready"}
+                  disabled={nextRuntime.state !== "ready" || !directAllowed}
                   onClick={() => void openExternalUrl(nextRuntime.accessUrl!)}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -371,6 +275,13 @@ export default function RemoteAccessSettings() {
     try {
       let next = await checkTailscaleRemoteAccess();
       applySnapshot(next);
+
+      // While Mira Cloud owns remote access the page stays read-only: refresh
+      // diagnostics, but never write the Tailscale Serve setting.
+      if (!directAllowed) {
+        setDiagnosticsSnapshot(next);
+        return;
+      }
 
       if (enabled !== next.config.enabled) {
         setSaving(true);
@@ -446,82 +357,9 @@ export default function RemoteAccessSettings() {
         contentMode="flow"
       >
         {error ? <AppNotice tone="danger">{error}</AppNotice> : null}
-
-        <SectionCard
-          title={copy.relay.title}
-          icon={<Cloud className="h-4 w-4" />}
-          meta={
-            <Badge variant={relayStatusVariant(relayState)} outline>
-              {relayLabel}
-            </Badge>
-          }
-          action={
-            <Switch
-              checked={relayConfig?.enabled ?? false}
-              onChange={handleRelayEnabledChange}
-              ariaLabel={copy.relay.title}
-              disabled={relayLoading || relaySaving || !relayConfig}
-            />
-          }
-          divided
-        >
-          <SectionCardRow>
-            <div
-              className="flex flex-wrap items-center gap-x-6 gap-y-2"
-              role="radiogroup"
-              aria-label={copy.relay.title}
-            >
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
-                <input
-                  type="radio"
-                  name="remote-relay-endpoint"
-                  value="default"
-                  checked={relayMode === "default"}
-                  onChange={() => handleRelayModeChange("default")}
-                  disabled={relayLoading || relaySaving}
-                  className="h-4 w-4 accent-primary"
-                />
-                {copy.relay.default}
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
-                <input
-                  type="radio"
-                  name="remote-relay-endpoint"
-                  value="custom"
-                  checked={relayMode === "custom"}
-                  onChange={() => handleRelayModeChange("custom")}
-                  disabled={relayLoading || relaySaving}
-                  className="h-4 w-4 accent-primary"
-                />
-                {copy.relay.custom}
-              </label>
-            </div>
-          </SectionCardRow>
-
-          {relayMode === "custom" ? (
-            <div className="px-4 py-3">
-              <label className="block text-xs font-medium text-text-secondary">
-                {copy.relay.customAddress}
-              </label>
-              <input
-                type="url"
-                value={relayCustomUrl}
-                placeholder={copy.relay.customPlaceholder}
-                disabled={relayLoading || relaySaving}
-                onChange={(event) => setRelayCustomUrl(event.target.value)}
-                onBlur={commitRelayCustomUrl}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.currentTarget.blur();
-                }}
-                className="mt-2 h-9 w-full rounded-ui-control border border-border bg-surface-primary px-3 text-sm text-text-primary outline-none transition-colors placeholder:text-text-tertiary focus:border-primary"
-              />
-            </div>
-          ) : null}
-
-          {relayError ? (
-            <div className="px-4 py-3 text-xs text-danger-text">{relayError}</div>
-          ) : null}
-        </SectionCard>
+        {cloudNotice ? (
+          <AppNotice tone="warning">{cloudNotice}</AppNotice>
+        ) : null}
 
         <SectionCard
           title="Tailscale"
@@ -562,7 +400,11 @@ export default function RemoteAccessSettings() {
               variant={runtime ? tailscaleStatusVariant(runtime.state) : "muted"}
               outline
             >
-              {loading ? copy.actions.checking : statusCopy[0]}
+              {loading
+                ? copy.actions.checking
+                : directAllowed
+                  ? statusCopy[0]
+                  : copy.cloud.states[cloudMode]}
             </Badge>
           </SectionCardRow>
 
@@ -592,9 +434,11 @@ export default function RemoteAccessSettings() {
               title={
                 canPairDevice
                   ? undefined
-                  : isZh
-                    ? "请先连接 Tailscale 或 Mira Relay"
-                    : "Connect Tailscale or Mira Relay before pairing"
+                  : !directAllowed
+                    ? copy.cloud.pairBlocked
+                    : isZh
+                      ? "请先让 Tailscale 远程访问就绪"
+                      : "Wait until Tailscale remote access is ready"
               }
               onClick={() => setPairingOpen(true)}
             >

@@ -1,6 +1,6 @@
 {
   "name": "ui-chat-mira",
-  "version": "0.106.2",
+  "version": "0.107.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.12.0",
@@ -48,6 +48,8 @@
     "docs:dev": "pnpm --filter @ui-chat-mira/docs-site dev",
     "docs:build": "pnpm --filter @ui-chat-mira/docs-site build",
     "package:electron:win": "node scripts/build-dist.js",
+    "package:electron:mac": "node scripts/build-dist.js mac",
+    "package:electron:mac-arm64": "node scripts/build-dist.js mac-arm64",
     "release:validate:win": "node scripts/release/validate-release.mjs",
     "release:payload:win": "node scripts/release/build-payload.mjs",
     "release:payload:win:validated": "node scripts/release/build-payload.mjs --validation-manifest=.artifacts/release-validation/windows-x64/validation.json",
@@ -61,7 +63,7 @@
     "check:benchmark-recorder": "node --test scripts/benchmark/recorder/agent-core-recorder.test.mjs",
     "check:remote-relay": "tsc --noEmit -p packages/remote-relay/tsconfig.json",
     "check:cloud-account": "node --test electron/dev-launcher.test.cjs electron/dev-backend.test.cjs electron/cloud-account.test.cjs electron/cloud-relay-ticket-ipc.test.cjs",
-    "check:cloud-relay-ipc": "pnpm --dir server exec vitest run src/services/cloud-relay-ticket-ipc.service.test.ts src/services/cloud-host-grant-ipc.service.test.ts src/services/cloud-host-grant-authority.service.test.ts",
+    "check:cloud-relay-ipc": "pnpm --dir server exec vitest run src/services/cloud-relay-ticket-ipc.service.test.ts src/services/cloud-host-grant-ipc.service.test.ts src/services/cloud-host-grant-authority.service.test.ts src/services/cloud-session-state-ipc.service.test.ts src/services/cloud-remote-access-mode.service.test.ts",
     "check": "pnpm check:ai-review-runner && pnpm check:benchmark-runner && pnpm check:benchmark-recorder && pnpm check:benchmark-scorer && pnpm check:forge-cutover && pnpm check:remote-relay && pnpm check:cloud-account && pnpm check:cloud-relay-ipc && pnpm check:push-broker && pnpm test:push-broker && pnpm -r --workspace-concurrency=1 typecheck",
     "version:sync": "node scripts/sync-version.js",
     "internal:build:desktop": "pnpm --filter @ui-chat-mira/desktop build",
@@ -89,7 +91,7 @@
     "test:push-broker": "node server/node_modules/tsx/dist/cli.mjs --test packages/push-broker/src/service.test.ts packages/push-broker/src/provider-delivery.test.ts packages/push-broker/src/delivery.test.ts"
   },
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=26.13.1"
   },
   "devDependencies": {
     "@huggingface/tokenizers": "^0.1.3",

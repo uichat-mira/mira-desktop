@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Validate the release artifacts that GitHub and R2 advertise, without downloading binaries.
-// Usage: node verify-release-mirror.mjs <win|macos-intel> <vX.Y.Z> <dist-dir> [github-release.json] [r2-list.json]
+// Usage: node verify-release-mirror.mjs <win|macos-intel|macos-arm64> <vX.Y.Z> <dist-dir> [github-release.json] [r2-list.json]
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 
@@ -13,7 +13,7 @@ function readJson(path) {
 }
 
 export function verify(platform, tag, directory, githubRelease, r2List) {
-  if (!["win", "macos-intel"].includes(platform)) fail("unknown platform " + platform);
+  if (!["win", "macos-intel", "macos-arm64"].includes(platform)) fail("unknown platform " + platform);
   if (!/^v\d+\.\d+\.\d+$/.test(tag)) fail("invalid release tag " + tag);
   const version = tag.slice(1);
   const files = readdirSync(directory);
@@ -24,7 +24,7 @@ export function verify(platform, tag, directory, githubRelease, r2List) {
   const escapeRe = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const installerPattern = platform === "win"
     ? new RegExp("^electron_.*_Setup_" + escapeRe(version) + "\\.exe$")
-    : new RegExp("^macos-intel_.*-" + escapeRe(version) + "\\.dmg$");
+    : new RegExp("^" + platform + "_.*-" + escapeRe(version) + (platform === "macos-arm64" ? "-arm64" : "") + "\\.dmg$");
   const installer = files.find(name => installerPattern.test(name));
   if (!installer || files.some(name => name !== installer && name !== installer + ".blockmap")) {
     fail("unexpected file name or installer/blockmap version mismatch");
@@ -51,7 +51,7 @@ export function verify(platform, tag, directory, githubRelease, r2List) {
   }
 
   if (r2List !== undefined) {
-    const prefix = platform === "win" ? "mira/latest/" : "mira/macos-intel/latest/";
+    const prefix = platform === "win" ? "mira/latest/" : `mira/${platform}/latest/`;
     const remote = r2List.Contents || [];
     if (remote.length !== objects.length || r2List.IsTruncated === true) {
       fail("R2 latest contains unexpected/stale objects or truncated result");
@@ -67,7 +67,7 @@ export function verify(platform, tag, directory, githubRelease, r2List) {
 if (process.argv[1] && basename(process.argv[1]) === "verify-release-mirror.mjs") {
   const [, , platform, tag, dir, githubPath, r2Path] = process.argv;
   if (!platform || !tag || !dir) {
-    console.error("Usage: verify-release-mirror.mjs <win|macos-intel> <vX.Y.Z> <dist-dir> [github-release.json] [r2-list.json]");
+    console.error("Usage: verify-release-mirror.mjs <win|macos-intel|macos-arm64> <vX.Y.Z> <dist-dir> [github-release.json] [r2-list.json]");
     process.exitCode = 2;
   } else {
     try {

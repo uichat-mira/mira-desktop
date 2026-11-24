@@ -1,6 +1,6 @@
 {
   "name": "mira-clipper-ext",
-  "version": "0.106.2",
+  "version": "0.107.0",
   "description": "触界 - Mira 浏览器操作与用户主动剪藏扩展",
   "type": "module",
   "scripts": {
@@ -18,7 +18,7 @@
     "playwright": "^1.61.1"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=26.13.1"
   },
   "dependencies": {
     "@kudoai/chatgpt.js": "^4.15.1"

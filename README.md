@@ -55,7 +55,7 @@ pnpm clean:artifacts
 
 `dev:electron:win:cloud-pilot` / `dev:electron:mac:cloud-pilot` 仅作为指向标准命令的兼容别名保留；它们不再启用第二套启动路径。
 
-`dev:electron:mac` 当前用于 Apple Silicon Electron Core 开发态验证，不构建仅支持 Windows 的 Native Messaging Host。启动前会为 npm 下载的 `Electron.app` 准备本机 ad-hoc 开发签名，并恢复 node-pty macOS `spawn-helper` 的执行位；这些动作只用于本地开发，macOS 正式包仍需 Developer ID、公证及独立 payload 验证。正式打包目前未支持，当前进度见 `docs/platform/macos-implementation-phases.md`。
+`dev:electron:mac` 当前用于 Apple Silicon Electron Core 开发态验证，不构建仅支持 Windows 的 Native Messaging Host。启动前会为 npm 下载的 `Electron.app` 准备本机 ad-hoc 开发签名，并恢复 node-pty macOS `spawn-helper` 的执行位；这些动作只用于本地开发，macOS 正式包仍需 Developer ID、公证及独立 payload 验证。未签名内部包可通过 `pnpm package:electron:mac`（Intel）或 `pnpm package:electron:mac-arm64`（Apple Silicon）构建，当前进度见 `docs/platform/macos-implementation-phases.md`。
 
 `smoke:electron:chat:mac` 使用隔离数据库、Workspace、附件目录和动态端口启动真实 Electron，验证登录、Chat Composer、普通附件选择、鉴权上传、落盘与退出清理。`smoke:terminal:mac` 验证带中文和空格的 Workspace、临时 POSIX 命令、持久 PTY 续跑及进程清理。
 
@@ -78,6 +78,8 @@ hotfix/* -> test or prod
 
 ```bash
 pnpm package:electron:win
+pnpm package:electron:mac
+pnpm package:electron:mac-arm64
 ```
 
 ## Local Model Packs

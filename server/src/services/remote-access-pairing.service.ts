@@ -81,7 +81,8 @@ export type PairingServiceErrorCode =
   | "PAIRING_ALREADY_CLAIMED"
   | "PAIRING_INVALID_POLL_TOKEN"
   | "PAIRING_NOT_CLAIMED"
-  | "PAIRING_SCOPE_EMPTY";
+  | "PAIRING_SCOPE_EMPTY"
+  | "PAIRING_DIRECT_HOST_REQUIRED";
 
 export class PairingServiceError extends Error {
   constructor(
@@ -206,12 +207,19 @@ const requireClaim = (claimId: string) => {
 export class RemoteAccessPairingService {
   createChallenge(input: {
     userId: number;
-    hostUrl?: string | null;
-    relay?: { endpoint: string; relayId: string; clientToken: string } | null;
+    hostUrl: string;
   }): CreatedPairingChallenge {
     const now = new Date();
     const code = createCode();
-    const hostUrl = input.hostUrl?.trim().replace(/\/+$/, "") ?? "";
+    const hostUrl = input.hostUrl.trim().replace(/\/+$/, "");
+    // DSK-017: pairing is Tailscale Direct only. A challenge without a Direct
+    // host could only be claimed through the retired Relay transport.
+    if (!hostUrl) {
+      throw new PairingServiceError(
+        "PAIRING_DIRECT_HOST_REQUIRED",
+        "A ready Tailscale Direct host URL is required before pairing",
+      );
+    }
     const challenge = tailscaleRemoteAccessRepository.createPairingChallenge({
       id: randomUUID(),
       userId: input.userId,
@@ -224,15 +232,8 @@ export class RemoteAccessPairingService {
       challenge: challenge.id,
       code,
       version: "1",
+      host: challenge.hostUrl,
     });
-    if (challenge.hostUrl) {
-      query.set("host", challenge.hostUrl);
-    }
-    if (input.relay) {
-      query.set("relay", input.relay.endpoint);
-      query.set("relayId", input.relay.relayId);
-      query.set("relayToken", input.relay.clientToken);
-    }
 
     return {
       ...toView(challenge),

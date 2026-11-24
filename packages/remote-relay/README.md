@@ -57,21 +57,15 @@ Expected shape:
 }
 ```
 
-## Desktop POC configuration
+## Desktop integration status
 
-The Desktop connector is disabled by default. To opt into the POC, set:
+DSK-017 retired the Desktop's legacy paired/self-hosted Relay. Mira Desktop no
+longer reads `UI_CHAT_REMOTE_RELAY_*`, generates room identity/tokens, or starts
+a connector for this service. Official Cloud Relay uses its own account ticket,
+Host Grant and shared frame protocol instead.
 
-```text
-UI_CHAT_REMOTE_RELAY_ENABLED=1
-UI_CHAT_REMOTE_RELAY_URL=https://<worker-host>
-UI_CHAT_REMOTE_RELAY_ID=<high-entropy-relay-id>
-UI_CHAT_REMOTE_RELAY_HOST_TOKEN=<32+ char random token>
-UI_CHAT_REMOTE_RELAY_CLIENT_TOKEN=<32+ char random token>
-```
-
-The first successful Host connection provisions the Host and Client relay-token hashes in that Durable Object room. Subsequent connections must present matching tokens.
-
-Do not reuse a Mira login token or `mira_device_*` credential as either relay token.
+This standalone Worker remains in the repository as historical protocol source
+only. Deploying it does not connect a current Desktop Host.
 
 ## Frame contract
 

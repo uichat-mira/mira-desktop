@@ -35,7 +35,7 @@ type Challenge = {
   claimTokenHash: string | null;
   deviceName: string | null;
   platform: string | null;
-  claimTransport: "relay" | "direct" | null;
+  claimTransport: "direct" | null;
   publicKey: string | null;
   requestedScopes: string[];
   approvedScopes: string[];
@@ -102,9 +102,7 @@ const repositoryMock = vi.hoisted(() => ({
     challenge.deviceName = String(input.deviceName);
     challenge.platform = String(input.platform);
     challenge.claimTransport =
-      input.transport === "relay" || input.transport === "direct"
-        ? input.transport
-        : null;
+      input.transport === "direct" ? input.transport : null;
     challenge.publicKey = input.publicKey ? String(input.publicKey) : null;
     challenge.requestedScopes = [...(input.requestedScopes as string[])];
     challenge.claimedAt = String(input.claimedAt);
@@ -184,6 +182,34 @@ beforeEach(() => {
 });
 
 describe("RemoteAccessPairingService", () => {
+  it("emits a Tailscale Direct only pairing URI", () => {
+    const service = new RemoteAccessPairingService();
+    const created = service.createChallenge({
+      userId: 7,
+      hostUrl: "https://mira.example.ts.net/",
+    });
+
+    const uri = new URL(created.pairingUri);
+    expect(uri.searchParams.get("host")).toBe(
+      "https://mira.example.ts.net",
+    );
+    expect(uri.searchParams.get("challenge")).toBe(created.challengeId);
+    expect(uri.searchParams.get("code")).toBe(created.code);
+    expect(uri.searchParams.get("version")).toBe("1");
+    for (const legacyField of ["relay", "relayId", "relayToken"]) {
+      expect(uri.searchParams.has(legacyField)).toBe(false);
+    }
+  });
+
+  it("rejects a challenge without a Direct host URL", () => {
+    const service = new RemoteAccessPairingService();
+
+    expect(() =>
+      service.createChallenge({ userId: 7, hostUrl: "   " }),
+    ).toThrowError(PairingServiceError);
+    expect(repositoryMock.createPairingChallenge).not.toHaveBeenCalled();
+  });
+
   it("requires the one-time code and records failed attempts", () => {
     const service = new RemoteAccessPairingService();
     const challenge = service.createChallenge({
@@ -216,7 +242,7 @@ describe("RemoteAccessPairingService", () => {
       code: challenge.code,
       deviceName: "K70",
       platform: "android",
-      transport: "relay",
+      transport: "direct",
       publicKey: "mobile-public-key",
       requestedScopes: ["threads:read", "messages:read"],
     });
@@ -226,7 +252,7 @@ describe("RemoteAccessPairingService", () => {
       scopes: [],
     });
     expect(service.getChallengeForUser(challenge.challengeId, 7).claim).toMatchObject({
-      transport: "relay",
+      transport: "direct",
     });
 
     const approved = service.approve({
