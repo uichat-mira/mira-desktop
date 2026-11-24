@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { createInvocationInputHash } from "@/agent/approval-fingerprint.js";
 
@@ -43,6 +44,7 @@ vi.mock("@/harness/llm-content.js", () => ({
 import {
   listRemoteToolManifests,
   resolveRemoteToolApproval,
+  resolveRemoteToolCatalog,
 } from "./remote-tool-gateway.service.js";
 
 const terminalDefinition = {
@@ -107,6 +109,52 @@ describe("mobile remote tool gateway service", () => {
         source: "agent_intent",
         allowExternal: true,
       }),
+    );
+  });
+
+  test("exposes one bidirectional alias index for the catalog", async () => {
+    const catalog = await resolveRemoteToolCatalog();
+
+    expect(catalog.nameToId.get("terminal")).toBe("terminal");
+    expect(catalog.idToName.get("terminal")).toBe("terminal");
+    const externalName = catalog.idToName.get(externalDefinition.id);
+    expect(externalName).toMatch(/^[A-Za-z0-9_-]{1,64}$/u);
+    expect(catalog.nameToId.get(externalName!)).toBe(externalDefinition.id);
+  });
+
+  test("fails closed when two Tool Core ids would share one MCP name", async () => {
+    const externalId = "mcp:server-1:tool:lookup";
+    const suffix = createHash("sha256")
+      .update(externalId, "utf8")
+      .digest("hex")
+      .slice(0, 10);
+    const collidingDefinitions = [
+      {
+        ...terminalDefinition,
+        id: externalId,
+        source: "external" as const,
+        domain: "external_mcp",
+      },
+      {
+        ...terminalDefinition,
+        id: `mcp_server-1_tool_lookup_${suffix}`,
+        source: "external" as const,
+        domain: "external_mcp",
+      },
+    ];
+    mocks.resolveExposure.mockReturnValueOnce({
+      exposedToolIds: collidingDefinitions.map((definition) => definition.id),
+      exposedDefinitions: collidingDefinitions,
+      reason: [],
+      visibleDefinitions: collidingDefinitions,
+      blockedCapabilityIds: [],
+      blockedCapabilityReasons: {},
+      reasons: [],
+    });
+    mocks.eligibleExternal.mockReturnValueOnce(collidingDefinitions);
+
+    await expect(resolveRemoteToolCatalog()).rejects.toThrow(
+      /Remote tool alias collision/u,
     );
   });
 

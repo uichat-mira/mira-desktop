@@ -239,6 +239,7 @@ const createFallbackProfile = (
   inputSchema: definition.inputSchema,
   sourceLabel: definition.sourceLabel,
   preferredToolId: definition.id,
+  fallback: true,
   supportingToolIds: [definition.id],
 });
 

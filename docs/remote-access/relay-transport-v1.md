@@ -59,6 +59,11 @@ implement the shared Relay V1 frame envelope (`hello`, `hello_ack`, `request`,
 `response`, `chunk`, `complete`, `cancel`, `error`). Only the legacy
 room-token admission and its connector instance were removed.
 
+`POST /mcp` uses the same request/response/chunk/complete path with
+`application/json`; it does not require or claim transparent MCP SSE support.
+The exact MCP transport contract and current evidence gap are recorded in
+[`desktop-mcp-server-v1.md`](desktop-mcp-server-v1.md).
+
 ## Historical note
 
 Before DSK-017, this document described a self-hosted Cloudflare Relay POC with

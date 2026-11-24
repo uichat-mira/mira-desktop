@@ -32,6 +32,18 @@ export type RemoteToolManifest = {
   requiresApproval: boolean;
 };
 
+/**
+ * The single persistent Remote tool projection consumed by both Remote V1 and
+ * the MCP outlet. Alias collisions fail closed instead of silently pointing one
+ * MCP tool name at a different Tool Core capability.
+ */
+export type RemoteToolCatalog = {
+  definitions: readonly ToolDefinition[];
+  manifests: readonly RemoteToolManifest[];
+  nameToId: ReadonlyMap<string, string>;
+  idToName: ReadonlyMap<string, string>;
+};
+
 export type RemoteToolInvocationStatus =
   | "completed"
   | "awaiting_approval"
@@ -116,9 +128,54 @@ const resolveRemoteToolDefinitions = async (): Promise<ToolDefinition[]> => {
   return exposure.exposedDefinitions;
 };
 
-const getRemoteToolDefinition = async (toolId: string) => {
+const buildRemoteToolAliases = (definitions: readonly ToolDefinition[]) => {
+  const nameToId = new Map<string, string>();
+  const idToName = new Map<string, string>();
+
+  for (const definition of definitions) {
+    const name = toModelToolName(definition.id);
+    const existingId = nameToId.get(name);
+    if (existingId && existingId !== definition.id) {
+      throw new Error(
+        `Remote tool alias collision between "${existingId}" and "${definition.id}"`,
+      );
+    }
+    const existingName = idToName.get(definition.id);
+    if (existingName && existingName !== name) {
+      throw new Error(`Remote tool has conflicting aliases: ${definition.id}`);
+    }
+    nameToId.set(name, definition.id);
+    idToName.set(definition.id, name);
+  }
+
+  return { nameToId, idToName };
+};
+
+export const resolveRemoteToolCatalog = async (): Promise<RemoteToolCatalog> => {
   const definitions = await resolveRemoteToolDefinitions();
-  const definition = definitions.find((candidate) => candidate.id === toolId);
+  const aliases = buildRemoteToolAliases(definitions);
+  const manifests = definitions.map((definition) => ({
+    id: definition.id,
+    name: aliases.idToName.get(definition.id)!,
+    description: definition.description,
+    parameters: definition.inputSchema,
+    destructive: definition.capabilities.sideEffect !== "none",
+    requiresApproval: definition.capabilities.requiresApproval,
+  }));
+
+  return {
+    definitions,
+    manifests,
+    nameToId: aliases.nameToId,
+    idToName: aliases.idToName,
+  };
+};
+
+const getRemoteToolDefinition = async (toolId: string) => {
+  const catalog = await resolveRemoteToolCatalog();
+  const definition = catalog.definitions.find(
+    (candidate) => candidate.id === toolId,
+  );
   if (!definition) {
     throw mcpBadRequest("Tool is not available to the mobile Agent surface");
   }
@@ -129,17 +186,8 @@ export const assertRemoteToolAvailable = async (toolId: string) => {
   await getRemoteToolDefinition(toolId);
 };
 
-export const listRemoteToolManifests = async (): Promise<RemoteToolManifest[]> => {
-  const definitions = await resolveRemoteToolDefinitions();
-  return definitions.map((definition) => ({
-    id: definition.id,
-    name: toModelToolName(definition.id),
-    description: definition.description,
-    parameters: definition.inputSchema,
-    destructive: definition.capabilities.sideEffect !== "none",
-    requiresApproval: definition.capabilities.requiresApproval,
-  }));
-};
+export const listRemoteToolManifests = async (): Promise<RemoteToolManifest[]> =>
+  [...(await resolveRemoteToolCatalog()).manifests];
 
 const safeFailureMessage = (failureCode: ToolInvocationFailureCode | undefined) => {
   switch (failureCode) {

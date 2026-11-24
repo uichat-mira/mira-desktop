@@ -248,6 +248,17 @@ export const getRequiredRemoteScope = (
 
   if (
     normalizedMethod === "POST" &&
+    parts.length === 1 &&
+    parts[0] === "mcp"
+  ) {
+    // The MCP endpoint is tool discovery first. tools/call additionally
+    // requires tools:invoke inside the authenticated protocol handler because
+    // that distinction is carried in the JSON-RPC body, not the URL.
+    return "tools:read";
+  }
+
+  if (
+    normalizedMethod === "POST" &&
     parts.length === 4 &&
     parts[0] === "remote" &&
     parts[1] === "v1" &&

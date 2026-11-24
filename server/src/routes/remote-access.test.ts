@@ -585,6 +585,7 @@ describe("remote access routes", () => {
       "POST /remote/v1/tool-invocations/:invocationId/approval",
       "POST /remote/v1/tool-invocations/:invocationId/cancel",
     ]);
+    assert.deepEqual(manifestResponse.json().data.routes.mcp, ["POST /mcp"]);
     assert.deepEqual(manifestResponse.json().data.routes.push, [
       "POST /remote/v1/push/binding-descriptor",
       "POST /remote/v1/push/bindings/accept",

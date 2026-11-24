@@ -215,10 +215,17 @@ GET    /remote/v1/tools
 POST   /remote/v1/tool-invocations/stream
 POST   /remote/v1/tool-invocations/:invocationId/approval
 POST   /remote/v1/tool-invocations/:invocationId/cancel
+POST   /mcp
 GET    /threads/:id/media/:mediaId/content
 ```
 
 这张列表只是**当前实现快照**，不是冻结 V1 的规范边界。增加或删除能力时必须同时更新 Gateway 映射、manifest、Mobile capability guard、测试和 canonical 文档。
+
+`POST /mcp` 是现有受控工具面的标准 MCP 出口，不是第二套远程业务协议；
+它复用同一 Tool Core/Harness eligibility 与 Remote V1 设备/Host Grant 准入。
+完整身份、scope、Resource、审批与传输矩阵见
+[[desktop-mcp-server-v1]]。Remote V1 工具路由继续保留，直到独立 cutover
+证明受支持 Mobile 消费者不再依赖它们。
 
 `GET /remote/v1/workspaces` 返回当前用户的 active / archived ChatWorkspace，但只投影：
 

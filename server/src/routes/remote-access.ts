@@ -1049,6 +1049,10 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
             "POST /remote/v1/tool-invocations/:invocationId/approval",
             "POST /remote/v1/tool-invocations/:invocationId/cancel",
           ],
+          // Standard MCP tool outlet. Remote V1 remains the identity,
+          // Thread/Agent, approval and Artifact surface while both tool paths
+          // share the same underlying eligibility projection.
+          mcp: ["POST /mcp"],
           artifacts: ["GET /threads/:id/media/:mediaId/content"],
           // Push binding still requires a locally paired Remote Device.
           // Cloud Mobile must not discover unsupported bootstrap routes.
