@@ -51,7 +51,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 26
+          node-version: 26.13.1
           cache: pnpm
 
       - name: Prepare test artifact directory
@@ -84,7 +84,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 26
+          node-version: 26.13.1
           cache: pnpm
 
       - name: Install desktop workspace dependencies
