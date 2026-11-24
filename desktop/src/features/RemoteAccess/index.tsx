@@ -108,18 +108,63 @@ export default function RemoteAccessSettings() {
     };
   }, [copy.messages.loadFailed]);
 
+  // Identity changes are owned by the native Cloud lifecycle. Refresh the
+  // authoritative backend projection instead of deriving a local switch, and
+  // never leave a pairing dialog open after Cloud takes over remote access.
+  useEffect(() => {
+    const subscribe = window.cloudAccount?.subscribe;
+    if (typeof subscribe !== "function") return;
+
+    let cancelled = false;
+    const unsubscribe = subscribe(() => {
+      void (async () => {
+        try {
+          const next = await getTailscaleRemoteAccess();
+          if (cancelled) return;
+          applySnapshot(next);
+          if (!next.cloudRemoteAccess?.directAllowed) {
+            setPairingOpen(false);
+          }
+          setError("");
+        } catch (requestError) {
+          if (!cancelled) {
+            setError(readErrorMessage(requestError, copy.messages.loadFailed));
+          }
+        }
+      })();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [copy.messages.loadFailed]);
+
   const runtime = snapshot?.runtime;
+  const cloudMode = snapshot?.cloudRemoteAccess?.mode ?? "unknown";
+  const directAllowed =
+    cloudMode === "signed_out" &&
+    snapshot?.cloudRemoteAccess?.directAllowed === true;
   const statusCopy = runtime
     ? copy.status.states[runtime.state]
     : copy.status.states.connecting;
   const dirty = snapshot ? enabled !== snapshot.config.enabled : false;
   const canChangeRemoteAccess =
-    runtime?.state === "connected" ||
-    runtime?.state === "ready" ||
-    runtime?.state === "unreachable" ||
-    runtime?.state === "serve_not_configured";
+    directAllowed &&
+    (runtime?.state === "connected" ||
+      runtime?.state === "ready" ||
+      runtime?.state === "unreachable" ||
+      runtime?.state === "serve_not_configured");
   const canPairDevice =
-    runtime?.state === "ready" && !loading && !checking && !saving;
+    directAllowed && runtime?.state === "ready" && !loading && !checking && !saving;
+  const cloudNotice =
+    cloudMode === "signed_in"
+      ? copy.cloud.signed_in
+      : cloudMode === "restoring"
+        ? copy.cloud.restoring
+        : cloudMode === "unknown"
+          ? copy.cloud.unknown
+          : null;
 
   const renderDiagnostics = (nextSnapshot: TailscaleRemoteAccessSnapshot) => {
     const nextRuntime = nextSnapshot.runtime;
@@ -179,7 +224,7 @@ export default function RemoteAccessSettings() {
                 <Button
                   size="xs"
                   variant="ghost"
-                  disabled={nextRuntime.state !== "ready"}
+                  disabled={nextRuntime.state !== "ready" || !directAllowed}
                   onClick={() => void openExternalUrl(nextRuntime.accessUrl!)}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -230,6 +275,13 @@ export default function RemoteAccessSettings() {
     try {
       let next = await checkTailscaleRemoteAccess();
       applySnapshot(next);
+
+      // While Mira Cloud owns remote access the page stays read-only: refresh
+      // diagnostics, but never write the Tailscale Serve setting.
+      if (!directAllowed) {
+        setDiagnosticsSnapshot(next);
+        return;
+      }
 
       if (enabled !== next.config.enabled) {
         setSaving(true);
@@ -305,6 +357,9 @@ export default function RemoteAccessSettings() {
         contentMode="flow"
       >
         {error ? <AppNotice tone="danger">{error}</AppNotice> : null}
+        {cloudNotice ? (
+          <AppNotice tone="warning">{cloudNotice}</AppNotice>
+        ) : null}
 
         <SectionCard
           title="Tailscale"
@@ -345,7 +400,11 @@ export default function RemoteAccessSettings() {
               variant={runtime ? tailscaleStatusVariant(runtime.state) : "muted"}
               outline
             >
-              {loading ? copy.actions.checking : statusCopy[0]}
+              {loading
+                ? copy.actions.checking
+                : directAllowed
+                  ? statusCopy[0]
+                  : copy.cloud.states[cloudMode]}
             </Badge>
           </SectionCardRow>
 
@@ -375,9 +434,11 @@ export default function RemoteAccessSettings() {
               title={
                 canPairDevice
                   ? undefined
-                  : isZh
-                    ? "请先让 Tailscale 远程访问就绪"
-                    : "Wait until Tailscale remote access is ready"
+                  : !directAllowed
+                    ? copy.cloud.pairBlocked
+                    : isZh
+                      ? "请先让 Tailscale 远程访问就绪"
+                      : "Wait until Tailscale remote access is ready"
               }
               onClick={() => setPairingOpen(true)}
             >

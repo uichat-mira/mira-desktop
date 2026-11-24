@@ -12,6 +12,8 @@ import {
 } from "@/services/remote-relay-connector.service.js";
 import { tailscaleRemoteAccessService } from "@/services/tailscale-remote-access.service.js";
 import { CloudRelayTicketIpcClient } from "@/services/cloud-relay-ticket-ipc.service.js";
+import { CloudSessionStateIpcClient } from "@/services/cloud-session-state-ipc.service.js";
+import { cloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 import { generalSettingsRepository } from "@/db/repositories/general-settings.repository.js";
 import { createCloudRelaySocketFactory } from "@/services/cloud-relay-socket-proxy.service.js";
 import { CloudHostGrantIpcClient } from "@/services/cloud-host-grant-ipc.service.js";
@@ -81,6 +83,14 @@ const remoteWorkspaceSchema = {
     updatedAt: { type: "string", format: "date-time" },
   },
 } as const;
+
+const assertDirectRemoteAccessAllowed = () => {
+  if (!cloudRemoteAccessMode.isDirectRemoteAccessAllowed()) {
+    throw forbidden(
+      "Tailscale Direct remote access is unavailable while this Desktop is signed in to Mira Cloud",
+    );
+  }
+};
 
 const mapPairingError = (error: unknown): never => {
   if (error instanceof PairingServiceError) {
@@ -175,6 +185,21 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
   // private child IPC, never an HTTP credential API or persisted room token.
   const cloudTicketIpc = new CloudRelayTicketIpcClient();
   const cloudGrantIpc = new CloudHostGrantIpcClient();
+  // DSK-018: mirror the native Cloud lifecycle into the local admission gate.
+  // The initial projection is "unknown" until the native owner answers.
+  const cloudSessionIpc = new CloudSessionStateIpcClient();
+  cloudRemoteAccessMode.applyNativeSessionState(cloudSessionIpc.getState());
+  const unsubscribeCloudSessionState = cloudSessionIpc.onStateChanged((state) => {
+    cloudRemoteAccessMode.applyNativeSessionState(state);
+    void tailscaleRemoteAccessService
+      .reconcileCloudRemoteAccessMode(state)
+      .catch((error: unknown) => {
+        console.warn(
+          "[RemoteAccess] Failed to reconcile Mira-owned Tailscale exposure with the Cloud login mode:",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+  });
   const cloudGrantRuntime = new CloudHostGrantRuntime(cloudGrantIpc, (id) => {
     const user = userRepository.findById(id);
     if (!user || !user.isActive) return null;
@@ -234,6 +259,9 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     cloudGrantRuntime.dispose();
     cloudGrantIpc.dispose();
     cloudTicketIpc.dispose();
+    unsubscribeCloudSessionState();
+    cloudSessionIpc.dispose();
+    cloudRemoteAccessMode.reset();
   });
 
   app.get(
@@ -279,6 +307,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!user) {
         throw forbidden("Desktop authentication is required");
       }
+      assertDirectRemoteAccessAllowed();
 
       const tailscale = await tailscaleRemoteAccessService.getSnapshot({
         verifyHealth: true,
@@ -384,6 +413,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!user) {
         throw forbidden("Desktop authentication is required");
       }
+      assertDirectRemoteAccessAllowed();
       try {
         return success(
           remoteAccessPairingService.approve({
@@ -424,6 +454,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!user) {
         throw forbidden("Desktop authentication is required");
       }
+      assertDirectRemoteAccessAllowed();
       try {
         return success(
           remoteAccessPairingService.reject({
@@ -489,6 +520,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to claim remote pairing challenge", async (request) => {
+      assertDirectRemoteAccessAllowed();
       try {
         return success(
           remoteAccessPairingService.claim(request.body),
@@ -530,6 +562,8 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to poll remote pairing claim", async (request) => {
+      // Deny before the one-time credential can be read or consumed.
+      assertDirectRemoteAccessAllowed();
       try {
         return success(
           remoteAccessPairingService.poll(

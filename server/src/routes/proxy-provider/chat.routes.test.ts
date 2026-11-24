@@ -45,6 +45,7 @@ import {
   cloudLocalRequestAuthority,
 } from "@/services/cloud-local-request-authority.service.js";
 import { createTimestampedTestArtifactPath } from "@/test-support/artifacts.js";
+import { cloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 
 const testDbPath = createTimestampedTestArtifactPath(
   "db",
@@ -137,6 +138,10 @@ const createRemoteGatewayApp = async () => {
     request.authUser = user;
   });
   await app.register(proxyProviderRoute);
+  // DSK-018 fixture: paired Direct devices are admitted only while the native
+  // Cloud lifecycle confirms a signed-out Desktop. Tests that exercise the
+  // denial path switch this to signed_in explicitly.
+  cloudRemoteAccessMode.applyNativeSessionState("signed_out");
   return app;
 };
 
@@ -691,6 +696,86 @@ test("POST /proxy/chat/default routes non-RAG threads into persisted default cha
     providerProxyService.streamChat = originalStreamChat;
     providerProxyService.createPersistedChatStream = originalPersistedStream;
     createAndRunAgentSpy.mockRestore();
+    await app.close();
+  }
+});
+
+test("paired Direct credentials are denied while Mira Cloud is signed in and recover after sign-out", async () => {
+  const user = userRepository.create({
+    username: "remote-cloud-mode-" + crypto.randomUUID(),
+    passwordHash: "hash", role: "user", isActive: true,
+  });
+  const app = await createRemoteGatewayApp();
+  const credential = createPairedDeviceCredential(user, ["messages:write", "threads:read"]);
+  const directAuth = { authorization: `Bearer ${credential}` };
+  const makePayload = () => {
+    const thread = threadService.createThread({
+      userId: user.id, title: "Cloud mode " + crypto.randomUUID(),
+    });
+    const userMessage = threadService.createMessage(thread.id, user.id, {
+      id: "tail-" + crypto.randomUUID(), role: "user",
+      content: "Earlier", parts: [{ type: "text", text: "Earlier" }],
+    });
+    const tail = threadService.createMessage(thread.id, user.id, {
+      id: "tail-reply-" + crypto.randomUUID(), parentId: userMessage.id,
+      role: "assistant", content: "Earlier answer",
+      parts: [{ type: "text", text: "Earlier answer" }],
+    });
+    const id = "cloud-mode-" + crypto.randomUUID();
+    return {
+      id: thread.id, messageId: id,
+      appendAtTail: { expectedTailMessageId: tail.id },
+      messages: [{ id, role: "user",
+        parts: [{ type: "text", text: "Cloud mode question" }] }],
+    };
+  };
+  const original = providerProxyService.createPersistedChatStream;
+  const provider = vi.fn(() => Readable.from([""]));
+  providerProxyService.createPersistedChatStream = provider;
+  try {
+    const directPayload = makePayload();
+    cloudRemoteAccessMode.applyNativeSessionState("signed_in");
+    const denied = await app.inject({
+      method: "POST", url: "/proxy/chat/default", headers: directAuth,
+      payload: directPayload,
+    });
+    assert.equal(denied.statusCode, 403, denied.body);
+    assert.equal(provider.mock.calls.length, 0);
+
+    cloudRemoteAccessMode.applyNativeSessionState("restoring");
+    const restoring = await app.inject({
+      method: "POST", url: "/proxy/chat/default", headers: directAuth,
+      payload: directPayload,
+    });
+    assert.equal(restoring.statusCode, 403, restoring.body);
+    assert.equal(provider.mock.calls.length, 0);
+
+    // A denied Direct request must not fall through to local or Cloud
+    // authority; those independent positive controls keep working.
+    const localJwt = await app.inject({
+      method: "POST", url: "/proxy/chat/default",
+      headers: { authorization: `Bearer ${createAccessToken(user)}` },
+      payload: makePayload(),
+    });
+    assert.equal(localJwt.statusCode, 200, localJwt.body);
+    const cloud = await app.inject({
+      method: "POST", url: "/proxy/chat/default",
+      headers: { [CLOUD_INTERNAL_REQUEST_HEADER]: issueCloudChatCapability(user) },
+      payload: makePayload(),
+    });
+    assert.equal(cloud.statusCode, 200, cloud.body);
+    assert.equal(provider.mock.calls.length, 2);
+
+    cloudRemoteAccessMode.applyNativeSessionState("signed_out");
+    const allowed = await app.inject({
+      method: "POST", url: "/proxy/chat/default", headers: directAuth,
+      payload: directPayload,
+    });
+    assert.equal(allowed.statusCode, 200, allowed.body);
+    assert.equal(provider.mock.calls.length, 3);
+  } finally {
+    providerProxyService.createPersistedChatStream = original;
+    cloudRemoteAccessMode.reset();
     await app.close();
   }
 });

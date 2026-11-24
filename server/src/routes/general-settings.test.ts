@@ -37,6 +37,7 @@ vi.mock("./memory.js", () => ({ default: async () => undefined }));
 
 import generalSettingsRoute from "./general-settings.js";
 import { TailscaleRemoteAccessError } from "@/services/tailscale-remote-access.service.js";
+import { cloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 
 const settings = {
   socks5Host: "127.0.0.1",
@@ -73,6 +74,7 @@ const createApp = async () => {
     request.authUser = { id: 7, username: "alice", role: "user" };
   });
   await app.register(generalSettingsRoute);
+  cloudRemoteAccessMode.applyNativeSessionState("signed_out");
   return app;
 };
 
@@ -139,6 +141,42 @@ describe("general settings routes", () => {
     });
     expect(response.statusCode).toBe(400);
     expect(response.json().message).toContain("not managed by Mira");
+    await app.close();
+  });
+
+  it("exposes the nonsecret Cloud login mode with the Tailscale snapshot", async () => {
+    const app = await createApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/general-settings/tailscale-remote-access",
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.cloudRemoteAccess).toEqual({
+      mode: "signed_out",
+      directAllowed: true,
+    });
+    await app.close();
+  });
+
+  it("rejects enabling Mira Serve while Mira Cloud owns remote access", async () => {
+    const app = await createApp();
+    cloudRemoteAccessMode.applyNativeSessionState("signed_in");
+
+    const denied = await app.inject({
+      method: "PUT",
+      url: "/general-settings/tailscale-remote-access",
+      payload: { enabled: true },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(mocks.updateEnabled).not.toHaveBeenCalled();
+
+    const disable = await app.inject({
+      method: "PUT",
+      url: "/general-settings/tailscale-remote-access",
+      payload: { enabled: false },
+    });
+    expect(disable.statusCode).toBe(200);
+    expect(mocks.updateEnabled).toHaveBeenCalledWith(false);
     await app.close();
   });
 

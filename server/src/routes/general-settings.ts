@@ -8,9 +8,11 @@ import {
   TailscaleRemoteAccessError,
   tailscaleRemoteAccessService,
 } from "@/services/tailscale-remote-access.service.js";
+import { cloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 import { success } from "@/utils/index.js";
 import {
   badRequest,
+  forbidden,
   notFound,
   routeHandler,
 } from "@/utils/route-errors.js";
@@ -41,7 +43,7 @@ const generalSettingsUpdateSchema = {
 const tailscaleSnapshotSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["config", "runtime", "pairedDevices"],
+  required: ["config", "runtime", "pairedDevices", "cloudRemoteAccess"],
   properties: {
     config: {
       type: "object",
@@ -127,8 +129,32 @@ const tailscaleSnapshotSchema = {
         },
       },
     },
+    cloudRemoteAccess: {
+      type: "object",
+      additionalProperties: false,
+      required: ["mode", "directAllowed"],
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["signed_out", "signed_in", "restoring", "unknown"],
+        },
+        directAllowed: { type: "boolean" },
+      },
+    },
   },
 } as const;
+
+const toTailscaleSnapshot = (
+  snapshot: Awaited<ReturnType<typeof tailscaleRemoteAccessService.getSnapshot>>,
+  userId?: number,
+) => ({
+  ...snapshot,
+  pairedDevices: tailscaleRemoteAccessRepository.listDevices(userId),
+  cloudRemoteAccess: {
+    mode: cloudRemoteAccessMode.getMode(),
+    directAllowed: cloudRemoteAccessMode.isDirectRemoteAccessAllowed(),
+  },
+});
 
 const mapTailscaleError = (error: unknown): never => {
   if (error instanceof TailscaleRemoteAccessError) {
@@ -205,12 +231,7 @@ const generalSettingsRoute: FastifyPluginAsync = async (app) => {
     },
     routeHandler("Failed to inspect Tailscale remote access", async (request) => {
       const snapshot = await tailscaleRemoteAccessService.getSnapshot();
-      return success({
-        ...snapshot,
-        pairedDevices: tailscaleRemoteAccessRepository.listDevices(
-          request.authUser?.id,
-        ),
-      });
+      return success(toTailscaleSnapshot(snapshot, request.authUser?.id));
     }),
   );
 
@@ -231,12 +252,7 @@ const generalSettingsRoute: FastifyPluginAsync = async (app) => {
     },
     routeHandler("Failed to check Tailscale remote access", async (request) => {
       const snapshot = await tailscaleRemoteAccessService.check();
-      return success({
-        ...snapshot,
-        pairedDevices: tailscaleRemoteAccessRepository.listDevices(
-          request.authUser?.id,
-        ),
-      });
+      return success(toTailscaleSnapshot(snapshot, request.authUser?.id));
     }),
   );
 
@@ -265,17 +281,20 @@ const generalSettingsRoute: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to update Tailscale remote access", async (request) => {
+      // DSK-018: Mira Cloud owns remote access while signed in. Enabling a
+      // second Direct exposure from a cached UI or stale request must fail.
+      if (request.body.enabled &&
+          !cloudRemoteAccessMode.isDirectRemoteAccessAllowed()) {
+        throw forbidden(
+          "Tailscale Direct remote access is unavailable while this Desktop is signed in to Mira Cloud",
+        );
+      }
       try {
         const snapshot = await tailscaleRemoteAccessService.updateEnabled(
           request.body.enabled,
         );
         return success(
-          {
-            ...snapshot,
-            pairedDevices: tailscaleRemoteAccessRepository.listDevices(
-              request.authUser?.id,
-            ),
-          },
+          toTailscaleSnapshot(snapshot, request.authUser?.id),
           request.body.enabled
             ? "Tailscale remote access enabled"
             : "Tailscale remote access disabled",

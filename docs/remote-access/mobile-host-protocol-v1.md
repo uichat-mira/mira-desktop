@@ -69,6 +69,12 @@ Authorization: Bearer <desktop user jwt>
 
 Host 只有在 Tailscale Direct 为 `ready` 且存在访问地址时才创建挑战。旧的自托管 Mira Relay 不再参与配对，因此不存在 Relay-only challenge，二维码也不会携带 Relay 字段。响应包含：
 
+> DSK-018：Desktop 登录 Mira Cloud 后，Desktop 的 Direct 远程访问模式与 Cloud 互斥。
+> 创建挑战、claim、poll、approve 与已配对设备的业务请求都会返回 `403`，直到原生
+> Cloud Session 生命周期确认已退出登录。已配对设备记录与凭据保留，退出后恢复使用。
+> 该限制只针对单台 Desktop 的登录模式；Mobile 自身登录 Cloud 与使用另一台已退出
+> Cloud 的 Desktop Direct 服务互不排斥（Mobile 0.4.0 A2 边界）。
+
 - `challengeId`
 - 8 位一次性配对码
 - `pairingUri`

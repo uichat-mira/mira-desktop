@@ -265,6 +265,101 @@ describe("TailscaleRemoteAccessService", () => {
     );
   });
 
+  it("suspends only Mira-owned Serve exposure while Mira Cloud is signed in", async () => {
+    repositoryMock.getConfig.mockReturnValue({
+      enabled: true,
+      servePort: 443,
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const runCommand: TailscaleCommandRunner = vi.fn(async (args) => {
+      if (commandKey(args) === "status --json") {
+        return { stdout: connectedStatus, stderr: "" };
+      }
+      if (commandKey(args) === "serve status --json") {
+        return { stdout: JSON.stringify(managedServeStatus()), stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    });
+    const service = new TailscaleRemoteAccessService(runCommand);
+
+    await service.reconcileCloudRemoteAccessMode("signed_in");
+
+    expect(runCommand).toHaveBeenCalledWith([
+      "serve",
+      "--https=443",
+      "off",
+    ]);
+    expect(repositoryMock.updateConfig).not.toHaveBeenCalled();
+
+    runCommand.mockClear();
+    await service.reconcileCloudRemoteAccessMode("restoring");
+    await service.reconcileCloudRemoteAccessMode("unknown");
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it("never touches a foreign Serve configuration during Cloud mode changes", async () => {
+    repositoryMock.getConfig.mockReturnValue({
+      enabled: true,
+      servePort: 443,
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const runCommand: TailscaleCommandRunner = vi.fn(async (args) => {
+      if (commandKey(args) === "status --json") {
+        return { stdout: connectedStatus, stderr: "" };
+      }
+      if (commandKey(args) === "serve status --json") {
+        return {
+          stdout: JSON.stringify(managedServeStatus({
+            Web: {
+              "other.example.ts.net:443": {
+                Handlers: { "/": { Proxy: "http://127.0.0.1:3000" } },
+              },
+            },
+          })),
+          stderr: "",
+        };
+      }
+      return { stdout: "", stderr: "" };
+    });
+    const service = new TailscaleRemoteAccessService(runCommand);
+
+    await service.reconcileCloudRemoteAccessMode("signed_in");
+    await service.reconcileCloudRemoteAccessMode("signed_out");
+
+    expect(
+      runCommand.mock.calls.some(([args]) => (args as string[])[0] === "serve" &&
+        (args as string[])[1] !== "status"),
+    ).toBe(false);
+  });
+
+  it("restores the previously enabled Mira Serve after a confirmed sign-out", async () => {
+    repositoryMock.getConfig.mockReturnValue({
+      enabled: true,
+      servePort: 443,
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const runCommand: TailscaleCommandRunner = vi.fn(async (args) => {
+      if (commandKey(args) === "status --json") {
+        return { stdout: connectedStatus, stderr: "" };
+      }
+      if (commandKey(args) === "serve status --json") {
+        return { stdout: JSON.stringify({}), stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    });
+    const service = new TailscaleRemoteAccessService(runCommand);
+
+    await service.reconcileCloudRemoteAccessMode("signed_out");
+
+    expect(runCommand).toHaveBeenCalledWith([
+      "serve",
+      "--bg",
+      "--yes",
+      "--https=443",
+      "127.0.0.1:8787",
+    ]);
+  });
+
   it("revokes Push bindings with the paired device in one lifecycle transaction", () => {
     repositoryMock.getActiveDeviceById.mockReturnValue({
       id: "device-1",

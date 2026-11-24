@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import CONFIG from "@/config/index.js";
 import { getSqlite } from "@/db/index.js";
 import { hostNotificationRepository } from "@/db/repositories/host-notification.repository.js";
+import type { CloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 import {
   tailscaleRemoteAccessRepository,
   type TailscalePairedDevice,
@@ -317,6 +318,8 @@ const createBaseRuntime = (
 });
 
 export class TailscaleRemoteAccessService {
+  private reconcileChain: Promise<void> = Promise.resolve();
+
   constructor(
     private readonly runCommand: TailscaleCommandRunner = defaultCommandRunner,
     private readonly checkHealth: TailscaleHealthChecker = defaultHealthChecker,
@@ -561,6 +564,70 @@ export class TailscaleRemoteAccessService {
 
   async check(): Promise<TailscaleRemoteAccessSnapshot> {
     return this.getSnapshot({ verifyHealth: true });
+  }
+
+  /**
+   * DSK-018: keep Mira-owned Tailscale exposure in step with the authoritative
+   * Cloud login mode. A signed-in Cloud account suspends only the Serve entry
+   * Mira itself owns; a confirmed sign-out restores the user's previously
+   * enabled entry. Foreign Serve/Funnel configuration and the system Tailscale
+   * connection are never touched, and runtime admission is enforced elsewhere.
+   */
+  async reconcileCloudRemoteAccessMode(
+    mode: CloudRemoteAccessMode,
+  ): Promise<void> {
+    // Serialize reconfiguration so a fast sign-in/sign-out sequence cannot
+    // interleave commands and finish exposing Serve after a newer sign-in.
+    const run = this.reconcileChain.then(() => this.applyCloudRemoteAccessMode(mode));
+    this.reconcileChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async applyCloudRemoteAccessMode(
+    mode: CloudRemoteAccessMode,
+  ): Promise<void> {
+    if (mode !== "signed_in" && mode !== "signed_out") {
+      return;
+    }
+
+    const config = tailscaleRemoteAccessRepository.getConfig();
+    let status: TailscaleStatusJson;
+    try {
+      status = await this.readStatus();
+    } catch {
+      // Tailscale being unavailable must not crash the Cloud lifecycle.
+      return;
+    }
+    if (this.connectionState(status) !== "connected") {
+      return;
+    }
+
+    const ownership = inspectServeOwnership(
+      await this.readServeStatus(),
+      CONFIG.PORT,
+      config.servePort,
+    );
+
+    if (mode === "signed_in") {
+      if (ownership.managedByMira) {
+        await this.runCommand([
+          "serve",
+          `--https=${config.servePort}`,
+          "off",
+        ]);
+      }
+      return;
+    }
+
+    if (config.enabled && !ownership.configured) {
+      await this.runCommand([
+        "serve",
+        "--bg",
+        "--yes",
+        `--https=${config.servePort}`,
+        `127.0.0.1:${CONFIG.PORT}`,
+      ]);
+    }
   }
 
   revokeDevice(id: string, userId?: number): boolean {

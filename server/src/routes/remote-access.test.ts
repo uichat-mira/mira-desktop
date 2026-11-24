@@ -133,6 +133,7 @@ vi.mock("@/services/remote-tool-gateway.service.js", () => ({
 }));
 
 import remoteAccessRoute, { reconcileCloudRelayOnGrantInvalidation } from "./remote-access.js";
+import { cloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 
 describe("DSK-006 Cloud Host eligibility after Grant invalidation", () => {
   it("stops instead of restarting after native sign-out", () => {
@@ -182,6 +183,9 @@ const createApp = async (options: {
     }
   });
   await app.register(remoteAccessRoute);
+  // DSK-018 fixture: the native lifecycle is signed-out unless a test switches
+  // it to a Cloud-owned mode.
+  cloudRemoteAccessMode.applyNativeSessionState("signed_out");
   return app;
 };
 
@@ -934,6 +938,66 @@ describe("remote access routes", () => {
     ]);
     assert.equal("rootPath" in response.json().data[0], false);
     assert.equal("rootPath" in response.json().data[1], false);
+    await app.close();
+  });
+
+  it("denies Direct pairing entrypoints while Mira Cloud owns remote access", async () => {
+    const app = await createApp({ authenticated: true });
+    cloudRemoteAccessMode.applyNativeSessionState("signed_in");
+
+    const challenge = await app.inject({
+      method: "POST",
+      url: "/remote/admin/pairing/challenges",
+    });
+    assert.equal(challenge.statusCode, 403, challenge.body);
+    expect(mocks.tailscale.getSnapshot).not.toHaveBeenCalled();
+    expect(mocks.pairing.createChallenge).not.toHaveBeenCalled();
+
+    const claim = await app.inject({
+      method: "POST",
+      url: "/remote/pairing/claim",
+      payload: { challengeId: "challenge-1", code: "ABCD2345" },
+    });
+    assert.equal(claim.statusCode, 403, claim.body);
+    expect(mocks.pairing.claim).not.toHaveBeenCalled();
+
+    const approve = await app.inject({
+      method: "POST",
+      url: "/remote/admin/pairing/claims/claim-1/approve",
+      payload: {},
+    });
+    assert.equal(approve.statusCode, 403, approve.body);
+    expect(mocks.pairing.approve).not.toHaveBeenCalled();
+
+    const poll = await app.inject({
+      method: "POST",
+      url: "/remote/pairing/claims/claim-1/poll",
+      payload: { pollToken: "poll-token-123456789012345" },
+    });
+    assert.equal(poll.statusCode, 403, poll.body);
+    expect(mocks.pairing.poll).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
+  it("restores Direct pairing after a confirmed Cloud sign-out", async () => {
+    const app = await createApp({ authenticated: true });
+    cloudRemoteAccessMode.applyNativeSessionState("signed_in");
+
+    const denied = await app.inject({
+      method: "POST",
+      url: "/remote/admin/pairing/challenges",
+    });
+    assert.equal(denied.statusCode, 403, denied.body);
+
+    cloudRemoteAccessMode.applyNativeSessionState("signed_out");
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/remote/admin/pairing/challenges",
+    });
+    assert.equal(allowed.statusCode, 200, allowed.body);
+    expect(mocks.pairing.createChallenge).toHaveBeenCalledOnce();
+
     await app.close();
   });
 });

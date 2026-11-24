@@ -21,6 +21,9 @@ declare module "fastify" {
 
 const DEVICE_TOKEN_PREFIX = "mira_device_";
 
+export const isRemoteDeviceToken = (token: string) =>
+  token.startsWith(DEVICE_TOKEN_PREFIX);
+
 const hashOpaque = (value: string) =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
