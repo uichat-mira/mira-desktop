@@ -49,6 +49,8 @@ pnpm package:electron:mac       # Intel x64
 pnpm package:electron:mac-arm64 # Apple Silicon
 ```
 
+macOS 打包要求宿主 Node 的平台与架构匹配目标（darwin/x64 或 darwin/arm64）；不支持混合架构或交叉打包，错误目标在 staging 前直接失败。
+
 清理临时构建产物：
 
 ```bash

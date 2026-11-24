@@ -24,7 +24,7 @@ export function verify(platform, tag, directory, githubRelease, r2List) {
   const escapeRe = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const installerPattern = platform === "win"
     ? new RegExp("^electron_.*_Setup_" + escapeRe(version) + "\\.exe$")
-    : new RegExp("^" + platform + ".*-" + escapeRe(version) + "\\.dmg$");
+    : new RegExp("^" + platform + "_.*-" + escapeRe(version) + (platform === "macos-arm64" ? "-arm64" : "") + "\\.dmg$");
   const installer = files.find(name => installerPattern.test(name));
   if (!installer || files.some(name => name !== installer && name !== installer + ".blockmap")) {
     fail("unexpected file name or installer/blockmap version mismatch");

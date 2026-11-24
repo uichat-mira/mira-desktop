@@ -35,6 +35,17 @@ if (!platformFlag) {
   );
 }
 
+// The backend payload is staged for the host Node architecture, not the
+// electron-builder target. Reject mixed-architecture macOS packages up front.
+const macTargetArch = platformFlag.startsWith("--mac")
+  ? (platformFlag.endsWith("--arm64") ? "arm64" : "x64")
+  : null;
+if (macTargetArch && (process.platform !== "darwin" || process.arch !== macTargetArch)) {
+  throw new Error(
+    `macOS packaging requires a matching darwin/${macTargetArch} Node host; received ${process.platform}/${process.arch}. Cross-architecture packaging is unsupported.`,
+  );
+}
+
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
 );
