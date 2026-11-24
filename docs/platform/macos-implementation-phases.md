@@ -13,7 +13,7 @@ Related:
   - ../build/README.md
   - ../developments/release-management.md
 
-> **DSK-011 scope (2026-10-31):** only the Tauri desktop shell and the Tauri-specific macOS parity proposal are retired. **Electron macOS remains an active product and engineering direction.** The existing Intel DMG branch build (`.github/workflows/build-macos-intel.yml` + `build-electron-macos-intel.yml`), production/tag GitHub Release integration, and R2 `mira/macos-intel/latest/` lane stay supported. Apple Silicon `darwin-arm64` is a separate proposed delivery target requiring its own validation. Tauri references below describe superseded historical plans, not active build instructions. The live build and release contract is in `../build/README.md`.
+> **DSK-011 scope (2026-10-31):** only the Tauri desktop shell and the Tauri-specific macOS parity proposal are retired. **Electron macOS remains an active product and engineering direction.** The Intel DMG lane remains supported, and the Apple Silicon `darwin-arm64` lane is implemented in parallel with its own CI, release artifact, and R2 validation path. Tauri references below describe superseded historical plans, not active build instructions. The live build and release contract is in `../build/README.md`.
 >
 > **Version evidence:** references below to Electron 31.7.7 are historical
 > observations from original macOS implementation runs, not the current
@@ -123,20 +123,20 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 
 | 编号 | 改造项 | 状态 | 已有证据 | 当前阻塞或下一步 |
 | --- | --- | --- | --- | --- |
-| P0 | 分支与现状核查 | 已完成 | 工作分支为 `codex/mac-support`；已核对 Electron、Tauri、backend、Terminal Runtime、Piper、Native Messaging 与 release flow | 保持核查结论随代码变化更新 |
+| P0 | 分支与现状核查 | 已完成 | 工作分支为 `codex/node26-macos-arm64`；已核对 Electron、Tauri、backend、Terminal Runtime、Piper、Native Messaging 与 release flow | 保持核查结论随代码变化更新 |
 | P1 | 本地依赖与基线 | 已完成 | workspace 依赖已链接；四个关键 native module 可在 `darwin-arm64` 加载；Electron 压缩包 checksum 通过；本地开发签名验证通过 | `pnpm check` 的既有类型错误保留为独立基线缺陷 |
 | P2 | 平台能力合同 | 进行中 | 已形成 Core / Extended 分层、首版边界与分期方案 | 确认 capability matrix 与 artifact manifest schema |
 | P3 | Electron macOS 开发态 | 已完成 | Electron 31.7.7、backend、Vite、SQLite、`sqlite-vec` 和 Unix WebBridge socket 已在 Mac 启动；真实 Electron 已通过登录、Chat Composer、自定义 Workspace UI 创建、普通附件和 POSIX Terminal smoke；Agent 路由已验证绑定 Workspace 根路径传递；正常退出后无项目进程、监听端口或 socket 残留 | 后续缺陷按深度使用反馈进入独立任务包 |
-| P4 | Shared payload 平台化 | 未开始 | 已识别 Windows-only staging 与目标原生模块 | 依赖平台 manifest 与 resolver 合同 |
-| P5 | Darwin arm64 runtime | 未开始 | 本机原生模块直接加载已通过 | 尚未验证最终 staged server 与 Terminal Runtime payload |
-| P6 | Electron 内部 DMG | 未开始 | Builder 已有 DMG / ICNS 基础配置 | 依赖 P4、P5；尚无干净机安装证据 |
+| P4 | Shared payload 平台化 | 已完成 | arm64 staging 已按 `darwin-arm64` 选择 `better-sqlite3`、`sharp`、`sqlite-vec`、`node-pty` 原生资源，并由 `node scripts/build-dist.js mac-arm64 --notest` 完整产出 Electron payload | Windows 与 Intel lane 仍需在 CI 中继续回归；能力矩阵与 manifest 文档化仍属 P2 |
+| P5 | Darwin arm64 runtime | 已完成 | 随包 Node `v26.13.1` 的 arm64 runtime 已准备并通过 staged server smoke；Node ABI 147、`better-sqlite3`、`sqlite-vec`、`node-pty` 均在 staged payload 中加载/识别 | 需要在 GitHub Actions arm64 runner 上重复验证，确认远端环境一致 |
+| P6 | Electron 内部 DMG | 已完成（未签名内部包） | `release/v0.106.2_20261123_153012/electron/UIChat Mira-0.106.2-arm64.dmg` 已生成；DMG 为 UDZO，应用与随包 runtime/native 二进制均为 arm64 | 当前无 Developer ID 签名、公证或干净机安装 smoke；继续保留为 P8 发布门 |
 | P7 | Windows 回归与 MVP 验收 | 未开始 | Windows 当前合同已列入不可破坏项 | 依赖 macOS 开发态和内部 DMG |
 | P8 | Native Messaging / TTS / 正式发布 | 未开始 | 已识别平台差异和签名对象 | 不阻塞 Core；按独立审批门推进 |
 | P9 | Tauri macOS 对齐（已退役） | 已取消 | 原方案属于双壳时期历史规划 | DSK-011 退役 Tauri；Electron macOS 与 Apple Silicon 路线继续推进 |
 
 ### 已完成事项
 
-- [x] 从 `dev` 基线创建 `codex/mac-support` 工作分支。
+- [x] 从 `dev` 基线创建 `codex/node26-macos-arm64` 工作分支。
 - [x] 检查 macOS 支持缺口并形成平台改造文档。
 - [x] 将文档加入中央索引，明确仍为 Proposed 状态。
 - [x] 使用 frozen lockfile 链接 workspace 依赖，未修改 `pnpm-lock.yaml`。
@@ -159,6 +159,9 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 - [x] 通过真实 Electron UI 创建自定义 macOS Workspace，并用鉴权 API 验证持久化结果。
 - [x] 合并前复核 Windows 开发、打包、Native Host、release 与 CI 敏感路径无 Mac 差异；Windows 原有命令合同测试保持通过。
 - [x] 修复 Computer Use 浏览器运行时 Windows-only 缺口（T123）：托管 Chromium 配置按平台分发、darwin 系统浏览器探测、托管元数据平台一致性校验、macOS 解压权限恢复；本机错误安装的 win64 托管运行时已清理。
+- [x] 将随包 Node runtime 与终端 runtime 锁定升级到 Node `v26.13.1`，并为 `darwin-arm64` / `darwin-x64` / Windows x64 固定下载地址与 SHA-256。
+- [x] 新增 Apple Silicon arm64 分支构建与正式发布 lane：`macos-15` arm64 runner、独立 DMG artifact、GitHub Release 资产和 R2 `mira/macos-arm64/latest/` 校验路径。
+- [x] 在本机生成并检查 arm64 DMG：应用主二进制、随包 Node、`better_sqlite3.node`、`node-pty` helper 与 `sqlite-vec` dylib 均识别为 arm64。
 
 ### 当前进行项
 

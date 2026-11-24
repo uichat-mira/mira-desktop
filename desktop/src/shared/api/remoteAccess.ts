@@ -1,4 +1,4 @@
-import { get, post, put } from "@/shared/lib/request";
+import { get, post } from "@/shared/lib/request";
 
 export type RemoteDeviceScope =
   | "threads:read"
@@ -21,36 +21,8 @@ export type PairingChallengeStatus =
   | "delivered"
   | "expired";
 
-export type RemoteRelayConnectorState =
-  | "disabled"
-  | "misconfigured"
-  | "connecting"
-  | "connected"
-  | "disconnected"
-  | "stopped";
-
-export type RemoteRelayEndpointMode = "default" | "custom";
-export type RemotePairingTransport = "relay" | "direct";
-
-export interface RemoteRelayUserConfig {
-  enabled: boolean;
-  endpointMode: RemoteRelayEndpointMode;
-  customUrl: string;
-  effectiveUrl: string | null;
-  defaultAvailable: boolean;
-  updatedAt: string | null;
-}
-
-export interface RemoteRelayConnectorSnapshot {
-  enabled: boolean;
-  state: RemoteRelayConnectorState;
-  relayUrl: string | null;
-  relayId: string | null;
-  connectedAt: string | null;
-  lastError: string | null;
-  activeRequests: number;
-  reconnectAttempt: number;
-}
+// DSK-017 retires legacy Relay pairing; new claims can only be Tailscale Direct.
+export type RemotePairingTransport = "direct";
 
 export interface PairingClaimSummary {
   claimId: string;
@@ -76,22 +48,6 @@ export interface PairingChallengeView {
 export interface CreatedPairingChallenge extends PairingChallengeView {
   code: string;
   pairingUri: string;
-}
-
-export function getRemoteRelayConfig() {
-  return get<RemoteRelayUserConfig>("/remote/admin/relay/config");
-}
-
-export function updateRemoteRelayConfig(input: {
-  enabled?: boolean;
-  endpointMode?: RemoteRelayEndpointMode;
-  customUrl?: string;
-}) {
-  return put<RemoteRelayUserConfig>("/remote/admin/relay/config", input);
-}
-
-export function getRemoteRelayStatus() {
-  return get<RemoteRelayConnectorSnapshot>("/remote/admin/relay/status");
 }
 
 export function createRemotePairingChallenge() {

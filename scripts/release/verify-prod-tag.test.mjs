@@ -62,6 +62,7 @@ test("publish jobs cannot run before provenance guard", () => {
   assert.match(yml, /  verify-tag-source:\n/);
   assert.match(yml, /  factory:\n    name: Build and validate release\n    needs: verify-tag-source\n/);
   assert.match(yml, /  build-macos-intel:\n    name: Build macOS Intel release asset\n    needs: verify-tag-source\n/);
+  assert.match(yml, /  build-macos-arm64:\n    name: Build macOS arm64 release asset\n    needs: verify-tag-source\n/);
   assert.match(yml, /verify-prod-tag-cli\.mjs/);
 });
 

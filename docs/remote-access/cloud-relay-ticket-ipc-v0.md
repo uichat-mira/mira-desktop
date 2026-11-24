@@ -19,8 +19,9 @@ Development now uses the same ownership model through the standard
 Backend with this same inherited IPC channel and attaches the native handler to
 that exact ChildProcess. A Backend launched any other way has no
 `process.send`; the Cloud ticket provider then returns `bridge_unavailable`
-explicitly while self-hosted Relay, Tailscale and local Desktop continue
-working. There is no HTTP or renderer credential fallback.
+explicitly while Tailscale Direct and local Desktop continue working. There is
+no HTTP or renderer credential fallback. The self-hosted Relay mentioned in the
+historical sections was retired by DSK-017.
 
 ## Bounded protocol
 
@@ -56,7 +57,7 @@ The positive ticket contains only `token`, `tokenType`, `audience`, `expiresAt`,
 - For each socket generation, request a new native Host transport ticket over IPC, open `/v1/relay/{ticket.room}/socket` and send a **provisional** Host `hello` containing `relayId=room`, `token`, `role=host` and **no `clientToken`**. This merely reuses the current Relay V1 hello/ack envelope in deterministic fixture tests. **REL-001 owns the final cloud handshake contract; no live hosted compatibility claim is made here.**
 - A healthy authenticated socket is kept alive by the existing WebSocket ping/keepalive; the short-lived connection-admission ticket does not schedule a disconnect. A reconnect begins with a fresh IPC request. Logout, 401/rejected session or parent IPC disconnection tears down the Cloud socket; the next attempt cannot use the old ticket.
 - Until DSK-007 wires a verified Cloud Host Grant, **all** inbound Cloud `request` frames receive `CLOUD_GRANT_REQUIRED` and **never reach** local HTTP, Remote Gateway or tools. The native ticket is transport-only. This deliberate business lock will be removed only together with verified Host Grant handling in DSK-007.
-- A read-only authenticated `GET /remote/admin/cloud-relay/status` reports sanitized transport state (no room, ticket, account or user credential). Legacy `/remote/admin/relay/*` continues to mean the independently configured Relay.
+- A read-only authenticated `GET /remote/admin/cloud-relay/status` reports sanitized transport state (no room, ticket, account or user credential). The legacy `/remote/admin/relay/*` routes were later removed by DSK-017 (see below).
 - Standalone development Backend without Electron parent IPC fails with `relay_ticket_bridge_unavailable`. This is a known Round 1 limitation, not license to add localhost secret endpoints.
 - Connection/hello/ack details, production endpoint deployment and actual Relay service verification remain a **Round 3** dependency. Tests of this Round 2 connector use a fake socket and native ticket-provider fixture; do not mark end-to-end complete.
 
@@ -83,8 +84,8 @@ This section supersedes the earlier **opt-in** activation description for
 Cloud Host users; earlier DSK-010 statements are retained as implementation
 history, not current release guidance.
 
-- **Activation belongs to a verified native Mira Cloud Account**, not the
-  self-hosted Relay settings screen. Electron Main publishes a boolean
+- **Activation belongs to a verified native Mira Cloud Account**, not a
+  user-configured Relay settings screen. Electron Main publishes a boolean
   `availability` message to its exact spawned Backend child when the account
   becomes `signed_in` with configured Host policy and a valid local-owner
   binding. The Backend independently requests a fresh ticket before each
@@ -197,3 +198,37 @@ change the DSK-005 / DSK-007 / DSK-010 credential or transport contracts.
   the existing explicit bridge failure. Only the standard
   `pnpm dev:electron:win` / `pnpm dev:electron:mac` entrypoints provide
   Cloud-capable development.
+
+## DSK-017 — Legacy paired/self-hosted Relay retired (2026-11-24)
+
+DSK-017 removes the independent self-hosted Relay that earlier sections
+retained beside the official Cloud path:
+
+- No user-configured/default/custom endpoint, persisted relay identity or
+  host/client token remains. The old `remote_relay_settings` table is dropped
+  by an idempotent startup migration.
+- No `/remote/admin/relay/config` or `/remote/admin/relay/status` route and no
+  Relay controls in Remote Access settings remain.
+- Pairing is Tailscale Direct only; a challenge requires a ready Direct URL and
+  the QR contains no `relay`, `relayId` or `relayToken` fields.
+- `RemoteRelayConnectorService` is now Cloud-only. Its native-ticket hello,
+  fail-closed endpoint handling, provenance/Grant admission and shared Relay V1
+  frame engine are unchanged.
+- `relay.tomz.io` remains only as a blocked legacy hostname so a Cloud ticket
+  can never be routed there.
+- Cloud account session, Cloud ticket IPC and Host Grant contracts are
+  unchanged.
+
+## DSK-018 — Direct admission follows the native Cloud login mode (2026-11-24)
+
+- A second private child IPC channel (`mira:cloud-session:state:v1`) projects
+  only the native Cloud lifecycle as `signed_out`, `signed_in`, `restoring` or
+  `unknown`. It carries no account, token, Host room or scope.
+- Only `signed_out` permits Tailscale Direct pairing and paired-device
+  admission. `signed_in`, `restoring`, `unknown`, a missing bridge and a
+  disconnected bridge all fail closed at the Backend authentication boundary.
+  This supersedes the earlier DSK-010 note that a standalone Backend keeps
+  Tailscale Direct working: Direct now requires native proof of sign-out.
+- Local Desktop JWT, official Cloud ticket/Grant eligibility, lease renewal and
+  Relay protocol behavior are unchanged. Existing paired device records are
+  retained; no re-pairing is required after sign-out.

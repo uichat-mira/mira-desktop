@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: platform
-Last verified: 2026-10-02
+Last verified: 2026-11-24
 Layer: raw-source
 Module: Develoments
 Feature: ReleaseManagement
@@ -20,7 +20,7 @@ Related:
 - 根目录 `CHANGELOG.md` 是当前产品更新日志的唯一真相源；`docs/CHANGELOG.md` 仅作历史归档。
 - `electron/package.json`、`desktop/package.json`、`server/package.json`、`packages/core/package.json` 都应与根版本保持一致。
 - Windows 打包产物目录会自动带上当前版本号和构建时间戳。
-- GitHub Actions 的桌面构建和发布规则以 `../build/README.md` 为准；Windows 环境分支包由 `.github/workflows/build-desktop.yml` 负责，Intel macOS 环境分支包由独立 `.github/workflows/build-macos-intel.yml` 负责，`v*` 标签正式发布由 `.github/workflows/release-production.yml` 调用 Release Factory 与 Intel macOS reusable build 完成。
+- GitHub Actions 的桌面构建和发布规则以 `../build/README.md` 为准；Windows 环境分支包由 `.github/workflows/build-desktop.yml` 负责，Intel 与 Apple Silicon macOS 环境分支包分别由 `.github/workflows/build-macos-intel.yml` 和 `.github/workflows/build-macos-arm64.yml` 负责，`v*` 标签正式发布由 `.github/workflows/release-production.yml` 调用 Release Factory 与两个 macOS reusable build 完成。
 
 ## 版本来源
 
@@ -114,11 +114,11 @@ pnpm package:electron:win
 2. 运行 `pnpm check`
 3. 运行 `pnpm build`
 4. 按需运行目标桌面打包命令；不要为了普通代码变更重复完整打包
-5. `prod` 分支构建只生成、验证并保存短期 Electron 安装包，不写入 R2 的公共 `latest`；唯一公共镜像写入者为正式 `v*` Tag 的 `.github/workflows/release-production.yml`。该工作流对 Windows Setup / macOS Intel DMG、blockmap、GitHub Release 与 R2 对象进行版本与文件大小一致性核对，且仅允许当前最新正式版本更新两个 latest 前缀。完整发布状态要求 Windows 与 macOS 均成功，任何一端失败都应显式阻断。
+5. `prod` 分支构建只生成、验证并保存短期 Electron 安装包，不写入 R2 的公共 `latest`；唯一公共镜像写入者为正式 `v*` Tag 的 `.github/workflows/release-production.yml`。该工作流对 Windows Setup、macOS Intel DMG、Apple Silicon macOS arm64 DMG、blockmap、GitHub Release 与 R2 对象进行版本与文件大小一致性核对，且仅允许当前最新正式版本更新三个 latest 前缀。完整发布状态要求 Windows、Intel macOS 与 Apple Silicon macOS 均成功，任何一端失败都应显式阻断。
 
 ## 稳定 Tag 来源保护
 
-正式的 `vX.Y.Z` Tag 必须指向已进入 `prod` Git 历史的提交，且 Tag 解析出的提交必须等于检出的 HEAD，事件 SHA 可以是该提交或带注释的 Tag 对象，根 `package.json` 版本必须匹配。发布工作流先检出完整历史、显式获取 `origin/prod`，通过 `scripts/release/verify-prod-tag-cli.mjs` 后，才启动 Release Factory 和 macOS Intel 构建。验证失败时不调用发布任务，不触及 GitHub Release 或 R2。
+正式的 `vX.Y.Z` Tag 必须指向已进入 `prod` Git 历史的提交，且 Tag 解析出的提交必须等于检出的 HEAD，事件 SHA 可以是该提交或带注释的 Tag 对象，根 `package.json` 版本必须匹配。发布工作流先检出完整历史、显式获取 `origin/prod`，通过 `scripts/release/verify-prod-tag-cli.mjs` 后，才启动 Release Factory 和两条 macOS 构建 lane。验证失败时不调用发布任务，不触及 GitHub Release 或 R2。
 
 在 PR 上可使用 `node --test scripts/release/verify-prod-tag.test.mjs` 验证正反例。该工作流门禁不替代 GitHub Tag ruleset：Tag 所含的工作流本身也来自被标记的提交，仓库管理员仍应保护 `v*` Tag 的创建、改写及删除权限；历史 Tag 不应因本次门禁变更而重跑。未通过真实打包运行验收前不要打正式 Tag。
 

@@ -55,7 +55,7 @@ const claimedChallenge = {
     claimId: "claim-1",
     deviceName: "K70",
     platform: "android",
-    transport: "relay" as const,
+    transport: "direct" as const,
     publicKeyFingerprint: "0123456789abcdef",
     requestedScopes: ["threads:read", "messages:read"] as const,
     claimedAt: "2026-08-01T00:01:00.000Z",
@@ -95,7 +95,7 @@ describe("RemoteDevicePairingModal", () => {
       claimedChallenge.pairingUri,
     );
     expect(screen.getByText("K70 · android")).toBeInTheDocument();
-    expect(screen.getByText("申请通道: Mira Relay")).toBeInTheDocument();
+    expect(screen.getByText("申请通道: Tailscale Direct")).toBeInTheDocument();
     expect(screen.getByText(/0123456789abcdef/)).toBeInTheDocument();
     expect(screen.getByText("读取会话")).toBeInTheDocument();
     expect(screen.getByText("读取消息")).toBeInTheDocument();

@@ -22,14 +22,27 @@ const platform = platformArg.toLowerCase();
 const electronPlatformFlags = {
   win: "--win",
   windows: "--win",
-  mac: "--mac",
-  macos: "--mac",
+  mac: "--mac --x64",
+  macos: "--mac --x64",
+  "mac-arm64": "--mac --arm64",
+  "macos-arm64": "--mac --arm64",
 };
 const platformFlag = electronPlatformFlags[platform];
 
 if (!platformFlag) {
   throw new Error(
-    `Unsupported Electron package platform "${platformArg}". Supported values: win, mac.`,
+    `Unsupported Electron package platform "${platformArg}". Supported values: win, mac, mac-arm64.`,
+  );
+}
+
+// The backend payload is staged for the host Node architecture, not the
+// electron-builder target. Reject mixed-architecture macOS packages up front.
+const macTargetArch = platformFlag.startsWith("--mac")
+  ? (platformFlag.endsWith("--arm64") ? "arm64" : "x64")
+  : null;
+if (macTargetArch && (process.platform !== "darwin" || process.arch !== macTargetArch)) {
+  throw new Error(
+    `macOS packaging requires a matching darwin/${macTargetArch} Node host; received ${process.platform}/${process.arch}. Cross-architecture packaging is unsupported.`,
   );
 }
 

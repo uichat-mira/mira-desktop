@@ -9,6 +9,12 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Node 26 exposes native Web Storage globals even without a storage file.
+    // Let Vitest/jsdom supply browser storage in isolated test workers.
+    pool: "forks",
+    poolOptions: {
+      forks: { execArgv: ["--no-experimental-webstorage"] },
+    },
     globals: true,
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     setupFiles: ["./src/test/setup.ts"],

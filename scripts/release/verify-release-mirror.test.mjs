@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -10,7 +10,7 @@ function fixture(platform = "win") {
   const tag = "v0.106.0";
   const installer = platform === "win"
     ? "electron_UIChat_Mira_Setup_0.106.0.exe"
-    : "macos-intel_UIChat Mira-0.106.0.dmg";
+    : `${platform}_UIChat Mira-0.106.0${platform === "macos-arm64" ? "-arm64" : ""}.dmg`;
   const names = [installer, installer + ".blockmap"];
   const objects = names.map((name, index) => {
     const size = index === 0 ? 137 : 19;
@@ -23,7 +23,7 @@ function fixture(platform = "win") {
     prerelease: false,
     assets: objects.map(obj => ({ name: obj.name.replace(/ /g, "."), size: obj.size })),
   };
-  const prefix = platform === "win" ? "mira/latest/" : "mira/macos-intel/latest/";
+  const prefix = platform === "win" ? "mira/latest/" : `mira/${platform}/latest/`;
   const r2 = {
     IsTruncated: false,
     Contents: objects.map(obj => ({ Key: prefix + obj.name, Size: obj.size })),
@@ -39,9 +39,21 @@ test("Windows Electron installer and blockmap match GitHub and R2", () => {
 });
 
 test("macOS space-normalized GitHub names preserve original R2 names", () => {
-  const f = fixture("macos-intel");
+  for (const platform of ["macos-intel", "macos-arm64"]) {
+    const f = fixture(platform);
+    try {
+      assert.equal(verify(platform, f.tag, f.dir, f.github, f.r2).installer, f.installer);
+    } finally { f.dispose(); }
+  }
+});
+
+test("macOS arm64 rejects Intel-style filenames even with a matching blockmap", () => {
+  const f = fixture("macos-arm64");
   try {
-    assert.equal(verify("macos-intel", f.tag, f.dir, f.github, f.r2).installer, f.installer);
+    const wrong = f.installer.replace("-arm64.dmg", ".dmg");
+    renameSync(join(f.dir, f.installer), join(f.dir, wrong));
+    renameSync(join(f.dir, f.installer + ".blockmap"), join(f.dir, wrong + ".blockmap"));
+    assert.throws(() => verify("macos-arm64", f.tag, f.dir), /unexpected file name/);
   } finally { f.dispose(); }
 });
 

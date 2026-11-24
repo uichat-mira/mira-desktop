@@ -73,6 +73,7 @@ import { initializeKnowledgeBaseDatabase } from "@/db/knowledge-base.db";
 import { initializeModelConfigDatabase } from "@/db/model-config.db";
 import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
+import { retireLegacyRemoteRelaySettings } from "@/db/remote-relay-retirement.js";
 import { agentRunRepository } from "@/db/repositories/agent-run.repository.js";
 import { integrationCapabilitiesRepository } from "@/db/repositories/integration-capabilities.repository.js";
 import { externalExpertsRepository } from "@/db/repositories/external-experts.repository.js";
@@ -533,6 +534,7 @@ const setupDatabase = async () => {
   initializeKnowledgeBaseDatabase();
   initializeRoleDatabase();
   initializeThreadDatabase();
+  retireLegacyRemoteRelaySettings();
   configureInvocationRetention({
     maxEntries: CONFIG.HARNESS_RETENTION_MAX_ENTRIES,
     ttlMs: CONFIG.HARNESS_RETENTION_TTL_MS,

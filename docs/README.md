@@ -119,6 +119,7 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[development/agent-core-benchmark-v0.1-intermediate-candidates]]：#218 Intermediate 候选题包（draft，非冻结正式题库）；
 - [[microapp/README]]：MicroApps Hub、Integration binding、Studio 与领域 Runtime 入口；
 - [[chat/README]]：Chat 与 Agent UI 入口；
+- [[remote-access/desktop-mcp-server-v1]]：Desktop 标准 MCP Server 出口、认证/scope、能力 Resource、审批与 Direct/Relay 传输矩阵；
 - [[remote-access/push-broker-v1]]：Push Broker V1 独立服务、身份授权、event ingest 与 Relay 边界；
 - [[remote-access/host-notification-outbox-v1]]：Host canonical notification eligibility、durable outbox、binding 与 Broker delivery；
 - [[platform/macos-implementation-phases]]：macOS 支持缺口、改造进度与验收门槛（Proposed，不代表当前已支持）；

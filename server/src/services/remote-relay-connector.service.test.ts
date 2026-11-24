@@ -6,7 +6,6 @@ vi.mock("@/config/index.js", () => ({
 
 import {
   RemoteRelayConnectorService,
-  resolveRemoteRelayConnectorConfig,
   resolveCloudRelayConnectorConfig,
   type CloudRelayTicketSource,
   type RelayLocalFetch,
@@ -80,311 +79,8 @@ class FakeRelaySocket {
   }
 }
 
-const validConfig = () => ({
-  enabled: true,
-  relayUrl: "wss://relay.example.com",
-  relayId: "relay_1234567890abcdef",
-  hostToken: "h".repeat(48),
-  clientToken: "c".repeat(48),
-});
-
 const parsedSent = (socket: FakeRelaySocket) =>
   socket.sent.map((item) => JSON.parse(item) as Record<string, unknown>);
-
-const connectHost = (service: RemoteRelayConnectorService, socket: FakeRelaySocket) => {
-  service.start();
-  socket.open();
-  socket.message({
-    version: 1,
-    type: "hello_ack",
-    role: "host",
-    relayId: validConfig().relayId,
-    protocolVersion: 1,
-  });
-};
-
-describe("resolveRemoteRelayConnectorConfig", () => {
-  it("keeps Relay disabled by default and normalizes HTTPS to WSS", () => {
-    expect(resolveRemoteRelayConnectorConfig({})).toEqual({
-      enabled: false,
-      relayUrl: null,
-      relayId: null,
-      hostToken: null,
-      clientToken: null,
-    });
-
-    const config = resolveRemoteRelayConnectorConfig({
-      NODE_ENV: "production",
-      UI_CHAT_REMOTE_RELAY_ENABLED: "1",
-      UI_CHAT_REMOTE_RELAY_URL: "https://relay.example.com",
-      UI_CHAT_REMOTE_RELAY_ID: "relay_1234567890abcdef",
-      UI_CHAT_REMOTE_RELAY_HOST_TOKEN: "h".repeat(48),
-      UI_CHAT_REMOTE_RELAY_CLIENT_TOKEN: "c".repeat(48),
-    });
-
-    expect(config.relayUrl).toBe("wss://relay.example.com");
-    expect(config.enabled).toBe(true);
-  });
-
-  it("rejects plaintext Relay URLs in production", () => {
-    const config = resolveRemoteRelayConnectorConfig({
-      NODE_ENV: "production",
-      UI_CHAT_REMOTE_RELAY_ENABLED: "1",
-      UI_CHAT_REMOTE_RELAY_URL: "ws://relay.example.com",
-      UI_CHAT_REMOTE_RELAY_ID: "relay_1234567890abcdef",
-      UI_CHAT_REMOTE_RELAY_HOST_TOKEN: "h".repeat(48),
-      UI_CHAT_REMOTE_RELAY_CLIENT_TOKEN: "c".repeat(48),
-    });
-
-    expect(config.relayUrl).toBeNull();
-  });
-});
-
-describe("RemoteRelayConnectorService", () => {
-  it("performs host hello before accepting relay traffic", () => {
-    const socket = new FakeRelaySocket();
-    let requestedUrl = "";
-    const socketFactory: RelaySocketFactory = (url) => {
-      requestedUrl = url;
-      return socket;
-    };
-    const service = new RemoteRelayConnectorService(
-      validConfig,
-      socketFactory,
-      fetch,
-      "http://127.0.0.1:8787",
-      () => 0,
-    );
-
-    service.start();
-    expect(service.getSnapshot().state).toBe("connecting");
-    expect(requestedUrl).toBe(
-      "wss://relay.example.com/v1/relay/relay_1234567890abcdef/socket",
-    );
-
-    socket.open();
-    expect(parsedSent(socket)[0]).toEqual({
-      version: 1,
-      type: "hello",
-      role: "host",
-      relayId: "relay_1234567890abcdef",
-      token: "h".repeat(48),
-      clientToken: "c".repeat(48),
-    });
-
-    socket.message({
-      version: 1,
-      type: "hello_ack",
-      role: "host",
-      relayId: "relay_1234567890abcdef",
-      protocolVersion: 1,
-    });
-
-    expect(service.getSnapshot()).toMatchObject({
-      state: "connected",
-      relayId: "relay_1234567890abcdef",
-      lastError: null,
-      reconnectAttempt: 0,
-    });
-    service.stop();
-  });
-
-  it("keeps an authenticated host socket alive with native WebSocket pings", () => {
-    vi.useFakeTimers();
-    try {
-      const socket = new FakeRelaySocket();
-      const service = new RemoteRelayConnectorService(
-        validConfig,
-        (() => socket) as RelaySocketFactory,
-        fetch,
-        "http://127.0.0.1:8787",
-      );
-
-      connectHost(service, socket);
-      vi.advanceTimersByTime(90_000);
-
-      expect(socket.pingCalls).toBe(3);
-      service.stop();
-      vi.advanceTimersByTime(90_000);
-      expect(socket.pingCalls).toBe(3);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("reconnects when Relay stops acknowledging keepalive pings", () => {
-    vi.useFakeTimers();
-    try {
-      const socket = new FakeRelaySocket();
-      socket.autoPong = false;
-      const service = new RemoteRelayConnectorService(
-        validConfig,
-        (() => socket) as RelaySocketFactory,
-        fetch,
-        "http://127.0.0.1:8787",
-      );
-
-      connectHost(service, socket);
-      vi.advanceTimersByTime(60_000);
-
-      expect(socket.closeCalls.at(-1)).toMatchObject({
-        code: 1001,
-        reason: "Relay keepalive timeout",
-      });
-      service.stop();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("forwards an authenticated local request and streams response bytes", async () => {
-    const socket = new FakeRelaySocket();
-    const localFetch = vi.fn(async () =>
-      new Response('{"ok":true}', {
-        status: 200,
-        headers: {
-          "content-type": "application/json",
-          "x-mira-test": "yes",
-          "set-cookie": "must-not-leak=1",
-        },
-      }),
-    );
-    const service = new RemoteRelayConnectorService(
-      validConfig,
-      (() => socket) as RelaySocketFactory,
-      localFetch as unknown as RelayLocalFetch,
-      "http://127.0.0.1:8787",
-      () => 0,
-    );
-    connectHost(service, socket);
-    socket.sent = [];
-
-    socket.message({
-      version: 1,
-      type: "request",
-      requestId: "client-1~req_1",
-      method: "GET",
-      path: "/remote/v1/manifest",
-      headers: {
-        authorization: "Bearer mira_device_example",
-        host: "evil.example.com",
-        "x-forwarded-host": "evil.example.com",
-      },
-    });
-
-    await vi.waitFor(() => {
-      expect(parsedSent(socket).some((frame) => frame.type === "complete")).toBe(
-        true,
-      );
-    });
-
-    expect(localFetch).toHaveBeenCalledTimes(1);
-    const [target, init] = localFetch.mock.calls[0]!;
-    expect(String(target)).toBe("http://127.0.0.1:8787/remote/v1/manifest");
-    expect(init).toMatchObject({ method: "GET" });
-    expect((init?.headers as Record<string, string>).authorization).toBe(
-      "Bearer mira_device_example",
-    );
-    expect((init?.headers as Record<string, string>).host).toBeUndefined();
-    expect(
-      (init?.headers as Record<string, string>)["x-forwarded-host"],
-    ).toBeUndefined();
-
-    const frames = parsedSent(socket);
-    expect(frames[0]).toMatchObject({
-      type: "response",
-      requestId: "client-1~req_1",
-      status: 200,
-      headers: {
-        "content-type": "application/json",
-        "x-mira-test": "yes",
-      },
-    });
-    const chunk = frames.find((frame) => frame.type === "chunk");
-    expect(Buffer.from(String(chunk?.data), "base64").toString("utf8")).toBe(
-      '{"ok":true}',
-    );
-    expect(frames.at(-1)).toMatchObject({
-      type: "complete",
-      requestId: "client-1~req_1",
-    });
-    service.stop();
-  });
-
-  it("aborts the local fetch when Relay sends cancel", async () => {
-    const socket = new FakeRelaySocket();
-    let aborted = false;
-    const localFetch = vi.fn(
-      async (_target: URL | RequestInfo, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            "abort",
-            () => {
-              aborted = true;
-              reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
-            },
-            { once: true },
-          );
-        }),
-    );
-    const service = new RemoteRelayConnectorService(
-      validConfig,
-      (() => socket) as RelaySocketFactory,
-      localFetch as unknown as RelayLocalFetch,
-      "http://127.0.0.1:8787",
-      () => 0,
-    );
-    connectHost(service, socket);
-    socket.sent = [];
-
-    socket.message({
-      version: 1,
-      type: "request",
-      requestId: "client-1~req_cancel",
-      method: "POST",
-      path: "/proxy/chat/default",
-      headers: { "content-type": "application/json" },
-      bodyBase64: Buffer.from('{"id":"thread-1"}', "utf8").toString("base64"),
-    });
-
-    await vi.waitFor(() => expect(localFetch).toHaveBeenCalledTimes(1));
-    socket.message({
-      version: 1,
-      type: "cancel",
-      requestId: "client-1~req_cancel",
-    });
-
-    await vi.waitFor(() => expect(aborted).toBe(true));
-    await vi.waitFor(() => expect(service.getSnapshot().activeRequests).toBe(0));
-    expect(parsedSent(socket).some((frame) => frame.type === "error")).toBe(false);
-    service.stop();
-  });
-
-  it("does not start when required Relay credentials are missing", () => {
-    const socketFactory = vi.fn();
-    const service = new RemoteRelayConnectorService(
-      () => ({
-        enabled: true,
-        relayUrl: "wss://relay.example.com",
-        relayId: "relay_1234567890abcdef",
-        hostToken: null,
-        clientToken: null,
-      }),
-      socketFactory,
-      fetch,
-      "http://127.0.0.1:8787",
-    );
-
-    service.start();
-
-    expect(service.getSnapshot()).toMatchObject({
-      state: "misconfigured",
-      enabled: true,
-    });
-    expect(socketFactory).not.toHaveBeenCalled();
-  });
-});
-
 
 describe("Cloud Relay connector — DSK-010 Round 2", () => {
   const cloudRoom = "room_dGVzdC1yb29t";
@@ -399,6 +95,37 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
     audience: "mira:cloud-relay-transport" as const,
     room: cloudRoom, role: "host" as const,
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
+  });
+
+  it("cannot start network I/O from retired legacy Relay settings", () => {
+    const factory = vi.fn();
+    const service = new RemoteRelayConnectorService(
+      () => resolveCloudRelayConnectorConfig({
+        UI_CHAT_REMOTE_RELAY_ENABLED: "1",
+        UI_CHAT_REMOTE_RELAY_URL: "https://relay.tomz.io",
+        UI_CHAT_REMOTE_RELAY_ID: "relay_1234567890abcdef",
+        UI_CHAT_REMOTE_RELAY_HOST_TOKEN: "h".repeat(48),
+        UI_CHAT_REMOTE_RELAY_CLIENT_TOKEN: "c".repeat(48),
+      }),
+      factory,
+      fetch,
+      "http://127.0.0.1:8787",
+      () => 0,
+    );
+
+    service.start();
+
+    // Legacy environment variables are ignored entirely. With no native Cloud
+    // ticket bridge the official connector fails closed and never falls back
+    // to the old room/token transport or its hostname.
+    expect(service.getSnapshot()).toMatchObject({
+      enabled: true,
+      state: "disconnected",
+      relayUrl: "wss://cloud-relay.tomz.io",
+      lastError: "relay_ticket_bridge_unavailable",
+    });
+    expect(factory).not.toHaveBeenCalled();
+    service.stop();
   });
 
   it("activates only for native Cloud login and never uses Legacy Relay infrastructure", () => {
@@ -518,6 +245,121 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
     }
   });
 
+  it("keeps an authenticated Cloud socket alive with native WebSocket pings", async () => {
+    vi.useFakeTimers();
+    try {
+      const socket = new FakeRelaySocket();
+      const service = new RemoteRelayConnectorService(
+        cloudConfig,
+        (() => socket) as RelaySocketFactory,
+        fetch,
+        "http://127.0.0.1:8787",
+        () => 0,
+        {
+          withHostTicket: async (consume) =>
+            consume(ticket("cloud.jwt.signature")),
+          onRevoked: () => () => undefined,
+        },
+      );
+
+      service.start();
+      await vi.advanceTimersByTimeAsync(0);
+      socket.open();
+      socket.message({
+        version: 1, type: "hello_ack", role: "host",
+        relayId: cloudRoom, protocolVersion: 1,
+      });
+      vi.advanceTimersByTime(90_000);
+
+      expect(socket.pingCalls).toBe(3);
+      service.stop();
+      vi.advanceTimersByTime(90_000);
+      expect(socket.pingCalls).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("streams an authorized Cloud response through the shared frame engine", async () => {
+    const socket = new FakeRelaySocket();
+    const localFetch = vi.fn(async () =>
+      new Response('{"ok":true}', {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-mira-test": "yes",
+          "set-cookie": "must-not-leak=1",
+        },
+      }),
+    );
+    const service = new RemoteRelayConnectorService(
+      cloudConfig,
+      (() => socket) as RelaySocketFactory,
+      localFetch as unknown as RelayLocalFetch,
+      "http://127.0.0.1:8787",
+      () => 0,
+      {
+        withHostTicket: async (consume) =>
+          consume(ticket("cloud.jwt.signature")),
+        onRevoked: () => () => undefined,
+      },
+      async () => "one-shot-private-capability",
+    );
+    service.start();
+    await Promise.resolve();
+    socket.open();
+    socket.message({
+      version: 1, type: "hello_ack", role: "host",
+      relayId: cloudRoom, protocolVersion: 1,
+    });
+    socket.sent = [];
+
+    const id = "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e~stream";
+    socket.message({
+      version: 1, type: "request", requestId: id,
+      method: "GET", path: "/remote/v1/workspaces",
+      headers: { authorization: "Bearer forged-local-token" },
+      relayProvenance: {
+        version: 1, transport: "cloud", accountId: "account-a",
+        deviceId: "phone-a", room: cloudRoom, role: "client",
+        connectionId: "c6afaf4a-b2c0-4912-9ecd-abb3f45fb92e",
+        requestId: id,
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(parsedSent(socket).some((frame) => frame.type === "complete"))
+        .toBe(true);
+    });
+    const [target, init] = localFetch.mock.calls[0]!;
+    expect(String(target)).toBe(
+      "http://127.0.0.1:8787/remote/v1/workspaces",
+    );
+    const headers = init?.headers as Record<string, string>;
+    expect(headers.authorization).toBeUndefined();
+    expect(headers["x-mira-cloud-internal-request"])
+      .toBe("one-shot-private-capability");
+
+    const frames = parsedSent(socket);
+    expect(frames[0]).toMatchObject({
+      type: "response",
+      requestId: id,
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-mira-test": "yes",
+      },
+    });
+    expect(
+      (frames[0]?.headers as Record<string, string>)["set-cookie"],
+    ).toBeUndefined();
+    const chunk = frames.find((frame) => frame.type === "chunk");
+    expect(Buffer.from(String(chunk?.data), "base64").toString("utf8"))
+      .toBe('{"ok":true}');
+    expect(frames.at(-1)).toMatchObject({ type: "complete", requestId: id });
+    service.stop();
+  });
+
   it("uses only the resolved default endpoint when acquiring a Cloud ticket", async () => {
     const urls: string[] = [];
     const sockets: FakeRelaySocket[] = [];
@@ -612,7 +454,7 @@ describe("Cloud Relay connector — DSK-010 Round 2", () => {
       relayId: cloudRoom, protocolVersion: 1,
     });
     expect(service.getSnapshot()).toMatchObject({
-      enabled: true, state: "connected", relayId: null, lastError: null,
+      enabled: true, state: "connected", lastError: null,
     });
     socket.message({
       version: 1, type: "request",

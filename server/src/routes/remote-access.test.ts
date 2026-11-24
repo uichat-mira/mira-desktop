@@ -66,9 +66,6 @@ const mocks = vi.hoisted(() => {
     workspaces: {
       list: vi.fn(),
     },
-    relay: {
-      getPairingMetadata: vi.fn(),
-    },
     toolGateway: {
       list: vi.fn(),
       assertAvailable: vi.fn(),
@@ -110,43 +107,6 @@ vi.mock("@/db/repositories/thread.repository.js", () => ({
   threadRepository: mocks.threadRepo,
 }));
 
-vi.mock("@/services/remote-relay-config.service.js", () => {
-  class RemoteRelayConfigError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = "RemoteRelayConfigError";
-    }
-  }
-
-  return {
-    RemoteRelayConfigError,
-    getRemoteRelayPairingMetadata: mocks.relay.getPairingMetadata,
-    getRemoteRelayUserConfig: vi.fn(() => ({
-      enabled: false,
-      endpointMode: "default",
-      customUrl: "",
-      effectiveUrl: null,
-      defaultAvailable: false,
-      updatedAt: null,
-    })),
-    resolvePersistedRemoteRelayConnectorConfig: vi.fn(() => ({
-      enabled: false,
-      relayUrl: null,
-      relayId: null,
-      hostToken: null,
-      clientToken: null,
-    })),
-    updateRemoteRelayUserConfig: vi.fn(() => ({
-      enabled: false,
-      endpointMode: "default",
-      customUrl: "",
-      effectiveUrl: null,
-      defaultAvailable: false,
-      updatedAt: null,
-    })),
-  };
-});
-
 vi.mock("@/db/repositories/tailscale-remote-access.repository.js", () => ({
   REMOTE_DEVICE_SCOPES: [
     "threads:read",
@@ -161,7 +121,7 @@ vi.mock("@/db/repositories/tailscale-remote-access.repository.js", () => ({
     "tools:control",
     "artifacts:read",
   ],
-  REMOTE_PAIRING_TRANSPORTS: ["relay", "direct"],
+  REMOTE_PAIRING_TRANSPORTS: ["direct"],
 }));
 
 vi.mock("@/services/remote-tool-gateway.service.js", () => ({
@@ -173,6 +133,7 @@ vi.mock("@/services/remote-tool-gateway.service.js", () => ({
 }));
 
 import remoteAccessRoute, { reconcileCloudRelayOnGrantInvalidation } from "./remote-access.js";
+import { cloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 
 describe("DSK-006 Cloud Host eligibility after Grant invalidation", () => {
   it("stops instead of restarting after native sign-out", () => {
@@ -222,12 +183,14 @@ const createApp = async (options: {
     }
   });
   await app.register(remoteAccessRoute);
+  // DSK-018 fixture: the native lifecycle is signed-out unless a test switches
+  // it to a Cloud-owned mode.
+  cloudRemoteAccessMode.applyNativeSessionState("signed_out");
   return app;
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.relay.getPairingMetadata.mockReturnValue(null);
   mocks.tailscale.getSnapshot.mockResolvedValue(readySnapshot);
   mocks.pairing.createChallenge.mockReturnValue({
     challengeId: "challenge-1",
@@ -394,9 +357,80 @@ describe("remote access routes", () => {
     expect(mocks.pairing.createChallenge).toHaveBeenCalledWith({
       userId: user.id,
       hostUrl: "https://mira.example.ts.net",
-      relay: null,
     });
     assert.equal(response.json().data.challengeId, "challenge-1");
+    await app.close();
+  });
+
+  it("refuses to create a challenge unless Tailscale Direct is ready", async () => {
+    mocks.tailscale.getSnapshot.mockResolvedValueOnce({
+      runtime: {
+        state: "serve_not_configured",
+        accessUrl: "https://mira.example.ts.net",
+      },
+    });
+    const app = await createApp({ authenticated: true });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/remote/admin/pairing/challenges",
+    });
+
+    assert.equal(response.statusCode, 400, response.body);
+    expect(response.json().message).toContain("Tailscale Direct");
+    expect(mocks.pairing.createChallenge).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("does not register the retired legacy Relay config or status routes", async () => {
+    const app = await createApp({ authenticated: true });
+
+    for (const url of [
+      "/remote/admin/relay/config",
+      "/remote/admin/relay/status",
+    ]) {
+      const response = await app.inject({ method: "GET", url });
+      assert.equal(response.statusCode, 404, `${url}: ${response.body}`);
+    }
+
+    const update = await app.inject({
+      method: "PUT",
+      url: "/remote/admin/relay/config",
+      payload: { enabled: true },
+    });
+    assert.equal(update.statusCode, 404, update.body);
+    await app.close();
+  });
+
+  it("reports only sanitized official Cloud transport status", async () => {
+    const app = await createApp({ authenticated: true });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/remote/admin/cloud-relay/status",
+    });
+
+    assert.equal(response.statusCode, 200, response.body);
+    expect(response.json().data).not.toHaveProperty("relayId");
+    expect(response.json().data).toMatchObject({ state: "disabled" });
+    await app.close();
+  });
+
+  it("rejects a legacy Relay claim transport instead of admitting it", async () => {
+    const app = await createApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/remote/pairing/claim",
+      payload: {
+        challengeId: "challenge-1",
+        code: "ABCD2345",
+        transport: "relay",
+      },
+    });
+
+    assert.equal(response.statusCode, 400, response.body);
+    expect(mocks.pairing.claim).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -438,7 +472,7 @@ describe("remote access routes", () => {
         code: "ABCD2345",
         deviceName: "K70",
         platform: "android",
-        transport: "relay",
+        transport: "direct",
         requestedScopes: ["threads:read"],
       },
     });
@@ -455,7 +489,7 @@ describe("remote access routes", () => {
       code: "ABCD2345",
       deviceName: "K70",
       platform: "android",
-      transport: "relay",
+      transport: "direct",
       requestedScopes: ["threads:read"],
     });
     expect(mocks.pairing.poll).toHaveBeenCalledWith(
@@ -476,7 +510,7 @@ describe("remote access routes", () => {
         code: "ABCD2345",
         deviceName: "K70",
         platform: "android",
-        transport: "relay",
+        transport: "direct",
         requestedScopes: ["threads:read", "future:capability"],
       },
     });
@@ -487,7 +521,7 @@ describe("remote access routes", () => {
       code: "ABCD2345",
       deviceName: "K70",
       platform: "android",
-      transport: "relay",
+      transport: "direct",
       requestedScopes: ["threads:read", "future:capability"],
     });
     await app.close();
@@ -551,6 +585,7 @@ describe("remote access routes", () => {
       "POST /remote/v1/tool-invocations/:invocationId/approval",
       "POST /remote/v1/tool-invocations/:invocationId/cancel",
     ]);
+    assert.deepEqual(manifestResponse.json().data.routes.mcp, ["POST /mcp"]);
     assert.deepEqual(manifestResponse.json().data.routes.push, [
       "POST /remote/v1/push/binding-descriptor",
       "POST /remote/v1/push/bindings/accept",
@@ -904,6 +939,78 @@ describe("remote access routes", () => {
     ]);
     assert.equal("rootPath" in response.json().data[0], false);
     assert.equal("rootPath" in response.json().data[1], false);
+    await app.close();
+  });
+
+  it("denies Direct pairing entrypoints while Mira Cloud owns remote access", async () => {
+    const app = await createApp({ authenticated: true });
+    cloudRemoteAccessMode.applyNativeSessionState("signed_in");
+
+    const challenge = await app.inject({
+      method: "POST",
+      url: "/remote/admin/pairing/challenges",
+    });
+    assert.equal(challenge.statusCode, 403, challenge.body);
+    expect(mocks.tailscale.getSnapshot).not.toHaveBeenCalled();
+    expect(mocks.pairing.createChallenge).not.toHaveBeenCalled();
+
+    const claim = await app.inject({
+      method: "POST",
+      url: "/remote/pairing/claim",
+      payload: { challengeId: "challenge-1", code: "ABCD2345" },
+    });
+    assert.equal(claim.statusCode, 403, claim.body);
+    expect(mocks.pairing.claim).not.toHaveBeenCalled();
+
+    const approve = await app.inject({
+      method: "POST",
+      url: "/remote/admin/pairing/claims/claim-1/approve",
+      payload: {},
+    });
+    assert.equal(approve.statusCode, 403, approve.body);
+    expect(mocks.pairing.approve).not.toHaveBeenCalled();
+
+    const poll = await app.inject({
+      method: "POST",
+      url: "/remote/pairing/claims/claim-1/poll",
+      payload: { pollToken: "poll-token-123456789012345" },
+    });
+    assert.equal(poll.statusCode, 403, poll.body);
+    expect(mocks.pairing.poll).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
+  it("denies a pairing challenge if Cloud signs in during the health check", async () => {
+    const app = await createApp({ authenticated: true });
+    mocks.tailscale.getSnapshot.mockImplementationOnce(async () => {
+      cloudRemoteAccessMode.applyNativeSessionState("signed_in");
+      return readySnapshot;
+    });
+    const response = await app.inject({ method: "POST", url: "/remote/admin/pairing/challenges" });
+    expect(response.statusCode).toBe(403);
+    expect(mocks.pairing.createChallenge).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("restores Direct pairing after a confirmed Cloud sign-out", async () => {
+    const app = await createApp({ authenticated: true });
+    cloudRemoteAccessMode.applyNativeSessionState("signed_in");
+
+    const denied = await app.inject({
+      method: "POST",
+      url: "/remote/admin/pairing/challenges",
+    });
+    assert.equal(denied.statusCode, 403, denied.body);
+
+    cloudRemoteAccessMode.applyNativeSessionState("signed_out");
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/remote/admin/pairing/challenges",
+    });
+    assert.equal(allowed.statusCode, 200, allowed.body);
+    expect(mocks.pairing.createChallenge).toHaveBeenCalledOnce();
+
     await app.close();
   });
 });

@@ -1,16 +1,17 @@
-# Mira Relay Product Config V1
+# Desktop Remote Access Product Config
 
 Status: Current
-Related: `relay-transport-v1.md`
+Supersedes: legacy self-hosted Relay product config
+Related: `relay-transport-v1.md`, `tailscale-remote-access-runtime.md`, `cloud-relay-ticket-ipc-v0.md`
 
-> Transport selection and pairing semantics follow the Mobile `dev` canonical
-> document `uichat-mira-mobile@dev:docs/remote-access/remote-connection-canonical-v1.md`,
-> synchronized on **2026-08-26**. This page only defines Desktop Relay product
-> configuration and does not create a separate pairing contract.
+> DSK-017 retired the Desktop's legacy paired/self-hosted Relay on
+> **2026-11-24**. Pairing is **Tailscale Direct only**. The official Mira Cloud
+> Relay remains an independent account/ticket/Host Grant path and is not
+> configured from this page.
 
 ## 用户入口
 
-Remote Relay 的产品入口统一位于：
+远程连接的产品入口统一位于：
 
 ```text
 设置 -> 远程连接
@@ -19,83 +20,24 @@ Remote Relay 的产品入口统一位于：
 界面保持最小：
 
 ```text
-Mira Relay                         [开关]
-○ 默认服务
-○ 自定义地址
-  [ https://relay.example.com ]
-
 Tailscale                          [开关]
 
 已配对设备
 ```
 
-只有选择“自定义地址”时显示输入框。
+该页面不再提供 Mira Relay 开关、默认/自定义 Relay 地址或 Relay 连接状态。
 
-## 用户可见配置
+## Tailscale Direct
 
 用户只配置：
 
-- 是否启用 Mira Relay。
-- 使用默认服务还是自定义 Relay 地址。
-- 自定义地址本身。
+- 是否启用 Tailscale 远程入口。
 
-用户不配置也不应看到：
+Desktop 通过 Tailscale Serve 发布本机 Host，并且只绑定本机回环地址。设备名、
+MagicDNS、Serve 冲突检查与 `/health` 验证仍由 Tailscale runtime 负责。
 
-- Cloudflare Worker / Durable Object。
-- Relay ID。
-- Host token。
-- Client token。
-- WSS path。
-
-## 默认服务
-
-默认 Relay endpoint 由 Mira 构建 / 部署配置提供。
-
-当前配置入口：
-
-```text
-UI_CHAT_REMOTE_RELAY_DEFAULT_URL
-```
-
-也可由 `runtime.config.cjs` 的 `remoteRelay.defaultUrl` 提供。
-
-仓库不硬编码一个尚未真实部署的官方域名。若当前构建没有默认 endpoint，则“默认服务”不能被成功启用，用户仍可使用自定义 Relay 地址。
-
-## 自定义 Relay 地址
-
-V1 接受根级 HTTPS base URL，例如：
-
-```text
-https://relay.tomz.io
-https://example-account.workers.dev
-```
-
-不接受：
-
-- HTTP。
-- URL 内嵌用户名 / 密码。
-- query / fragment。
-- 路径前缀。
-
-Desktop 内部把 HTTPS base URL 转换为 WSS，并追加 Mira Relay protocol path。
-
-## Identity
-
-首次读取 Relay 配置时 Desktop 自动生成：
-
-```text
-relayId
-hostToken
-clientToken
-```
-
-Relay ID 与 token 不由用户填写。
-
-Host / Client token 加密存储在 Desktop SQLite；UI API 只返回产品配置，不返回 token。
-
-## 配对兼容
-
-现有 Mobile V1 pairing URI 继续保留：
+配对挑战只有在 Tailscale Direct 状态为 `ready` 且存在访问地址时才能创建。
+二维码只包含 Direct 字段：
 
 ```text
 host
@@ -104,21 +46,30 @@ code
 version=1
 ```
 
-当 Relay 已启用且 endpoint 可用时，Desktop 只追加：
+不再存在 Relay-only 配对，也不在二维码或配对响应中携带 `relay`、`relayId`
+或 `relayToken`。
 
-```text
-relay=<https relay endpoint>
-relayId=<relay id>
-relayToken=<short-lived client token>
-```
+## 官方 Mira Cloud Relay
 
-`relayToken` is a short-lived Relay transport credential carried in the pairing
-material. It is distinct from the `mira_device_*` business credential and does
-not participate in scopes, approval, or endpoint authorization.
+官方 Cloud Relay 不属于本页面的用户配置：
 
-Mobile parser 继续兼容既有 Direct-only URI，并按 canonical 合同读取可选
-Relay endpoint 字段；缺少 Relay 字段时仍可完成 Direct 配对。
+- 由已验证的 Mira Cloud 账户和原生 Host ticket 自动激活；
+- 使用自己的 Host Grant 与共享 Relay frame 引擎；
+- 不读取 Desktop 旧 Relay 的 relay ID、host token 或 client token；
+- 失败时 fail closed，不回退到旧 Relay 或 Tailscale。
 
-Mobile RelayTransport and client credential handling remain Mobile implementation
-work; Desktop challenge creation already accepts Relay-only endpoint availability
-as defined by the canonical pairing contract.
+详见 `cloud-relay-ticket-ipc-v0.md` 与 `relay-transport-v1.md`。
+
+## 已退役的旧 Relay
+
+以下行为已删除，且不会通过兼容层恢复：
+
+- 旧的 `remote_relay_settings` 持久化配置与加密 token；
+- `/remote/admin/relay/config` 与 `/remote/admin/relay/status`；
+- `UI_CHAT_REMOTE_RELAY_*` 与 `UI_CHAT_REMOTE_RELAY_DEFAULT_URL` 配置入口；
+- 旧 Host/Client static token 准入与握手分支；
+- 旧 Relay-only pairing challenge。
+
+升级时会通过幂等迁移删除 `remote_relay_settings` 表，避免旧的启用配置或
+token 在启动后继续产生网络 I/O 或被重新生成。Tailscale Direct 设备身份、
+Cloud 账户/Host Grant 与无关数据不受影响。

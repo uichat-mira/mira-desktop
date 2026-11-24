@@ -17,9 +17,10 @@ export const REMOTE_DEVICE_SCOPES = [
 
 export type RemoteDeviceScope = (typeof REMOTE_DEVICE_SCOPES)[number];
 
-export const REMOTE_PAIRING_TRANSPORTS = ["relay", "direct"] as const;
-export type RemotePairingTransport =
-  (typeof REMOTE_PAIRING_TRANSPORTS)[number];
+// DSK-017: legacy Relay pairing is retired; new claims can only be Direct.
+const REMOTE_PAIRING_TRANSPORT = "direct" as const;
+export const REMOTE_PAIRING_TRANSPORTS = [REMOTE_PAIRING_TRANSPORT] as const;
+export type RemotePairingTransport = typeof REMOTE_PAIRING_TRANSPORT;
 
 export type TailscaleRemoteAccessConfig = {
   enabled: boolean;
@@ -159,10 +160,12 @@ const normalizeChallengeStatus = (value: string): PairingChallengeStatus => {
   return "expired";
 };
 
+// Historical rows may still contain the retired "relay" diagnostic value;
+// they read back as unknown rather than reintroducing the legacy transport.
 const normalizePairingTransport = (
   value: unknown,
 ): RemotePairingTransport | null =>
-  value === "relay" || value === "direct" ? value : null;
+  value === REMOTE_PAIRING_TRANSPORT ? value : null;
 
 const ensureDeviceColumns = () => {
   const sqlite = getSqlite();

@@ -28,6 +28,8 @@ describe("DSK-007 Cloud Host grant verification (T1; not Relay ingress)", () => 
     const cache = new CloudHostGrantCache(binding);
     cache.replaceFromTrustedNative(valid(), NOW);
     expect(cache.allows("phone-1", 7, "GET", "/remote/v1/tools", NOW)).toBe(true);
+    expect(cache.allows("phone-1", 7, "POST", "/mcp", NOW)).toBe(true);
+    expect(cache.allows("phone-2", 7, "POST", "/mcp", NOW)).toBe(false);
     expect(cache.allows("phone-1", 7, "POST", "/remote/v1/tool-invocations/stream", NOW)).toBe(false);
     expect(cache.allows("phone-2", 7, "POST", "/remote/v1/tool-invocations/stream", NOW)).toBe(true);
     expect(cache.allows("phone-3", 7, "GET", "/remote/v1/tools", NOW)).toBe(false);
