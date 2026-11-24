@@ -10,15 +10,10 @@ import {
   resolveCloudRelayConnectorConfig,
   type RelaySocketFactory,
 } from "@/services/remote-relay-connector.service.js";
-import {
-  RemoteRelayConfigError,
-  getRemoteRelayPairingMetadata,
-  getRemoteRelayUserConfig,
-  resolvePersistedRemoteRelayConnectorConfig,
-  updateRemoteRelayUserConfig,
-} from "@/services/remote-relay-config.service.js";
 import { tailscaleRemoteAccessService } from "@/services/tailscale-remote-access.service.js";
 import { CloudRelayTicketIpcClient } from "@/services/cloud-relay-ticket-ipc.service.js";
+import { CloudSessionStateIpcClient } from "@/services/cloud-session-state-ipc.service.js";
+import { cloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 import { generalSettingsRepository } from "@/db/repositories/general-settings.repository.js";
 import { createCloudRelaySocketFactory } from "@/services/cloud-relay-socket-proxy.service.js";
 import { CloudHostGrantIpcClient } from "@/services/cloud-host-grant-ipc.service.js";
@@ -89,18 +84,19 @@ const remoteWorkspaceSchema = {
   },
 } as const;
 
+const assertDirectRemoteAccessAllowed = () => {
+  if (!cloudRemoteAccessMode.isDirectRemoteAccessAllowed()) {
+    throw forbidden(
+      "Tailscale Direct remote access is unavailable while this Desktop is signed in to Mira Cloud",
+    );
+  }
+};
+
 const mapPairingError = (error: unknown): never => {
   if (error instanceof PairingServiceError) {
     if (error.code === "PAIRING_NOT_FOUND") {
       throw notFound(error.message, { cause: error });
     }
-    throw badRequest(error.message, { cause: error });
-  }
-  throw error;
-};
-
-const mapRelayConfigError = (error: unknown): never => {
-  if (error instanceof RemoteRelayConfigError) {
     throw badRequest(error.message, { cause: error });
   }
   throw error;
@@ -165,12 +161,11 @@ const createRelaySocketFactories = (app: FastifyInstance) => {
   }
 
   const direct: RelaySocketFactory = (url) => new WebSocketCtor(url);
-  const cloud = createCloudRelaySocketFactory(
+  return createCloudRelaySocketFactory(
     direct,
     (url, agent) => new WebSocketCtor(url, { agent }),
     () => generalSettingsRepository.get(),
   );
-  return { direct, cloud };
 };
 
 // The native Cloud Host state is authoritative for whether a Grant
@@ -185,16 +180,26 @@ export const reconcileCloudRelayOnGrantInvalidation = (
 };
 
 const remoteAccessRoute: FastifyPluginAsync = async (app) => {
-  const { direct: socketFactory, cloud: cloudSocketFactory } =
-    createRelaySocketFactories(app);
-  const remoteRelayConnectorService = new RemoteRelayConnectorService(
-    resolvePersistedRemoteRelayConnectorConfig,
-    socketFactory,
-  );
-  // Completely independent from user-configured/self-hosted Relay and Tailscale.
-  // This provider uses Electron's private child IPC, never an HTTP credential API.
+  const cloudSocketFactory = createRelaySocketFactories(app);
+  // Official Mira Cloud is the only Relay transport. It uses Electron's
+  // private child IPC, never an HTTP credential API or persisted room token.
   const cloudTicketIpc = new CloudRelayTicketIpcClient();
   const cloudGrantIpc = new CloudHostGrantIpcClient();
+  // DSK-018: mirror the native Cloud lifecycle into the local admission gate.
+  // The initial projection is "unknown" until the native owner answers.
+  const cloudSessionIpc = new CloudSessionStateIpcClient();
+  cloudRemoteAccessMode.applyNativeSessionState(cloudSessionIpc.getState());
+  const unsubscribeCloudSessionState = cloudSessionIpc.onStateChanged((state) => {
+    cloudRemoteAccessMode.applyNativeSessionState(state);
+    void tailscaleRemoteAccessService
+      .reconcileCloudRemoteAccessMode(state)
+      .catch((error: unknown) => {
+        console.warn(
+          "[RemoteAccess] Failed to reconcile Mira-owned Tailscale exposure with the Cloud login mode:",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+  });
   const cloudGrantRuntime = new CloudHostGrantRuntime(cloudGrantIpc, (id) => {
     const user = userRepository.findById(id);
     if (!user || !user.isActive) return null;
@@ -229,8 +234,8 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
   );
 
   // Only the native Cloud Account owner may make an official Host eligible.
-  // The local/Tailscale/self-hosted connector remains independent. Wait for
-  // Backend listen before creating a Cloud socket, including restore races.
+  // Wait for Backend listen before creating a Cloud socket, including restore
+  // races.
   let backendListening = false;
   const unsubscribeCloudAvailability = cloudTicketIpc.onAvailabilityChanged(
     (available) => {
@@ -242,7 +247,6 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
 
   app.addHook("onListen", async () => {
     backendListening = true;
-    remoteRelayConnectorService.start();
     if (cloudTicketIpc.isHostAvailable()) cloudRelayConnectorService.start();
   });
 
@@ -255,96 +259,10 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     cloudGrantRuntime.dispose();
     cloudGrantIpc.dispose();
     cloudTicketIpc.dispose();
-    remoteRelayConnectorService.stop();
+    unsubscribeCloudSessionState();
+    cloudSessionIpc.dispose();
+    cloudRemoteAccessMode.reset();
   });
-
-  app.get(
-    "/remote/admin/relay/config",
-    {
-      schema: {
-        tags: ["Remote Access"],
-        summary: "Get Mira Relay configuration",
-        operationId: "getRemoteRelayConfig",
-        response: {
-          200: successEnvelope(looseObjectSchema),
-          401: errorEnvelope,
-          500: errorEnvelope,
-        },
-      },
-    },
-    routeHandler("Failed to get Mira Relay configuration", async (request) => {
-      if (!request.authUser) {
-        throw forbidden("Desktop authentication is required");
-      }
-      return success(getRemoteRelayUserConfig());
-    }),
-  );
-
-  app.put<{
-    Body: {
-      enabled?: boolean;
-      endpointMode?: "default" | "custom";
-      customUrl?: string;
-    };
-  }>(
-    "/remote/admin/relay/config",
-    {
-      schema: {
-        tags: ["Remote Access"],
-        summary: "Update Mira Relay configuration",
-        operationId: "updateRemoteRelayConfig",
-        body: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            enabled: { type: "boolean" },
-            endpointMode: { type: "string", enum: ["default", "custom"] },
-            customUrl: { type: "string", maxLength: 2048 },
-          },
-        },
-        response: {
-          200: successEnvelope(looseObjectSchema),
-          400: errorEnvelope,
-          401: errorEnvelope,
-          500: errorEnvelope,
-        },
-      },
-    },
-    routeHandler("Failed to update Mira Relay configuration", async (request) => {
-      if (!request.authUser) {
-        throw forbidden("Desktop authentication is required");
-      }
-      try {
-        const config = updateRemoteRelayUserConfig(request.body);
-        remoteRelayConnectorService.restart();
-        return success(config, "Mira Relay configuration updated");
-      } catch (error) {
-        return mapRelayConfigError(error);
-      }
-    }),
-  );
-
-  app.get(
-    "/remote/admin/relay/status",
-    {
-      schema: {
-        tags: ["Remote Access"],
-        summary: "Get Mira Relay connector status",
-        operationId: "getRemoteRelayConnectorStatus",
-        response: {
-          200: successEnvelope(looseObjectSchema),
-          401: errorEnvelope,
-          500: errorEnvelope,
-        },
-      },
-    },
-    routeHandler("Failed to get Mira Relay connector status", async (request) => {
-      if (!request.authUser) {
-        throw forbidden("Desktop authentication is required");
-      }
-      return success(remoteRelayConnectorService.getSnapshot());
-    }),
-  );
 
   app.get(
     "/remote/admin/cloud-relay/status",
@@ -364,9 +282,8 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!request.authUser) {
         throw forbidden("Desktop authentication is required");
       }
-      const snapshot = cloudRelayConnectorService.getSnapshot();
       // Deliberately do not report the Cloud Host room or bearer ticket.
-      return success({ ...snapshot, relayId: null });
+      return success(cloudRelayConnectorService.getSnapshot());
     }),
   );
 
@@ -390,34 +307,35 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!user) {
         throw forbidden("Desktop authentication is required");
       }
+      assertDirectRemoteAccessAllowed();
 
       const tailscale = await tailscaleRemoteAccessService.getSnapshot({
         verifyHealth: true,
       });
+      // Cloud login may complete during the asynchronous health check.
+      assertDirectRemoteAccessAllowed();
       const directHostUrl =
         tailscale.runtime.state === "ready" && tailscale.runtime.accessUrl
           ? tailscale.runtime.accessUrl
           : null;
-      const relaySnapshot = remoteRelayConnectorService.getSnapshot();
-      const relay =
-        relaySnapshot.state === "connected"
-          ? getRemoteRelayPairingMetadata()
-          : null;
 
-      if (!directHostUrl && !relay) {
+      if (!directHostUrl) {
         throw badRequest(
-          "A reachable Tailscale or Mira Relay connection is required before pairing a mobile device",
+          "Tailscale Direct remote access must be ready before pairing a mobile device",
         );
       }
 
-      return success(
-        remoteAccessPairingService.createChallenge({
-          userId: user.id,
-          hostUrl: directHostUrl,
-          relay,
-        }),
-        "Pairing challenge created",
-      );
+      try {
+        return success(
+          remoteAccessPairingService.createChallenge({
+            userId: user.id,
+            hostUrl: directHostUrl,
+          }),
+          "Pairing challenge created",
+        );
+      } catch (error) {
+        return mapPairingError(error);
+      }
     }),
   );
 
@@ -497,6 +415,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!user) {
         throw forbidden("Desktop authentication is required");
       }
+      assertDirectRemoteAccessAllowed();
       try {
         return success(
           remoteAccessPairingService.approve({
@@ -537,6 +456,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!user) {
         throw forbidden("Desktop authentication is required");
       }
+      assertDirectRemoteAccessAllowed();
       try {
         return success(
           remoteAccessPairingService.reject({
@@ -557,7 +477,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       code: string;
       deviceName?: string;
       platform?: string;
-      transport?: "relay" | "direct";
+      transport?: "direct";
       publicKey?: string;
       requestedScopes?: string[];
     };
@@ -602,6 +522,7 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to claim remote pairing challenge", async (request) => {
+      assertDirectRemoteAccessAllowed();
       try {
         return success(
           remoteAccessPairingService.claim(request.body),
@@ -643,6 +564,8 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       },
     },
     routeHandler("Failed to poll remote pairing claim", async (request) => {
+      // Deny before the one-time credential can be read or consumed.
+      assertDirectRemoteAccessAllowed();
       try {
         return success(
           remoteAccessPairingService.poll(
@@ -1126,6 +1049,10 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
             "POST /remote/v1/tool-invocations/:invocationId/approval",
             "POST /remote/v1/tool-invocations/:invocationId/cancel",
           ],
+          // Standard MCP tool outlet. Remote V1 remains the identity,
+          // Thread/Agent, approval and Artifact surface while both tool paths
+          // share the same underlying eligibility projection.
+          mcp: ["POST /mcp"],
           artifacts: ["GET /threads/:id/media/:mediaId/content"],
           // Push binding still requires a locally paired Remote Device.
           // Cloud Mobile must not discover unsupported bootstrap routes.

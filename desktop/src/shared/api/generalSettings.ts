@@ -51,10 +51,22 @@ export interface TailscalePairedDevice {
   lastSeenAt: string | null;
 }
 
+export type CloudRemoteAccessMode =
+  | "signed_out"
+  | "signed_in"
+  | "restoring"
+  | "unknown";
+
+export interface CloudRemoteAccessState {
+  mode: CloudRemoteAccessMode;
+  directAllowed: boolean;
+}
+
 export interface TailscaleRemoteAccessSnapshot {
   config: TailscaleRemoteAccessConfig;
   runtime: TailscaleRemoteRuntime;
   pairedDevices: TailscalePairedDevice[];
+  cloudRemoteAccess: CloudRemoteAccessState;
 }
 
 export function getGeneralSettings() {

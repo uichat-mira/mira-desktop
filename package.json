@@ -63,7 +63,7 @@
     "check:benchmark-recorder": "node --test scripts/benchmark/recorder/agent-core-recorder.test.mjs",
     "check:remote-relay": "tsc --noEmit -p packages/remote-relay/tsconfig.json",
     "check:cloud-account": "node --test electron/dev-launcher.test.cjs electron/dev-backend.test.cjs electron/cloud-account.test.cjs electron/cloud-relay-ticket-ipc.test.cjs",
-    "check:cloud-relay-ipc": "pnpm --dir server exec vitest run src/services/cloud-relay-ticket-ipc.service.test.ts src/services/cloud-host-grant-ipc.service.test.ts src/services/cloud-host-grant-authority.service.test.ts",
+    "check:cloud-relay-ipc": "pnpm --dir server exec vitest run src/services/cloud-relay-ticket-ipc.service.test.ts src/services/cloud-host-grant-ipc.service.test.ts src/services/cloud-host-grant-authority.service.test.ts src/services/cloud-session-state-ipc.service.test.ts src/services/cloud-remote-access-mode.service.test.ts",
     "check": "pnpm check:ai-review-runner && pnpm check:benchmark-runner && pnpm check:benchmark-recorder && pnpm check:benchmark-scorer && pnpm check:forge-cutover && pnpm check:remote-relay && pnpm check:cloud-account && pnpm check:cloud-relay-ipc && pnpm check:push-broker && pnpm test:push-broker && pnpm -r --workspace-concurrency=1 typecheck",
     "version:sync": "node scripts/sync-version.js",
     "internal:build:desktop": "pnpm --filter @ui-chat-mira/desktop build",

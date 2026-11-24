@@ -222,4 +222,80 @@ function attachCloudHostGrantIpc(child, getAccount) {
   return { dispose, notifyRevoked };
 }
 
-module.exports = { attachCloudRelayTicketIpc, attachCloudHostGrantIpc, CHANNEL, GRANT_CHANNEL };
+/**
+ * DSK-018: one-way, nonsecret projection of the native Cloud Session lifecycle.
+ * The Backend may not infer "signed out" from Relay availability: a signed-in
+ * Host can be temporarily offline or lack Host setup. Only an explicit native
+ * lifecycle state crosses this private channel; no account id, token or scope.
+ */
+const SESSION_CHANNEL = "mira:cloud-session:state:v1";
+const SESSION_STATES = new Set(["signed_out", "signed_in", "restoring", "unknown"]);
+
+function projectCloudSessionState(snapshot) {
+  if (!record(snapshot) || typeof snapshot.status !== "string") return "unknown";
+  switch (snapshot.status) {
+    case "signed_out":
+    case "rejected":
+      // A verified logout or rejected/expired session is confirmed signed-out.
+      return "signed_out";
+    case "signed_in":
+    case "setup_failed":
+      return "signed_in";
+    case "checking":
+    case "authorizing":
+      return "restoring";
+    case "unavailable":
+      // A retained encrypted Session that cannot be re-verified is restoring,
+      // never a sign-out. A missing Session cannot prove the mode at all.
+      return record(snapshot.account) ? "restoring" : "unknown";
+    default:
+      return "unknown";
+  }
+}
+
+function attachCloudSessionStateIpc(child, readState) {
+  if (!child || typeof child.on !== "function" ||
+      typeof child.send !== "function" || typeof readState !== "function") {
+    throw new TypeError("Cloud Session state IPC requires an owned Backend child");
+  }
+  let disposed = false;
+  let last = null;
+
+  function send(state) {
+    if (disposed || !SESSION_STATES.has(state) || child.connected === false) return;
+    if (state === last) return;
+    last = state;
+    try {
+      child.send({ channel: SESSION_CHANNEL, type: "state", state }, () => {
+        // Deliberately no payload logging.
+      });
+    } catch {
+      last = null;
+    }
+  }
+  function onMessage(value) {
+    if (disposed || !record(value) || value.channel !== SESSION_CHANNEL) return;
+    // Re-answer the Backend handshake so a missed early notification cannot
+    // leave Direct enabled or disabled from a stale restore window.
+    if (exactKeys(value, ["channel", "type"]) && value.type === "state_request") {
+      last = null;
+      send(readState());
+    }
+  }
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    child.removeListener("message", onMessage);
+    child.removeListener("disconnect", dispose);
+    child.removeListener("close", dispose);
+  }
+
+  child.on("message", onMessage);
+  child.on("disconnect", dispose);
+  child.on("close", dispose);
+  return { dispose, notifyState: send };
+}
+
+module.exports = { attachCloudRelayTicketIpc, attachCloudHostGrantIpc,
+  attachCloudSessionStateIpc, projectCloudSessionState,
+  CHANNEL, GRANT_CHANNEL, SESSION_CHANNEL };

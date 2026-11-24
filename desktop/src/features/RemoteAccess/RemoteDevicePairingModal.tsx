@@ -81,7 +81,6 @@ export default function RemoteDevicePairingModal({
             requestTitle: "设备请求",
             fingerprint: "公钥指纹",
             transport: "申请通道",
-            transportRelay: "Mira Relay",
             transportDirect: "Tailscale Direct",
             transportUnknown: "未知",
             scopes: "申请权限",
@@ -112,7 +111,6 @@ export default function RemoteDevicePairingModal({
             requestTitle: "Device request",
             fingerprint: "Public-key fingerprint",
             transport: "Request channel",
-            transportRelay: "Mira Relay",
             transportDirect: "Tailscale Direct",
             transportUnknown: "Unknown",
             scopes: "Requested access",
@@ -352,11 +350,9 @@ export default function RemoteDevicePairingModal({
                       {current.claim.deviceName} · {current.claim.platform}
                     </div>
                     <div className="mt-1 text-xs text-text-secondary">
-                      {copy.transport}: {current.claim.transport === "relay"
-                        ? copy.transportRelay
-                        : current.claim.transport === "direct"
-                          ? copy.transportDirect
-                          : copy.transportUnknown}
+                      {copy.transport}: {current.claim.transport === "direct"
+                        ? copy.transportDirect
+                        : copy.transportUnknown}
                     </div>
                     {current.claim.publicKeyFingerprint ? (
                       <div className="mt-1 font-mono text-xs text-text-secondary">

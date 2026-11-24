@@ -3,12 +3,17 @@ const path = require("path");
 const fs = require("fs");
 const { spawn, execFileSync } = require("child_process");
 const { createCloudAccountController } = require("./cloud-account.cjs");
-const { attachCloudRelayTicketIpc, attachCloudHostGrantIpc } = require("./cloud-relay-ticket-ipc.cjs");
+const { attachCloudRelayTicketIpc, attachCloudHostGrantIpc,
+  attachCloudSessionStateIpc, projectCloudSessionState } = require("./cloud-relay-ticket-ipc.cjs");
 
 let mainWindow;
 let backendProcess;
 let cloudRelayTicketBridge = null;
 let cloudHostGrantBridge = null;
+let cloudSessionStateBridge = null;
+// Until the encrypted Cloud Session restore has settled, the controller's
+// default view is not proof of sign-out. Keep Direct closed during restore.
+let cloudSessionRestoreSettled = false;
 let devBackendLaunch = null;
 let devBackendWatcher = null;
 
@@ -17,6 +22,13 @@ let cloudCallbackRegistered = false;
 const queuedCloudCallbacks = [];
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
+
+// DSK-018: only the native Cloud lifecycle is authority for Desktop Direct
+// availability. Restored/unknown states must never be reported as signed-out.
+function currentCloudSessionState() {
+  if (!cloudSessionRestoreSettled || !cloudAccount) return "unknown";
+  return projectCloudSessionState(cloudAccount.status());
+}
 
 function receiveCloudCallback(url) {
   if (typeof url !== "string" || !url.startsWith("mira-desktop://oauth/callback?")) return;
@@ -491,8 +503,10 @@ ipcMain.handle("desktop:download-browser-extension", async () => {
 function attachBackendProcessHandlers(child) {
   const relayBridge = attachCloudRelayTicketIpc(child, () => cloudAccount);
   const grantBridge = attachCloudHostGrantIpc(child, () => cloudAccount);
+  const sessionBridge = attachCloudSessionStateIpc(child, currentCloudSessionState);
   cloudRelayTicketBridge = relayBridge;
   cloudHostGrantBridge = grantBridge;
+  cloudSessionStateBridge = sessionBridge;
 
   if (child.stdout) {
     child.stdout.on("data", (data) => {
@@ -511,11 +525,15 @@ function attachBackendProcessHandlers(child) {
     // A dev restart can attach a newer child before the old close event fires.
     relayBridge.dispose();
     grantBridge.dispose();
+    sessionBridge.dispose();
     if (cloudRelayTicketBridge === relayBridge) {
       cloudRelayTicketBridge = null;
     }
     if (cloudHostGrantBridge === grantBridge) {
       cloudHostGrantBridge = null;
+    }
+    if (cloudSessionStateBridge === sessionBridge) {
+      cloudSessionStateBridge = null;
     }
     console.log(`Backend process exited with code ${code}`);
   });
@@ -532,6 +550,8 @@ async function stopDevBackendChild() {
   cloudRelayTicketBridge = null;
   cloudHostGrantBridge?.dispose();
   cloudHostGrantBridge = null;
+  cloudSessionStateBridge?.dispose();
+  cloudSessionStateBridge = null;
 
   if (!child) {
     return;
@@ -774,6 +794,10 @@ app.whenReady().then(async () => {
     // certificate verification enabled.
     fetcher: (input, init) => net.fetch(input, init),
     notify: (snapshot) => {
+      // DSK-018: Direct availability follows the native Cloud lifecycle, not
+      // Relay status. Send this before availability so the Backend's own
+      // admission gate never observes an older mode.
+      cloudSessionStateBridge?.notifyState(currentCloudSessionState());
       // The official Cloud Host follows the authenticated native lifecycle,
       // not a renderer setting or a second manual Relay activation.
       // Non-ready states close the old account's socket before any new ticket.
@@ -824,7 +848,12 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
-  void cloudAccount.initialize(); // never block local UI on Cloud availability
+  void cloudAccount.initialize().finally(() => {
+    // Restore has settled (including failure paths that keep a retained
+    // Session). Only now may a confirmed signed-out lifecycle open Direct.
+    cloudSessionRestoreSettled = true;
+    cloudSessionStateBridge?.notifyState(currentCloudSessionState());
+  }); // never block local UI on Cloud availability
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -851,6 +880,8 @@ app.on("before-quit", () => {
   cloudRelayTicketBridge = null;
   cloudHostGrantBridge?.dispose();
   cloudHostGrantBridge = null;
+  cloudSessionStateBridge?.dispose();
+  cloudSessionStateBridge = null;
   if (backendProcess) {
     backendProcess.kill();
   }

@@ -65,6 +65,49 @@ describe("DSK-007 native-bound Cloud Host authority lifecycle (T1/T2)", () => {
     f.runtime.dispose();
   });
 
+  it("admits /mcp for the bound Mobile only with effective tools:read", async () => {
+    const f = setup();
+    f.set({
+      localOwnerUserId: 7,
+      snapshot: grant({
+        policyScopes: ["tools:read", "tools:invoke"],
+        grants: [
+          {
+            mobileDeviceId: "phone-a",
+            scopes: ["tools:read", "tools:invoke"],
+            status: "active",
+          },
+        ],
+      }),
+    });
+
+    expect(await f.runtime.authorize(identity, "POST", "/mcp", NOW)).toMatchObject({
+      mobileDeviceId: "phone-a",
+      scopes: ["tools:read", "tools:invoke"],
+    });
+    expect(await f.runtime.authorize(
+      { ...identity, deviceId: "phone-b" },
+      "POST",
+      "/mcp",
+      NOW,
+    )).toBeNull();
+    f.set({
+      localOwnerUserId: 7,
+      snapshot: grant({
+        revision: 4,
+        policyScopes: ["tools:read"],
+        grants: [{ mobileDeviceId: "phone-a", scopes: [], status: "revoked" }],
+      }),
+    });
+    expect(await f.runtime.authorize(
+      identity,
+      "POST",
+      "/mcp",
+      NOW + 31_000,
+    )).toBeNull();
+    f.runtime.dispose();
+  });
+
   it("rejects absent owner, malformed bound envelope and disabled local owner", async () => {
     const f = setup();
     f.set({ snapshot: grant() });

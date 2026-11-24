@@ -22,14 +22,14 @@ superseded_by: uichat-mira-mobile@dev:docs/remote-access/remote-connection-canon
 
 ## 1. 目标
 
-`uichat-mira-mobile` 通过 Direct（Tailscale）或 Mira Relay 访问 Mira Desktop Host。Transport 只负责可达性与转发；Mira 继续负责配对、设备凭证、用户归属、能力范围、工具审批、撤销和审计。
+`uichat-mira-mobile` 通过 Tailscale Direct 或官方 Mira Cloud Relay 访问 Mira Desktop Host。Transport 只负责可达性与转发；Mira 继续负责配对、设备凭证、用户归属、能力范围、工具审批、撤销和审计。旧的自托管/配对 Relay 已按 DSK-017 退役，不再是可选 Transport。
 
 V1 不复制一套 Thread、Message、Workspace 或 Agent Runtime。完成配对后，设备凭证只被允许访问 Remote Gateway 明确映射到已批准 scope 的 canonical routes 或 Mobile-safe projection，由 Remote Gateway 在进入业务路由前完成设备认证与 scope 校验。
 
 ```text
 Mobile
   ├─ Direct / Tailscale / HTTPS
-  ├─ Relay / WSS
+  ├─ Official Cloud / WSS (native Cloud Host Grant)
   ├─ Device Credential
   ▼
 Remote Gateway
@@ -67,7 +67,13 @@ POST /remote/admin/pairing/challenges
 Authorization: Bearer <desktop user jwt>
 ```
 
-Host 在 Tailscale Direct 为 `ready` 或 Mira Relay 为 `connected` 时创建挑战；两者都可用时，二维码同时携带两个 endpoint。响应包含：
+Host 只有在 Tailscale Direct 为 `ready` 且存在访问地址时才创建挑战。旧的自托管 Mira Relay 不再参与配对，因此不存在 Relay-only challenge，二维码也不会携带 Relay 字段。响应包含：
+
+> DSK-018：Desktop 登录 Mira Cloud 后，Desktop 的 Direct 远程访问模式与 Cloud 互斥。
+> 创建挑战、claim、poll、approve 与已配对设备的业务请求都会返回 `403`，直到原生
+> Cloud Session 生命周期确认已退出登录。已配对设备记录与凭据保留，退出后恢复使用。
+> 该限制只针对单台 Desktop 的登录模式；Mobile 自身登录 Cloud 与使用另一台已退出
+> Cloud 的 Desktop Direct 服务互不排斥（Mobile 0.4.0 A2 边界）。
 
 - `challengeId`
 - 8 位一次性配对码
@@ -87,7 +93,7 @@ Content-Type: application/json
   "code": "ABCDEFGH",
   "deviceName": "K70",
   "platform": "android",
-  "transport": "relay",
+  "transport": "direct",
   "publicKey": "optional-device-public-key",
   "requestedScopes": ["threads:read", "messages:read", "messages:write"]
 }
@@ -95,7 +101,7 @@ Content-Type: application/json
 
 响应返回 `claimId` 与一次性 `pollToken`。Host 只保存 poll token 的哈希。
 
-`transport` 可选值为 `relay` 或 `direct`，只记录 Mobile 实际选择的申请通道，供 Desktop 配对确认界面展示。它不参与认证、poll token、设备凭据、scope、审批或 endpoint 判定；旧 Mobile 不发送该字段时按“未知”展示。
+`transport` 当前只接受 `direct`，只记录 Mobile 的实际申请通道，供 Desktop 配对确认界面展示。它不参与认证、poll token、设备凭据、scope、审批或 endpoint 判定；旧 Mobile 不发送该字段时按“未知”展示。历史记录中的 `relay` 只作为非机密诊断值保留，读取时按未知处理，不会重新启用旧 Transport。
 
 ### 3.3 Desktop 确认
 
@@ -209,10 +215,17 @@ GET    /remote/v1/tools
 POST   /remote/v1/tool-invocations/stream
 POST   /remote/v1/tool-invocations/:invocationId/approval
 POST   /remote/v1/tool-invocations/:invocationId/cancel
+POST   /mcp
 GET    /threads/:id/media/:mediaId/content
 ```
 
 这张列表只是**当前实现快照**，不是冻结 V1 的规范边界。增加或删除能力时必须同时更新 Gateway 映射、manifest、Mobile capability guard、测试和 canonical 文档。
+
+`POST /mcp` 是现有受控工具面的标准 MCP 出口，不是第二套远程业务协议；
+它复用同一 Tool Core/Harness eligibility 与 Remote V1 设备/Host Grant 准入。
+完整身份、scope、Resource、审批与传输矩阵见
+[[desktop-mcp-server-v1]]。Remote V1 工具路由继续保留，直到独立 cutover
+证明受支持 Mobile 消费者不再依赖它们。
 
 `GET /remote/v1/workspaces` 返回当前用户的 active / archived ChatWorkspace，但只投影：
 

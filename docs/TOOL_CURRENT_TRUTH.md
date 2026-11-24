@@ -1,7 +1,7 @@
 ---
 status: current
 owner: runtime
-last_verified: 2026-10-19
+last_verified: 2026-11-24
 layer: wiki
 module: Tool
 feature: ToolRuntime
@@ -256,6 +256,13 @@ primitive 结果统一进入 `file_mutation` Evidence。旧 `write_file / replac
 
 `apiKey`、`baseUrl` 和 provider 不是 LLM 参数。
 
+`web_search` 是否进入当前对外 Tool Exposure 还受 **runtime readiness**
+约束：未配置有效的 Tavily / SearXNG provider 时，
+`server/src/harness/web-search-readiness.ts` 将其标记不可用，由
+`server/src/harness/exposure-core/filters.ts` 在暴露前过滤。
+所以“Registry 有工具”不等于“Mobile 远程目录可发现”；这里的
+`news_search` 也不会自动替代公网搜索。
+
 ### `web_fetch`
 
 - 抓取并提取已知公网 `http` / `https` URL 的可读正文；
@@ -419,6 +426,25 @@ github_actions
 
 不得重新拆成几十个 GitHub 原子工具，也不得绕过 installation repository scope。
 
+**跨端 Schema 兼容债（2026-11-23 实测）：**
+四个 GitHub 工具在 `server/src/mcp/tools/github-domain.schemas.ts` 的
+顶层采用 `oneOf`，各分支均为 `type: "object"`，但根节点未显式声明
+`type`。这种 JSON Schema 在语义上可以成立；然而
+`server/src/services/remote-tool-gateway.service.ts` 原样导出
+`inputSchema`，已在 Mobile 的 OpenAI-compatible Provider 第二轮请求
+触发过 HTTP 400。
+
+- **Desktop 责任**：保持领域操作与 `oneOf` 约束，补足对外参数 Schema
+  的对象根兼容契约和回归证据。技术债以
+  [AGT-070 / #491](https://github.com/uichat-mira/mira-desktop/issues/491)
+  为单一任务合同；本页不将它描述成已修复。
+- **Mobile 已采取的兼容措施**：合并的
+  [mira-mobile PR #358](https://github.com/uichat-mira/mira-mobile/pull/358)
+  在向 Provider 投影时，仅对所有 `oneOf` 分支显式为对象的情形
+  补根 `type: "object"`，不修改原始 Host Manifest、权限或审批。
+  已有 iOS 模拟器真实链路通过；不代表 Android / 公网搜索已验收，
+  也不代表可直接删除 Mobile 兼容层。
+
 ### `ask_external_expert`
 
 - 只有当前用户已经建立问策连接时才进入 exposure；
@@ -462,6 +488,16 @@ External MCP projected tool：
 - `sideEffect = network`；
 - `requiresApproval = true`；
 - 不允许 provider 私有命令或旧 id 穿透。
+
+### Remote MCP outlet
+
+Desktop 另有面向已授权 Mobile 的受控标准 MCP Server：`POST /mcp`。它复用
+`remote-tool-gateway` 的同一 `agent_intent` exposure、runtime readiness 与
+Remote V1 设备/Cloud Host Grant 准入，不新建 Tool Registry 或执行链。可选
+`mira://service/mira-desktop/capabilities` Resource 只引用同一 `tools/list`
+中的真实工具；无 authored capability group 时按普通 MCP 扁平工具降级。
+Remote V1 工具路由仍保留，尚未完成受支持消费者 cutover。完整合同见
+[`remote-access/desktop-mcp-server-v1.md`](remote-access/desktop-mcp-server-v1.md)。
 
 ## 10. WenShu / Skill-private Runtime 不属于普通 Tool Exposure
 

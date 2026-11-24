@@ -21,6 +21,9 @@ declare module "fastify" {
 
 const DEVICE_TOKEN_PREFIX = "mira_device_";
 
+export const isRemoteDeviceToken = (token: string) =>
+  token.startsWith(DEVICE_TOKEN_PREFIX);
+
 const hashOpaque = (value: string) =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
@@ -240,6 +243,17 @@ export const getRequiredRemoteScope = (
     parts[1] === "v1" &&
     parts[2] === "tools"
   ) {
+    return "tools:read";
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    parts.length === 1 &&
+    parts[0] === "mcp"
+  ) {
+    // The MCP endpoint is tool discovery first. tools/call additionally
+    // requires tools:invoke inside the authenticated protocol handler because
+    // that distinction is carried in the JSON-RPC body, not the URL.
     return "tools:read";
   }
 
