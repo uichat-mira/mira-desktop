@@ -111,8 +111,9 @@ replace the existing Host-owned Harness exact-call approval.
 
 A Cloud request awaiting native IPC / Grant authority has an independent
 cancellable state; disconnect or cancel before authority resolves must not
-start local business execution. Existing Legacy/Tailscale paths retain their
-previous credential flow. Push pairing/bootstrap remains **legacy-only**.
+start local business execution. The Tailscale Direct path retains its previous
+`mira_device_*` credential flow; the legacy Relay path was retired by DSK-017.
+Push pairing/bootstrap remains **locally paired device only**.
 
 **Not yet accepted**: require exact-head CI/T1/T2/T3 route and Tool/Harness
 verification, Cloud+Legacy negative tests, and independent review before

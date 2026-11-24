@@ -22,14 +22,14 @@ superseded_by: uichat-mira-mobile@dev:docs/remote-access/remote-connection-canon
 
 ## 1. 目标
 
-`uichat-mira-mobile` 通过 Direct（Tailscale）或 Mira Relay 访问 Mira Desktop Host。Transport 只负责可达性与转发；Mira 继续负责配对、设备凭证、用户归属、能力范围、工具审批、撤销和审计。
+`uichat-mira-mobile` 通过 Tailscale Direct 或官方 Mira Cloud Relay 访问 Mira Desktop Host。Transport 只负责可达性与转发；Mira 继续负责配对、设备凭证、用户归属、能力范围、工具审批、撤销和审计。旧的自托管/配对 Relay 已按 DSK-017 退役，不再是可选 Transport。
 
 V1 不复制一套 Thread、Message、Workspace 或 Agent Runtime。完成配对后，设备凭证只被允许访问 Remote Gateway 明确映射到已批准 scope 的 canonical routes 或 Mobile-safe projection，由 Remote Gateway 在进入业务路由前完成设备认证与 scope 校验。
 
 ```text
 Mobile
   ├─ Direct / Tailscale / HTTPS
-  ├─ Relay / WSS
+  ├─ Official Cloud / WSS (native Cloud Host Grant)
   ├─ Device Credential
   ▼
 Remote Gateway
@@ -67,7 +67,7 @@ POST /remote/admin/pairing/challenges
 Authorization: Bearer <desktop user jwt>
 ```
 
-Host 在 Tailscale Direct 为 `ready` 或 Mira Relay 为 `connected` 时创建挑战；两者都可用时，二维码同时携带两个 endpoint。响应包含：
+Host 只有在 Tailscale Direct 为 `ready` 且存在访问地址时才创建挑战。旧的自托管 Mira Relay 不再参与配对，因此不存在 Relay-only challenge，二维码也不会携带 Relay 字段。响应包含：
 
 - `challengeId`
 - 8 位一次性配对码
@@ -87,7 +87,7 @@ Content-Type: application/json
   "code": "ABCDEFGH",
   "deviceName": "K70",
   "platform": "android",
-  "transport": "relay",
+  "transport": "direct",
   "publicKey": "optional-device-public-key",
   "requestedScopes": ["threads:read", "messages:read", "messages:write"]
 }
@@ -95,7 +95,7 @@ Content-Type: application/json
 
 响应返回 `claimId` 与一次性 `pollToken`。Host 只保存 poll token 的哈希。
 
-`transport` 可选值为 `relay` 或 `direct`，只记录 Mobile 实际选择的申请通道，供 Desktop 配对确认界面展示。它不参与认证、poll token、设备凭据、scope、审批或 endpoint 判定；旧 Mobile 不发送该字段时按“未知”展示。
+`transport` 当前只接受 `direct`，只记录 Mobile 的实际申请通道，供 Desktop 配对确认界面展示。它不参与认证、poll token、设备凭据、scope、审批或 endpoint 判定；旧 Mobile 不发送该字段时按“未知”展示。历史记录中的 `relay` 只作为非机密诊断值保留，读取时按未知处理，不会重新启用旧 Transport。
 
 ### 3.3 Desktop 确认
 
