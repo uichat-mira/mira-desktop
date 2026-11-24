@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: runtime
-Last verified: 2026-11-19
+Last verified: 2026-11-24
 Layer: raw-source
 Module: Develoments
 Feature: RuntimeArchitecture
@@ -105,15 +105,15 @@ Host/Port 时使用独立的 `socks5h` 代理连接（DNS 在代理侧解析）�
 ### 打包态
 
 ```text
-UIChat.exe
+Electron desktop application (Windows EXE / macOS .app)
   ├─ Electron main process
   ├─ preload bridge
-  └─ bundled Node backend
-       └─ terminal -> bundled Terminal Dev Runtime + system PATH fallback
+  └─ bundled Node backend (platform-native Node executable)
+       └─ terminal -> platform-specific runtime / PATH resolution
 ```
 
 
-Electron 使用 `node-runtime/` 与 `terminal-runtime/` staging 输入。桌面壳层只把 resources 根目录传给 Backend；终端 PATH 的组件校验、优先顺序和 system fallback 由 Backend 统一处理，不进入 renderer 或 preload 合同。详见 `../build/terminal-dev-runtime.md`。
+Electron 使用平台原生的 `node-runtime/` staging 输入（Windows 为 `node.exe`，macOS 为 `node`），独立于 Electron 内嵌 Node。Windows 另有 `terminal-runtime/` 完整工具链；macOS 的终端能力与未提供的 bundled 组件按平台合同处理。桌面壳层只把 resources 根目录传给 Backend；终端 PATH 的组件校验、优先顺序和 system fallback 由 Backend 统一处理，不进入 renderer 或 preload 合同。详见 `../build/terminal-dev-runtime.md`。
 
 ## 当前稳定边界
 
@@ -124,7 +124,7 @@ Electron 使用 `node-runtime/` 与 `terminal-runtime/` staging 输入。桌面�
 - 模型调用前的上下文预算与审计应由 backend runtime 统一处理
 - Main Agent、forked Skill Agent、private Runtime、审批恢复和 Parent recovery 的当前合同见 `multi-agent-execution-truth.md`
 
-当前正式打包仍以 Windows 为基线。Electron 开发态对 renderer 暴露宿主
+当前构建链支持 Windows x64、macOS Intel x64 与 Apple Silicon arm64，三平台 dev 安装包均已构建成功。Windows 保持既有正式发行基线；macOS DMG 尚未完成 Developer ID 签名、公证及当前候选包的干净机安装启动验收，不等同于已完成正式发行。构建与发布合同以 [Build](../build/README.md) 为准。Electron 开发态对 renderer 暴露宿主
 `process.platform`，已验证 `win32` 与 `darwin`。
 
 工作空间根目录由 backend 按宿主平台校验：Windows 接受盘符绝对路径或

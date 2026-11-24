@@ -2,11 +2,12 @@
 
 Status: Proposed
 Owner: platform
+Last verified: 2026-11-24
 Layer: raw-source
 Module: Developments
 Feature: PlatformRuntime
 Doc Type: implementation-plan
-Canonical: true
+Canonical: false
 Related:
   - ../architecture/README.md
   - ../architecture/ipc-and-preload.md
@@ -28,7 +29,7 @@ Related:
 - 共享构建输入、原生依赖、终端运行时、浏览器 Native Messaging、TTS、签名公证应该如何分期
 - 每一期的交付边界、验收门槛与明确不做项
 
-这不是“在现有配置里补一个 `mac` target”的任务。当前仓库虽然已经出现 DMG、ICNS、POSIX shell、Darwin 生命周期等基础，但共享桌面构建输入和生产运行时仍以 Windows x64 为单点真相。若不先拆平台合同，macOS 构建即使生成 `.app` 或 `.dmg`，也会在 backend、SQLite、Terminal Runtime、Piper 或 Native Messaging 任一环节失效。
+这是 macOS 平台改造的分期与历史证据文档，不是当前构建合同。初期共享构建输入以 Windows x64 为基线；现已实现独立 Intel 与 Apple Silicon payload 构建。当前实际命令和发布边界以 [Build](../build/README.md) 为准，以下分期保留未完成的安装、原生能力与签名验收。
 
 ## 结论
 
@@ -123,14 +124,14 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 
 | 编号 | 改造项 | 状态 | 已有证据 | 当前阻塞或下一步 |
 | --- | --- | --- | --- | --- |
-| P0 | 分支与现状核查 | 已完成 | 工作分支为 `codex/node26-macos-arm64`；已核对 Electron、Tauri、backend、Terminal Runtime、Piper、Native Messaging 与 release flow | 保持核查结论随代码变化更新 |
-| P1 | 本地依赖与基线 | 已完成 | workspace 依赖已链接；四个关键 native module 可在 `darwin-arm64` 加载；Electron 压缩包 checksum 通过；本地开发签名验证通过 | `pnpm check` 的既有类型错误保留为独立基线缺陷 |
+| P0 | 分支与现状核查 | 已完成 | 原工作分支为 `codex/node26-macos-arm64`，后经 PR #500 合入 dev；已核对 Electron、Tauri、backend、Terminal Runtime、Piper、Native Messaging 与 release flow | 保持核查结论随代码变化更新 |
+| P1 | 本地依赖与基线 | 已完成 | workspace 依赖已链接；四个关键 native module 可在 `darwin-arm64` 加载；Electron 压缩包 checksum 通过；本地开发签名验证通过 | 原类型错误为历史记录；PR #500 的 `pnpm check` 与 Windows PR Check 已通过 |
 | P2 | 平台能力合同 | 进行中 | 已形成 Core / Extended 分层、首版边界与分期方案 | 确认 capability matrix 与 artifact manifest schema |
 | P3 | Electron macOS 开发态 | 已完成 | Electron 31.7.7、backend、Vite、SQLite、`sqlite-vec` 和 Unix WebBridge socket 已在 Mac 启动；真实 Electron 已通过登录、Chat Composer、自定义 Workspace UI 创建、普通附件和 POSIX Terminal smoke；Agent 路由已验证绑定 Workspace 根路径传递；正常退出后无项目进程、监听端口或 socket 残留 | 后续缺陷按深度使用反馈进入独立任务包 |
-| P4 | Shared payload 平台化 | 已完成 | arm64 staging 已按 `darwin-arm64` 选择 `better-sqlite3`、`sharp`、`sqlite-vec`、`node-pty` 原生资源，并由 `node scripts/build-dist.js mac-arm64 --notest` 完整产出 Electron payload | Windows 与 Intel lane 仍需在 CI 中继续回归；能力矩阵与 manifest 文档化仍属 P2 |
-| P5 | Darwin arm64 runtime | 已完成 | 随包 Node `v26.13.1` 的 arm64 runtime 已准备并通过 staged server smoke；Node ABI 147、`better-sqlite3`、`sqlite-vec`、`node-pty` 均在 staged payload 中加载/识别 | 需要在 GitHub Actions arm64 runner 上重复验证，确认远端环境一致 |
+| P4 | Shared payload 平台化 | 已完成 | arm64 staging 已按 `darwin-arm64` 选择 `better-sqlite3`、`sharp`、`sqlite-vec`、`node-pty` 原生资源，并由 `node scripts/build-dist.js mac-arm64 --notest` 完整产出 Electron payload | Windows、Intel 与 arm64 dev 构建均通过；能力矩阵与 manifest 文档化仍属 P2 |
+| P5 | Darwin arm64 runtime | 已完成 | 随包 Node `v26.13.1` 的 arm64 runtime 已准备并通过 staged server smoke；Node ABI 147、`better-sqlite3`、`sqlite-vec`、`node-pty` 均在 staged payload 中加载/识别 | dev 原生 arm64 runner 已通过 staged smoke 与 DMG 构建（见下方 CI 证据）；当前安装启动仍待验证 |
 | P6 | Electron 内部 DMG | 已完成（未签名内部包） | `release/v0.106.2_20261123_153012/electron/UIChat Mira-0.106.2-arm64.dmg` 已生成；DMG 为 UDZO，应用与随包 runtime/native 二进制均为 arm64 | 当前无 Developer ID 签名、公证或干净机安装 smoke；继续保留为 P8 发布门 |
-| P7 | Windows 回归与 MVP 验收 | 未开始 | Windows 当前合同已列入不可破坏项 | 依赖 macOS 开发态和内部 DMG |
+| P7 | Windows 回归与 MVP 验收 | 进行中 | dev Windows 安装包构建成功；PR #500 Windows Server 全量测试复跑通过 | dev 打包内的前端路由守卫 3 项测试失败，根因待查；当前候选包安装启动及 macOS MVP 验收未完成 |
 | P8 | Native Messaging / TTS / 正式发布 | 未开始 | 已识别平台差异和签名对象 | 不阻塞 Core；按独立审批门推进 |
 | P9 | Tauri macOS 对齐（已退役） | 已取消 | 原方案属于双壳时期历史规划 | DSK-011 退役 Tauri；Electron macOS 与 Apple Silicon 路线继续推进 |
 
@@ -163,6 +164,15 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 - [x] 新增 Apple Silicon arm64 分支构建与正式发布 lane：`macos-15` arm64 runner、独立 DMG artifact、GitHub Release 资产和 R2 `mira/macos-arm64/latest/` 校验路径。
 - [x] 在本机生成并检查 arm64 DMG：应用主二进制、随包 Node、`better_sqlite3.node`、`node-pty` helper 与 `sqlite-vec` dylib 均识别为 arm64。
 
+### 2026-11-24 Node 26 与三平台构建证据
+
+PR [#500](https://github.com/uichat-mira/mira-desktop/pull/500) 已合入 dev（`0fab01b255bb828f4069fbf508760349a9cc7fb4`）。独立 Backend Node 为 26.13.1 / ABI 147，Electron 45 内嵌 Node 保持独立。
+
+- [Windows x64](https://github.com/uichat-mira/mira-desktop/actions/runs/45349951900)、[Intel macOS](https://github.com/uichat-mira/mira-desktop/actions/runs/45349951915)、[Apple Silicon](https://github.com/uichat-mira/mira-desktop/actions/runs/45349951974) 均完成 dev 安装包构建；Windows 与 macOS staging native smoke 随构建执行。
+- [PR Windows Server 复跑](https://github.com/uichat-mira/mira-desktop/actions/runs/45348643499) 已通过；首次 Chromium wait 失败根因未确认。
+- Windows dev 打包内的完整前端报告仍有 `routeGuards.test.tsx` 三项失败；普通打包成功不代表测试全部通过。
+- 本轮未晋级 test/prod、未发布正式 Tag、未更新公共 R2。当前候选包安装启动、干净 Mac 验收与 Developer ID 签名、公证仍未完成。
+
 ### 当前进行项
 
 - [ ] 确认首版 capability matrix。
@@ -170,7 +180,8 @@ macOS 不应以“所有 Windows 功能同日齐平”为唯一开工条件。�
 
 ### 当前阻塞
 
-- `pnpm check` 在 `server/src/services/remote-relay-connector.service.ts:515` 因 Fetch body 类型不兼容失败；需要作为独立基线缺陷确认处理边界。
+- 历史 `pnpm check` Fetch body 类型错误不再作为当前阻塞；本轮 PR Check 已通过。
+- 当前待核验：Windows dev 前端路由守卫测试失败、当前候选包安装启动、macOS 干净机验收与签名公证。
 
 ### 进度更新规则
 

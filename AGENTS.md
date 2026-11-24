@@ -67,9 +67,9 @@ If other docs, comments, or legacy files still mention `UI Chat RAG Tester`, tre
 
 ### Backend Startup
 
-- Development: start desktop workflows through the root `pnpm dev:electron:win` commands.
+- Development: use the root `pnpm dev:electron:win` or `pnpm dev:electron:mac` command for the host platform.
 - Do not refactor or replace the existing desktop dev startup chains unless you verify the full flow end-to-end. In particular, avoid changing the backend launch path, watch mode, or workspace invocation style without confirming that the relevant dev command still brings up Vite, backend health (`/health`), and the desktop shell together on Windows.
-- Production: Electron main starts `resources/node-runtime/node.exe` with `resources/server/server.cjs`.
+- Production: Electron main starts the bundled Node backend using `resources/node-runtime/node.exe` on Windows or `resources/node-runtime/node` on macOS, with `resources/server/server.cjs`. The bundled runtime is independent of Electron's embedded Node; version and checksums are owned by `scripts/node-runtime.lock.json`. See `docs/build/README.md` for supported packaging targets.
 - Native dependencies for the backend are copied into `resources/server/node_modules` during packaging.
 
 ### UI

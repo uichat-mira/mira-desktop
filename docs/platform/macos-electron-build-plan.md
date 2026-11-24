@@ -1,6 +1,6 @@
 # macOS Electron 构建分层验证规划表（Intel 优先）
 
-Status: Planned
+Status: Superseded
 Owner: platform
 Last verified: 2026-10-01
 Layer: raw-source
@@ -31,9 +31,9 @@ Related:
 
 > **历史版本说明（2026-10-28）：** 本文 L6 中 Electron 31 / Node 22.23.1 是当时的实测和修复记录，不代表当前安装包版本。当前独立 Node 锁定版本以 `scripts/node-runtime.lock.json` 为准（Node 26.13.1），升级后的运行验收另行记录。
 
-> **当前分支验收（2026-11-24）：** `codex/node26-macos-arm64` 已在 Apple Silicon 主机上用 Node 26.13.1 完成 staged server smoke，并生成 arm64 内部 DMG。本文下方的 Intel-first 分期与 Node 22 历史表格保留作原始证据；当前构建、发布与未签名边界以 [`docs/build/README.md`](../build/README.md) 和 [`macos-implementation-phases.md`](./macos-implementation-phases.md) 为准。
+> **后续实现（2026-11-24）：** PR [#500](https://github.com/uichat-mira/mira-desktop/pull/500) 已进入 dev，Node 26.13.1 与 Intel、Apple Silicon 独立 DMG 构建已落地。本地 staged smoke 与 dev 三平台构建结果见 [平台分期](./macos-implementation-phases.md)。本文下方的 Intel-first 分期与 Node 22 历史表格保留作原始证据；当前构建、发布与未签名边界以 [`docs/build/README.md`](../build/README.md) 和 [`macos-implementation-phases.md`](./macos-implementation-phases.md) 为准。
 
-这页是 **Planning 文档**，不是 current-contract。它不宣称 macOS 已支持。执行前必须逐层经项目负责人确认；每层只在该层验证有实测证据后才可标记通过。
+这页是 **Superseded 历史计划**，不是 current-contract。以下步骤及通过标准保留为当时的施工证据，不再作为新施工指令。
 
 ## 总原则
 

@@ -80,7 +80,7 @@ pnpm version:sync
 
 | 事件 | 行为 |
 | --- | --- |
-| Pull Request → `dev/test/prod` | 轻量检查，不执行完整桌面打包 |
+| Pull Request → `dev/test/prod` | 轻量检查；arm64 workflow 对其 paths 过滤匹配的构建相关改动额外执行 DMG 打包 |
 | push → `dev` | Windows workflow 构建 Electron；独立 macOS workflows 并行构建 Intel 与 Apple Silicon DMG。macOS dev 构建跳过重复 release test-report 生成，三者互不等待 |
 | push → `test` | Windows workflow 构建 Electron；独立 macOS workflows 并行构建 Intel 与 Apple Silicon DMG。macOS test 构建跳过重复 release test-report 生成，三者互不等待 |
 | push → `prod` | Windows、Intel macOS 与 Apple Silicon macOS 使用独立 workflow 完整构建并保存短期 artifact，**不覆盖公共 R2 latest** |
@@ -109,7 +109,7 @@ mira/macos-arm64/latest/     # Apple Silicon macOS Electron DMG
 
 普通 `prod` 分支推送只构建和保存短期 artifact，不能写公共 R2。只有稳定的 `vX.Y.Z` Tag 能进入正式发布；不同新版本发布共享串行组，防止相互覆盖。正式发布必须等待 Windows Release Factory、Intel macOS 与 Apple Silicon macOS 构建都成功，且在更新 GitHub Release 前检查 R2 凭据。新的发布工作流拒绝非最新 Tag 覆盖公共 R2；**历史 Tag 自带的旧工作流不会被追溯修改，禁止重跑旧 Tag 发布工作流**。
 
-Tag 发布先验证 Windows Setup、macOS Intel DMG、Apple Silicon macOS DMG 和对应 blockmap 的文件名、版本及非零大小，再验证 GitHub Release 的对应文件和字节大小；R2 同步后还要检查各平台 latest 目录仅包含预期两个对象且大小匹配。Tauri 资产混入、文件缺失、尺寸不匹配或目录残留均阻断发布。Windows、Intel macOS 与 Apple Silicon macOS 三条发布链都通过后，整体发布状态才成功。
+Tag 发布等待三个构建 job 成功后，先校验并发布 Windows Setup 与 blockmap，再分别校验并追加 Intel、Apple Silicon DMG 与 blockmap；各平台校验文件名、版本及非零大小，并核对 GitHub Release 的对应文件和字节大小；R2 同步后还要检查各平台 latest 目录仅包含预期两个对象且大小匹配。Tauri 资产混入、文件缺失、尺寸不匹配或目录残留均阻断发布。Windows、Intel macOS 与 Apple Silicon macOS 三条发布链都通过后，整体发布状态才成功。
 
 这三个前缀仍各自使用 `--delete` 清理本平台 latest 中的旧产物，不删除历史 GitHub Release / Tag。GitHub 与 R2 上传存在短暂先后窗口；若发生部分失败，工作流必须标红，由维护者重试或修复，不能把部分成功描述为完全发布。旧 `mira/previous/` 不再由工作流主动删除。
 
@@ -198,7 +198,7 @@ Node/npm/npx、MinGit、uv、ripgrep 的固定版本、checksum、共享 Electro
 
 ## Release 构建原则
 
-Release 构建必须执行一次完整测试流程，并把这次完整测试生成的官方 JSON 报告随包发布。
+默认普通打包执行完整测试流程并将生成的官方 JSON 报告随包保存；显式 `--notest`（包括 macOS dev/test 构建）不重新生成报告。Windows 正式 Tag 发行使用 Release Factory V2 独立验证清单，复用通过验证的报告。
 
 这条规则的含义：
 
@@ -218,7 +218,7 @@ Release 构建必须执行一次完整测试流程，并把这次完整测试生
 
    当前认可的官方稳定 JSON 报告目录，仅保存前端自定义渲染需要的 JSON 产物。
 
-release 允许“测试有失败，但官方 JSON 已成功生成”这种情况继续打包；这样包内开发页仍然能准确展示失败用例。只有报告缺失或生成中断时才阻断构建。
+普通 `build-dist.js` 打包允许“测试有失败，但官方 JSON 已成功生成”时继续生成诊断安装包，包内开发页仍可展示失败用例；报告缺失或生成中断才阻断这条报告链。**打包成功不等于全量测试通过。** Windows 正式 Tag 发布的 Release Factory V2 另有独立验证清单，失败的验证不能生成合格发行 payload；macOS 正式 Tag 构建仍走普通打包报告链，不能将其报告生成成功误报为全量测试通过。
 
 ## Electron Release 流程
 
@@ -642,13 +642,12 @@ pnpm package:electron:win
 
 Electron 另有独立的 Intel 与 Apple Silicon macOS CI / GitHub Release 路径：
 
-- GitHub-hosted `macos-15-intel` runner 上执行 `node scripts/build-dist.js mac`；
+- GitHub-hosted `macos-15-intel` runner 上执行 `node scripts/build-dist.js mac`；`macos-15` arm64 runner 上执行 `node scripts/build-dist.js mac-arm64`；
 - server native module、bundled Node 26.13.1 与 staged runtime smoke 应分别按 `darwin-x64` 和 `darwin-arm64` 实际验收；Node 24 的历史验收不代表 Node 26 已验证通过；
 - `dev/test/prod` 保存短期 Actions DMG artifact；其中 `dev/test` 为降低重复 CI 成本跳过 release test-report 重生成，`prod` 保持完整打包但不写公共 R2；
 - `v*` tag 使用完整 Intel 与 Apple Silicon macOS 打包并把两个 DMG 追加到 GitHub Release；
 - Intel 与 Apple Silicon DMG 当前**未做 Developer ID 签名与公证**；仅正式 `v*` 发布可同步到各自的 R2 前缀；
-- 这条 Intel 兼容性 lane 不改变 canonical macOS 首发目标 `darwin-arm64`，不能替代后续 arm64 release/payload 证据。
-- Apple Silicon lane 使用 `macos-15` arm64 runner，产出独立的 `darwin-arm64` DMG 和 R2 前缀 `mira/macos-arm64/latest/`。
+- Intel 与 Apple Silicon 是独立原生构建目标，互不替代实际运行和安装验收证据。
 
 其余边界：
 

@@ -122,9 +122,14 @@ Historical、Archived、Superseded、Deprecated、Completed，以及 `archive/` 
 - [[remote-access/desktop-mcp-server-v1]]：Desktop 标准 MCP Server 出口、认证/scope、能力 Resource、审批与 Direct/Relay 传输矩阵；
 - [[remote-access/push-broker-v1]]：Push Broker V1 独立服务、身份授权、event ingest 与 Relay 边界；
 - [[remote-access/host-notification-outbox-v1]]：Host canonical notification eligibility、durable outbox、binding 与 Broker delivery；
-- [[platform/macos-implementation-phases]]：macOS 支持缺口、改造进度与验收门槛（Proposed，不代表当前已支持）；
-- [[platform/macos-electron-build-exploration]]：macOS Electron 构建独立探索（Intel 优先，research，不代表当前已支持）；
-- [[platform/macos-electron-build-plan]]：macOS Electron 构建分层验证规划表（Intel 优先，plan，不代表当前已支持）。
+- [[build/README]]：当前三平台构建、测试报告、正式发布与分发合同；
+- [[architecture/README]]：桌面共享运行时与打包态架构。
+
+### macOS 平台规划与历史证据
+
+- [[platform/macos-implementation-phases]]：平台分期与验收记录（Proposed；已实现范围与未验收事项分列）；
+- [[platform/macos-electron-build-exploration]]：早期 Intel 构建探索（Historical）；
+- [[platform/macos-electron-build-plan]]：已被现行构建链替代的 Intel-first 分层计划（Superseded，保留原始实测）。
 
 ## Provider 文档引用规则
 
