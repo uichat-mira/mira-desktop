@@ -12,6 +12,12 @@ export interface HarnessCapabilityProfile {
   sourceLabel?: string;
   preferredToolId?: string;
   /**
+   * True when this is the one-to-one projection for a Tool that has no
+   * authored semantic group. Consumers that publish capability groups must
+   * not present this fallback as a fabricated product capability.
+   */
+  fallback?: boolean;
+  /**
    * Tools owned by this capability/product surface. Workbench grouping and
    * grouped-capability expansion use this list.
    */

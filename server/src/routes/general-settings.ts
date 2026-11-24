@@ -3,6 +3,7 @@ import { generalSettingsRepository } from "@/db/repositories/general-settings.re
 import { tailscaleRemoteAccessRepository } from "@/db/repositories/tailscale-remote-access.repository.js";
 import { errorEnvelope, successEnvelope } from "@/routes/schema-helpers.js";
 import remoteAccessRoute from "@/routes/remote-access.js";
+import remoteMcpRoute from "@/routes/remote-mcp.js";
 import remoteRoleSummaryRoute from "@/routes/remote-role-summary.js";
 import {
   TailscaleRemoteAccessError,
@@ -343,6 +344,7 @@ const generalSettingsRoute: FastifyPluginAsync = async (app) => {
   );
 
   await app.register(remoteAccessRoute);
+  await app.register(remoteMcpRoute);
   await app.register(remoteRoleSummaryRoute);
   await app.register(memoryRoute);
 };

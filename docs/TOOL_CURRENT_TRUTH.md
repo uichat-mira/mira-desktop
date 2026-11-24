@@ -1,7 +1,7 @@
 ---
 status: current
 owner: runtime
-last_verified: 2026-10-19
+last_verified: 2026-11-24
 layer: wiki
 module: Tool
 feature: ToolRuntime
@@ -488,6 +488,16 @@ External MCP projected tool：
 - `sideEffect = network`；
 - `requiresApproval = true`；
 - 不允许 provider 私有命令或旧 id 穿透。
+
+### Remote MCP outlet
+
+Desktop 另有面向已授权 Mobile 的受控标准 MCP Server：`POST /mcp`。它复用
+`remote-tool-gateway` 的同一 `agent_intent` exposure、runtime readiness 与
+Remote V1 设备/Cloud Host Grant 准入，不新建 Tool Registry 或执行链。可选
+`mira://service/mira-desktop/capabilities` Resource 只引用同一 `tools/list`
+中的真实工具；无 authored capability group 时按普通 MCP 扁平工具降级。
+Remote V1 工具路由仍保留，尚未完成受支持消费者 cutover。完整合同见
+[`remote-access/desktop-mcp-server-v1.md`](remote-access/desktop-mcp-server-v1.md)。
 
 ## 10. WenShu / Skill-private Runtime 不属于普通 Tool Exposure
 
