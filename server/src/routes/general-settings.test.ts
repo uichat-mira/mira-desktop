@@ -158,7 +158,7 @@ describe("general settings routes", () => {
     await app.close();
   });
 
-  it("rejects enabling Mira Serve while Mira Cloud owns remote access", async () => {
+  it("rejects changing Mira Serve while Mira Cloud owns remote access", async () => {
     const app = await createApp();
     cloudRemoteAccessMode.applyNativeSessionState("signed_in");
 
@@ -175,7 +175,14 @@ describe("general settings routes", () => {
       url: "/general-settings/tailscale-remote-access",
       payload: { enabled: false },
     });
-    expect(disable.statusCode).toBe(200);
+    expect(disable.statusCode).toBe(403);
+    expect(mocks.updateEnabled).not.toHaveBeenCalled();
+    cloudRemoteAccessMode.applyNativeSessionState("signed_out");
+    const restored = await app.inject({
+      method: "PUT", url: "/general-settings/tailscale-remote-access",
+      payload: { enabled: false },
+    });
+    expect(restored.statusCode).toBe(200);
     expect(mocks.updateEnabled).toHaveBeenCalledWith(false);
     await app.close();
   });

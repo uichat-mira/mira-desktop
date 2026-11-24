@@ -312,6 +312,8 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       const tailscale = await tailscaleRemoteAccessService.getSnapshot({
         verifyHealth: true,
       });
+      // Cloud login may complete during the asynchronous health check.
+      assertDirectRemoteAccessAllowed();
       const directHostUrl =
         tailscale.runtime.state === "ready" && tailscale.runtime.accessUrl
           ? tailscale.runtime.accessUrl

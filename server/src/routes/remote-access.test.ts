@@ -980,6 +980,18 @@ describe("remote access routes", () => {
     await app.close();
   });
 
+  it("denies a pairing challenge if Cloud signs in during the health check", async () => {
+    const app = await createApp({ authenticated: true });
+    mocks.tailscale.getSnapshot.mockImplementationOnce(async () => {
+      cloudRemoteAccessMode.applyNativeSessionState("signed_in");
+      return readySnapshot;
+    });
+    const response = await app.inject({ method: "POST", url: "/remote/admin/pairing/challenges" });
+    expect(response.statusCode).toBe(403);
+    expect(mocks.pairing.createChallenge).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("restores Direct pairing after a confirmed Cloud sign-out", async () => {
     const app = await createApp({ authenticated: true });
     cloudRemoteAccessMode.applyNativeSessionState("signed_in");

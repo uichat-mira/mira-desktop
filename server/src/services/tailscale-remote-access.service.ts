@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import CONFIG from "@/config/index.js";
 import { getSqlite } from "@/db/index.js";
 import { hostNotificationRepository } from "@/db/repositories/host-notification.repository.js";
-import type { CloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
+import { cloudRemoteAccessMode, type CloudRemoteAccessMode } from "@/services/cloud-remote-access-mode.service.js";
 import {
   tailscaleRemoteAccessRepository,
   type TailscalePairedDevice,
@@ -59,7 +59,8 @@ export type TailscaleRemoteAccessErrorCode =
   | "TAILSCALE_NOT_INSTALLED"
   | "TAILSCALE_NOT_CONNECTED"
   | "TAILSCALE_SERVE_CONFLICT"
-  | "TAILSCALE_COMMAND_FAILED";
+  | "TAILSCALE_COMMAND_FAILED"
+  | "TAILSCALE_CLOUD_MODE_BLOCKED";
 
 export class TailscaleRemoteAccessError extends Error {
   constructor(
@@ -508,9 +509,24 @@ export class TailscaleRemoteAccessService {
     }
   }
 
-  async updateEnabled(
-    enabled: boolean,
-  ): Promise<TailscaleRemoteAccessSnapshot> {
+  private serializeServeChange<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.reconcileChain.then(operation);
+    this.reconcileChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  async updateEnabled(enabled: boolean): Promise<TailscaleRemoteAccessSnapshot> {
+    return this.serializeServeChange(() => this.applyEnabled(enabled));
+  }
+
+  private async applyEnabled(enabled: boolean): Promise<TailscaleRemoteAccessSnapshot> {
+    const assertMode = () => {
+      if (!cloudRemoteAccessMode.isDirectRemoteAccessAllowed()) {
+        throw new TailscaleRemoteAccessError("TAILSCALE_CLOUD_MODE_BLOCKED",
+          "Tailscale Direct remote access is unavailable while Mira Cloud owns remote access");
+      }
+    };
+    assertMode();
     const currentConfig = tailscaleRemoteAccessRepository.getConfig();
     const status = await this.readStatus();
 
@@ -535,6 +551,7 @@ export class TailscaleRemoteAccessService {
       );
     }
 
+    assertMode();
     try {
       if (enabled && !ownership.managedByMira) {
         await this.runCommand([
@@ -578,9 +595,7 @@ export class TailscaleRemoteAccessService {
   ): Promise<void> {
     // Serialize reconfiguration so a fast sign-in/sign-out sequence cannot
     // interleave commands and finish exposing Serve after a newer sign-in.
-    const run = this.reconcileChain.then(() => this.applyCloudRemoteAccessMode(mode));
-    this.reconcileChain = run.catch(() => undefined);
-    return run;
+    return this.serializeServeChange(() => this.applyCloudRemoteAccessMode(mode));
   }
 
   private async applyCloudRemoteAccessMode(
@@ -619,7 +634,8 @@ export class TailscaleRemoteAccessService {
       return;
     }
 
-    if (config.enabled && !ownership.configured) {
+    if (config.enabled && !ownership.configured &&
+        cloudRemoteAccessMode.isDirectRemoteAccessAllowed()) {
       await this.runCommand([
         "serve",
         "--bg",

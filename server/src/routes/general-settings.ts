@@ -158,6 +158,7 @@ const toTailscaleSnapshot = (
 
 const mapTailscaleError = (error: unknown): never => {
   if (error instanceof TailscaleRemoteAccessError) {
+    if (error.code === "TAILSCALE_CLOUD_MODE_BLOCKED") throw forbidden(error.message);
     throw badRequest(error.message, { cause: error });
   }
 
@@ -283,8 +284,7 @@ const generalSettingsRoute: FastifyPluginAsync = async (app) => {
     routeHandler("Failed to update Tailscale remote access", async (request) => {
       // DSK-018: Mira Cloud owns remote access while signed in. Enabling a
       // second Direct exposure from a cached UI or stale request must fail.
-      if (request.body.enabled &&
-          !cloudRemoteAccessMode.isDirectRemoteAccessAllowed()) {
+      if (!cloudRemoteAccessMode.isDirectRemoteAccessAllowed()) {
         throw forbidden(
           "Tailscale Direct remote access is unavailable while this Desktop is signed in to Mira Cloud",
         );
