@@ -10,7 +10,7 @@ function fixture(platform = "win") {
   const tag = "v0.106.0";
   const installer = platform === "win"
     ? "electron_UIChat_Mira_Setup_0.106.0.exe"
-    : "macos-intel_UIChat Mira-0.106.0.dmg";
+    : `${platform}_UIChat Mira-0.106.0.dmg`;
   const names = [installer, installer + ".blockmap"];
   const objects = names.map((name, index) => {
     const size = index === 0 ? 137 : 19;
@@ -23,7 +23,7 @@ function fixture(platform = "win") {
     prerelease: false,
     assets: objects.map(obj => ({ name: obj.name.replace(/ /g, "."), size: obj.size })),
   };
-  const prefix = platform === "win" ? "mira/latest/" : "mira/macos-intel/latest/";
+  const prefix = platform === "win" ? "mira/latest/" : `mira/${platform}/latest/`;
   const r2 = {
     IsTruncated: false,
     Contents: objects.map(obj => ({ Key: prefix + obj.name, Size: obj.size })),
@@ -39,10 +39,12 @@ test("Windows Electron installer and blockmap match GitHub and R2", () => {
 });
 
 test("macOS space-normalized GitHub names preserve original R2 names", () => {
-  const f = fixture("macos-intel");
-  try {
-    assert.equal(verify("macos-intel", f.tag, f.dir, f.github, f.r2).installer, f.installer);
-  } finally { f.dispose(); }
+  for (const platform of ["macos-intel", "macos-arm64"]) {
+    const f = fixture(platform);
+    try {
+      assert.equal(verify(platform, f.tag, f.dir, f.github, f.r2).installer, f.installer);
+    } finally { f.dispose(); }
+  }
 });
 
 test("a missing blockmap or extra Tauri file fails before upload", () => {

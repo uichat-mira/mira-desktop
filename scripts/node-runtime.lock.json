@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "version": "24.22.1",
+  "version": "26.13.1",
   "license": "MIT",
-  "licenseUrl": "https://github.com/nodejs/node/blob/v24.22.1/LICENSE",
+  "licenseUrl": "https://github.com/nodejs/node/blob/v26.13.1/LICENSE",
   "platforms": {
     "darwin-x64": {
-      "archiveName": "node-v24.22.1-darwin-x64.tar.gz",
-      "url": "https://nodejs.org/dist/v24.22.1/node-v24.22.1-darwin-x64.tar.gz",
-      "sha256": "d132557e7ee2b85af08b0c8c34338e65c6430f2238d01f727728ef42dc83b035"
+      "archiveName": "node-v26.13.1-darwin-x64.tar.gz",
+      "url": "https://nodejs.org/dist/v26.13.1/node-v26.13.1-darwin-x64.tar.gz",
+      "sha256": "82bb96078a24ca50b9c9a38f2379e6be6d87171fcd400fc14c8934b3bce96e2f"
     },
     "darwin-arm64": {
-      "archiveName": "node-v24.22.1-darwin-arm64.tar.gz",
-      "url": "https://nodejs.org/dist/v24.22.1/node-v24.22.1-darwin-arm64.tar.gz",
-      "sha256": "89c682593d76cd44233fa53b1563264e7de9cbb189cad169135c5b4fadfbc0a7"
+      "archiveName": "node-v26.13.1-darwin-arm64.tar.gz",
+      "url": "https://nodejs.org/dist/v26.13.1/node-v26.13.1-darwin-arm64.tar.gz",
+      "sha256": "aec2514ea1ceb2ba52455e9ec65986f6749a06dd759e5db2a72e6889668c9735"
     }
   }
 }

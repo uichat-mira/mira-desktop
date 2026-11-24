@@ -70,7 +70,7 @@ const createWorkspaceRouter = () =>
   );
 
 beforeEach(() => {
-  // Node 24 Request requires its own AbortSignal implementation, not jsdom's.
+  // Node's Request requires its own AbortSignal implementation, not jsdom's.
   vi.stubGlobal("AbortController", transferableAbortController().constructor);
   boundaryState.mounts = 0;
   boundaryState.unmounts = 0;

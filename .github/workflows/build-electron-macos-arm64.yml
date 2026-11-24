@@ -1,0 +1,110 @@
+name: Build Electron macOS arm64
+
+on:
+  workflow_call:
+    inputs:
+      skip_release_tests:
+        description: Skip duplicate test-report generation for non-production branch CI.
+        required: false
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      skip_release_tests:
+        description: Skip duplicate test-report generation.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos-arm64:
+    name: Build Electron (macOS arm64)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Verify Apple Silicon runner
+        run: node -e 'if (process.platform !== "darwin" || process.arch !== "arm64") { throw new Error("Expected darwin/arm64, received " + process.platform + "/" + process.arch); }'
+
+      - name: Cache Electron builder and Node runtime
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron-builder
+            .local-runtimes/node-runtime
+          key: macos-arm64-electron-${{ hashFiles('pnpm-lock.yaml', 'scripts/node-runtime.lock.json') }}
+          restore-keys: |
+            macos-arm64-electron-
+
+      - name: Cache local model sources
+        uses: actions/cache@v4
+        with:
+          path: .local-models/raw
+          key: macos-arm64-local-models-v1-${{ hashFiles('scripts/prepare-local-model-packs.mjs') }}
+          restore-keys: |
+            macos-arm64-local-models-v1-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync package versions
+        run: pnpm version:sync
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Prepare cached local model sources
+        run: pnpm prepare:local-model-packs
+        env:
+          LOCAL_MODEL_RAW_ROOT: .local-models/raw
+          LOCAL_MODEL_ALLOW_NETWORK: '1'
+
+      - name: Build Apple Silicon DMG
+        shell: bash
+        env:
+          LOCAL_MODEL_RAW_ROOT: .local-models/raw
+          RELEASE_KEEP_COUNT: 3
+          SKIP_RELEASE_TESTS: ${{ inputs.skip_release_tests && '1' || '0' }}
+        run: |
+          args=(mac-arm64)
+          if [ "$SKIP_RELEASE_TESTS" = "1" ]; then
+            args+=(--notest)
+          fi
+          node scripts/build-dist.js "${args[@]}"
+
+      - name: Verify DMG output
+        shell: bash
+        run: |
+          dmg_count=$(find release -type f -name '*.dmg' -print | wc -l | tr -d ' ')
+          if [ "$dmg_count" -eq 0 ]; then
+            echo 'No Apple Silicon macOS DMG was produced.' >&2
+            exit 1
+          fi
+          printf 'Apple Silicon macOS DMG(s):\n'
+          find release -type f -name '*.dmg' -print
+
+      - name: Upload Apple Silicon macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-macos-arm64-${{ github.sha }}
+          path: |
+            release/**/electron/*.dmg
+            release/**/electron/*.dmg.blockmap
+          if-no-files-found: error
+          retention-days: 3

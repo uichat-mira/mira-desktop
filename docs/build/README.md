@@ -2,7 +2,7 @@
 
 Status: Current
 Owner: build
-Last verified: 2026-10-02
+Last verified: 2026-11-24
 Layer: raw-source
 Module: Build
 Feature: Packaging
@@ -42,6 +42,13 @@ Electron Windows release：
 pnpm package:electron:win
 ```
 
+macOS release：
+
+```bash
+pnpm package:electron:mac       # Intel x64
+pnpm package:electron:mac-arm64 # Apple Silicon
+```
+
 清理临时构建产物：
 
 ```bash
@@ -64,17 +71,18 @@ pnpm version:sync
 
 - `.github/workflows/build-desktop.yml`：Windows 环境分支包构建、测试与短期 Actions artifact，不写公共 R2。
 - `.github/workflows/build-macos-intel.yml`：Intel macOS 环境分支包及短期 artifact，不写公共 R2；与 Windows workflow 独立并行。
-- `.github/workflows/release-production.yml`：`v*` 标签正式发布；Windows 重型校验和打包由 `release-factory-v2.yml` 执行，并行调用 Intel macOS reusable build。
+- `.github/workflows/build-macos-arm64.yml`：Apple Silicon macOS 环境分支包及短期 artifact，不写公共 R2；与 Intel macOS workflow 独立并行。
+- `.github/workflows/release-production.yml`：`v*` 标签正式发布；Windows 重型校验和打包由 `release-factory-v2.yml` 执行，并行调用 Intel 与 Apple Silicon macOS reusable build。
 
 当前触发规则：
 
 | 事件 | 行为 |
 | --- | --- |
 | Pull Request → `dev/test/prod` | 轻量检查，不执行完整桌面打包 |
-| push → `dev` | Windows workflow 构建 Electron；独立 macOS workflow 构建 Intel DMG。macOS dev 构建跳过重复 release test-report 生成，二者互不等待 |
-| push → `test` | Windows workflow 构建 Electron；独立 macOS workflow 构建 Intel DMG。macOS test 构建跳过重复 release test-report 生成，二者互不等待 |
-| push → `prod` | Windows 与 Intel macOS 使用独立 workflow 完整构建并保存短期 artifact，**不覆盖公共 R2 latest** |
-| push → `v*` tag | Release Factory 完整校验 Windows 产物；并行构建 Intel macOS DMG。GitHub Release 保存 Windows + Intel macOS 资产；R2 分别更新 Windows `mira/latest/` 与 Intel macOS `mira/macos-intel/latest/` |
+| push → `dev` | Windows workflow 构建 Electron；独立 macOS workflows 并行构建 Intel 与 Apple Silicon DMG。macOS dev 构建跳过重复 release test-report 生成，三者互不等待 |
+| push → `test` | Windows workflow 构建 Electron；独立 macOS workflows 并行构建 Intel 与 Apple Silicon DMG。macOS test 构建跳过重复 release test-report 生成，三者互不等待 |
+| push → `prod` | Windows、Intel macOS 与 Apple Silicon macOS 使用独立 workflow 完整构建并保存短期 artifact，**不覆盖公共 R2 latest** |
+| push → `v*` tag | Release Factory 完整校验 Windows 产物；并行构建 Intel 与 Apple Silicon macOS DMG。GitHub Release 保存 Windows + 两种 macOS 资产；R2 分别更新 `mira/latest/`、`mira/macos-intel/latest/` 与 `mira/macos-arm64/latest/` |
 
 Windows 分支构建仍由 Electron 独立 job 执行；Intel macOS 已拆到独立 workflow，因此其长耗时不会延长 Windows `Build Desktop Apps` workflow。GitHub Actions 只上传最终桌面安装文件，不上传 `win-unpacked`、调试配置或整个 release 目录：
 
@@ -82,6 +90,7 @@ Windows 分支构建仍由 Electron 独立 job 执行；Intel macOS 已拆到独
 | --- | --- |
 | Electron Windows | `*Setup*.exe`、对应 `.exe.blockmap` |
 | Electron macOS Intel | `*.dmg`、对应 `.dmg.blockmap`；当前未签名，仅作为 Intel 兼容性 / 内部发板资产 |
+| Electron macOS Apple Silicon | `*.dmg`、对应 `.dmg.blockmap`；当前未签名，仅作为 arm64 内部发板资产 |
 | GitHub 自动生成 | Source code (`.zip`、`.tar.gz`，仅 GitHub Release) |
 
 Actions artifact 为短期构建产物；GitHub Release 保存标签版本历史。
@@ -93,13 +102,14 @@ Actions artifact 为短期构建产物；GitHub Release 保存标签版本历史
 ```text
 mira/latest/                 # Windows Electron
 mira/macos-intel/latest/     # Intel macOS Electron DMG
+mira/macos-arm64/latest/     # Apple Silicon macOS Electron DMG
 ```
 
-普通 `prod` 分支推送只构建和保存短期 artifact，不能写公共 R2。只有稳定的 `vX.Y.Z` Tag 能进入正式发布；不同新版本发布共享串行组，防止相互覆盖。Windows 发布必须等待 Windows Release Factory 与 Intel macOS 构建都成功，且在更新 GitHub Release 前检查 R2 凭据。新的发布工作流拒绝非最新 Tag 覆盖公共 R2；**历史 Tag 自带的旧工作流不会被追溯修改，禁止重跑旧 Tag 发布工作流**。
+普通 `prod` 分支推送只构建和保存短期 artifact，不能写公共 R2。只有稳定的 `vX.Y.Z` Tag 能进入正式发布；不同新版本发布共享串行组，防止相互覆盖。正式发布必须等待 Windows Release Factory、Intel macOS 与 Apple Silicon macOS 构建都成功，且在更新 GitHub Release 前检查 R2 凭据。新的发布工作流拒绝非最新 Tag 覆盖公共 R2；**历史 Tag 自带的旧工作流不会被追溯修改，禁止重跑旧 Tag 发布工作流**。
 
-Tag 发布先验证 Windows Setup / macOS Intel DMG 和对应 blockmap 的文件名、版本及非零大小，再验证 GitHub Release 的对应文件和字节大小；R2 同步后还要检查该平台 latest 目录仅包含预期两个对象且大小匹配。Tauri 资产混入、文件缺失、尺寸不匹配或目录残留均阻断发布。Windows 与 macOS 两条发布链都通过后，整体发布状态才成功。
+Tag 发布先验证 Windows Setup、macOS Intel DMG、Apple Silicon macOS DMG 和对应 blockmap 的文件名、版本及非零大小，再验证 GitHub Release 的对应文件和字节大小；R2 同步后还要检查各平台 latest 目录仅包含预期两个对象且大小匹配。Tauri 资产混入、文件缺失、尺寸不匹配或目录残留均阻断发布。Windows、Intel macOS 与 Apple Silicon macOS 三条发布链都通过后，整体发布状态才成功。
 
-这两套前缀仍各自使用 `--delete` 清理本平台 latest 中的旧产物，不删除历史 GitHub Release / Tag。GitHub 与 R2 上传存在短暂先后窗口；若发生部分失败，工作流必须标红，由维护者重试或修复，不能把部分成功描述为完全发布。旧 `mira/previous/` 不再由工作流主动删除。
+这三个前缀仍各自使用 `--delete` 清理本平台 latest 中的旧产物，不删除历史 GitHub Release / Tag。GitHub 与 R2 上传存在短暂先后窗口；若发生部分失败，工作流必须标红，由维护者重试或修复，不能把部分成功描述为完全发布。旧 `mira/previous/` 不再由工作流主动删除。
 
 R2 所需 GitHub Secrets：
 
@@ -111,7 +121,7 @@ R2_BUCKET
 R2_PUBLIC_BASE_URL
 ```
 
-Windows 公开镜像：`${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`；macOS Intel 镜像：`${R2_PUBLIC_BASE_URL}/mira/macos-intel/latest/<asset-name>`。离线发布校验回归：`node --test scripts/release/verify-release-mirror.test.mjs`。
+Windows 公开镜像：`${R2_PUBLIC_BASE_URL}/mira/latest/<asset-name>`；Intel macOS 镜像：`${R2_PUBLIC_BASE_URL}/mira/macos-intel/latest/<asset-name>`；Apple Silicon macOS 镜像：`${R2_PUBLIC_BASE_URL}/mira/macos-arm64/latest/<asset-name>`。离线发布校验回归：`node --test scripts/release/verify-release-mirror.test.mjs`。
 
 ## 本地模型资源
 
@@ -626,21 +636,22 @@ pnpm package:electron:win
 
 ## 当前平台边界
 
-正式 Release Factory V2 的 Windows Electron 发布以 Windows x64 为正式合同；R2 的 Windows 主分发前缀保持 `mira/latest/`，Intel macOS 兼容性包使用独立 `mira/macos-intel/latest/`。
+正式 Release Factory V2 的 Windows Electron 发布以 Windows x64 为正式合同；R2 的 Windows 主分发前缀保持 `mira/latest/`，Intel 与 Apple Silicon macOS 包分别使用 `mira/macos-intel/latest/` 和 `mira/macos-arm64/latest/`。
 
-Electron 另有一条独立的 Intel macOS CI / GitHub Release 路径：
+Electron 另有独立的 Intel 与 Apple Silicon macOS CI / GitHub Release 路径：
 
 - GitHub-hosted `macos-15-intel` runner 上执行 `node scripts/build-dist.js mac`；
-- server native module、bundled Node 24.22.1 与 staged runtime smoke 应按 `darwin-x64` 实际验收；Node 22 的历史验收不代表 Node 24 已验证通过；
+- server native module、bundled Node 26.13.1 与 staged runtime smoke 应分别按 `darwin-x64` 和 `darwin-arm64` 实际验收；Node 24 的历史验收不代表 Node 26 已验证通过；
 - `dev/test/prod` 保存短期 Actions DMG artifact；其中 `dev/test` 为降低重复 CI 成本跳过 release test-report 重生成，`prod` 保持完整打包但不写公共 R2；
-- `v*` tag 使用完整 Intel macOS 打包并把 DMG 追加到 GitHub Release；
-- Intel DMG 当前**未做 Developer ID 签名与公证**；仅正式 `v*` 发布可同步到独立 R2 前缀 `mira/macos-intel/latest/`；
+- `v*` tag 使用完整 Intel 与 Apple Silicon macOS 打包并把两个 DMG 追加到 GitHub Release；
+- Intel 与 Apple Silicon DMG 当前**未做 Developer ID 签名与公证**；仅正式 `v*` 发布可同步到各自的 R2 前缀；
 - 这条 Intel 兼容性 lane 不改变 canonical macOS 首发目标 `darwin-arm64`，不能替代后续 arm64 release/payload 证据。
+- Apple Silicon lane 使用 `macos-15` arm64 runner，产出独立的 `darwin-arm64` DMG 和 R2 前缀 `mira/macos-arm64/latest/`。
 
 其余边界：
 
-- 根命令目前仍只暴露 `package:electron:win`，macOS CI 直接调用 `build-dist.js mac`；
-- `build-dist.js` 只接受 `win/windows/mac/macos`，未知平台直接失败。
+- 根命令暴露 `package:electron:win`、`package:electron:mac` 与 `package:electron:mac-arm64`；CI 也可直接调用对应的 `build-dist.js` 参数；
+- `build-dist.js` 接受 `win/windows/mac/macos/mac-arm64/macos-arm64`，未知平台直接失败。
 
 ## 改造优先级
 

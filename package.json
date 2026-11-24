@@ -48,6 +48,8 @@
     "docs:dev": "pnpm --filter @ui-chat-mira/docs-site dev",
     "docs:build": "pnpm --filter @ui-chat-mira/docs-site build",
     "package:electron:win": "node scripts/build-dist.js",
+    "package:electron:mac": "node scripts/build-dist.js mac",
+    "package:electron:mac-arm64": "node scripts/build-dist.js mac-arm64",
     "release:validate:win": "node scripts/release/validate-release.mjs",
     "release:payload:win": "node scripts/release/build-payload.mjs",
     "release:payload:win:validated": "node scripts/release/build-payload.mjs --validation-manifest=.artifacts/release-validation/windows-x64/validation.json",
@@ -89,7 +91,7 @@
     "test:push-broker": "node server/node_modules/tsx/dist/cli.mjs --test packages/push-broker/src/service.test.ts packages/push-broker/src/provider-delivery.test.ts packages/push-broker/src/delivery.test.ts"
   },
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=26.13.1"
   },
   "devDependencies": {
     "@huggingface/tokenizers": "^0.1.3",

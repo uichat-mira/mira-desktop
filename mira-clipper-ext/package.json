@@ -18,7 +18,7 @@
     "playwright": "^1.61.1"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=26.13.1"
   },
   "dependencies": {
     "@kudoai/chatgpt.js": "^4.15.1"

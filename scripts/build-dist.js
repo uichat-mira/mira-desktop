@@ -22,14 +22,16 @@ const platform = platformArg.toLowerCase();
 const electronPlatformFlags = {
   win: "--win",
   windows: "--win",
-  mac: "--mac",
-  macos: "--mac",
+  mac: "--mac --x64",
+  macos: "--mac --x64",
+  "mac-arm64": "--mac --arm64",
+  "macos-arm64": "--mac --arm64",
 };
 const platformFlag = electronPlatformFlags[platform];
 
 if (!platformFlag) {
   throw new Error(
-    `Unsupported Electron package platform "${platformArg}". Supported values: win, mac.`,
+    `Unsupported Electron package platform "${platformArg}". Supported values: win, mac, mac-arm64.`,
   );
 }
 
