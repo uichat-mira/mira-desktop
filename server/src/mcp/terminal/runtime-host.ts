@@ -13,6 +13,7 @@ import {
 import {
   getTerminalSession,
   stopTerminalSession,
+  terminalSessionBelongsToThread,
 } from "../terminal-sessions.js";
 import {
   acquirePersistentSession,
@@ -37,6 +38,8 @@ export type TerminalExecutionContext = {
   args: Record<string, unknown>;
   environment?: ToolExecutionEnvironment;
   signal: AbortSignal;
+  userId?: number;
+  threadId?: string;
   pushEvent?: (event: ToolInvocationEventInput) => void;
   trace?: ToolInvocationContext["trace"];
 };
@@ -225,6 +228,8 @@ export const executeTerminalSessionRuntime = async ({
   args,
   environment,
   signal,
+  userId,
+  threadId,
   pushEvent,
   trace,
 }: TerminalExecutionContext): Promise<TerminalExecutionResult> => {
@@ -267,6 +272,11 @@ export const executeTerminalSessionRuntime = async ({
     const session = getTerminalSession(controlSessionId);
     if (!session) {
       throw mcpBadRequest(`terminal session not found: ${controlSessionId}`);
+    }
+    if (!terminalSessionBelongsToThread(session, { userId, threadId })) {
+      throw mcpBadRequest(
+        "terminal session does not belong to the current thread",
+      );
     }
     const latest = await getPersistentTerminalSessionStatus(controlSessionId);
 
@@ -394,6 +404,8 @@ export const executeTerminalSessionRuntime = async ({
       continuationId,
       outputOffset,
       outputLimitBytes,
+      userId,
+      threadId,
     });
     observationSpan?.end({
       metadata: {
@@ -514,6 +526,8 @@ export const executeTerminalSessionRuntime = async ({
       runtimeId,
       shellProfile,
       attachSessionId,
+      userId,
+      threadId,
     });
     acquireSpan?.end({
       metadata: {

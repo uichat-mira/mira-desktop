@@ -32,6 +32,8 @@ export interface TerminalSessionRecord {
   workspaceRelation: HostWorkspaceRelation;
   processTreeMode: TerminalProcessTreeMode;
   createdAt: string;
+  userId?: number;
+  threadId?: string;
   process: pty.IPty;
 }
 
@@ -51,6 +53,40 @@ export const listTerminalSessions = () =>
   }));
 
 export const getTerminalSession = (sessionId: string) => sessionMap.get(sessionId);
+
+export const terminalSessionBelongsToThread = (
+  session: TerminalSessionRecord,
+  input: { userId?: number; threadId?: string },
+) => {
+  if (input.threadId === undefined) return true;
+  if (session.threadId !== input.threadId) return false;
+  if (input.userId !== undefined && session.userId !== input.userId) return false;
+  return true;
+};
+
+export const stopTerminalSessionsForThread = async (input: {
+  userId: number;
+  threadId: string;
+}) => {
+  const sessionIds = [...sessionMap.values()]
+    .filter((session) =>
+      terminalSessionBelongsToThread(session, {
+        userId: input.userId,
+        threadId: input.threadId,
+      }),
+    )
+    .map((session) => session.id);
+
+  const results = await Promise.allSettled(
+    sessionIds.map((sessionId) => stopTerminalSession(sessionId)),
+  );
+  return {
+    requested: sessionIds.length,
+    stopped: results.filter(
+      (result) => result.status === "fulfilled",
+    ).length,
+  };
+};
 
 export const stopTerminalSession = async (sessionId: string) => {
   const session = sessionMap.get(sessionId);
@@ -154,6 +190,8 @@ export const createTerminalSession = async (input: {
   workspaceRoot?: string | null;
   runtimeId?: TerminalRuntimeId;
   shellProfile?: ToolExecutionEnvironment["terminal"]["shellProfile"];
+  userId?: number;
+  threadId?: string;
 }) => {
   const runtimeId = input.runtimeId ?? resolveTerminalRuntimeId();
   if (runtimeId !== "host_spawn") {
@@ -207,6 +245,8 @@ export const createTerminalSession = async (input: {
     workspaceRelation: hostResolution.workspaceRelation,
     processTreeMode: effectiveProcessTreeMode,
     createdAt: new Date().toISOString(),
+    ...(input.userId !== undefined ? { userId: input.userId } : {}),
+    ...(input.threadId ? { threadId: input.threadId } : {}),
     process: child,
   };
   sessionMap.set(sessionId, session);

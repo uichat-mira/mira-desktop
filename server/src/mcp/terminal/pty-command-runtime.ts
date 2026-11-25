@@ -7,6 +7,7 @@ import {
   createTerminalSession,
   getTerminalSession,
   removeTerminalSession,
+  terminalSessionBelongsToThread,
   type TerminalSessionRecord,
   writeTerminalSession,
 } from "../terminal-sessions.js";
@@ -49,6 +50,8 @@ export const acquirePersistentSession = async (input: {
   runtimeId: TerminalRuntimeId;
   shellProfile: TerminalShellProfile;
   attachSessionId?: string;
+  userId?: number;
+  threadId?: string;
 }) => {
   const session = input.attachSessionId
     ? getTerminalSession(input.attachSessionId)
@@ -59,10 +62,22 @@ export const acquirePersistentSession = async (input: {
         workspaceRoot: input.workspaceRoot,
         runtimeId: input.runtimeId,
         shellProfile: input.shellProfile,
+        userId: input.userId,
+        threadId: input.threadId,
       });
 
   if (!session) {
     throw mcpBadRequest(`terminal session not found: ${input.attachSessionId}`);
+  }
+  if (
+    !terminalSessionBelongsToThread(session, {
+      userId: input.userId,
+      threadId: input.threadId,
+    })
+  ) {
+    throw mcpBadRequest(
+      "terminal session does not belong to the current thread",
+    );
   }
 
   return {
@@ -75,6 +90,8 @@ export const observePersistentCommandOutput = async (input: {
   continuationId: string;
   outputOffset?: number;
   outputLimitBytes?: number;
+  userId?: number;
+  threadId?: string;
 }) => {
   const page = await readPersistentTerminalOutput({
     id: input.continuationId,
@@ -84,6 +101,16 @@ export const observePersistentCommandOutput = async (input: {
   const session = getTerminalSession(page.sessionId);
   if (!session) {
     throw mcpBadRequest(`terminal session not found: ${page.sessionId}`);
+  }
+  if (
+    !terminalSessionBelongsToThread(session, {
+      userId: input.userId,
+      threadId: input.threadId,
+    })
+  ) {
+    throw mcpBadRequest(
+      "terminal session does not belong to the current thread",
+    );
   }
   return {
     ...page,

@@ -35,10 +35,22 @@ const mocks = vi.hoisted(() => {
     }
   }
 
+  class RemoteThreadWorkspaceError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string,
+      public readonly statusCode = 409,
+    ) {
+      super(message);
+      this.name = "RemoteThreadWorkspaceError";
+    }
+  }
+
   return {
     HostNotificationBindingError,
     HostNotificationConfigError,
     PairingServiceError,
+    RemoteThreadWorkspaceError,
     pairing: {
       createChallenge: vi.fn(),
       getChallengeForUser: vi.fn(),
@@ -72,6 +84,20 @@ const mocks = vi.hoisted(() => {
       execute: vi.fn(),
       approve: vi.fn(),
       cancel: vi.fn(),
+      cancelThread: vi.fn(),
+    },
+    threadWorkspace: {
+      getState: vi.fn(),
+      end: vi.fn(),
+      readContext: vi.fn(() => null),
+      identity: vi.fn(() => ({
+        accountId: "account-a",
+        hostId: "host-a",
+        mobileDeviceId: "phone-a",
+      })),
+    },
+    terminalSessions: {
+      stopForThread: vi.fn(),
     },
   };
 });
@@ -130,6 +156,21 @@ vi.mock("@/services/remote-tool-gateway.service.js", () => ({
   executeRemoteToolInvocation: mocks.toolGateway.execute,
   resolveRemoteToolApproval: mocks.toolGateway.approve,
   cancelRemoteToolInvocation: mocks.toolGateway.cancel,
+  cancelRemoteToolInvocationsForThread: mocks.toolGateway.cancelThread,
+}));
+
+vi.mock("@/services/remote-thread-workspace.service.js", () => ({
+  RemoteThreadWorkspaceError: mocks.RemoteThreadWorkspaceError,
+  readCloudRemoteThreadContext: mocks.threadWorkspace.readContext,
+  resolveCloudRemoteIdentity: mocks.threadWorkspace.identity,
+  remoteThreadWorkspaceService: {
+    getState: mocks.threadWorkspace.getState,
+    end: mocks.threadWorkspace.end,
+  },
+}));
+
+vi.mock("@/mcp/terminal-sessions.js", () => ({
+  stopTerminalSessionsForThread: mocks.terminalSessions.stopForThread,
 }));
 
 import remoteAccessRoute, { reconcileCloudRelayOnGrantInvalidation } from "./remote-access.js";
@@ -177,7 +218,7 @@ const createApp = async (options: {
       request.cloudRemoteCaller = {
         kind: "cloud", accountId: "account-a", hostId: "host-a",
         mobileDeviceId: "phone-a", revision: 3,
-        scopes: ["threads:read", "tools:read", "tools:invoke"],
+        scopes: ["threads:read", "tools:read", "tools:invoke", "tools:control"],
         owner: user,
       };
     }
@@ -259,6 +300,30 @@ beforeEach(() => {
     invocationId: "inv-1",
     accepted: true,
     status: "cancelling",
+  });
+  mocks.toolGateway.cancelThread.mockReturnValue(0);
+  mocks.threadWorkspace.getState.mockReturnValue({
+    threadId: "thread-1",
+    status: "not_started",
+    workspace: null,
+    startedAt: null,
+    endedAt: null,
+  });
+  mocks.threadWorkspace.end.mockReturnValue({
+    threadId: "thread-1",
+    status: "ended",
+    workspace: {
+      ref: "mira-thread-workspace:thread-1",
+      kind: "private",
+      available: true,
+      startedAt: "2026-11-25T00:00:00.000Z",
+    },
+    startedAt: "2026-11-25T00:00:00.000Z",
+    endedAt: "2026-11-25T00:00:10.000Z",
+  });
+  mocks.terminalSessions.stopForThread.mockResolvedValue({
+    requested: 1,
+    stopped: 1,
   });
   mocks.threadRepo.findById.mockImplementation(
     (threadId: string, userId: number) =>
@@ -745,7 +810,7 @@ describe("remote access routes", () => {
     assert.equal(manifest.statusCode, 200, manifest.body);
     expect(manifest.json().data.device).toMatchObject({
       id: "phone-a", platform: "cloud",
-      scopes: ["threads:read", "tools:read", "tools:invoke"],
+      scopes: ["threads:read", "tools:read", "tools:invoke", "tools:control"],
     });
     expect(manifest.json().data.routes.push).toEqual([]);
     const stream = await app.inject({
@@ -855,6 +920,132 @@ describe("remote access routes", () => {
     expect(response.body).toContain('"type":"tool:error"');
     expect(response.body).toContain('"code":"REMOTE_TOOL_REQUEST_FAILED"');
     expect(response.body).not.toContain("private runtime detail");
+    await app.close();
+  });
+
+  it("projects and explicitly ends an official Cloud MCP thread workspace", async () => {
+    const app = await createApp({ cloud: true });
+
+    const workspace = await app.inject({
+      method: "GET",
+      url: "/remote/v1/threads/thread-1/workspace",
+    });
+    assert.equal(workspace.statusCode, 200, workspace.body);
+    expect(workspace.json().data).toMatchObject({
+      threadId: "thread-1",
+      status: "not_started",
+    });
+    expect(mocks.threadWorkspace.getState).toHaveBeenCalledWith({
+      threadId: "thread-1",
+      userId: user.id,
+      identity: {
+        accountId: "account-a",
+        hostId: "host-a",
+        mobileDeviceId: "phone-a",
+      },
+    });
+
+    const ended = await app.inject({
+      method: "POST",
+      url: "/remote/v1/threads/thread-1/end",
+    });
+    assert.equal(ended.statusCode, 200, ended.body);
+    expect(ended.json().data).toMatchObject({
+      threadId: "thread-1",
+      status: "ended",
+      stoppedInvocations: 0,
+      stoppedTerminalSessions: 1,
+    });
+    expect(mocks.toolGateway.cancelThread).toHaveBeenCalledWith(
+      user.id,
+      "thread-1",
+    );
+    expect(mocks.terminalSessions.stopForThread).toHaveBeenCalledWith({
+      userId: user.id,
+      threadId: "thread-1",
+    });
+
+    await app.close();
+  });
+
+  it("keeps Direct callers outside the Cloud thread lifecycle routes", async () => {
+    const app = await createApp({
+      authenticated: true,
+      device: {
+        id: "device-1",
+        name: "K70",
+        platform: "android",
+        permissions: ["tools:read", "tools:control"],
+      },
+    });
+
+    const workspace = await app.inject({
+      method: "GET",
+      url: "/remote/v1/threads/thread-1/workspace",
+    });
+    assert.equal(workspace.statusCode, 403, workspace.body);
+
+    const ended = await app.inject({
+      method: "POST",
+      url: "/remote/v1/threads/thread-1/end",
+    });
+    assert.equal(ended.statusCode, 403, ended.body);
+    expect(mocks.threadWorkspace.getState).not.toHaveBeenCalled();
+    expect(mocks.threadWorkspace.end).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("maps stable thread lifecycle errors through the normal envelope", async () => {
+    mocks.threadWorkspace.end.mockImplementationOnce(() => {
+      throw new mocks.RemoteThreadWorkspaceError(
+        "thread_not_found",
+        "Remote thread was not found",
+        404,
+      );
+    });
+    const app = await createApp({ cloud: true });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/remote/v1/threads/missing/end",
+    });
+
+    assert.equal(response.statusCode, 404, response.body);
+    expect(response.json()).toMatchObject({
+      code: "thread_not_found",
+      message: "Remote thread was not found",
+    });
+    expect(mocks.toolGateway.cancelThread).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("passes the Cloud thread context into exact approval recovery", async () => {
+    const threadContext = {
+      threadId: "thread-1",
+      identity: {
+        accountId: "account-a",
+        hostId: "host-a",
+        mobileDeviceId: "phone-a",
+      },
+    };
+    mocks.threadWorkspace.readContext.mockReturnValueOnce(threadContext);
+    const app = await createApp({ cloud: true });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/remote/v1/tool-invocations/inv-1/approval",
+      headers: { "x-mira-thread-id": "thread-1" },
+      payload: {
+        decision: "approved",
+        toolId: "terminal",
+        args: { command: "pwd" },
+      },
+    });
+
+    assert.equal(response.statusCode, 200, response.body);
+    expect(mocks.toolGateway.approve).toHaveBeenCalledWith(
+      expect.objectContaining({ threadContext }),
+    );
     await app.close();
   });
 

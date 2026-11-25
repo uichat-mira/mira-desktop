@@ -502,8 +502,13 @@ Tool Registry 或执行链。核心标记同时投影为 `/mcp/tools` 的
 被第二套展示筛选排除；具体执行仍走既有 Policy / exact-call Approval。
 可选 `mira://service/mira-desktop/capabilities` Resource 只引用同一
 `tools/list` 中的真实工具；无 authored capability group 时按普通 MCP 扁平工具
-降级。Remote V1 工具路由仍保留，尚未完成受支持消费者 cutover。完整合同见
-[`remote-access/desktop-mcp-server-v1.md`](remote-access/desktop-mcp-server-v1.md)。
+降级。官方 Cloud MCP 的 workspace-bound 调用还需携带线程上下文；首次实际获准
+执行才惰性创建该线程的独立工作空间，显式结束只停止所属执行并保留成果，Direct
+路径保持原有执行语义。Remote V1 工具路由仍保留，尚未完成受支持消费者
+cutover。完整合同见
+[`remote-access/desktop-mcp-server-v1.md`](remote-access/desktop-mcp-server-v1.md)
+与
+[`remote-access/remote-thread-workspace-v1.md`](remote-access/remote-thread-workspace-v1.md)。
 
 ## 10. WenShu / Skill-private Runtime 不属于普通 Tool Exposure
 

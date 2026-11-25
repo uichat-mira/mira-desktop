@@ -216,6 +216,8 @@ POST   /remote/v1/tool-invocations/stream
 POST   /remote/v1/tool-invocations/:invocationId/approval
 POST   /remote/v1/tool-invocations/:invocationId/cancel
 POST   /mcp
+GET    /remote/v1/threads/:threadId/workspace
+POST   /remote/v1/threads/:threadId/end
 GET    /threads/:id/media/:mediaId/content
 ```
 
@@ -224,8 +226,10 @@ GET    /threads/:id/media/:mediaId/content
 `POST /mcp` 是现有受控工具面的标准 MCP 出口，不是第二套远程业务协议；
 它复用同一 Tool Core/Harness eligibility 与 Remote V1 设备/Host Grant 准入。
 完整身份、scope、Resource、审批与传输矩阵见
-[[desktop-mcp-server-v1]]。Remote V1 工具路由继续保留，直到独立 cutover
-证明受支持 Mobile 消费者不再依赖它们。
+[[desktop-mcp-server-v1]]。`/mcp` 的官方 Cloud 线程上下文、按需工作空间与
+显式结束合同见 [[remote-thread-workspace-v1]]；Direct 仍保持原有执行语义。
+Remote V1 工具路由继续保留，直到独立 cutover 证明受支持 Mobile 消费者不再
+依赖它们。
 
 `GET /remote/v1/workspaces` 返回当前用户的 active / archived ChatWorkspace，但只投影：
 
