@@ -419,6 +419,17 @@ const sendJsonRpcError = (
 };
 
 const remoteMcpRoute: FastifyPluginAsync = async (app) => {
+  // Remote MCP is a native paired-device/Host Grant outlet, not a browser
+  // endpoint. No browser Origin is authorized for this route. Fail closed
+  // before resolving tools, including when an authenticated token is present.
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.headers.origin !== undefined) {
+      return reply.code(403).type("application/json").send(
+        jsonRpcError(null, -32600, "Browser Origin is not allowed on Remote MCP"),
+      );
+    }
+  });
+
   // This revision removed the GET stream and DELETE session endpoint.
   app.route({
     method: ["GET", "DELETE"],

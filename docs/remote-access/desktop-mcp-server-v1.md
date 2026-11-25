@@ -116,6 +116,8 @@ Method Not Allowed` with `Allow: POST`. A successful request returns one
 "complete"` and `_meta["io.modelcontextprotocol/serverInfo"]`. Clients must not
 claim SSE stream support against this slice.
 
+The native paired-device / official Cloud Host Grant outlet does not authorize browser origins. Requests with an Origin header are denied with HTTP 403 before tool resolution, including authenticated requests.
+
 Request validation follows `2026-07-28` Streamable HTTP server validation:
 
 | Condition | Response |

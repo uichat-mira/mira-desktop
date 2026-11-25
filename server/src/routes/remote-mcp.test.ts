@@ -443,6 +443,25 @@ describe("remote MCP outlet", () => {
     await app.close();
   });
 
+  it("rejects browser origins before executing any native remote MCP request", async () => {
+    for (const cloud of [false, true]) {
+      const app = await createApp({ cloud });
+      try {
+        for (const origin of ["https://untrusted.example", "null"]) {
+          const response = await app.inject({
+            method: "POST", url: "/mcp",
+            headers: { ...requestHeaders("server/discover"), origin },
+            payload: { jsonrpc: "2.0", id: 1, method: "server/discover", params: requestParams() },
+          });
+          expect(response.statusCode).toBe(403);
+        }
+        expect((await rpc(app, "server/discover")).response.statusCode).toBe(200);
+      } finally {
+        await app.close();
+      }
+    }
+  });
+
   it("speaks the protocol over a real listening Fastify HTTP client", async () => {
     const app = await createApp();
     const base = await app.listen({ host: "127.0.0.1", port: 0 });
