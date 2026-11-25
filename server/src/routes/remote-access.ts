@@ -50,6 +50,7 @@ import {
   assertRemoteToolAvailable,
   cancelRemoteToolInvocation,
   cancelRemoteToolInvocationsForThread,
+  waitForRemoteThreadInvocations,
   executeRemoteToolInvocation,
   listRemoteToolManifests,
   resolveRemoteToolApproval,
@@ -58,6 +59,7 @@ import {
 import {
   readCloudRemoteThreadContext,
   remoteThreadWorkspaceService,
+  remoteThreadExecutionKey,
   resolveCloudRemoteIdentity,
   RemoteThreadWorkspaceError,
   type RemoteThreadIdentity,
@@ -745,18 +747,30 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
           userId: request.authUser.id,
           identity,
         });
-        const stoppedInvocations = cancelRemoteToolInvocationsForThread(
-          request.authUser.id,
-          request.params.threadId,
-        );
-        const terminal = await stopTerminalSessionsForThread({
+        const executionThreadId = remoteThreadExecutionKey({
           userId: request.authUser.id,
           threadId: request.params.threadId,
+          identity,
         });
+        const stoppedInvocations = cancelRemoteToolInvocationsForThread(
+          request.authUser.id, executionThreadId,
+        );
+        const stopOwned = () => stopTerminalSessionsForThread({
+          userId: request.authUser!.id,
+          threadId: executionThreadId,
+        });
+        const terminal = await stopOwned();
+        await waitForRemoteThreadInvocations(request.authUser.id, executionThreadId);
+        // An invocation already starting a PTY when end arrived may register it
+        // after the first sweep. Drain before a final sweep, not before aborting.
+        const lateTerminal = await stopOwned();
+        if (terminal.stopped !== terminal.requested || lateTerminal.stopped !== lateTerminal.requested) {
+          throw new RemoteThreadWorkspaceError("thread_cleanup_incomplete", "Remote terminal cleanup was not confirmed");
+        }
         return success({
           ...state,
           stoppedInvocations,
-          stoppedTerminalSessions: terminal.stopped,
+          stoppedTerminalSessions: terminal.stopped + lateTerminal.stopped,
         });
       } catch (error) {
         mapRemoteThreadWorkspaceError(error);
@@ -989,9 +1003,14 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!(request.remoteDevice || request.cloudRemoteCaller) || !request.authUser) {
         throw forbidden("A paired remote device credential is required");
       }
-      return success(
-        cancelRemoteToolInvocation(request.params.invocationId, request.authUser.id),
-      );
+      try {
+        const context = request.cloudRemoteCaller ? readCloudRemoteThreadContext(request) : null;
+        return success(context
+          ? cancelRemoteToolInvocation(request.params.invocationId, request.authUser.id, context)
+          : cancelRemoteToolInvocation(request.params.invocationId, request.authUser.id));
+      } catch (error) {
+        mapRemoteThreadWorkspaceError(error);
+      }
     }),
   );
 

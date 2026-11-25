@@ -1,12 +1,11 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type { FastifyRequest } from "fastify";
-import { chatWorkspaceRepository } from "@/db/repositories/chat-workspace.repository.js";
 import { remoteThreadWorkspaceRepository } from "@/db/repositories/remote-thread-workspace.repository.js";
-import { threadRepository } from "@/db/repositories/thread.repository.js";
 import {
   buildPrivateAgentWorkspacePath,
-  privateAgentWorkspaceService,
+  ensureRemoteMcpWorkspaceDirectory,
   resolvePrivateAgentWorkspaceStorageRoot,
 } from "@/services/agent-workspace.service.js";
 
@@ -24,7 +23,7 @@ export type RemoteThreadContext = Readonly<{
   identity: RemoteThreadIdentity;
 }>;
 
-export type RemoteThreadWorkspaceKind = "private" | "chat";
+export type RemoteThreadWorkspaceKind = "private";
 
 export type RemoteThreadWorkspacePlan = Readonly<{
   kind: RemoteThreadWorkspaceKind;
@@ -53,7 +52,8 @@ export type RemoteThreadWorkspaceErrorCode =
   | "thread_not_found"
   | "thread_ended"
   | "workspace_unavailable"
-  | "workspace_changed";
+  | "workspace_changed"
+  | "thread_cleanup_incomplete";
 
 const ERROR_STATUS: Record<RemoteThreadWorkspaceErrorCode, number> = {
   thread_context_invalid: 400,
@@ -62,6 +62,7 @@ const ERROR_STATUS: Record<RemoteThreadWorkspaceErrorCode, number> = {
   thread_ended: 409,
   workspace_unavailable: 409,
   workspace_changed: 409,
+  thread_cleanup_incomplete: 409,
 };
 
 export class RemoteThreadWorkspaceError extends Error {
@@ -121,59 +122,47 @@ const isDirectory = (candidate: string) => {
   }
 };
 
-const validateChatWorkspaceRoot = (rootPath: string | null | undefined) => {
-  const normalized = rootPath?.trim();
-  if (!normalized || !isDirectory(normalized)) {
-    throw new RemoteThreadWorkspaceError(
-      "workspace_unavailable",
-      "Remote thread workspace is unavailable",
-    );
+// The client owns its conversation ID. The Desktop owns the namespace for
+// execution and disk storage; it never aliases a local conversation ID.
+export const remoteThreadExecutionKey = (input: {
+  threadId: string;
+  userId: number;
+  identity: RemoteThreadIdentity;
+}): string => {
+  if (!THREAD_ID_PATTERN.test(input.threadId)) {
+    return fail("thread_context_invalid", "Remote thread context is invalid");
   }
-  return path.resolve(normalized);
+  return "remote-mcp-" + createHash("sha256").update(JSON.stringify([
+    input.userId, input.identity.accountId, input.identity.hostId,
+    input.identity.mobileDeviceId, input.threadId,
+  ])).digest("hex");
 };
+
+export const isRemoteThreadExecutionKey = (value?: string) =>
+  typeof value === "string" && /^remote-mcp-[0-9a-f]{64}$/u.test(value);
 
 const derivePlan = (input: {
   threadId: string;
   userId: number;
-}): RemoteThreadWorkspacePlan => {
-  const thread = threadRepository.findById(input.threadId, input.userId);
-  if (!thread) return notFound();
+  identity: RemoteThreadIdentity;
+}): RemoteThreadWorkspacePlan => ({
+  kind: "private",
+  rootPath: buildPrivateAgentWorkspacePath({
+    storageRoot: resolvePrivateAgentWorkspaceStorageRoot(),
+    userId: input.userId,
+    threadId: remoteThreadExecutionKey(input),
+    namespace: "remote-mcp",
+  }),
+  bindingExists: false,
+});
 
-  if (thread.workspaceId) {
-    const workspace = chatWorkspaceRepository.findById(
-      thread.workspaceId,
-      input.userId,
-    );
-    return {
-      kind: "chat",
-      rootPath: validateChatWorkspaceRoot(workspace?.rootPath),
-      bindingExists: false,
-    };
-  }
-
-  return {
-    kind: "private",
-    rootPath: buildPrivateAgentWorkspacePath({
-      storageRoot: resolvePrivateAgentWorkspaceStorageRoot(),
-      userId: input.userId,
-      threadId: input.threadId,
-    }),
-    bindingExists: false,
-  };
+const canonicalPath = (candidate: string) => {
+  try { return fs.realpathSync(candidate); } catch { return path.resolve(candidate); }
 };
-
 const samePlan = (
   left: Pick<RemoteThreadWorkspacePlan, "kind" | "rootPath">,
   right: Pick<RemoteThreadWorkspacePlan, "kind" | "rootPath">,
-) => {
-  if (left.kind !== right.kind) return false;
-  // Private workspaces are deterministic for one thread. Chat workspaces are
-  // user-selected roots, so compare their resolved path to detect drift.
-  if (left.kind === "chat") {
-    return path.resolve(left.rootPath) === path.resolve(right.rootPath);
-  }
-  return true;
-};
+) => left.kind === right.kind && canonicalPath(left.rootPath) === canonicalPath(right.rootPath);
 
 const planFromBinding = (
   binding: {
@@ -182,7 +171,7 @@ const planFromBinding = (
   },
 ): RemoteThreadWorkspacePlan => {
   if (
-    (binding.workspaceKind !== "private" && binding.workspaceKind !== "chat") ||
+    binding.workspaceKind !== "private" ||
     !binding.workspaceRoot ||
     !isDirectory(binding.workspaceRoot)
   ) {
@@ -200,6 +189,7 @@ const planFromBinding = (
 
 const toState = (input: {
   threadId: string;
+  executionKey: string;
   binding:
     | {
         status: "active" | "ended";
@@ -221,8 +211,7 @@ const toState = (input: {
   }
 
   const hasWorkspace =
-    (input.binding.workspaceKind === "private" ||
-      input.binding.workspaceKind === "chat") &&
+    input.binding.workspaceKind === "private" &&
     Boolean(input.binding.workspaceRoot);
 
   return {
@@ -232,7 +221,7 @@ const toState = (input: {
       ? {
           // The absolute Desktop path stays inside Desktop. Mobile/remote
           // consumers locate the real space through this stable reference.
-          ref: `mira-thread-workspace:${input.threadId}`,
+          ref: `mira-thread-workspace:${input.executionKey}`,
           kind: input.binding.workspaceKind as RemoteThreadWorkspaceKind,
           available: isDirectory(input.binding.workspaceRoot!),
           startedAt: input.binding.createdAt,
@@ -282,14 +271,12 @@ export const remoteThreadWorkspaceService = {
     userId: number;
     identity: RemoteThreadIdentity;
   }): void {
+    remoteThreadExecutionKey(input);
     const binding = remoteThreadWorkspaceRepository.getByThread(input.threadId);
     if (binding) {
       assertIdentity(binding, input.identity, input.userId);
       assertActive(binding);
       return;
-    }
-    if (!threadRepository.findById(input.threadId, input.userId)) {
-      notFound();
     }
   },
 
@@ -304,6 +291,7 @@ export const remoteThreadWorkspaceService = {
     identity: RemoteThreadIdentity;
     expected?: RemoteThreadWorkspacePlan;
   }): RemoteThreadWorkspacePlan {
+    remoteThreadExecutionKey(input);
     const binding = remoteThreadWorkspaceRepository.getByThread(input.threadId);
     let plan: RemoteThreadWorkspacePlan;
     if (binding) {
@@ -311,7 +299,7 @@ export const remoteThreadWorkspaceService = {
       assertActive(binding);
       plan = planFromBinding(binding);
     } else {
-      plan = derivePlan({ threadId: input.threadId, userId: input.userId });
+      plan = derivePlan(input);
     }
 
     if (input.expected && !samePlan(input.expected, plan)) {
@@ -333,6 +321,7 @@ export const remoteThreadWorkspaceService = {
     identity: RemoteThreadIdentity;
     plan: RemoteThreadWorkspacePlan;
   }): RemoteThreadWorkspacePlan {
+    const executionKey = remoteThreadExecutionKey(input);
     const existing = remoteThreadWorkspaceRepository.getByThread(input.threadId);
     if (existing) {
       assertIdentity(existing, input.identity, input.userId);
@@ -347,13 +336,14 @@ export const remoteThreadWorkspaceService = {
       return plan;
     }
 
-    const rootPath =
-      input.plan.kind === "private"
-        ? privateAgentWorkspaceService.ensure({
-            threadId: input.threadId,
-            userId: input.userId,
-          })
-        : validateChatWorkspaceRoot(input.plan.rootPath);
+    const current = derivePlan(input);
+    if (!samePlan(input.plan, current)) {
+      fail("workspace_changed", "Remote thread workspace changed since the pending approval");
+    }
+    const rootPath = ensureRemoteMcpWorkspaceDirectory({
+      threadId: executionKey,
+      userId: input.userId,
+    });
 
     const stored = remoteThreadWorkspaceRepository.insertIfAbsent({
       threadId: input.threadId,
@@ -384,14 +374,12 @@ export const remoteThreadWorkspaceService = {
     userId: number;
     identity: RemoteThreadIdentity;
   }): RemoteThreadWorkspaceState {
-    if (!threadRepository.findById(input.threadId, input.userId)) {
-      notFound();
-    }
+    remoteThreadExecutionKey(input);
     const binding = remoteThreadWorkspaceRepository.getByThread(input.threadId);
     if (binding) {
       assertIdentity(binding, input.identity, input.userId);
     }
-    return toState({ threadId: input.threadId, binding });
+    return toState({ threadId: input.threadId, executionKey: remoteThreadExecutionKey(input), binding });
   },
 
   /**
@@ -404,10 +392,8 @@ export const remoteThreadWorkspaceService = {
     userId: number;
     identity: RemoteThreadIdentity;
   }): RemoteThreadWorkspaceState {
-    if (!threadRepository.findById(input.threadId, input.userId)) {
-      notFound();
-    }
 
+    remoteThreadExecutionKey(input);
     let binding = remoteThreadWorkspaceRepository.getByThread(input.threadId);
     if (!binding) {
       binding = remoteThreadWorkspaceRepository.insertIfAbsent({
@@ -433,6 +419,6 @@ export const remoteThreadWorkspaceService = {
         }) ?? binding;
     }
 
-    return toState({ threadId: input.threadId, binding });
+    return toState({ threadId: input.threadId, executionKey: remoteThreadExecutionKey(input), binding });
   },
 };

@@ -45,6 +45,10 @@ const SAFE_SEGMENT = /^[A-Za-z0-9_-]+$/;
  * migration can prove no installed client still owns data under this path.
  */
 const PRIVATE_WORKSPACE_ROOT_SEGMENT = "conversation-workdirs";
+const REMOTE_WORKSPACE_ROOT_SEGMENT = "remote-mcp-workdirs";
+type WorkspaceNamespace = "private" | "remote-mcp";
+const workspaceRootSegment = (namespace?: WorkspaceNamespace) =>
+  namespace === "remote-mcp" ? REMOTE_WORKSPACE_ROOT_SEGMENT : PRIVATE_WORKSPACE_ROOT_SEGMENT;
 
 const fail = (
   code: AgentWorkspaceErrorCode,
@@ -90,7 +94,7 @@ export const resolvePrivateAgentWorkspaceStorageRoot =
   resolveAppDataStorageRoot;
 
 export const buildPrivateAgentWorkspacePath = (
-  input: { storageRoot: string; userId: number; threadId: string },
+  input: { storageRoot: string; userId: number; threadId: string; namespace?: WorkspaceNamespace },
   pathOps: Pick<typeof path, "resolve" | "join" | "relative" | "isAbsolute"> = path,
 ) => {
   assertValidUserId(input.userId);
@@ -99,7 +103,7 @@ export const buildPrivateAgentWorkspacePath = (
   const root = pathOps.resolve(input.storageRoot);
   const candidate = pathOps.join(
     root,
-    PRIVATE_WORKSPACE_ROOT_SEGMENT,
+    workspaceRootSegment(input.namespace),
     `user-${input.userId}`,
     input.threadId,
   );
@@ -213,17 +217,19 @@ const validateDirectory = (input: {
   userId: number;
   threadId: string;
   createMissing: boolean;
+  namespace?: WorkspaceNamespace;
 }) => {
   const root = trustedRoot(input.storageRoot, input.createMissing);
   const expected = buildPrivateAgentWorkspacePath({
     storageRoot: root,
     userId: input.userId,
     threadId: input.threadId,
+    namespace: input.namespace,
   });
 
   let current = root;
   for (const segment of [
-    PRIVATE_WORKSPACE_ROOT_SEGMENT,
+    workspaceRootSegment(input.namespace),
     `user-${input.userId}`,
     input.threadId,
   ]) {
@@ -308,11 +314,12 @@ const usageForUser = (input: {
   userId: number;
   storageRoot: string;
   quotaBytes: number;
+  namespace?: WorkspaceNamespace;
 }) => {
   const root = trustedRoot(input.storageRoot, false);
   const userRoot = path.join(
     root,
-    PRIVATE_WORKSPACE_ROOT_SEGMENT,
+    workspaceRootSegment(input.namespace),
     `user-${input.userId}`,
   );
 
@@ -356,6 +363,52 @@ const assertQuota = (usage: {
   }
 };
 
+const ensureWorkspaceDirectory = (input: {
+  threadId: string;
+  userId: number;
+  storageRoot?: string;
+  quotaBytes?: number;
+  namespace?: WorkspaceNamespace;
+}): string => {
+  const storageRoot =
+    input.storageRoot ?? resolvePrivateAgentWorkspaceStorageRoot();
+  const quotaBytes = normalizeQuota(
+    input.quotaBytes ?? resolvePrivateAgentWorkspaceQuotaBytes(),
+  );
+
+  try {
+    assertQuota(
+      usageForUser({
+        userId: input.userId,
+        storageRoot,
+        quotaBytes,
+        namespace: input.namespace,
+      }),
+    );
+  } catch (error) {
+    if (
+      error instanceof AgentWorkspaceError &&
+      error.code === "missing"
+    ) {
+      // The app-data root will be created below.
+    } else {
+      throw error;
+    }
+  }
+
+  return validateDirectory({
+    storageRoot,
+    userId: input.userId,
+    threadId: input.threadId,
+    createMissing: true,
+    namespace: input.namespace,
+  }).real;
+};
+
+/** Called only by the trusted remote thread workspace authority. */
+export const ensureRemoteMcpWorkspaceDirectory = (input: { threadId: string; userId: number }) =>
+  ensureWorkspaceDirectory({ ...input, namespace: "remote-mcp" });
+
 export const privateAgentWorkspaceService = {
   get(threadId: string, userId: number): string | null {
     if (!threadRepository.findById(threadId, userId)) return null;
@@ -394,37 +447,7 @@ export const privateAgentWorkspaceService = {
       fail("thread_not_found", "Thread not found for private Agent workspace");
     }
 
-    const storageRoot =
-      input.storageRoot ?? resolvePrivateAgentWorkspaceStorageRoot();
-    const quotaBytes = normalizeQuota(
-      input.quotaBytes ?? resolvePrivateAgentWorkspaceQuotaBytes(),
-    );
-
-    try {
-      assertQuota(
-        usageForUser({
-          userId: input.userId,
-          storageRoot,
-          quotaBytes,
-        }),
-      );
-    } catch (error) {
-      if (
-        error instanceof AgentWorkspaceError &&
-        error.code === "missing"
-      ) {
-        // The app-data root will be created below.
-      } else {
-        throw error;
-      }
-    }
-
-    return validateDirectory({
-      storageRoot,
-      userId: input.userId,
-      threadId: input.threadId,
-      createMissing: true,
-    }).real;
+    return ensureWorkspaceDirectory(input);
   },
 
   isExpectedRoot(input: {

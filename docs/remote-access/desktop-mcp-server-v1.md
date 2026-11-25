@@ -279,7 +279,7 @@ Official Cloud MCP `tools/call` for a workspace-bound Tool
 send:
 
 ```http
-X-Mira-Thread-Id: <desktop thread id>
+X-Mira-Thread-Id: <mobile local conversation id>
 ```
 
 The account, Host, and device identity are taken from the verified Cloud Host

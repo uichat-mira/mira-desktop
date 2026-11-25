@@ -58,7 +58,11 @@ export const terminalSessionBelongsToThread = (
   session: TerminalSessionRecord,
   input: { userId?: number; threadId?: string },
 ) => {
-  if (input.threadId === undefined) return true;
+  if (input.threadId === undefined) {
+    // Legacy/local invocations keep their existing semantics but cannot attach
+    // to the new Cloud MCP-owned session namespace.
+    return !session.threadId || !/^remote-mcp-[0-9a-f]{64}$/u.test(session.threadId);
+  }
   if (session.threadId !== input.threadId) return false;
   if (input.userId !== undefined && session.userId !== input.userId) return false;
   return true;

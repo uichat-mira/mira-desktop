@@ -8,10 +8,10 @@ import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import { resetDatabaseClients } from "@/db/index.js";
 import {
-  threadRepository,
   userRepository,
 } from "@/db/repositories/index.js";
 import { initializeHarnessRuntime, resetHarnessRuntime } from "@/mcp/bootstrap.js";
+import { getHarnessInvocation } from "@/harness/invocations.js";
 import {
   getTerminalSession,
   stopTerminalSessionsForThread,
@@ -20,13 +20,14 @@ import {
   clearWorkspaceSelection,
   selectWorkspaceRoot,
 } from "@/mcp/workspace.js";
-import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
 import {
   executeRemoteToolInvocation,
+  cancelRemoteToolInvocation,
   resolveRemoteToolApproval,
 } from "@/services/remote-tool-gateway.service.js";
 import {
   remoteThreadWorkspaceService,
+  remoteThreadExecutionKey,
   type RemoteThreadContext,
 } from "@/services/remote-thread-workspace.service.js";
 import {
@@ -54,12 +55,8 @@ initializeRoleDatabase();
 initializeThreadDatabase();
 initializeHarnessRuntime();
 
-const createThread = (userId: number) =>
-  threadRepository.create({
-    userId,
-    title: "Cloud MCP thread",
-    status: "active",
-  });
+// The Mobile local conversation is not a Desktop thread row.
+const createThread = () => ({ id: "mobile-" + crypto.randomUUID() });
 
 const contextFor = (threadId: string, mobileDeviceId = "device-a"): RemoteThreadContext => ({
   threadId,
@@ -96,7 +93,7 @@ describe("official Cloud MCP thread workspace execution", () => {
       role: "user",
       isActive: true,
     });
-    const thread = createThread(user.id);
+    const thread = createThread();
     const context = contextFor(thread.id);
     const localProject = path.join(testRoot, "local-selected-project");
     fs.mkdirSync(localProject, { recursive: true });
@@ -111,8 +108,12 @@ describe("official Cloud MCP thread workspace execution", () => {
     });
 
     expect(pending.status).toBe("awaiting_approval");
-    expect(privateAgentWorkspaceService.get(thread.id, user.id)).toBeNull();
+    expect(remoteThreadWorkspaceService.getState({ ...context, userId: user.id }).workspace).toBeNull();
     expect(fs.existsSync(path.join(localProject, "note.txt"))).toBe(false);
+    expect(() => cancelRemoteToolInvocation(pending.invocationId, user.id))
+      .toThrow("Remote thread was not found");
+    expect(() => cancelRemoteToolInvocation(pending.invocationId, user.id, contextFor(thread.id, "other-device")))
+      .toThrow("Remote thread was not found");
 
     const completed = await resolveRemoteToolApproval({
       invocationId: pending.invocationId,
@@ -122,9 +123,9 @@ describe("official Cloud MCP thread workspace execution", () => {
       userId: user.id,
       threadContext: context,
     });
-    expect(completed.status).toBe("completed");
+    expect(completed.status, JSON.stringify(getHarnessInvocation(completed.invocationId)?.error ?? completed)).toBe("completed");
 
-    const workspaceRoot = privateAgentWorkspaceService.get(thread.id, user.id);
+    const workspaceRoot = remoteThreadWorkspaceService.plan({ ...context, userId: user.id }).rootPath;
     expect(workspaceRoot).toBeTruthy();
     expect(fs.readFileSync(path.join(workspaceRoot!, "note.txt"), "utf8")).toBe(
       "hello-thread",
@@ -184,7 +185,7 @@ describe("official Cloud MCP thread workspace execution", () => {
       role: "user",
       isActive: true,
     });
-    const thread = createThread(user.id);
+    const thread = createThread();
     const context = contextFor(thread.id);
     const args = { path: "late.txt", content: "must-not-run" };
 
@@ -196,7 +197,7 @@ describe("official Cloud MCP thread workspace execution", () => {
       requireThreadContext: true,
     });
     expect(pending.status).toBe("awaiting_approval");
-    expect(privateAgentWorkspaceService.get(thread.id, user.id)).toBeNull();
+    expect(remoteThreadWorkspaceService.getState({ ...context, userId: user.id }).workspace).toBeNull();
 
     remoteThreadWorkspaceService.end({
       threadId: thread.id,
@@ -215,7 +216,7 @@ describe("official Cloud MCP thread workspace execution", () => {
       }),
     ).rejects.toMatchObject({ code: "thread_ended" });
 
-    expect(privateAgentWorkspaceService.get(thread.id, user.id)).toBeNull();
+    expect(remoteThreadWorkspaceService.getState({ ...context, userId: user.id }).workspace).toBeNull();
     expect(
       remoteThreadWorkspaceService.getState({
         threadId: thread.id,
@@ -232,7 +233,7 @@ describe("official Cloud MCP thread workspace execution", () => {
       role: "user",
       isActive: true,
     });
-    const thread = createThread(user.id);
+    const thread = createThread();
     const context = contextFor(thread.id);
 
     const command = 'node -p "process.cwd()"';
@@ -248,7 +249,7 @@ describe("official Cloud MCP thread workspace execution", () => {
       requireThreadContext: true,
     });
     expect(pending.status).toBe("awaiting_approval");
-    expect(privateAgentWorkspaceService.get(thread.id, user.id)).toBeNull();
+    expect(remoteThreadWorkspaceService.getState({ ...context, userId: user.id }).workspace).toBeNull();
 
     const completed = await resolveRemoteToolApproval({
       invocationId: pending.invocationId,
@@ -262,9 +263,9 @@ describe("official Cloud MCP thread workspace execution", () => {
       userId: user.id,
       threadContext: context,
     });
-    expect(completed.status).toBe("completed");
+    expect(completed.status, JSON.stringify(getHarnessInvocation(completed.invocationId)?.error ?? completed)).toBe("completed");
 
-    const workspaceRoot = privateAgentWorkspaceService.get(thread.id, user.id);
+    const workspaceRoot = remoteThreadWorkspaceService.plan({ ...context, userId: user.id }).rootPath;
     expect(workspaceRoot).toBeTruthy();
     expect(fs.statSync(workspaceRoot!).isDirectory()).toBe(true);
     expect(completed.content ?? "").toContain(workspaceRoot!);
@@ -277,7 +278,10 @@ describe("official Cloud MCP thread workspace execution", () => {
       .map((session) => session.id);
     expect(threadSessions.length).toBeGreaterThan(0);
     const sessionId = threadSessions.at(-1)!;
-    expect(getTerminalSession(sessionId)).toBeDefined();
+    const persistent = getTerminalSession(sessionId);
+    expect(persistent).toBeDefined();
+    expect(sessions.terminalSessionBelongsToThread(persistent!, { userId: user.id })).toBe(false);
+    const pid = persistent!.process.pid;
 
     remoteThreadWorkspaceService.end({
       threadId: thread.id,
@@ -286,11 +290,14 @@ describe("official Cloud MCP thread workspace execution", () => {
     });
     const stopped = await stopTerminalSessionsForThread({
       userId: user.id,
-      threadId: thread.id,
+      threadId: remoteThreadExecutionKey({ ...context, userId: user.id }),
     });
 
     expect(stopped.stopped).toBeGreaterThan(0);
     expect(getTerminalSession(sessionId)).toBeUndefined();
+    await expect.poll(() => {
+      try { process.kill(pid, 0); return true; } catch { return false; }
+    }).toBe(false);
     expect(fs.statSync(workspaceRoot!).isDirectory()).toBe(true);
   });
 });

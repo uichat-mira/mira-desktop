@@ -1240,16 +1240,14 @@ export type NewThread = typeof threads.$inferInsert;
 export const remoteThreadWorkspaces = sqliteTable(
   "remote_thread_workspaces",
   {
-    threadId: text("thread_id")
-      .primaryKey()
-      .references(() => threads.id, { onDelete: "cascade" }),
+    threadId: text("thread_id").primaryKey(),
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     accountId: text("account_id").notNull(),
     hostId: text("host_id").notNull(),
     mobileDeviceId: text("mobile_device_id").notNull(),
-    workspaceKind: text("workspace_kind", { enum: ["private", "chat"] }),
+    workspaceKind: text("workspace_kind", { enum: ["private"] }),
     workspaceRoot: text("workspace_root"),
     status: text("status", { enum: ["active", "ended"] })
       .notNull()

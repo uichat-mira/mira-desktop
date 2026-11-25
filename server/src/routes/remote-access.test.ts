@@ -157,12 +157,14 @@ vi.mock("@/services/remote-tool-gateway.service.js", () => ({
   resolveRemoteToolApproval: mocks.toolGateway.approve,
   cancelRemoteToolInvocation: mocks.toolGateway.cancel,
   cancelRemoteToolInvocationsForThread: mocks.toolGateway.cancelThread,
+  waitForRemoteThreadInvocations: async () => {},
 }));
 
 vi.mock("@/services/remote-thread-workspace.service.js", () => ({
   RemoteThreadWorkspaceError: mocks.RemoteThreadWorkspaceError,
   readCloudRemoteThreadContext: mocks.threadWorkspace.readContext,
   resolveCloudRemoteIdentity: mocks.threadWorkspace.identity,
+  remoteThreadExecutionKey: () => "remote-mcp-scoped-thread-1",
   remoteThreadWorkspaceService: {
     getState: mocks.threadWorkspace.getState,
     end: mocks.threadWorkspace.end,
@@ -945,6 +947,9 @@ describe("remote access routes", () => {
       },
     });
 
+    mocks.terminalSessions.stopForThread
+      .mockResolvedValueOnce({ requested: 1, stopped: 1 })
+      .mockResolvedValueOnce({ requested: 0, stopped: 0 });
     const ended = await app.inject({
       method: "POST",
       url: "/remote/v1/threads/thread-1/end",
@@ -958,11 +963,11 @@ describe("remote access routes", () => {
     });
     expect(mocks.toolGateway.cancelThread).toHaveBeenCalledWith(
       user.id,
-      "thread-1",
+      "remote-mcp-scoped-thread-1",
     );
     expect(mocks.terminalSessions.stopForThread).toHaveBeenCalledWith({
       userId: user.id,
-      threadId: "thread-1",
+      threadId: "remote-mcp-scoped-thread-1",
     });
 
     await app.close();

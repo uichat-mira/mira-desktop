@@ -10,12 +10,11 @@ import { initializeRoleDatabase } from "@/db/role.db";
 import { initializeThreadDatabase } from "@/db/thread.db";
 import { resetDatabaseClients } from "@/db/index.js";
 import {
-  threadRepository,
   userRepository,
 } from "@/db/repositories/index.js";
 import { initializeHarnessRuntime, resetHarnessRuntime } from "@/mcp/bootstrap.js";
 import { clearWorkspaceSelection } from "@/mcp/workspace.js";
-import { privateAgentWorkspaceService } from "@/services/agent-workspace.service.js";
+import { remoteThreadWorkspaceService } from "@/services/remote-thread-workspace.service.js";
 import { sendRouteError } from "@/utils/route-errors.js";
 import remoteMcpRoute from "./remote-mcp.js";
 import remoteAccessRoute from "./remote-access.js";
@@ -109,12 +108,7 @@ beforeAll(() => {
     isActive: true,
   });
   user.id = created.id;
-  threadRepository.create({
-    id: threadContext.threadId,
-    userId: user.id,
-    title: "Cloud MCP file thread",
-    status: "active",
-  });
+  // Deliberately no Desktop conversation for this Mobile thread ID.
 });
 
 afterAll(() => {
@@ -145,7 +139,7 @@ describe("real MCP JSON-RPC thread workspace flow", () => {
         toolId: "write",
       },
     });
-    expect(privateAgentWorkspaceService.get(threadContext.threadId, user.id)).toBeNull();
+    expect(remoteThreadWorkspaceService.getState({ ...threadContext, userId: user.id }).workspace).toBeNull();
 
     const invocationId = pending.body.result.structuredContent.invocationId as string;
     const approval = await app.inject({
@@ -161,10 +155,9 @@ describe("real MCP JSON-RPC thread workspace flow", () => {
     expect(approval.statusCode).toBe(200);
     expect(approval.json().data).toMatchObject({ status: "completed" });
 
-    const workspaceRoot = privateAgentWorkspaceService.get(
-      threadContext.threadId,
-      user.id,
-    );
+    const workspaceRoot = remoteThreadWorkspaceService.plan({
+      ...threadContext, userId: user.id,
+    }).rootPath;
     expect(workspaceRoot).toBeTruthy();
     expect(
       fs.readFileSync(path.join(workspaceRoot!, "mcp-note.txt"), "utf8"),

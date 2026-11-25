@@ -45,7 +45,7 @@ The client supplies only the thread resource id:
 
 ```http
 POST /mcp
-X-Mira-Thread-Id: <desktop thread id>
+X-Mira-Thread-Id: <mobile local conversation id>
 ```
 
 Rules:
@@ -56,8 +56,13 @@ Rules:
 - `accountId`, `hostId`, and `mobileDeviceId` always come from the trusted
   Cloud grant authority. They are never read from the request body or a
   client-supplied account/Host header.
-- The thread must belong to the authenticated local owner. An unknown, deleted,
-  or differently owned thread behaves as `thread_not_found`.
+- The Mobile local conversation ID is an opaque stable resource ID; no Desktop
+  conversation or ChatWorkspace row is required. The first authorized
+  workspace execution (or explicit end) binds it to the authenticated local
+  owner and Cloud identity. A later mismatch is `thread_not_found`.
+  Unbound valid IDs report `not_started` without creating a directory.
+- A separate internal execution key derives from local owner + trusted account,
+  Host, device and Mobile conversation ID, not a local Desktop thread ID.
 - A workspace-bound `tools/call` without thread context is rejected with
   `thread_context_required`. Discovery, `initialize`, `ping`, non-workspace
   tools, and unknown tools do not require a thread.
@@ -97,17 +102,14 @@ trusted identity check.
 
 ## 4. Stable target
 
-The first activation chooses the target in this order:
-
-1. the explicit ChatWorkspace already bound to the Desktop thread, if present;
-2. otherwise the existing private agent workspace for `(userId, threadId)`
-   under app data.
-
-The chosen kind and root are stored in `remote_thread_workspaces`. Later local
-Desktop project selection does not change the target. If the thread's explicit
-workspace binding changes after an approval request has already frozen a target,
-the approval fails closed with `workspace_changed` instead of executing against
-the new location.
+The first activation creates a dedicated remote MCP workspace under app data:
+`remote-mcp-workdirs/user-<local owner id>/<remote-mcp scoped key>`.
+It reuses the existing validated private workspace directory/quota mechanics
+with a separate namespace. The key derives from the authenticated identity
+and Mobile conversation ID. It never uses or creates a Desktop conversation
+or reuses a ChatWorkspace, even when the IDs happen to match. The chosen root
+is persisted in `remote_thread_workspaces`. A local Desktop project switch
+cannot move the target. A changed frozen target fails closed.
 
 File tools and Terminal use the same root because the existing Harness
 environment workspace is set to the resolved thread root for the whole
@@ -146,7 +148,7 @@ When active or ended with a workspace:
   "threadId": "thread-1",
   "status": "active",
   "workspace": {
-    "ref": "mira-thread-workspace:thread-1",
+    "ref": "mira-thread-workspace:remote-mcp-<scoped key>",
     "kind": "private",
     "available": true,
     "startedAt": "2026-11-25 00:00:00"
@@ -157,8 +159,9 @@ When active or ended with a workspace:
 ```
 
 `ref` is an opaque locator. The absolute Desktop path is not exposed through
-the remote protocol; Desktop resolves the same thread id through its existing
-workspace/file entry points. `kind` is `private` or `chat`. `available` reports
+the remote protocol; the suffix is the directory name under the documented
+app-data remote workspace root, accessible via Desktop's existing file entry.
+`kind` is always `private`. `available` reports
 whether the retained directory currently exists.
 
 ## 6. Explicit end
@@ -174,7 +177,7 @@ Behavior:
 - marks the authoritative binding `ended` before tearing down work, so a racing
   new call for the thread is rejected;
 - aborts in-flight official Cloud MCP invocations owned by that thread;
-- stops persistent Terminal sessions owned by that thread/owner;
+- stops persistent Terminal sessions owned by that thread/owner, drains in-flight execution and repeats the owned-session sweep before confirmation;
 - leaves files and the private workspace directory intact;
 - never stops tasks from another thread or another owner;
 - is idempotent: ending an already ended thread returns `ended` again and repeats
@@ -189,7 +192,7 @@ The response extends the discovery projection:
   "threadId": "thread-1",
   "status": "ended",
   "workspace": {
-    "ref": "mira-thread-workspace:thread-1",
+    "ref": "mira-thread-workspace:remote-mcp-<scoped key>",
     "kind": "private",
     "available": true,
     "startedAt": "2026-11-25 00:00:00"
@@ -226,10 +229,11 @@ value.
 | --- | --- | --- |
 | `thread_context_invalid` | 400 | `X-Mira-Thread-Id` is malformed. |
 | `thread_context_required` | 400 | A Cloud MCP workspace-bound call/approval lacks thread context. |
-| `thread_not_found` | 404 | Thread is unknown, not owned by the caller, or bound to another account/Host/device. |
+| `thread_not_found` | 404 | Thread is bound to another account/Host/device or the invocation is not owned by this thread. |
 | `thread_ended` | 409 | The thread was explicitly ended; new execution or approval is refused. |
-| `workspace_unavailable` | 409 | The frozen target directory or explicit ChatWorkspace is unavailable. |
+| `workspace_unavailable` | 409 | The frozen target directory is unavailable. |
 | `workspace_changed` | 409 | A pending approval was frozen to a different target than the current thread target. |
+| `thread_cleanup_incomplete` | 409 | End was recorded, but stopping work is not yet confirmed; retry the end request. |
 
 Identity mismatch deliberately returns `thread_not_found` so one account/device
 cannot probe another binding.

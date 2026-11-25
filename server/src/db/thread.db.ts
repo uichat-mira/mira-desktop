@@ -53,12 +53,12 @@ const createThreadTables = () => {
     CREATE INDEX IF NOT EXISTS idx_threads_updated_at ON threads(updated_at);
 
     CREATE TABLE IF NOT EXISTS remote_thread_workspaces (
-      thread_id TEXT PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
+      thread_id TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       account_id TEXT NOT NULL,
       host_id TEXT NOT NULL,
       mobile_device_id TEXT NOT NULL,
-      workspace_kind TEXT CHECK (workspace_kind IN ('private', 'chat')),
+      workspace_kind TEXT CHECK (workspace_kind = 'private'),
       workspace_root TEXT,
       status TEXT NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'ended')),

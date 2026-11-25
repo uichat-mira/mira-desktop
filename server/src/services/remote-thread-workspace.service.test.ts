@@ -16,6 +16,7 @@ import {
   readCloudRemoteThreadContext,
   RemoteThreadWorkspaceError,
   remoteThreadWorkspaceService,
+  remoteThreadExecutionKey,
   type RemoteThreadIdentity,
 } from "./remote-thread-workspace.service.js";
 import {
@@ -118,7 +119,8 @@ describe("remote thread workspace service", () => {
       role: "user",
       isActive: true,
     });
-    const thread = createThread(user.id);
+    const thread = { id: "mobile-only-" + crypto.randomUUID() };
+    expect(threadRepository.findById(thread.id, user.id)).toBeFalsy();
 
     expect(
       remoteThreadWorkspaceService.getState({
@@ -175,7 +177,7 @@ describe("remote thread workspace service", () => {
     ).toMatchObject({
       status: "active",
       workspace: {
-        ref: `mira-thread-workspace:${thread.id}`,
+        ref: `mira-thread-workspace:${remoteThreadExecutionKey({ threadId: thread.id, userId: user.id, identity })}`,
         kind: "private",
         available: true,
       },
@@ -190,7 +192,7 @@ describe("remote thread workspace service", () => {
     ).toThrow(RemoteThreadWorkspaceError);
   });
 
-  test("separate threads stay independent and a thread workspace binding wins", () => {
+  test("separate threads stay independent and a local project with the same ID is never reused", () => {
     const user = userRepository.create({
       username: `remote-independent-${crypto.randomUUID()}`,
       passwordHash: "hash",
@@ -241,10 +243,14 @@ describe("remote thread workspace service", () => {
       identity,
     });
 
-    expect(boundPlan).toMatchObject({
-      kind: "chat",
-      rootPath: explicit.rootPath,
+    expect(boundPlan.kind).toBe("private");
+    expect(boundPlan.rootPath).not.toBe(explicit.rootPath);
+    const active = remoteThreadWorkspaceService.activate({
+      threadId: bound.id, userId: user.id, identity, plan: boundPlan,
     });
+    expect(active.rootPath).toContain("remote-mcp-workdirs");
+    fs.writeFileSync(path.join(active.rootPath, "remote-only.txt"), "remote");
+    expect(fs.existsSync(path.join(explicit.rootPath, "remote-only.txt"))).toBe(false);
   });
 
   test("explicit end is idempotent, keeps files, and rejects new work", () => {
@@ -327,7 +333,7 @@ describe("remote thread workspace service", () => {
     expect(fs.existsSync(plan.rootPath)).toBe(false);
   });
 
-  test("rejects approval after the thread target drifted", () => {
+  test("keeps a pending remote target stable when a same-ID local project changes", () => {
     const user = userRepository.create({
       username: `remote-drift-${crypto.randomUUID()}`,
       passwordHash: "hash",
@@ -357,13 +363,12 @@ describe("remote thread workspace service", () => {
     fs.mkdirSync(other.rootPath, { recursive: true });
     threadRepository.updateById(thread.id, { workspaceId: other.id });
 
-    expect(() =>
-      remoteThreadWorkspaceService.plan({
-        threadId: thread.id,
-        userId: user.id,
-        identity,
-        expected: pendingPlan,
-      }),
-    ).toThrow("Remote thread workspace changed since the pending approval");
+    expect(remoteThreadWorkspaceService.plan({
+      threadId: thread.id, userId: user.id, identity, expected: pendingPlan,
+    })).toEqual(pendingPlan);
+    expect(() => remoteThreadWorkspaceService.plan({
+      threadId: thread.id, userId: user.id, identity,
+      expected: { ...pendingPlan, rootPath: explicit.rootPath },
+    })).toThrow("Remote thread workspace changed since the pending approval");
   });
 });

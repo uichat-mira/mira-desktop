@@ -29,6 +29,8 @@ import { validateInvocationArgs } from "@/mcp/core/schema.js";
 import { createHarnessEnvironmentSnapshot } from "@/harness/environment.js";
 import {
   remoteThreadWorkspaceService,
+  remoteThreadExecutionKey,
+  isRemoteThreadExecutionKey,
   RemoteThreadWorkspaceError,
   type RemoteThreadContext,
   type RemoteThreadWorkspacePlan,
@@ -171,6 +173,24 @@ export const cancelRemoteToolInvocationsForThread = (
     cancelled += 1;
   }
   return cancelled;
+};
+
+/** End is only confirmed after already-dispatched invocations have drained. */
+export const waitForRemoteThreadInvocations = async (
+  userId: number,
+  executionThreadId: string,
+  timeoutMs = 10_000,
+) => {
+  const key = threadControllerKey(userId, executionThreadId);
+  const deadline = Date.now() + timeoutMs;
+  while (activeThreadControllers.has(key)) {
+    if (Date.now() >= deadline) {
+      throw new RemoteThreadWorkspaceError(
+        "thread_cleanup_incomplete", "Remote thread execution has not stopped yet",
+      );
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, 25));
+  }
 };
 
 const toModelToolName = (toolId: string) => {
@@ -437,18 +457,21 @@ const runRemoteToolInvocation = async (input: {
     input.signal?.addEventListener("abort", abortFromCaller, { once: true });
   }
   let activeInvocationId: string | null = null;
+  const executionThreadId = input.threadContext
+    ? remoteThreadExecutionKey({ ...input.threadContext, userId: input.userId })
+    : undefined;
 
   if (input.aliasInvocationId) {
     activeInvocationControllers.set(input.aliasInvocationId, {
       controller,
       userId: input.userId,
-      ...(input.threadContext ? { threadId: input.threadContext.threadId } : {}),
+      ...(input.threadContext ? { threadId: executionThreadId! } : {}),
     });
   }
   if (input.threadContext) {
     registerThreadController(
       input.userId,
-      input.threadContext.threadId,
+      executionThreadId!,
       controller,
     );
   }
@@ -456,6 +479,7 @@ const runRemoteToolInvocation = async (input: {
   try {
     const definition = await getRemoteToolDefinition(input.toolId);
     validateInvocationArgs(input.args, definition.inputSchema);
+    if (controller.signal.aborted) throw mcpBadRequest("Remote tool execution was cancelled");
 
     let environment = createHarnessEnvironmentSnapshot();
     let plannedWorkspace = input.plannedWorkspace;
@@ -523,7 +547,7 @@ const runRemoteToolInvocation = async (input: {
       args: input.args,
       userId: input.userId,
       ...(input.threadContext
-        ? { threadId: input.threadContext.threadId }
+        ? { threadId: executionThreadId! }
         : {}),
       signal: controller.signal,
       environment,
@@ -544,7 +568,7 @@ const runRemoteToolInvocation = async (input: {
             controller,
             userId: input.userId,
             ...(input.threadContext
-              ? { threadId: input.threadContext.threadId }
+              ? { threadId: executionThreadId! }
               : {}),
           });
         }
@@ -574,7 +598,7 @@ const runRemoteToolInvocation = async (input: {
     if (input.threadContext) {
       unregisterThreadController(
         input.userId,
-        input.threadContext.threadId,
+        executionThreadId!,
         controller,
       );
     }
@@ -671,8 +695,12 @@ export const resolveRemoteToolApproval = async (input: {
       );
     }
   }
-  const resumeThreadContext =
-    frozenThreadContext?.threadContext ?? input.threadContext;
+  if (!frozenThreadContext && (input.threadContext || isRemoteThreadExecutionKey(original.threadId))) {
+    throw new RemoteThreadWorkspaceError(
+      "thread_not_found", "Remote thread approval does not match the original invocation",
+    );
+  }
+  const resumeThreadContext = frozenThreadContext?.threadContext;
 
   if (input.decision === "rejected") {
     remoteInvocationThreadContexts.delete(input.invocationId);
@@ -740,12 +768,23 @@ export const resolveRemoteToolApproval = async (input: {
 export const cancelRemoteToolInvocation = (
   invocationId: string,
   userId: number,
+  threadContext?: RemoteThreadContext,
 ) => {
+  const assertThread = (threadId?: string) => {
+    if (isRemoteThreadExecutionKey(threadId)) {
+      if (!threadContext || remoteThreadExecutionKey({ ...threadContext, userId }) !== threadId) {
+        throw new RemoteThreadWorkspaceError("thread_not_found", "Remote thread was not found");
+      }
+    } else if (threadContext) {
+      throw new RemoteThreadWorkspaceError("thread_not_found", "Remote thread was not found");
+    }
+  };
   const active = activeInvocationControllers.get(invocationId);
   if (active) {
     if (active.userId !== userId) {
       throw mcpNotFound("Tool invocation was not found");
     }
+    assertThread(active.threadId);
     active.controller.abort();
     return {
       invocationId,
@@ -759,6 +798,7 @@ export const cancelRemoteToolInvocation = (
     throw mcpNotFound("Tool invocation was not found");
   }
 
+  assertThread(record.threadId);
   if (record.status === "awaiting_approval") {
     remoteInvocationThreadContexts.delete(invocationId);
     const cancelled = resolveInvocationApproval({
