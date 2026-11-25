@@ -125,6 +125,8 @@ export const terminalTool: ToolImplementation = {
       args: context.args,
       environment: context.environment,
       signal: context.signal,
+      userId: context.userId,
+      threadId: context.threadId,
       pushEvent: context.pushEvent,
       trace: context.trace,
     });

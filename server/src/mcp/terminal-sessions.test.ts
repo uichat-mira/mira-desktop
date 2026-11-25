@@ -119,4 +119,66 @@ describe("terminal session cleanup", () => {
       "terminal session not found: missing-session",
     );
   });
+
+  it("stops only persistent sessions owned by the ended thread", async () => {
+    mocks.killProcessTree.mockResolvedValue(undefined);
+    mocks.cancelOutputs.mockResolvedValue(undefined);
+    mocks.clearOutputs.mockResolvedValue(undefined);
+    mocks.spawn.mockImplementation(() => createMockPty());
+
+    const {
+      createTerminalSession,
+      getTerminalSession,
+      stopTerminalSession,
+      stopTerminalSessionsForThread,
+    } = await import("./terminal-sessions.js");
+    const shellProfile = {
+      shell: process.platform === "win32" ? "cmd.exe" : "bash",
+      shellFamily: process.platform === "win32" ? ("cmd" as const) : ("posix" as const),
+      argsMode: process.platform === "win32" ? ("cmd" as const) : ("posix" as const),
+      stdoutEncoding: "utf8" as const,
+      stderrEncoding: "utf8" as const,
+    };
+
+    const endedThread = await createTerminalSession({
+      command: "sleep 60",
+      cwd: process.cwd(),
+      workspaceRoot: process.cwd(),
+      runtimeId: "host_spawn",
+      shellProfile,
+      userId: 1,
+      threadId: "thread-ended",
+    });
+    const otherThread = await createTerminalSession({
+      command: "sleep 60",
+      cwd: process.cwd(),
+      workspaceRoot: process.cwd(),
+      runtimeId: "host_spawn",
+      shellProfile,
+      userId: 1,
+      threadId: "thread-other",
+    });
+    const otherUser = await createTerminalSession({
+      command: "sleep 60",
+      cwd: process.cwd(),
+      workspaceRoot: process.cwd(),
+      runtimeId: "host_spawn",
+      shellProfile,
+      userId: 2,
+      threadId: "thread-ended",
+    });
+
+    const result = await stopTerminalSessionsForThread({
+      userId: 1,
+      threadId: "thread-ended",
+    });
+
+    expect(result).toEqual({ requested: 1, stopped: 1 });
+    expect(getTerminalSession(endedThread.id)).toBeUndefined();
+    expect(getTerminalSession(otherThread.id)).toBeDefined();
+    expect(getTerminalSession(otherUser.id)).toBeDefined();
+
+    await stopTerminalSession(otherThread.id);
+    await stopTerminalSession(otherUser.id);
+  });
 });

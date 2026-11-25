@@ -49,11 +49,22 @@ import {
 import {
   assertRemoteToolAvailable,
   cancelRemoteToolInvocation,
+  cancelRemoteToolInvocationsForThread,
+  waitForRemoteThreadInvocations,
   executeRemoteToolInvocation,
   listRemoteToolManifests,
   resolveRemoteToolApproval,
   type RemoteToolGatewayStreamEvent,
 } from "@/services/remote-tool-gateway.service.js";
+import {
+  readCloudRemoteThreadContext,
+  remoteThreadWorkspaceService,
+  remoteThreadExecutionKey,
+  resolveCloudRemoteIdentity,
+  RemoteThreadWorkspaceError,
+  type RemoteThreadIdentity,
+} from "@/services/remote-thread-workspace.service.js";
+import { stopTerminalSessionsForThread } from "@/mcp/terminal-sessions.js";
 
 const looseObjectSchema = {
   type: "object",
@@ -83,6 +94,30 @@ const remoteWorkspaceSchema = {
     updatedAt: { type: "string", format: "date-time" },
   },
 } as const;
+
+const mapRemoteThreadWorkspaceError = (error: unknown): never => {
+  if (error instanceof RemoteThreadWorkspaceError) {
+    throw createRouteError({
+      statusCode: error.statusCode,
+      code: error.code,
+      message: error.message,
+    });
+  }
+  throw error;
+};
+
+const requireCloudRemoteIdentity = (
+  request: Parameters<typeof resolveCloudRemoteIdentity>[0],
+): RemoteThreadIdentity => {
+  if (!request.cloudRemoteCaller) {
+    throw forbidden("Official Cloud Host Grant is required");
+  }
+  const identity = resolveCloudRemoteIdentity(request);
+  if (!identity) {
+    throw forbidden("Official Cloud Host Grant is required");
+  }
+  return identity;
+};
 
 const assertDirectRemoteAccessAllowed = () => {
   if (!cloudRemoteAccessMode.isDirectRemoteAccessAllowed()) {
@@ -632,6 +667,117 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
     }),
   );
 
+  app.get<{ Params: { threadId: string } }>(
+    "/remote/v1/threads/:threadId/workspace",
+    {
+      schema: {
+        tags: ["Remote Access"],
+        summary: "Get the official Cloud MCP thread workspace projection",
+        operationId: "getRemoteThreadWorkspace",
+        params: {
+          type: "object",
+          required: ["threadId"],
+          properties: {
+            threadId: { type: "string", minLength: 1, maxLength: 128 },
+          },
+        },
+        response: {
+          200: successEnvelope(looseObjectSchema),
+          400: errorEnvelope,
+          403: errorEnvelope,
+          404: errorEnvelope,
+          409: errorEnvelope,
+          500: errorEnvelope,
+        },
+      },
+    },
+    routeHandler("Failed to get remote thread workspace", async (request) => {
+      if (!request.authUser) {
+        throw forbidden("Desktop authentication is required");
+      }
+      try {
+        const identity = requireCloudRemoteIdentity(request);
+        return success(
+          remoteThreadWorkspaceService.getState({
+            threadId: request.params.threadId,
+            userId: request.authUser.id,
+            identity,
+          }),
+        );
+      } catch (error) {
+        mapRemoteThreadWorkspaceError(error);
+      }
+    }),
+  );
+
+  app.post<{ Params: { threadId: string } }>(
+    "/remote/v1/threads/:threadId/end",
+    {
+      schema: {
+        tags: ["Remote Access"],
+        summary: "Explicitly end an official Cloud MCP remote thread",
+        operationId: "endRemoteThreadWorkspace",
+        params: {
+          type: "object",
+          required: ["threadId"],
+          properties: {
+            threadId: { type: "string", minLength: 1, maxLength: 128 },
+          },
+        },
+        response: {
+          200: successEnvelope(looseObjectSchema),
+          400: errorEnvelope,
+          403: errorEnvelope,
+          404: errorEnvelope,
+          409: errorEnvelope,
+          500: errorEnvelope,
+        },
+      },
+    },
+    routeHandler("Failed to end remote thread workspace", async (request) => {
+      if (!request.authUser) {
+        throw forbidden("Desktop authentication is required");
+      }
+      try {
+        const identity = requireCloudRemoteIdentity(request);
+        // Mark ended first so a racing new call is rejected before we tear
+        // down the tasks that already belong to this thread.
+        const state = remoteThreadWorkspaceService.end({
+          threadId: request.params.threadId,
+          userId: request.authUser.id,
+          identity,
+        });
+        const executionThreadId = remoteThreadExecutionKey({
+          userId: request.authUser.id,
+          threadId: request.params.threadId,
+          identity,
+        });
+        const stoppedInvocations = cancelRemoteToolInvocationsForThread(
+          request.authUser.id, executionThreadId,
+        );
+        const stopOwned = () => stopTerminalSessionsForThread({
+          userId: request.authUser!.id,
+          threadId: executionThreadId,
+        });
+        const terminal = await stopOwned();
+        await waitForRemoteThreadInvocations(request.authUser.id, executionThreadId);
+        // An invocation already starting a PTY when end arrived may register it
+        // after the first sweep. Drain before a final sweep, not before aborting.
+        const lateTerminal = await stopOwned();
+        if (terminal.stopped !== terminal.requested || lateTerminal.stopped !== lateTerminal.requested) {
+          throw new RemoteThreadWorkspaceError("thread_cleanup_incomplete", "Remote terminal cleanup was not confirmed");
+        }
+        return success({
+          ...state,
+          stoppedInvocations,
+          stoppedTerminalSessions: terminal.stopped + lateTerminal.stopped,
+        });
+      } catch (error) {
+        mapRemoteThreadWorkspaceError(error);
+      }
+    }),
+  );
+
   app.get(
     "/remote/v1/tools",
     {
@@ -810,15 +956,23 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!(request.remoteDevice || request.cloudRemoteCaller) || !user) {
         throw forbidden("A paired remote device credential is required");
       }
-      return success(
-        await resolveRemoteToolApproval({
-          invocationId: request.params.invocationId,
-          decision: request.body.decision,
-          toolId: request.body.toolId,
-          args: request.body.args,
-          userId: user.id,
-        }),
-      );
+      try {
+        const threadContext = request.cloudRemoteCaller
+          ? readCloudRemoteThreadContext(request)
+          : null;
+        return success(
+          await resolveRemoteToolApproval({
+            invocationId: request.params.invocationId,
+            decision: request.body.decision,
+            toolId: request.body.toolId,
+            args: request.body.args,
+            userId: user.id,
+            ...(threadContext ? { threadContext } : {}),
+          }),
+        );
+      } catch (error) {
+        mapRemoteThreadWorkspaceError(error);
+      }
     }),
   );
 
@@ -849,9 +1003,14 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
       if (!(request.remoteDevice || request.cloudRemoteCaller) || !request.authUser) {
         throw forbidden("A paired remote device credential is required");
       }
-      return success(
-        cancelRemoteToolInvocation(request.params.invocationId, request.authUser.id),
-      );
+      try {
+        const context = request.cloudRemoteCaller ? readCloudRemoteThreadContext(request) : null;
+        return success(context
+          ? cancelRemoteToolInvocation(request.params.invocationId, request.authUser.id, context)
+          : cancelRemoteToolInvocation(request.params.invocationId, request.authUser.id));
+      } catch (error) {
+        mapRemoteThreadWorkspaceError(error);
+      }
     }),
   );
 
@@ -1036,6 +1195,14 @@ const remoteAccessRoute: FastifyPluginAsync = async (app) => {
             "POST /threads",
             "DELETE /threads/:id",
           ],
+          ...(cloud
+            ? {
+                threadWorkspace: [
+                  "GET /remote/v1/threads/:threadId/workspace",
+                  "POST /remote/v1/threads/:threadId/end",
+                ],
+              }
+            : {}),
           messages: ["GET /threads/:id/messages", "POST /proxy/chat/default"],
           agent: [
             "GET /agent/runs/:runId",

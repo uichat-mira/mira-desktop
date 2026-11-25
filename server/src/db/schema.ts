@@ -1230,6 +1230,43 @@ export const threadsRelations = relations(threads, ({ many, one }) => ({
 export type Thread = typeof threads.$inferSelect;
 export type NewThread = typeof threads.$inferInsert;
 
+/**
+ * Authoritative Desktop mapping for a Remote MCP thread. A row is created only
+ * when an official Cloud MCP thread actually starts workspace-bound work (or
+ * when the thread is explicitly ended before any work). It binds the target to
+ * the trusted Cloud caller identity so later requests cannot drift to another
+ * account, Host, device, or locally selected project.
+ */
+export const remoteThreadWorkspaces = sqliteTable(
+  "remote_thread_workspaces",
+  {
+    threadId: text("thread_id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id").notNull(),
+    hostId: text("host_id").notNull(),
+    mobileDeviceId: text("mobile_device_id").notNull(),
+    workspaceKind: text("workspace_kind", { enum: ["private"] }),
+    workspaceRoot: text("workspace_root"),
+    status: text("status", { enum: ["active", "ended"] })
+      .notNull()
+      .default("active"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    endedAt: text("ended_at"),
+  },
+  (table) => ({
+    userIdIdx: index("idx_remote_thread_workspaces_user_id").on(table.userId),
+    statusIdx: index("idx_remote_thread_workspaces_status").on(table.status),
+  }),
+);
+
+export type RemoteThreadWorkspace = typeof remoteThreadWorkspaces.$inferSelect;
+export type NewRemoteThreadWorkspace =
+  typeof remoteThreadWorkspaces.$inferInsert;
+
 export const conversationArtifacts = sqliteTable(
   "conversation_artifacts",
   {

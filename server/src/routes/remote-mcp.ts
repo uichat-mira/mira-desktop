@@ -15,6 +15,10 @@ import {
   type RemoteToolCatalog,
   type RemoteToolInvocationProjection,
 } from "@/services/remote-tool-gateway.service.js";
+import {
+  readCloudRemoteThreadContext,
+  RemoteThreadWorkspaceError,
+} from "@/services/remote-thread-workspace.service.js";
 import { getAppMeta } from "@/utils/index.js";
 
 export const MCP_PROTOCOL_VERSION = "2025-06-18" as const;
@@ -239,6 +243,11 @@ const callTool = async (input: {
     throw forbidden("Desktop authentication is required");
   }
 
+  const isCloud = Boolean(input.request.cloudRemoteCaller);
+  const threadContext = isCloud
+    ? readCloudRemoteThreadContext(input.request)
+    : null;
+
   const controller = new AbortController();
   const abort = () => controller.abort();
   input.request.raw.once("aborted", abort);
@@ -248,6 +257,8 @@ const callTool = async (input: {
       toolId,
       args: input.args,
       userId,
+      ...(threadContext ? { threadContext } : {}),
+      ...(isCloud ? { requireThreadContext: true } : {}),
       signal: controller.signal,
     });
     return toMcpToolResult(projection);
@@ -406,6 +417,15 @@ const remoteMcpRoute: FastifyPluginAsync = async (app) => {
           return reply
             .type("application/json")
             .send(jsonRpcError(id, error.code, error.message, error.data));
+        }
+        if (error instanceof RemoteThreadWorkspaceError) {
+          return reply
+            .type("application/json")
+            .send(
+              jsonRpcError(id, -32010, error.message, {
+                code: error.code,
+              }),
+            );
         }
         if (isAppError(error)) {
           return reply

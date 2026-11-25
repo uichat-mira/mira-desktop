@@ -11,6 +11,7 @@ feature: DesktopMCP
 related:
   - mobile-host-protocol-v1.md
   - relay-transport-v1.md
+  - remote-thread-workspace-v1.md
   - ../TOOL_CURRENT_TRUTH.md
 ---
 
@@ -271,6 +272,34 @@ JSON-RPC body and `/mcp` path are unchanged.
 Do not send a Direct header through Cloud or a Cloud capability to Tailscale.
 The transport admission layer rejects that interchange.
 
+### Cloud thread workspace context
+
+Official Cloud MCP `tools/call` for a workspace-bound Tool
+(`read`, `write`, `edit`, `terminal`, and the other core workspace Tools) must
+send:
+
+```http
+X-Mira-Thread-Id: <mobile local conversation id>
+```
+
+The account, Host, and device identity are taken from the verified Cloud Host
+Grant, never from this header. The first allowed workspace-bound call lazily
+creates one stable per-thread workspace; discovery, awaiting approval, and
+rejected calls do not. Direct callers keep their previous selected-workspace
+behavior and do not consume this contract.
+
+Approval resumes the exact original thread target and identity. Explicit thread
+end uses the Remote V1 routes described in
+[`remote-thread-workspace-v1.md`](remote-thread-workspace-v1.md):
+
+```http
+GET  /remote/v1/threads/<threadId>/workspace
+POST /remote/v1/threads/<threadId>/end
+```
+
+Transport disconnect, one-turn completion, backgrounding, and app close are not
+thread end.
+
 ## 7. Result and approval recovery semantics
 
 The MCP result `content` is the existing bounded Harness LLM projection text.
@@ -280,6 +309,11 @@ The MCP result `content` is the existing bounded Harness LLM projection text.
 - `awaiting_approval`: `isError: true` plus
   `{ invocationId, toolId, status: "awaiting_approval", approval }`;
 - `failed` / `cancelled`: `isError: true` plus the bounded error projection.
+
+Cloud thread lifecycle failures are returned as JSON-RPC error `-32010` with a
+stable `data.code` (`thread_context_required`, `thread_not_found`,
+`thread_ended`, `workspace_unavailable`, or `workspace_changed`). See the
+thread workspace contract for the full table.
 
 An awaiting result is not retried automatically. The client resolves the
 original exact invocation through the existing Remote V1 route:
