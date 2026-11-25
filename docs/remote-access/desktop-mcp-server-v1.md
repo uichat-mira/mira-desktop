@@ -4,7 +4,7 @@ status: current
 doc_type: current-contract
 canonical: true
 owner: runtime
-last_verified: 2026-11-24
+last_verified: 2026-11-25
 layer: architecture
 module: Remote Access
 feature: DesktopMCP
@@ -35,8 +35,8 @@ Agent Run, exact-call approval recovery, and Artifact access.
 
 ```text
 Tailscale Direct device credential ─┐
-Official Cloud Host Grant ──────────┼─> POST /mcp
-                                    │     tools/list / tools/call
+Official Cloud Host Grant ──────────┼─> POST /mcp (MCP 2026-07-28, stateless)
+                                    │     server/discover / tools/list / tools/call
                                     │     resources/list / resources/read
                                     ▼
                          existing Remote tool catalog
@@ -57,7 +57,7 @@ legacy paired Relay fallback.
 | Capability resource URI | `mira://service/mira-desktop/capabilities` |
 | Capability schema | `mira.service-capabilities/v1` |
 | Capability manifest version | `1.0.0` |
-| Negotiated MCP protocol | `2025-06-18` |
+| MCP protocol | `2026-07-28` |
 
 The same service identity is returned through Tailscale Direct and the official
 Cloud Relay. Transport provenance does not create a second service id or a
@@ -69,6 +69,11 @@ version.
 
 ## 3. Protocol surface
 
+This endpoint implements only the MCP `2026-07-28` stateless wire contract. It
+does not implement a dual-era server: there is no `initialize`/`initialized`
+handshake, no protocol-version negotiation handshake, no protocol session, and
+no fallback to `2025-06-18` or `2025-11-25`.
+
 Endpoint:
 
 ```http
@@ -76,29 +81,63 @@ POST /mcp
 Authorization: Bearer <remote credential>
 Content-Type: application/json
 Accept: application/json, text/event-stream
+MCP-Protocol-Version: 2026-07-28
+Mcp-Method: <JSON-RPC method>
+Mcp-Name: <tool name or resource uri, only for tools/call and resources/read>
 ```
 
 Implemented JSON-RPC methods:
 
-- `initialize`
+- `server/discover`
 - `ping`
 - `tools/list`
 - `tools/call`
 - `resources/list`
 - `resources/read`
-- notifications, including `notifications/initialized`, return HTTP `202` with
-  no response body
+
+Every request carries its protocol version and client capabilities in
+`params._meta`:
+
+```json
+{
+  "_meta": {
+    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+    "io.modelcontextprotocol/clientInfo": { "name": "mira-mobile", "version": "1" },
+    "io.modelcontextprotocol/clientCapabilities": {}
+  }
+}
+```
 
 The server is stateless over HTTP. It does not issue `Mcp-Session-Id`, does not
-open a GET SSE stream, and does not implement a DELETE session endpoint. A
-successful request returns one `application/json` JSON-RPC response. Clients
-must not claim SSE stream support against this slice.
+open a GET SSE stream, and does not implement a DELETE session endpoint; after
+the normal remote credential check, `GET` and `DELETE` on `/mcp` return `405
+Method Not Allowed` with `Allow: POST`. A successful request returns one
+`application/json` JSON-RPC response whose `result` carries `resultType:
+"complete"` and `_meta["io.modelcontextprotocol/serverInfo"]`. Clients must not
+claim SSE stream support against this slice.
 
-The requested protocol version is echoed only when it is supported; otherwise
-the server returns `2025-06-18`. Requests carrying an unsupported
-`MCP-Protocol-Version` header receive HTTP `400`.
+Request validation follows `2026-07-28` Streamable HTTP server validation:
 
-The request body is bounded to 1 MiB.
+| Condition | Response |
+| --- | --- |
+| Missing `MCP-Protocol-Version` header | `400`, JSON-RPC `-32020` |
+| Unsupported `MCP-Protocol-Version` | `400`, JSON-RPC `-32022` with `data.supported` and `data.requested` |
+| Header version differs from `params._meta` version | `400`, JSON-RPC `-32020` |
+| Missing `params._meta` version or client capabilities | `400`, JSON-RPC `-32602` |
+| Missing `Mcp-Method`, or it differs from the body method | `400`, JSON-RPC `-32020` |
+| Missing `Mcp-Name`, or it differs from `params.name` / `params.uri` | `400`, JSON-RPC `-32020` |
+| Unknown method | `404`, JSON-RPC `-32601` |
+| `initialize` | `404`, JSON-RPC `-32601` naming the supported versions |
+| Any JSON-RPC notification | `400`, JSON-RPC `-32601`; this revision defines no client-to-server notification on Streamable HTTP |
+
+A legacy-shaped `initialize` request (no modern headers or `_meta`) fails the
+missing-header/missing-metadata checks with `400`; every error returned to an
+`initialize` request also names the supported protocol versions so the client
+has an actionable diagnostic.
+
+`Mcp-Name` values may use the spec's `=?base64?<value>?=` sentinel; the server
+decodes it before comparing it with the body value. The request body is bounded
+to 1 MiB.
 
 ## 4. Eligibility is the shared core admission projection
 
@@ -182,7 +221,7 @@ semantic capability group exists in the current eligible catalog.
       "serverName": "mira-desktop",
       "serverVersion": "<desktop application version>",
       "sdk": "mira-desktop/fastify-jsonrpc@1",
-      "protocolVersions": ["2025-06-18"]
+      "protocolVersions": ["2026-07-28"]
     }
   },
   "capabilities": [
@@ -208,6 +247,10 @@ Capability groups come only from authored Harness capability profiles. Their
 `tools/list`; there are no fabricated groups or schemas. One-to-one fallback
 profiles are not published as product capabilities.
 
+`resources/read` for any other URI returns JSON-RPC error `-32602`
+(`Resource not found`), the current `2026-07-28` code. The optional resource has
+no legacy-protocol responsibility and is not a compatibility outlet.
+
 The resource is discovery metadata only:
 
 - `access` and `confirmation` are conservative hints, not permissions;
@@ -222,7 +265,7 @@ The resource is discovery metadata only:
 | Operation | Required authority |
 | --- | --- |
 | `POST /mcp` | valid paired Direct device token, or official Cloud Host Grant |
-| `initialize`, `ping`, `tools/list`, `resources/*` | `tools:read` |
+| `server/discover`, `ping`, `tools/list`, `resources/*` | `tools:read` |
 | `tools/call` | `tools:read` + `tools:invoke` |
 | approval of a pending call | existing Remote V1 route, `tools:approve` |
 | cancellation of a pending/running call | existing Remote V1 route, `tools:control` |
@@ -242,24 +285,28 @@ and Cloud credentials are never interchangeable.
 curl -sS https://<desktop-tailnet-host>/mcp \
   -H 'Authorization: Bearer mira_device_<id>.<secret>' \
   -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"mira-mobile","version":"1"}}}'
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"mira-mobile","version":"1"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
 ```
 
 ```bash
 curl -sS https://<desktop-tailnet-host>/mcp \
   -H 'Authorization: Bearer mira_device_<id>.<secret>' \
   -H 'Content-Type: application/json' \
-  -H 'MCP-Protocol-Version: 2025-06-18' \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: tools/list' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
 ```
 
 ```bash
 curl -sS https://<desktop-tailnet-host>/mcp \
   -H 'Authorization: Bearer mira_device_<id>.<secret>' \
   -H 'Content-Type: application/json' \
-  -H 'MCP-Protocol-Version: 2025-06-18' \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read","arguments":{"path":"README.md"}}}'
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: tools/call' \
+  -H 'Mcp-Name: read' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read","arguments":{"path":"README.md"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
 ```
 
 ### Official Cloud example
@@ -303,7 +350,9 @@ thread end.
 ## 7. Result and approval recovery semantics
 
 The MCP result `content` is the existing bounded Harness LLM projection text.
-`structuredContent` carries the invocation projection:
+Every result carries `resultType: "complete"` and
+`_meta["io.modelcontextprotocol/serverInfo"]`. `structuredContent` carries the
+invocation projection:
 
 - `completed`: `{ invocationId, toolId, status: "completed" }`, `isError: false`;
 - `awaiting_approval`: `isError: true` plus
@@ -342,8 +391,9 @@ machine is not implemented.
 | --- | --- | --- |
 | Tailscale Direct | HTTPS POST JSON-RPC, 1 MiB request bound | Real listening Fastify HTTP protocol tests plus route/auth tests. Real tailnet T4 not run in this slice. |
 | Official Cloud Relay | Same POST JSON-RPC over existing Relay V1 request/response/chunk/complete | Relay frames already carry method/path/headers/body and cancellation. Real Relay forwarding of this MCP endpoint was not run in this slice. |
-| GET SSE stream | Not supported | Returns no SSE stream; Mobile uses the documented stateless POST form. |
-| MCP session id | Not issued | Stateless endpoint. |
+| GET SSE stream | Not supported | Authenticated `GET /mcp` returns `405` with `Allow: POST`; Mobile uses the documented stateless POST form. |
+| MCP session id / DELETE session | Not issued / not supported | Stateless endpoint; authenticated `DELETE /mcp` returns `405`. |
+| Legacy `initialize` handshake | Not supported | `404` `-32601` naming supported versions; legacy requests without the required headers fail server validation. |
 | Desktop JWT only | Denied | A local JWT without a paired device or Cloud Grant is not a remote MCP caller. |
 
 Relay limits remain those of Relay V1: 1 MiB request body and 16 MiB response
@@ -386,19 +436,21 @@ pnpm --dir server typecheck
 ```
 
 The route tests include a real listening Fastify HTTP client in addition to
-in-process protocol calls. They cover initialize, real `tools/list` schema
+in-process protocol calls. They cover `server/discover`, real `tools/list` schema
 projection, the shared core catalog, alias mapping, the optional capability
 resource, a safe read-only invocation through the existing Harness chain, a
 registered non-core Tool rejected before execution, missing scopes, unknown
-tools, awaiting approval, notifications, and Direct/Cloud caller parity. The
-core/capability tests prove authored core profiles resolve to the registered
-Tool set, fallback Tools stay non-core, and an unavailable core Tool reports its
-exact readiness reason instead of entering the catalog. The auth test uses a real
-SQLite-backed owner/device to cover a positive local JWT, positive Direct
-device, DSK-018 signed-in Direct denial, revoked-device denial, and denial of a
-Desktop JWT at `/mcp`. The Cloud Grant runtime test proves a positive
-`tools:read` admission for `/mcp`, cross-device denial, and revocation. Existing
-Remote V1, remote-device, and Cloud Grant tests remain in the targeted suite.
+tools, awaiting approval, request metadata and mirrored-header validation, the
+legacy `initialize`/`notifications/initialized` rejection, GET/DELETE `405`, and
+Direct/Cloud caller parity. The core/capability tests prove authored core
+profiles resolve to the registered Tool set, fallback Tools stay non-core, and
+an unavailable core Tool reports its exact readiness reason instead of entering
+the catalog. The auth test uses a real SQLite-backed owner/device to cover a
+positive local JWT, positive Direct device, DSK-018 signed-in Direct denial,
+revoked-device denial, and denial of a Desktop JWT at `/mcp`. The Cloud Grant
+runtime test proves a positive `tools:read` admission for `/mcp`, cross-device
+denial, and revocation. Existing Remote V1, remote-device, and Cloud Grant tests
+remain in the targeted suite.
 
 Not tested in this slice:
 

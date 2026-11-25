@@ -125,6 +125,23 @@ const unavailableDefinition: ToolDefinition = {
 };
 
 const user = { id: 7, username: "tester", role: "user" as const };
+const MCP_META = {
+  "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+  "io.modelcontextprotocol/clientInfo": { name: "test-client", version: "1" },
+  "io.modelcontextprotocol/clientCapabilities": {},
+};
+
+const requestHeaders = (method: string, name?: string) => ({
+  "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+  "mcp-method": method,
+  ...(name ? { "mcp-name": name } : {}),
+});
+
+const requestParams = (params: Record<string, unknown> = {}) => ({
+  ...params,
+  _meta: MCP_META,
+});
+
 const writeExecute = vi.fn(() => ({
   content: [{ type: "text", text: "should not execute" }],
   isError: false,
@@ -239,17 +256,24 @@ const createApp = async (options: {
 const rpc = async (
   app: FastifyInstance,
   method: string,
-  params?: Record<string, unknown>,
+  params: Record<string, unknown> = {},
   id: number | null = 1,
 ) => {
+  const name =
+    typeof params.name === "string"
+      ? params.name
+      : typeof params.uri === "string"
+        ? params.uri
+        : undefined;
   const response = await app.inject({
     method: "POST",
     url: "/mcp",
+    headers: requestHeaders(method, name),
     payload: {
       jsonrpc: "2.0",
       ...(id === null ? {} : { id }),
       method,
-      ...(params ? { params } : {}),
+      params: requestParams(params),
     },
   });
   return {
@@ -272,25 +296,26 @@ afterAll(() => {
 });
 
 describe("remote MCP outlet", () => {
-  it("initializes the one stable mira-desktop service identity for a Direct device", async () => {
+  it("discovers the one stable mira-desktop service identity for a Direct device", async () => {
     const app = await createApp();
 
-    const { response, body } = await rpc(app, "initialize", {
-      protocolVersion: MCP_PROTOCOL_VERSION,
-      capabilities: { tools: {}, resources: {} },
-      clientInfo: { name: "test-client", version: "1" },
-    });
+    const { response, body } = await rpc(app, "server/discover");
 
     assert.equal(response.statusCode, 200, response.body);
     expect(body.result).toMatchObject({
-      protocolVersion: MCP_PROTOCOL_VERSION,
-      serverInfo: { name: "mira-desktop" },
+      resultType: "complete",
+      supportedVersions: [MCP_PROTOCOL_VERSION],
       capabilities: {
         tools: {},
         resources: {},
       },
     });
-    expect(body.result.serverInfo.version).toMatch(/\d+\.\d+\.\d+/u);
+    expect(body.result._meta["io.modelcontextprotocol/serverInfo"]).toMatchObject({
+      name: "mira-desktop",
+    });
+    expect(
+      body.result._meta["io.modelcontextprotocol/serverInfo"].version,
+    ).toMatch(/\d+\.\d+\.\d+/u);
     await app.close();
   });
 
@@ -299,6 +324,7 @@ describe("remote MCP outlet", () => {
 
     const { response, body } = await rpc(app, "tools/list");
     assert.equal(response.statusCode, 200, response.body);
+    expect(body.result.resultType).toBe("complete");
     const tools = body.result.tools as Array<Record<string, unknown>>;
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "apply_patch",
@@ -391,7 +417,7 @@ describe("remote MCP outlet", () => {
       uri: "mira://service/mira-desktop/missing",
     });
     expect(missing.response.statusCode).toBe(200);
-    expect(missing.body.error).toMatchObject({ code: -32002 });
+    expect(missing.body.error).toMatchObject({ code: -32602 });
     await app.close();
   });
 
@@ -405,6 +431,7 @@ describe("remote MCP outlet", () => {
 
     assert.equal(response.statusCode, 200, response.body);
     expect(body.result).toMatchObject({
+      resultType: "complete",
       isError: false,
       content: [{ type: "text", text: expect.stringContaining("read:README.md") }],
       structuredContent: {
@@ -420,26 +447,30 @@ describe("remote MCP outlet", () => {
     const app = await createApp();
     const base = await app.listen({ host: "127.0.0.1", port: 0 });
     try {
-      const initialized = await fetch(`${base}/mcp`, {
+      const discovered = await fetch(`${base}/mcp`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           accept: "application/json, text/event-stream",
+          "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+          "mcp-method": "server/discover",
         },
         body: JSON.stringify({
           jsonrpc: "2.0",
-          id: "init",
-          method: "initialize",
-          params: {
-            protocolVersion: MCP_PROTOCOL_VERSION,
-            capabilities: {},
-            clientInfo: { name: "http-client", version: "1" },
-          },
+          id: "discover",
+          method: "server/discover",
+          params: { _meta: MCP_META },
         }),
       });
-      expect(initialized.status).toBe(200);
-      expect(initialized.headers.get("content-type")).toContain("application/json");
-      expect((await initialized.json()).result.serverInfo.name).toBe("mira-desktop");
+      expect(discovered.status).toBe(200);
+      expect(discovered.headers.get("content-type")).toContain("application/json");
+      const discoveredBody = await discovered.json();
+      expect(discoveredBody.result.supportedVersions).toEqual([
+        MCP_PROTOCOL_VERSION,
+      ]);
+      expect(
+        discoveredBody.result._meta["io.modelcontextprotocol/serverInfo"].name,
+      ).toBe("mira-desktop");
 
       const called = await fetch(`${base}/mcp`, {
         method: "POST",
@@ -447,17 +478,24 @@ describe("remote MCP outlet", () => {
           "content-type": "application/json",
           accept: "application/json, text/event-stream",
           "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+          "mcp-method": "tools/call",
+          "mcp-name": "read",
         },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 2,
           method: "tools/call",
-          params: { name: "read", arguments: { path: "http.txt" } },
+          params: {
+            name: "read",
+            arguments: { path: "http.txt" },
+            _meta: MCP_META,
+          },
         }),
       });
       expect(called.status).toBe(200);
       const body = await called.json();
       expect(body.result).toMatchObject({
+        resultType: "complete",
         isError: false,
         content: [
           { type: "text", text: expect.stringContaining("read:http.txt") },
@@ -471,17 +509,16 @@ describe("remote MCP outlet", () => {
   it("uses the same MCP identity and tool projection for an official Cloud grant caller", async () => {
     const app = await createApp({ cloud: true });
 
-    const initialized = await rpc(app, "initialize", {
-      protocolVersion: MCP_PROTOCOL_VERSION,
-      capabilities: {},
-      clientInfo: { name: "cloud-client", version: "1" },
-    });
-    expect(initialized.body.result.serverInfo.name).toBe("mira-desktop");
+    const discovered = await rpc(app, "server/discover");
+    expect(
+      discovered.body.result._meta["io.modelcontextprotocol/serverInfo"].name,
+    ).toBe("mira-desktop");
     const called = await rpc(app, "tools/call", {
       name: "read",
       arguments: { path: "cloud.txt" },
     });
     expect(called.body.result).toMatchObject({
+      resultType: "complete",
       isError: false,
       content: [{ type: "text", text: expect.stringContaining("read:cloud.txt") }],
     });
@@ -491,9 +528,7 @@ describe("remote MCP outlet", () => {
   it("denies a Desktop JWT without remote device or Cloud authority", async () => {
     const app = await createApp({ localJwtOnly: true });
 
-    const { response } = await rpc(app, "initialize", {
-      protocolVersion: MCP_PROTOCOL_VERSION,
-    });
+    const { response } = await rpc(app, "server/discover");
 
     expect(response.statusCode).toBe(403);
     await app.close();
@@ -564,28 +599,206 @@ describe("remote MCP outlet", () => {
     await app.close();
   });
 
-  it("accepts notifications without a JSON-RPC response", async () => {
-    const app = await createApp();
-
-    const { response } = await rpc(app, "notifications/initialized", undefined, null);
-
-    expect(response.statusCode).toBe(202);
-    expect(response.body).toBe("");
-    await app.close();
-  });
-
-  it("rejects an unsupported negotiated protocol header", async () => {
+  it("rejects the legacy notifications/initialized handshake notification", async () => {
     const app = await createApp();
 
     const response = await app.inject({
       method: "POST",
       url: "/mcp",
-      headers: { "mcp-protocol-version": "1900-01-01" },
-      payload: { jsonrpc: "2.0", id: 1, method: "ping" },
+      headers: requestHeaders("notifications/initialized"),
+      payload: { jsonrpc: "2.0", method: "notifications/initialized" },
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json().error.code).toBe(-32000);
+    expect(response.json().error).toMatchObject({ code: -32601 });
+    await app.close();
+  });
+
+  it("rejects the legacy initialize handshake without transparent compatibility", async () => {
+    const app = await createApp();
+
+    const modernShaped = await rpc(app, "initialize");
+    expect(modernShaped.response.statusCode).toBe(404);
+    expect(modernShaped.body.error).toMatchObject({
+      code: -32601,
+      data: { supported: [MCP_PROTOCOL_VERSION] },
+    });
+
+    const legacyShaped = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "legacy-client", version: "1" },
+        },
+      },
+    });
+    expect(legacyShaped.statusCode).toBe(400);
+    expect(legacyShaped.json().error).toMatchObject({
+      code: -32020,
+      data: { supported: [MCP_PROTOCOL_VERSION] },
+    });
+    await app.close();
+  });
+
+  it("rejects an unsupported MCP protocol version with the supported list", async () => {
+    const app = await createApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        "mcp-protocol-version": "2025-06-18",
+        "mcp-method": "ping",
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "ping",
+        params: {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2025-06-18",
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatchObject({
+      code: -32022,
+      data: {
+        supported: [MCP_PROTOCOL_VERSION],
+        requested: "2025-06-18",
+      },
+    });
+    await app.close();
+  });
+
+  it("rejects missing or mismatched request metadata and mirrored headers", async () => {
+    const app = await createApp();
+
+    const missingVersion = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: { "mcp-method": "ping" },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "ping",
+        params: { _meta: MCP_META },
+      },
+    });
+    expect(missingVersion.statusCode).toBe(400);
+    expect(missingVersion.json().error.code).toBe(-32020);
+
+    const missingMeta = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: requestHeaders("ping"),
+      payload: { jsonrpc: "2.0", id: 1, method: "ping", params: {} },
+    });
+    expect(missingMeta.statusCode).toBe(400);
+    expect(missingMeta.json().error.code).toBe(-32602);
+
+    const versionMismatch = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: requestHeaders("ping"),
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "ping",
+        params: {
+          _meta: {
+            ...MCP_META,
+            "io.modelcontextprotocol/protocolVersion": "2025-06-18",
+          },
+        },
+      },
+    });
+    expect(versionMismatch.statusCode).toBe(400);
+    expect(versionMismatch.json().error.code).toBe(-32020);
+
+    const methodMismatch = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: requestHeaders("tools/list"),
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "ping",
+        params: { _meta: MCP_META },
+      },
+    });
+    expect(methodMismatch.statusCode).toBe(400);
+    expect(methodMismatch.json().error.code).toBe(-32020);
+
+    const missingName = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: requestHeaders("tools/call"),
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "read", arguments: { path: "README.md" }, _meta: MCP_META },
+      },
+    });
+    expect(missingName.statusCode).toBe(400);
+    expect(missingName.json().error.code).toBe(-32020);
+    expect(writeExecute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("decodes the Base64 Mcp-Name sentinel before comparing it with the body", async () => {
+    const app = await createApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+        "mcp-method": "tools/call",
+        "mcp-name": `=?base64?${Buffer.from("read").toString("base64")}?=`,
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "read",
+          arguments: { path: "b64.txt" },
+          _meta: MCP_META,
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().result.structuredContent).toMatchObject({
+      toolId: "read",
+      status: "completed",
+    });
+    await app.close();
+  });
+
+  it("returns 404 for unknown methods and 405 for legacy GET/DELETE session traffic", async () => {
+    const app = await createApp();
+
+    const unknown = await rpc(app, "tools/unknown");
+    expect(unknown.response.statusCode).toBe(404);
+    expect(unknown.body.error).toMatchObject({ code: -32601 });
+
+    for (const method of ["GET", "DELETE"]) {
+      const response = await app.inject({ method, url: "/mcp" });
+      expect(response.statusCode).toBe(405);
+      expect(response.headers.allow).toBe("POST");
+    }
     await app.close();
   });
 });

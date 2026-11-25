@@ -4,6 +4,10 @@ import { getAppMeta } from "@/utils/index.js";
 
 export const REMOTE_MCP_SERVICE_ID = "mira-desktop" as const;
 export const REMOTE_MCP_SERVER_NAME = "mira-desktop" as const;
+export const REMOTE_MCP_PROTOCOL_VERSION = "2026-07-28" as const;
+export const REMOTE_MCP_SUPPORTED_PROTOCOL_VERSIONS = [
+  REMOTE_MCP_PROTOCOL_VERSION,
+] as const;
 export const REMOTE_MCP_RESOURCE_URI =
   "mira://service/mira-desktop/capabilities" as const;
 export const REMOTE_MCP_RESOURCE_NAME =
@@ -143,7 +147,7 @@ export const createRemoteServiceCapabilitiesManifest = (input: {
         serverName: REMOTE_MCP_SERVER_NAME,
         serverVersion: input.serverVersion ?? appMeta.version,
         sdk: "mira-desktop/fastify-jsonrpc@1",
-        protocolVersions: ["2025-06-18"],
+        protocolVersions: [...REMOTE_MCP_SUPPORTED_PROTOCOL_VERSIONS],
       },
     },
     capabilities,
