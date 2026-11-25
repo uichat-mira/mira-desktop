@@ -14,7 +14,13 @@ vi.mock("@/services/remote-tool-gateway.service.js", () => ({
 }));
 
 import { RemoteThreadWorkspaceError } from "@/services/remote-thread-workspace.service.js";
-import remoteMcpRoute from "./remote-mcp.js";
+import remoteMcpRoute, { MCP_PROTOCOL_VERSION } from "./remote-mcp.js";
+
+const MCP_META = {
+  "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+  "io.modelcontextprotocol/clientInfo": { name: "thread-test", version: "1" },
+  "io.modelcontextprotocol/clientCapabilities": {},
+};
 
 const definition: ToolDefinition = {
   id: "read",
@@ -75,7 +81,12 @@ const call = (
   app.inject({
     method: "POST",
     url: "/mcp",
-    headers,
+    headers: {
+      "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+      "mcp-method": "tools/call",
+      "mcp-name": "read",
+      ...headers,
+    },
     payload: {
       jsonrpc: "2.0",
       id: 1,
@@ -83,6 +94,7 @@ const call = (
       params: {
         name: "read",
         arguments: { path: "note.txt" },
+        _meta: MCP_META,
       },
     },
   });

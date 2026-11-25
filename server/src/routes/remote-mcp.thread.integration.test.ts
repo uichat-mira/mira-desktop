@@ -16,7 +16,7 @@ import { initializeHarnessRuntime, resetHarnessRuntime } from "@/mcp/bootstrap.j
 import { clearWorkspaceSelection } from "@/mcp/workspace.js";
 import { remoteThreadWorkspaceService } from "@/services/remote-thread-workspace.service.js";
 import { sendRouteError } from "@/utils/route-errors.js";
-import remoteMcpRoute from "./remote-mcp.js";
+import remoteMcpRoute, { MCP_PROTOCOL_VERSION } from "./remote-mcp.js";
 import remoteAccessRoute from "./remote-access.js";
 import {
   createTimestampedTestArtifactPath,
@@ -88,12 +88,28 @@ const mcpCall = async (
   const response = await app.inject({
     method: "POST",
     url: "/mcp",
-    headers: { "x-mira-thread-id": threadContext.threadId },
+    headers: {
+      "x-mira-thread-id": threadContext.threadId,
+      "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+      "mcp-method": "tools/call",
+      "mcp-name": name,
+    },
     payload: {
       jsonrpc: "2.0",
       id: 1,
       method: "tools/call",
-      params: { name, arguments: args },
+      params: {
+        name,
+        arguments: args,
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+          "io.modelcontextprotocol/clientInfo": {
+            name: "thread-e2e",
+            version: "1",
+          },
+          "io.modelcontextprotocol/clientCapabilities": {},
+        },
+      },
     },
   });
   return { response, body: response.json() };
