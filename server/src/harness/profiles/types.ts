@@ -12,6 +12,13 @@ export interface HarnessCapabilityProfile {
   sourceLabel?: string;
   preferredToolId?: string;
   /**
+   * Product admission scope shared by the Desktop capability surface and the
+   * remote MCP catalog. Only authored capability profiles may be core; a
+   * one-to-one fallback profile is registered Tool metadata, not a curated
+   * product capability.
+   */
+  core?: boolean;
+  /**
    * True when this is the one-to-one projection for a Tool that has no
    * authored semantic group. Consumers that publish capability groups must
    * not present this fallback as a fabricated product capability.

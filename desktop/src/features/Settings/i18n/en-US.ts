@@ -2394,13 +2394,14 @@ const settingsPending = {
         loading: "Loading tool runtime…",
         loadFailed: "Failed to load tools",
         tools: "Tools",
-        toolsHint: "Shows tools with registered acceptance cases.",
+        toolsHint: "Shows registered core capability tools and acceptance cases.",
         catalogFilter: {
           all: "All",
-          native: "Native",
+          native: "Core",
           extension: "Extensions",
         },
         catalogKind: {
+          core: "Core",
           native: "Native",
           extension: "Extension",
         },

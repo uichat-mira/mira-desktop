@@ -62,6 +62,7 @@ export type CapabilityTool = Omit<
     | "outputSchema"
     | "tags"
     | "capabilities"
+    | "coreCapability"
     | "workbench"
   >,
   "capabilities"

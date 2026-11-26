@@ -101,17 +101,19 @@ describe("remote MCP real authentication path", () => {
 
   it("admits a real paired Direct device through /mcp while Cloud is signed out", async () => {
     const app = await makeApp();
-    const response = await initializeWithToken(app, deviceToken);
+    const response = await discoverWithToken(app, deviceToken);
 
     expect(response.statusCode).toBe(200);
-    expect(response.json().result.serverInfo.name).toBe("mira-desktop");
+    expect(
+      response.json().result._meta["io.modelcontextprotocol/serverInfo"].name,
+    ).toBe("mira-desktop");
     await app.close();
   });
 
   it("keeps the DSK-018 Direct denial while this Desktop is signed in to Cloud", async () => {
     cloudRemoteAccessMode.applyNativeSessionState("signed_in");
     const app = await makeApp();
-    const response = await initializeWithToken(app, deviceToken);
+    const response = await discoverWithToken(app, deviceToken);
 
     expect(response.statusCode).toBe(403);
     expect(response.json().message).toContain(
@@ -121,9 +123,9 @@ describe("remote MCP real authentication path", () => {
     await app.close();
   });
 
-  it("rejects a revoked device credential before MCP initialization", async () => {
+  it("rejects a revoked device credential before MCP discovery", async () => {
     const app = await makeApp();
-    const response = await initializeWithToken(app, revokedToken);
+    const response = await discoverWithToken(app, revokedToken);
 
     expect(response.statusCode).toBe(401);
     await app.close();
@@ -144,22 +146,31 @@ describe("remote MCP real authentication path", () => {
   });
 });
 
-const initializeWithToken = (
+const discoverWithToken = (
   app: Awaited<ReturnType<typeof makeApp>>,
   token: string,
 ) => {
   return app.inject({
     method: "POST",
     url: "/mcp",
-    headers: { authorization: `Bearer ${token}` },
+    headers: {
+      authorization: `Bearer ${token}`,
+      "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+      "mcp-method": "server/discover",
+    },
     payload: {
       jsonrpc: "2.0",
       id: 1,
-      method: "initialize",
+      method: "server/discover",
       params: {
-        protocolVersion: MCP_PROTOCOL_VERSION,
-        capabilities: {},
-        clientInfo: { name: "auth-test", version: "1" },
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+          "io.modelcontextprotocol/clientInfo": {
+            name: "auth-test",
+            version: "1",
+          },
+          "io.modelcontextprotocol/clientCapabilities": {},
+        },
       },
     },
   });

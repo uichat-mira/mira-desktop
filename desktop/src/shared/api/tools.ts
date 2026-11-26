@@ -29,6 +29,7 @@ export type HarnessToolDefinition = {
     networkAccess?: boolean;
     longRunning?: boolean;
   };
+  coreCapability?: boolean;
   runtimeReadiness?: {
     state: "ready" | "degraded" | "unavailable";
     reason: string;

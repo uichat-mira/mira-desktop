@@ -184,6 +184,12 @@ export interface ToolDefinition {
   outputSchema?: Record<string, unknown>;
   tags: string[];
   capabilities: ToolPolicyMetadata;
+  /**
+   * Projection-only mark for the shared Desktop product admission scope. It is
+   * set from authored core capability profiles and is never execution
+   * authority; Policy/Approval and runtime readiness remain authoritative.
+   */
+  coreCapability?: boolean;
   workbench?: {
     groupId: string;
     groupLabel: string;
