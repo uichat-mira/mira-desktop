@@ -1,11 +1,13 @@
-import type { FastifyPluginAsync, FastifyRequest } from "fastify";
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { isAppError } from "@/utils/errors.js";
 import { forbidden } from "@/utils/route-errors.js";
 import {
+  REMOTE_MCP_PROTOCOL_VERSION,
   REMOTE_MCP_RESOURCE_MIME_TYPE,
   REMOTE_MCP_RESOURCE_NAME,
   REMOTE_MCP_RESOURCE_URI,
   REMOTE_MCP_SERVER_NAME,
+  REMOTE_MCP_SUPPORTED_PROTOCOL_VERSIONS,
   createRemoteServiceCapabilitiesManifest,
   type RemoteServiceCapabilitiesManifest,
 } from "@/mcp/remote-service-capabilities.js";
@@ -15,13 +17,23 @@ import {
   type RemoteToolCatalog,
   type RemoteToolInvocationProjection,
 } from "@/services/remote-tool-gateway.service.js";
+import {
+  readCloudRemoteThreadContext,
+  RemoteThreadWorkspaceError,
+} from "@/services/remote-thread-workspace.service.js";
 import { getAppMeta } from "@/utils/index.js";
 
-export const MCP_PROTOCOL_VERSION = "2025-06-18" as const;
-export const MCP_SUPPORTED_PROTOCOL_VERSIONS = [MCP_PROTOCOL_VERSION] as const;
-const MCP_MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+export const MCP_PROTOCOL_VERSION = REMOTE_MCP_PROTOCOL_VERSION;
+export const MCP_SUPPORTED_PROTOCOL_VERSIONS =
+  REMOTE_MCP_SUPPORTED_PROTOCOL_VERSIONS;
 
-type JsonRpcId = string | number | null;
+const MCP_MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+const MCP_META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
+const MCP_META_CLIENT_CAPABILITIES =
+  "io.modelcontextprotocol/clientCapabilities";
+const MCP_META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
+
+type JsonRpcId = string | number;
 
 type JsonRpcRequest = {
   jsonrpc: "2.0";
@@ -41,6 +53,7 @@ class JsonRpcError extends Error {
     readonly code: number,
     message: string,
     readonly data?: unknown,
+    readonly statusCode = 200,
   ) {
     super(message);
     this.name = "JsonRpcError";
@@ -50,14 +63,69 @@ class JsonRpcError extends Error {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-const jsonRpcResult = (id: JsonRpcId, result: unknown) => ({
+const isSupportedProtocolVersion = (
+  value: string,
+): value is (typeof MCP_SUPPORTED_PROTOCOL_VERSIONS)[number] =>
+  (MCP_SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(value);
+
+const unsupportedProtocolVersion = (requested: string) =>
+  new JsonRpcError(
+    -32022,
+    `Unsupported MCP protocol version: ${requested}`,
+    {
+      supported: [...MCP_SUPPORTED_PROTOCOL_VERSIONS],
+      requested,
+    },
+    400,
+  );
+
+const headerMismatch = (message: string) =>
+  new JsonRpcError(-32020, `Header mismatch: ${message}`, undefined, 400);
+
+const singleHeader = (
+  request: FastifyRequest,
+  name: string,
+): string | undefined => {
+  const value = request.headers[name];
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) {
+    if (value.length !== 1) {
+      throw headerMismatch(`Multiple ${name} headers were sent`);
+    }
+    return value[0];
+  }
+  return value;
+};
+
+const MCP_NAME_HEADER_ENCODING = /^=\?base64\?([A-Za-z0-9+/=]*)\?=$/u;
+
+// Streamable HTTP mirrors Mcp-Name/Mcp-Param-* body values into headers and may
+// Base64-encode values that are not header-safe. Only Mcp-Name is used here.
+const decodeHeaderValue = (value: string) => {
+  const match = MCP_NAME_HEADER_ENCODING.exec(value);
+  return match ? Buffer.from(match[1], "base64").toString("utf8") : value;
+};
+
+const serverImplementation = () => ({
+  name: REMOTE_MCP_SERVER_NAME,
+  version: getAppMeta().version,
+});
+
+const jsonRpcResult = (id: JsonRpcId, result: Record<string, unknown>) => ({
   jsonrpc: "2.0" as const,
   id,
-  result,
+  result: {
+    resultType: "complete" as const,
+    ...result,
+    _meta: {
+      ...(isRecord(result._meta) ? result._meta : {}),
+      [MCP_META_SERVER_INFO]: serverImplementation(),
+    },
+  },
 });
 
 const jsonRpcError = (
-  id: JsonRpcId,
+  id: JsonRpcId | null,
   code: number,
   message: string,
   data?: unknown,
@@ -128,33 +196,15 @@ const toMcpToolResult = (
   };
 };
 
-const initializeResult = (params: Record<string, unknown>) => {
-  const requested =
-    typeof params.protocolVersion === "string"
-      ? params.protocolVersion
-      : undefined;
-  const protocolVersion =
-    requested &&
-    MCP_SUPPORTED_PROTOCOL_VERSIONS.includes(
-      requested as (typeof MCP_SUPPORTED_PROTOCOL_VERSIONS)[number],
-    )
-      ? requested
-      : MCP_PROTOCOL_VERSION;
-
-  return {
-    protocolVersion,
-    capabilities: {
-      tools: { listChanged: false },
-      resources: { subscribe: false, listChanged: false },
-    },
-    serverInfo: {
-      name: REMOTE_MCP_SERVER_NAME,
-      version: getAppMeta().version,
-    },
-    instructions:
-      "Mira Desktop exposes the same eligible Tool Core/Harness tools used by Remote V1. tools/list is authoritative; the optional capability resource describes real groups only.",
-  };
-};
+const discoverResult = () => ({
+  supportedVersions: [...MCP_SUPPORTED_PROTOCOL_VERSIONS],
+  capabilities: {
+    tools: { listChanged: false },
+    resources: { subscribe: false, listChanged: false },
+  },
+  instructions:
+    "Mira Desktop exposes the same eligible Tool Core/Harness tools used by Remote V1. tools/list is authoritative; the optional capability resource describes real groups only.",
+});
 
 const listToolsResult = (catalog: RemoteToolCatalog) => ({
   tools: catalog.manifests.map((manifest) => {
@@ -179,7 +229,9 @@ const listToolsResult = (catalog: RemoteToolCatalog) => ({
   }),
 });
 
-const listResourcesResult = (manifest: RemoteServiceCapabilitiesManifest | null) => ({
+const listResourcesResult = (
+  manifest: RemoteServiceCapabilitiesManifest | null,
+) => ({
   resources: manifest
     ? [
         {
@@ -199,7 +251,7 @@ const readResourceResult = (
   uri: string,
 ) => {
   if (!manifest || uri !== REMOTE_MCP_RESOURCE_URI) {
-    throw new JsonRpcError(-32002, "Resource not found");
+    throw new JsonRpcError(-32602, "Resource not found", { uri });
   }
   return {
     contents: [
@@ -239,6 +291,11 @@ const callTool = async (input: {
     throw forbidden("Desktop authentication is required");
   }
 
+  const isCloud = Boolean(input.request.cloudRemoteCaller);
+  const threadContext = isCloud
+    ? readCloudRemoteThreadContext(input.request)
+    : null;
+
   const controller = new AbortController();
   const abort = () => controller.abort();
   input.request.raw.once("aborted", abort);
@@ -248,6 +305,8 @@ const callTool = async (input: {
       toolId,
       args: input.args,
       userId,
+      ...(threadContext ? { threadContext } : {}),
+      ...(isCloud ? { requireThreadContext: true } : {}),
       signal: controller.signal,
     });
     return toMcpToolResult(projection);
@@ -259,15 +318,14 @@ const callTool = async (input: {
 
 const parseJsonRpcRequest = (body: unknown): JsonRpcRequest => {
   if (!isRecord(body) || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
-    throw new JsonRpcError(-32600, "Invalid JSON-RPC request");
+    throw new JsonRpcError(-32600, "Invalid JSON-RPC request", undefined, 400);
   }
   if (
     Object.hasOwn(body, "id") &&
-    body.id !== null &&
-    typeof body.id !== "string" &&
-    typeof body.id !== "number"
+    (body.id === null ||
+      (typeof body.id !== "string" && typeof body.id !== "number"))
   ) {
-    throw new JsonRpcError(-32600, "Invalid JSON-RPC request id");
+    throw new JsonRpcError(-32600, "Invalid JSON-RPC request id", undefined, 400);
   }
   if (body.params !== undefined && !isRecord(body.params)) {
     throw new JsonRpcError(-32602, "MCP params must be an object");
@@ -275,7 +333,121 @@ const parseJsonRpcRequest = (body: unknown): JsonRpcRequest => {
   return body as JsonRpcRequest;
 };
 
+const requireRequestMetadata = (request: FastifyRequest, body: JsonRpcRequest) => {
+  const headerVersion = singleHeader(request, "mcp-protocol-version");
+  if (!headerVersion) {
+    throw headerMismatch("MCP-Protocol-Version header is required");
+  }
+  if (!isSupportedProtocolVersion(headerVersion)) {
+    throw unsupportedProtocolVersion(headerVersion);
+  }
+
+  const meta = body.params?._meta;
+  if (!isRecord(meta)) {
+    throw new JsonRpcError(
+      -32602,
+      "MCP request metadata is required in params._meta",
+      undefined,
+      400,
+    );
+  }
+  const bodyVersion = meta[MCP_META_PROTOCOL_VERSION];
+  if (typeof bodyVersion !== "string") {
+    throw new JsonRpcError(
+      -32602,
+      `${MCP_META_PROTOCOL_VERSION} is required in params._meta`,
+      undefined,
+      400,
+    );
+  }
+  if (bodyVersion !== headerVersion) {
+    throw headerMismatch(
+      `MCP-Protocol-Version '${headerVersion}' does not match the request body '${bodyVersion}'`,
+    );
+  }
+  if (!isRecord(meta[MCP_META_CLIENT_CAPABILITIES])) {
+    throw new JsonRpcError(
+      -32602,
+      `${MCP_META_CLIENT_CAPABILITIES} is required in params._meta`,
+      undefined,
+      400,
+    );
+  }
+};
+
+const requireMethodHeader = (request: FastifyRequest, body: JsonRpcRequest) => {
+  const method = singleHeader(request, "mcp-method");
+  if (!method) {
+    throw headerMismatch("Mcp-Method header is required");
+  }
+  if (method !== body.method) {
+    throw headerMismatch(
+      `Mcp-Method '${method}' does not match the request body '${body.method}'`,
+    );
+  }
+};
+
+const requireNameHeader = (request: FastifyRequest, value: string) => {
+  const header = singleHeader(request, "mcp-name");
+  if (!header) {
+    throw headerMismatch("Mcp-Name header is required");
+  }
+  if (decodeHeaderValue(header) !== value) {
+    throw headerMismatch(
+      `Mcp-Name '${header}' does not match the request body '${value}'`,
+    );
+  }
+};
+
+const sendJsonRpcError = (
+  reply: FastifyReply,
+  id: JsonRpcId | null,
+  error: JsonRpcError,
+  method?: string,
+) => {
+  // A modern-only server names its supported versions for initialize requests:
+  // legacy clients have no fall-forward mechanism to discover them otherwise.
+  const data =
+    error.data ??
+    (method === "initialize"
+      ? { supported: [...MCP_SUPPORTED_PROTOCOL_VERSIONS] }
+      : undefined);
+  return reply
+    .code(error.statusCode)
+    .type("application/json")
+    .send(jsonRpcError(id, error.code, error.message, data));
+};
+
 const remoteMcpRoute: FastifyPluginAsync = async (app) => {
+  // Remote MCP is a native paired-device/Host Grant outlet, not a browser
+  // endpoint. No browser Origin is authorized for this route. Fail closed
+  // before resolving tools, including when an authenticated token is present.
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.headers.origin !== undefined) {
+      return reply.code(403).type("application/json").send(
+        jsonRpcError(null, -32600, "Browser Origin is not allowed on Remote MCP"),
+      );
+    }
+  });
+
+  // This revision removed the GET stream and DELETE session endpoint.
+  app.route({
+    method: ["GET", "DELETE"],
+    url: "/mcp",
+    handler: async (_request, reply) =>
+      reply
+        .code(405)
+        .header("allow", "POST")
+        .type("application/json")
+        .send(
+          jsonRpcError(
+            null,
+            -32601,
+            "MCP 2026-07-28 is a stateless POST endpoint; GET streams and DELETE sessions are not supported.",
+          ),
+        ),
+  });
+
   app.post<{ Body: unknown }>(
     "/mcp",
     {
@@ -291,58 +463,42 @@ const remoteMcpRoute: FastifyPluginAsync = async (app) => {
       // Desktop API. A Desktop JWT alone must not turn it into an MCP server.
       requireRemoteScope(request, "tools:read");
 
-      const versionHeader = request.headers["mcp-protocol-version"];
-      if (versionHeader !== undefined) {
-        const value = Array.isArray(versionHeader)
-          ? versionHeader[0]
-          : versionHeader;
-        if (
-          typeof value !== "string" ||
-          !MCP_SUPPORTED_PROTOCOL_VERSIONS.includes(
-            value as (typeof MCP_SUPPORTED_PROTOCOL_VERSIONS)[number],
-          )
-        ) {
-          return reply
-            .code(400)
-            .type("application/json")
-            .send(
-              jsonRpcError(
-                null,
-                -32000,
-                `Unsupported MCP protocol version. Supported: ${MCP_SUPPORTED_PROTOCOL_VERSIONS.join(", ")}`,
-              ),
-            );
-        }
-      }
-
       let body: JsonRpcRequest;
       try {
         body = parseJsonRpcRequest(request.body);
       } catch (error) {
         if (error instanceof JsonRpcError) {
-          return reply
-            .code(error.code === -32600 ? 400 : 200)
-            .type("application/json")
-            .send(jsonRpcError(null, error.code, error.message, error.data));
+          return sendJsonRpcError(reply, null, error);
         }
         throw error;
       }
 
-      const hasId = Object.hasOwn(body, "id");
-      const id = body.id ?? null;
-
-      if (!hasId) {
-        // Every JSON-RPC notification, including notifications/initialized and
-        // notifications/cancelled, is transport-level input with no response.
-        return reply.code(202).send();
+      if (!Object.hasOwn(body, "id")) {
+        // 2026-07-28 defines no client-to-server notifications on Streamable
+        // HTTP; connection close is the cancellation signal.
+        return reply
+          .code(400)
+          .type("application/json")
+          .send(
+            jsonRpcError(
+              null,
+              -32601,
+              "MCP notifications are not part of the 2026-07-28 Streamable HTTP contract.",
+            ),
+          );
       }
 
+      const id = body.id as JsonRpcId;
+
       try {
+        requireRequestMetadata(request, body);
+        requireMethodHeader(request, body);
+
         switch (body.method) {
-          case "initialize":
+          case "server/discover":
             return reply
               .type("application/json")
-              .send(jsonRpcResult(id, initializeResult(body.params ?? {})));
+              .send(jsonRpcResult(id, discoverResult()));
           case "ping":
             return reply.type("application/json").send(jsonRpcResult(id, {}));
           case "tools/list": {
@@ -360,6 +516,7 @@ const remoteMcpRoute: FastifyPluginAsync = async (app) => {
             if (params.arguments !== undefined && !isRecord(params.arguments)) {
               throw new JsonRpcError(-32602, "tools/call arguments must be an object");
             }
+            requireNameHeader(request, name);
             const catalog = await resolveRemoteToolCatalog();
             const result = await callTool({
               request,
@@ -388,6 +545,7 @@ const remoteMcpRoute: FastifyPluginAsync = async (app) => {
             if (typeof uri !== "string" || !uri) {
               throw new JsonRpcError(-32602, "resources/read requires a uri");
             }
+            requireNameHeader(request, uri);
             const catalog = await resolveRemoteToolCatalog();
             return reply
               .type("application/json")
@@ -398,14 +556,28 @@ const remoteMcpRoute: FastifyPluginAsync = async (app) => {
                 ),
               );
           }
+          case "initialize":
+            throw new JsonRpcError(
+              -32601,
+              "MCP initialize is not supported. Mira Desktop Remote MCP implements only protocol 2026-07-28; use server/discover and per-request _meta.",
+              { supported: [...MCP_SUPPORTED_PROTOCOL_VERSIONS] },
+              404,
+            );
           default:
-            throw new JsonRpcError(-32601, "Method not found");
+            throw new JsonRpcError(-32601, "Method not found", undefined, 404);
         }
       } catch (error) {
         if (error instanceof JsonRpcError) {
+          return sendJsonRpcError(reply, id, error, body.method);
+        }
+        if (error instanceof RemoteThreadWorkspaceError) {
           return reply
             .type("application/json")
-            .send(jsonRpcError(id, error.code, error.message, error.data));
+            .send(
+              jsonRpcError(id, -32010, error.message, {
+                code: error.code,
+              }),
+            );
         }
         if (isAppError(error)) {
           return reply

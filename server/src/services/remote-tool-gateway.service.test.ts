@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   getInvocation: vi.fn(),
   resolveExposure: vi.fn(),
   initialize: vi.fn(),
-  eligibleExternal: vi.fn(() => []),
+  coreToolIds: vi.fn(),
   resolveApproval: vi.fn(),
   claimApproval: vi.fn(),
   finalizeApproval: vi.fn(),
@@ -21,6 +21,15 @@ vi.mock("@/harness/invocations.js", () => ({
 
 vi.mock("@/harness/exposure.js", () => ({
   resolveHarnessToolExposure: mocks.resolveExposure,
+}));
+
+vi.mock("@/harness/core-capability-scope.js", () => ({
+  resolveCoreCapabilityScope: vi.fn(),
+  resolveCoreCapabilityToolIds: mocks.coreToolIds,
+}));
+
+vi.mock("@/harness/registry.js", () => ({
+  listInternalToolDefinitions: vi.fn(() => []),
 }));
 
 vi.mock("@/mcp/bootstrap.js", () => ({
@@ -78,38 +87,55 @@ const externalDefinition = {
   },
 };
 
+const nonCoreInternalDefinition = {
+  ...terminalDefinition,
+  id: "github_repository",
+  title: "GitHub Repository",
+  description: "Registered but outside the curated core scope",
+  domain: "github",
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.resolveExposure.mockReturnValue({
-    exposedToolIds: [terminalDefinition.id, externalDefinition.id],
-    exposedDefinitions: [terminalDefinition, externalDefinition],
+    exposedToolIds: [
+      terminalDefinition.id,
+      externalDefinition.id,
+      nonCoreInternalDefinition.id,
+    ],
+    exposedDefinitions: [
+      terminalDefinition,
+      externalDefinition,
+      nonCoreInternalDefinition,
+    ],
     reason: [],
-    visibleDefinitions: [terminalDefinition, externalDefinition],
+    visibleDefinitions: [
+      terminalDefinition,
+      externalDefinition,
+      nonCoreInternalDefinition,
+    ],
     blockedCapabilityIds: [],
     blockedCapabilityReasons: {},
     reasons: [],
   });
-  mocks.eligibleExternal.mockReturnValue([externalDefinition]);
+  mocks.coreToolIds.mockReturnValue(new Set([terminalDefinition.id]));
 });
 
 describe("mobile remote tool gateway service", () => {
-  test("projects only Agent exposure definitions with model-safe names", async () => {
+  test("projects only the core Agent exposure definitions with model-safe names", async () => {
     const manifests = await listRemoteToolManifests();
 
-    expect(manifests[0]).toMatchObject({
-      id: "terminal",
-      name: "terminal",
-      requiresApproval: true,
-    });
-    expect(manifests[1]?.id).toBe("mcp:server-1:tool:lookup");
-    expect(manifests[1]?.name).toMatch(/^[A-Za-z0-9_-]{1,64}$/u);
-    expect(manifests[1]?.name).not.toContain(":");
-    expect(mocks.resolveExposure).toHaveBeenCalledWith(
+    expect(manifests).toEqual([
       expect.objectContaining({
-        source: "agent_intent",
-        allowExternal: true,
+        id: "terminal",
+        name: "terminal",
+        requiresApproval: true,
       }),
-    );
+    ]);
+    expect(mocks.resolveExposure).toHaveBeenCalledWith({
+      source: "agent_intent",
+      editFacade: "all",
+    });
   });
 
   test("exposes one bidirectional alias index for the catalog", async () => {
@@ -117,9 +143,8 @@ describe("mobile remote tool gateway service", () => {
 
     expect(catalog.nameToId.get("terminal")).toBe("terminal");
     expect(catalog.idToName.get("terminal")).toBe("terminal");
-    const externalName = catalog.idToName.get(externalDefinition.id);
-    expect(externalName).toMatch(/^[A-Za-z0-9_-]{1,64}$/u);
-    expect(catalog.nameToId.get(externalName!)).toBe(externalDefinition.id);
+    expect(catalog.nameToId.size).toBe(1);
+    expect(catalog.idToName.size).toBe(1);
   });
 
   test("fails closed when two Tool Core ids would share one MCP name", async () => {
@@ -132,14 +157,10 @@ describe("mobile remote tool gateway service", () => {
       {
         ...terminalDefinition,
         id: externalId,
-        source: "external" as const,
-        domain: "external_mcp",
       },
       {
         ...terminalDefinition,
         id: `mcp_server-1_tool_lookup_${suffix}`,
-        source: "external" as const,
-        domain: "external_mcp",
       },
     ];
     mocks.resolveExposure.mockReturnValueOnce({
@@ -151,34 +172,38 @@ describe("mobile remote tool gateway service", () => {
       blockedCapabilityReasons: {},
       reasons: [],
     });
-    mocks.eligibleExternal.mockReturnValueOnce(collidingDefinitions);
+    mocks.coreToolIds.mockReturnValueOnce(
+      new Set(collidingDefinitions.map((definition) => definition.id)),
+    );
 
     await expect(resolveRemoteToolCatalog()).rejects.toThrow(
       /Remote tool alias collision/u,
     );
   });
 
-  test("does not apply per-turn top-20 ranking to persistent remote discovery", async () => {
+  test("does not apply per-turn top-20 ranking to persistent core discovery", async () => {
     const internalDefinitions = Array.from({ length: 20 }, (_, index) => ({
       ...terminalDefinition,
       id: `internal_tool_${index}`,
       title: `Internal ${index}`,
     }));
-    const allDefinitions = [...internalDefinitions, externalDefinition];
     mocks.resolveExposure.mockReturnValueOnce({
-      exposedToolIds: allDefinitions.map((definition) => definition.id),
-      exposedDefinitions: allDefinitions,
+      exposedToolIds: internalDefinitions.map((definition) => definition.id),
+      exposedDefinitions: internalDefinitions,
       reason: [],
-      visibleDefinitions: allDefinitions,
+      visibleDefinitions: internalDefinitions,
       blockedCapabilityIds: [],
       blockedCapabilityReasons: {},
       reasons: [],
     });
+    mocks.coreToolIds.mockReturnValueOnce(
+      new Set(internalDefinitions.map((definition) => definition.id)),
+    );
 
     const manifests = await listRemoteToolManifests();
 
-    expect(manifests).toHaveLength(21);
-    expect(manifests.at(-1)?.id).toBe(externalDefinition.id);
+    expect(manifests).toHaveLength(20);
+    expect(manifests.at(-1)?.id).toBe("internal_tool_19");
   });
 
   test("rejects approval when Mobile changes the frozen invocation arguments", async () => {

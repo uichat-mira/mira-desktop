@@ -1,4 +1,5 @@
 import type { ToolDefinition } from "./core/definitions.js";
+import { resolveCoreCapabilityToolIds } from "../harness/core-capability-scope.js";
 import { resolveHarnessCapabilityProfiles } from "../harness/profiles/resolver.js";
 
 type WorkbenchPresentation = Omit<
@@ -201,6 +202,7 @@ export const withWorkbenchMetadata = (
     string,
     { groupId: string; presentation: WorkbenchPresentation }
   >();
+  const coreToolIds = resolveCoreCapabilityToolIds(ownershipDefinitions);
 
   for (const profile of resolveHarnessCapabilityProfiles(ownershipDefinitions)) {
     if (!profile.workbench) {
@@ -223,6 +225,7 @@ export const withWorkbenchMetadata = (
     const ownership = explicitOwnership.get(definition.id);
     return {
       ...definition,
+      ...(coreToolIds.has(definition.id) ? { coreCapability: true } : {}),
       workbench: {
         groupId: ownership?.groupId ?? definition.domain,
         ...(ownership?.presentation ??

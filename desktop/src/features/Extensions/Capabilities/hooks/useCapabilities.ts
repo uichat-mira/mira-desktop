@@ -38,7 +38,6 @@ import type {
   CapabilityTool,
 } from "../types";
 import {
-  isManagedBrowserTool,
   resolveCapabilityReadiness,
   toExternalCapabilityTools,
   toNativeCapabilityTool,
@@ -130,11 +129,13 @@ export function useCapabilities() {
       return [toUnavailableNativeCapabilityTool(toolId)];
     });
     const caseToolIdSet = new Set(caseTools.map((tool) => tool.id));
-    const browserTools = allTools.filter(
-      (tool) => isManagedBrowserTool(tool) && !caseToolIdSet.has(tool.id),
+    // Core marking comes from the backend projection shared with remote MCP.
+    // Acceptance cases alone must not become a second admission list.
+    const coreTools = allTools.filter(
+      (tool) => tool.coreCapability === true && !caseToolIdSet.has(tool.id),
     );
 
-    return [...caseTools, ...browserTools];
+    return [...caseTools, ...coreTools];
   }, [allTools, cases]);
 
   useEffect(() => {

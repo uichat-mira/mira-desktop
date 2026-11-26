@@ -238,6 +238,28 @@ export const getRequiredRemoteScope = (
 
   if (
     normalizedMethod === "GET" &&
+    parts.length === 5 &&
+    parts[0] === "remote" &&
+    parts[1] === "v1" &&
+    parts[2] === "threads" &&
+    parts[4] === "workspace"
+  ) {
+    return "tools:read";
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    parts.length === 5 &&
+    parts[0] === "remote" &&
+    parts[1] === "v1" &&
+    parts[2] === "threads" &&
+    parts[4] === "end"
+  ) {
+    return "tools:control";
+  }
+
+  if (
+    normalizedMethod === "GET" &&
     parts.length === 3 &&
     parts[0] === "remote" &&
     parts[1] === "v1" &&

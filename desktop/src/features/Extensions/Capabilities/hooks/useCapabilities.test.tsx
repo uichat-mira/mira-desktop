@@ -47,6 +47,7 @@ const readTool = {
   mode: "sync",
   inputSchema: { type: "object" },
   tags: [],
+  coreCapability: true,
   capabilities: {
     sideEffect: "none",
     requiresApproval: false,
@@ -63,6 +64,7 @@ const writeTool = {
   mode: "sync",
   inputSchema: { type: "object" },
   tags: [],
+  coreCapability: true,
   capabilities: {
     sideEffect: "local-write",
     requiresApproval: true,
@@ -79,6 +81,7 @@ const terminalTool = {
   mode: "stream",
   inputSchema: { type: "object" },
   tags: ["terminal"],
+  coreCapability: true,
   capabilities: {
     sideEffect: "process",
     requiresApproval: true,
@@ -104,6 +107,7 @@ const browserSnapshotTool = {
   mode: "sync",
   inputSchema: { type: "object" },
   tags: ["browser", "snapshot"],
+  coreCapability: true,
   workbench: managedBrowserWorkbench,
   capabilities: {
     sideEffect: "none",
@@ -121,6 +125,7 @@ const browserClickTool = {
   mode: "sync",
   inputSchema: { type: "object" },
   tags: ["browser", "click"],
+  coreCapability: true,
   workbench: managedBrowserWorkbench,
   capabilities: {
     sideEffect: "network",
@@ -138,6 +143,7 @@ const browserNavigateTool = {
   mode: "sync",
   inputSchema: { type: "object" },
   tags: ["browser", "navigate"],
+  coreCapability: true,
   workbench: managedBrowserWorkbench,
   capabilities: {
     sideEffect: "network",
@@ -881,6 +887,12 @@ describe("useCapabilities", () => {
       expect(result.current.tools.some((tool) => tool.id === "browser_navigate")).toBe(
         true,
       ),
+    );
+    expect(result.current.tools.some((tool) => tool.id === "browser_snapshot")).toBe(
+      true,
+    );
+    expect(result.current.tools.some((tool) => tool.id === "browser_click")).toBe(
+      true,
     );
 
     act(() => {

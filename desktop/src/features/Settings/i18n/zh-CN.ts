@@ -2353,13 +2353,14 @@ const settingsPending = {
         loading: "正在读取工具运行时…",
         loadFailed: "工具加载失败",
         tools: "工具",
-        toolsHint: "显示已注册验收用例的工具。",
+        toolsHint: "显示已注册的核心能力工具与验收用例。",
         catalogFilter: {
           all: "全部",
-          native: "原生",
+          native: "核心",
           extension: "扩展",
         },
         catalogKind: {
+          core: "核心",
           native: "原生",
           extension: "扩展",
         },

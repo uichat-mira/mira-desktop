@@ -56,6 +56,13 @@ const invocation = (
 });
 
 describe("Capability view helpers", () => {
+  it("keeps the backend core admission mark on the UI projection", () => {
+    expect(
+      toNativeCapabilityTool({ ...readTool, coreCapability: true }).coreCapability,
+    ).toBe(true);
+    expect(toNativeCapabilityTool(readTool).coreCapability).toBeUndefined();
+  });
+
   it("does not mark web search ready when runtime readiness is missing", () => {
     const tool = toNativeCapabilityTool({
       ...readTool,
