@@ -1,6 +1,6 @@
 {
   "name": "@ui-chat-mira/desktop",
-  "version": "0.107.0",
+  "version": "0.107.1",
   "private": true,
   "description": "Frontend for UIChat Mira.",
   "author": "Tomz Dang <dangjing@gmail.com>",
