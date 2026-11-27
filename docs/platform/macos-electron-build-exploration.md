@@ -1,6 +1,6 @@
 # macOS Electron 构建独立探索（Intel 优先）
 
-Status: Planned
+Status: Historical
 Owner: platform
 Last verified: 2026-10-01
 Layer: raw-source
@@ -18,6 +18,8 @@ Related:
   - ../../scripts/prepare-desktop-artifacts.js
   - ../../server/build.js
 
+> 历史研究记录：保留 2026-10-01 Intel 主机探针及当时的判断，不再作为当前执行方案。现行三平台构建和发行边界见 [Build](../build/README.md)，尚待验收的 macOS 能力见 [平台分期](./macos-implementation-phases.md)。
+
 ## 单点真相范围
 
 这页是 [macos-implementation-phases.md](./macos-implementation-phases.md) 的**后续探索**。
@@ -29,7 +31,7 @@ Related:
 - 在 Intel（`darwin-x64`）主机上以实测探针定位真实失败点；
 - 给出 Intel 优先、后续可扩展 arm64 的构建路线候选。
 
-这页是 **research / Planning 文档**，不是 current-contract。它不宣称 macOS 已支持，也不替代任何现有 Windows 合同。任何结论在落地前都必须经项目负责人确认。
+这页是 **Historical 研究记录**，不是 current-contract。以下内容保留当时的探索判断与验证约束，不再作为当前构建或施工依据。
 
 ## 背景与定位
 
